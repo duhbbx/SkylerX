@@ -144,6 +144,17 @@ export interface PluginRoute {
   handler: (req: PluginRequest) => unknown | Promise<unknown>
 }
 
+/**
+ * 命名空间化的键值存储原语：基座提供给插件持久化用（如审批单），
+ * 由基座决定落内存还是服务端库；插件无需感知具体后端。
+ */
+export interface KvStore {
+  get<T = unknown>(ns: string, key: string): Promise<T | null>
+  set(ns: string, key: string, value: unknown): Promise<void>
+  list<T = unknown>(ns: string): Promise<Array<{ key: string; value: T }>>
+  delete(ns: string, key: string): Promise<void>
+}
+
 /** 基座暴露给插件的能力面。 */
 export interface EnterpriseRegistry {
   /** 声明插件（用于 /api/plugins 展示已启用能力）。 */
@@ -154,6 +165,8 @@ export interface EnterpriseRegistry {
   onBeforeExecute(hook: (ctx: { connId: string; sql: string }) => void | Promise<void>): void
   /** 供巡检等插件按连接执行 SQL（底层走基座 transport / core-driver）。 */
   executeSql(connId: string, sql: string): Promise<QueryResult>
+  /** 可选的持久化存储（基座提供时为服务端库/内存，缺省则插件自行用内存兜底）。 */
+  kv?: KvStore
 }
 
 /** 闭源插件包的入口约定。 */
