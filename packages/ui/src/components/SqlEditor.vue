@@ -6,7 +6,11 @@ import { settings } from '../settings'
 const props = defineProps<{
   modelValue: string
   readonly?: boolean
-  completion?: (ctx: { text: string; word: string }) => Promise<Suggestion[]> | Suggestion[]
+  completion?: (ctx: {
+    text: string
+    word: string
+    before: string
+  }) => Promise<Suggestion[]> | Suggestion[]
 }>()
 const emit = defineEmits<{ 'update:modelValue': [string]; run: []; format: [] }>()
 
