@@ -31,3 +31,9 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+# 自动更新发布渠道：GitHub Releases。
+# CI 打 tag 发布 release 时，electron-builder 会生成 latest*.yml 供 electron-updater 检查。
+publish:
+  provider: github
+  owner: duhbbx
+  repo: SkylerX

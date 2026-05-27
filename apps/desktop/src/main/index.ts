@@ -5,6 +5,7 @@ import { registerConnectionIpc } from './ipc/connections.js'
 import { registerFileIpc } from './ipc/files.js'
 import { setupMenu } from './menu.js'
 import { disposeTransport } from './transport.js'
+import { setupAutoUpdate } from './updater.js'
 
 const isDev = !app.isPackaged
 
@@ -53,6 +54,7 @@ app.whenReady().then(() => {
   registerConnectionIpc()
   registerFileIpc()
   createWindow()
+  setupAutoUpdate()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

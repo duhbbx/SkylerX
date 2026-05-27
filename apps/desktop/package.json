@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
+    "electron-updater": "^6.3.9",
     "mssql": "^11.0.1",
     "mysql2": "^3.11.5",
     "pg": "^8.13.1",
