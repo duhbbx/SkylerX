@@ -40,6 +40,18 @@ export { getDriver, hasDriver, registerDriver, registeredDialects } from './regi
 // 执行通道实现
 export { LocalTransport } from './transports/local.js'
 export { AgentTransport, type AgentClient } from './transports/agent.js'
+// Agent 转发：线协议 + 服务端分发 + 现成客户端（回环 / HTTP）
+export {
+  type AgentRpcMethod,
+  type AgentRpcPayloads,
+  type AgentRpcRequest,
+  dispatchAgentRpc,
+} from './transports/agent-protocol.js'
+export {
+  type AgentEndpoint,
+  HttpAgentClient,
+  LoopbackAgentClient,
+} from './transports/agent-clients.js'
 
 // 方言
 export { registerBuiltinDrivers } from './dialects/index.js'

@@ -25,6 +25,9 @@ export interface AgentClient {
 }
 
 export class AgentTransport implements SqlTransport {
+  /** connId → agentId 路由表（随请求逐步填充，供 disconnect 路由用） */
+  private readonly routes = new Map<string, string>()
+
   constructor(private readonly client: AgentClient) {}
 
   async execute(
@@ -66,8 +69,10 @@ export class AgentTransport implements SqlTransport {
   }
 
   async disconnect(connId: string): Promise<void> {
-    // 实际实现需记录 connId→agentId 的映射；占位骨架暂略。
-    void connId
+    const agentId = this.routes.get(connId)
+    if (!agentId) return // 该连接从未经本 transport 路由过，无需远端断开
+    this.routes.delete(connId)
+    await this.client.call<void>(agentId, 'disconnect', { connId })
   }
 
   private agentOf(conn: ConnectionRef): string {
@@ -75,6 +80,7 @@ export class AgentTransport implements SqlTransport {
     if (!agentId) {
       throw new Error(`ConnectionRef(${conn.id}) 缺少 agentId，无法路由到 agent。`)
     }
+    this.routes.set(conn.id, agentId) // 记录路由，供 disconnect 用
     return agentId
   }
 }
