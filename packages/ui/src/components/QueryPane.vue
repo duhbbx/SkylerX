@@ -10,6 +10,7 @@ import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
 import { ENV_META, connEnv } from '../connEnv'
 import { type TableContext, explainSql } from '../ddl'
+import { t } from '../i18n'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import type { Suggestion } from '../monaco-setup'
 import { settings } from '../settings'
@@ -303,9 +304,11 @@ async function completion(ctx: {
     return (await loadColumns(table)).map((c) => ({ label: c, kind: 'column' as const, detail: table }))
   }
   const out: Suggestion[] = KEYWORDS.map((k) => ({ label: k, kind: 'keyword' as const }))
-  for (const fn of dialectFuncs()) out.push({ label: fn, insertText: `${fn}()`, kind: 'function', detail: '函数' })
-  for (const s of snippets) out.push({ label: s.name, insertText: s.sql, kind: 'snippet', detail: '片段' })
-  for (const t of await loadTables()) out.push({ label: t, kind: 'table', detail: '表' })
+  for (const fn of dialectFuncs())
+    out.push({ label: fn, insertText: `${fn}()`, kind: 'function', detail: t('completion.function') })
+  for (const s of snippets)
+    out.push({ label: s.name, insertText: s.sql, kind: 'snippet', detail: t('completion.snippet') })
+  for (const tbl of await loadTables()) out.push({ label: tbl, kind: 'table', detail: t('completion.table') })
   for (const t of parseFromTables(ctx.text)) {
     for (const c of await loadColumns(t)) out.push({ label: c, kind: 'column', detail: t })
   }
@@ -321,8 +324,10 @@ function dangerOf(sql: string): string | null {
   const s = sql.trim()
   if (/^drop\s+(table|database|schema|view)/i.test(s)) return `DROP：${s.slice(0, 60)}`
   if (/^truncate\b/i.test(s)) return `TRUNCATE：${s.slice(0, 60)}`
-  if (/^delete\s+from\b/i.test(s) && !/\bwhere\b/i.test(s)) return `DELETE 无 WHERE：${s.slice(0, 60)}`
-  if (/^update\b/i.test(s) && !/\bwhere\b/i.test(s)) return `UPDATE 无 WHERE：${s.slice(0, 60)}`
+  if (/^delete\s+from\b/i.test(s) && !/\bwhere\b/i.test(s))
+    return t('query.dangerDeleteNoWhere', { sql: s.slice(0, 60) })
+  if (/^update\b/i.test(s) && !/\bwhere\b/i.test(s))
+    return t('query.dangerUpdateNoWhere', { sql: s.slice(0, 60) })
   return null
 }
 
@@ -374,10 +379,10 @@ async function execSql(text: string): Promise<void> {
     if (env === 'prod') {
       // 生产库高危操作：要求键入连接名二次确认，防误操作
       const typed = window.prompt(
-        `⚠️ 这是【生产】连接的高危操作：\n\n${dangers.join('\n')}\n\n如确认执行，请键入连接名「${props.conn.name}」：`,
+        t('query.prodDanger', { dangers: dangers.join('\n'), name: props.conn.name }),
       )
       if (typed?.trim() !== props.conn.name) return
-    } else if (!window.confirm(`⚠️ 检测到高危操作：\n\n${dangers.join('\n')}\n\n确定执行？`)) {
+    } else if (!window.confirm(t('query.dangerConfirm', { dangers: dangers.join('\n') }))) {
       return
     }
   }
@@ -448,7 +453,7 @@ async function explain(): Promise<void> {
     // 回退：其余方言用普通 EXPLAIN，结果进结果页
     const ex = explainSql(props.conn.dialect, stmt)
     if (!ex) {
-      window.alert('当前数据库方言暂不支持「解释」')
+      window.alert(t('query.explainUnsupported'))
       return
     }
     const tab: ResultTab = {
@@ -466,7 +471,7 @@ async function explain(): Promise<void> {
     activeTab.value = 0
     showPlan.value = false
   } catch (e) {
-    window.alert(`解释失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('query.explainFailed', { msg: e instanceof Error ? e.message : String(e) }))
   } finally {
     running.value = false
   }
@@ -548,7 +553,7 @@ async function onCommit(changes: EditChanges): Promise<void> {
     await gotoPage(tab, tab.page) // 刷新当前页（结果变更会重置网格编辑态）
     await loadHistory()
   } catch (e) {
-    window.alert(`提交失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('query.commitFailed', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -587,9 +592,9 @@ function onPickSnippet(picked: string): void {
 function saveSnippet(sqlText: string): void {
   const text = sqlText.trim()
   if (!text) return
-  const name = window.prompt('片段名称', text.slice(0, 40))
+  const name = window.prompt(t('query.snippetNamePrompt'), text.slice(0, 40))
   if (name === null) return
-  const tags = window.prompt('标签（逗号分隔，可留空）', '') ?? ''
+  const tags = window.prompt(t('query.snippetTagsPrompt'), '') ?? ''
   addSnippet(name, text, tags.split(','))
 }
 // 工具栏「存为片段」：有选区则存选中语句，否则存整个编辑器内容
@@ -630,19 +635,19 @@ onMounted(() => {
 <template>
   <div ref="paneEl" class="pane">
     <div class="toolbar">
-      <button class="primary" :disabled="running" title="执行（选中则只跑选区） ⌘/Ctrl+Enter" @click="run">
-        ▶ 执行
+      <button class="primary" :disabled="running" :title="t('query.run.title')" @click="run">
+        ▶ {{ t('query.run') }}
       </button>
-      <button :disabled="running" title="解释执行计划 (EXPLAIN)" @click="explain">解释</button>
-      <button title="格式化 SQL" @click="formatSql">格式化</button>
-      <button :disabled="!running" @click="cancel">■ 停止</button>
-      <button class="ghost" @click="clearEditor">清空</button>
-      <button class="ghost" title="把选中语句（无选区则全部）存为片段" @click="saveCurrentSnippet">
-        存为片段
+      <button :disabled="running" :title="t('query.explain.title')" @click="explain">{{ t('query.explain') }}</button>
+      <button :title="t('query.format.title')" @click="formatSql">{{ t('query.format') }}</button>
+      <button :disabled="!running" @click="cancel">■ {{ t('query.stop') }}</button>
+      <button class="ghost" @click="clearEditor">{{ t('query.clear') }}</button>
+      <button class="ghost" :title="t('query.saveSnippet.title')" @click="saveCurrentSnippet">
+        {{ t('query.saveSnippet') }}
       </button>
 
       <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
-        <option value="">（默认库）</option>
+        <option value="">{{ t('query.defaultDb') }}</option>
         <option v-for="d in dbOptions" :key="d" :value="d">{{ d }}</option>
       </select>
       <select
@@ -650,39 +655,39 @@ onMounted(() => {
         v-model="selectedSchema"
         class="ctx"
       >
-        <option value="">（默认 schema）</option>
+        <option value="">{{ t('query.defaultSchema') }}</option>
         <option v-for="s in schemaOptions" :key="s" :value="s">{{ s }}</option>
       </select>
 
-      <span class="hint">⌘/Ctrl+Enter 执行（选中则只跑选区）</span>
+      <span class="hint">{{ t('query.hint') }}</span>
       <span
         v-if="env"
         class="env-badge"
         :style="{ background: ENV_META[env].color }"
-        :title="`环境：${ENV_META[env].label}（高危操作需键入连接名确认）`"
+        :title="t('env.dangerTitle', { label: ENV_META[env].label })"
       >{{ ENV_META[env].label }}</span>
-      <span class="conn-tag">{{ conn.name || '(未命名)' }} · {{ conn.dialect }}</span>
+      <span class="conn-tag">{{ conn.name || t('common.untitled') }} · {{ conn.dialect }}</span>
     </div>
 
     <div class="editor" :style="{ height: editorHeight + 'px' }">
       <SqlEditor ref="editorRef" v-model="sql" :completion="completion" @run="run" @format="formatSql" />
     </div>
 
-    <div class="splitter" title="拖拽调整高度" @pointerdown="onSplitDown"></div>
+    <div class="splitter" :title="t('query.splitterTitle')" @pointerdown="onSplitDown"></div>
 
     <div class="result-tabs">
       <button
-        v-for="(t, i) in tabs"
-        :key="t.id"
+        v-for="(tab, i) in tabs"
+        :key="tab.id"
         class="rtab"
         :class="{ active: !showHistory && !showSnippets && !showPlan && activeTab === i }"
         @click="selectTab(i)"
       >
-        结果 {{ i + 1 }}<span v-if="t.error" class="err-dot">!</span>
+        {{ t('query.tabResult', { n: i + 1 }) }}<span v-if="tab.error" class="err-dot">!</span>
       </button>
-      <button v-if="planData" class="rtab" :class="{ active: showPlan }" @click="openPlan">计划</button>
-      <button class="rtab" :class="{ active: showHistory }" @click="openHistory">历史</button>
-      <button class="rtab" :class="{ active: showSnippets }" @click="openSnippets">片段</button>
+      <button v-if="planData" class="rtab" :class="{ active: showPlan }" @click="openPlan">{{ t('query.tabPlan') }}</button>
+      <button class="rtab" :class="{ active: showHistory }" @click="openHistory">{{ t('query.tabHistory') }}</button>
+      <button class="rtab" :class="{ active: showSnippets }" @click="openSnippets">{{ t('query.tabSnippets') }}</button>
     </div>
 
     <div class="result">
@@ -714,19 +719,19 @@ onMounted(() => {
       />
     </div>
 
-    <Modal v-if="pendingParams" title="填写查询参数" @close="pendingParams = null">
+    <Modal v-if="pendingParams" :title="t('query.paramsTitle')" @close="pendingParams = null">
       <div class="params">
         <label v-for="n in pendingParams.names" :key="n" class="prow">
           <span class="pname">:{{ n }}</span>
           <input
             v-model="pendingParams.values[n]"
-            placeholder="数字原样 · 文本自动加引号 · 留空=NULL"
+            :placeholder="t('query.paramsPlaceholder')"
             @keyup.enter="submitParams"
           />
         </label>
         <div class="pactions">
-          <button class="ghost" @click="pendingParams = null">取消</button>
-          <button class="primary" @click="submitParams">执行</button>
+          <button class="ghost" @click="pendingParams = null">{{ t('common.cancel') }}</button>
+          <button class="primary" @click="submitParams">{{ t('query.run') }}</button>
         </div>
       </div>
     </Modal>
