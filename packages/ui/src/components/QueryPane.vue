@@ -21,7 +21,7 @@ import Modal from './Modal.vue'
 import PlanPanel from './PlanPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SnippetsPanel from './SnippetsPanel.vue'
-import type SqlEditor from './SqlEditor.vue'
+import SqlEditor from './SqlEditor.vue'
 
 const client = useDataClient()
 
