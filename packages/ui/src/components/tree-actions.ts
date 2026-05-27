@@ -73,6 +73,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.generateSql('delete', node, connId),
   },
   {
+    id: 'copy-structure',
+    label: '复制表结构 (CREATE LIKE)',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.generateSql('createlike', node, connId),
+  },
+  {
     id: 'edit-object',
     label: '编辑定义',
     kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure],

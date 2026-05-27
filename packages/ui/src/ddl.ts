@@ -210,13 +210,14 @@ export function explainSql(dialect: DbDialect, sql: string): string | null {
   }
 }
 
-export type SqlTemplateKind = 'select' | 'insert' | 'update' | 'delete'
+export type SqlTemplateKind = 'select' | 'insert' | 'update' | 'delete' | 'createlike'
 
 export const SQL_TEMPLATE_LABEL: Record<SqlTemplateKind, string> = {
   select: '生成 SELECT',
   insert: '生成 INSERT',
   update: '生成 UPDATE',
   delete: '生成 DELETE',
+  createlike: '复制表结构',
 }
 
 /** 由列信息生成 SELECT/INSERT/UPDATE/DELETE 模板（WHERE 优先用主键，否则取首列占位）。 */
@@ -240,6 +241,19 @@ export function buildSqlTemplate(
       return `UPDATE ${tableRef} SET\n${cols.map((c) => `  ${q(c.name)} = NULL`).join(',\n')}\nWHERE ${where};`
     case 'delete':
       return `DELETE FROM ${tableRef}\nWHERE ${where};`
+    case 'createlike': {
+      // 复制表结构（把 new_table_copy 改成目标名后执行）
+      switch (familyOf(dialect)) {
+        case 'mysql':
+          return `CREATE TABLE new_table_copy LIKE ${tableRef};`
+        case 'pg':
+          return `CREATE TABLE new_table_copy (LIKE ${tableRef} INCLUDING ALL);`
+        case 'sqlserver':
+          return `SELECT * INTO new_table_copy FROM ${tableRef} WHERE 1 = 0;`
+        case 'oracle':
+          return `CREATE TABLE new_table_copy AS SELECT * FROM ${tableRef} WHERE 1 = 0;`
+      }
+    }
   }
 }
 
