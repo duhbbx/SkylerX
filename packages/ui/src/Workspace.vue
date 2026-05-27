@@ -10,6 +10,7 @@ import Modal from './components/Modal.vue'
 import DataDiffDialog from './components/DataDiffDialog.vue'
 import NavTree from './components/NavTree.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
+import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
@@ -541,6 +542,7 @@ function onCancel(): void {
 // ── 设置中心 ──
 const settingsOpen = ref(false)
 const schemaDiffOpen = ref(false)
+const privilegesOpen = ref(false)
 const dataDiffOpen = ref(false)
 const objectSearchOpen = ref(false)
 
@@ -570,6 +572,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:object-search', label: '全局对象搜索（表/视图/列）', group: '操作' },
   { id: 'act:schema-diff', label: '结构对比 / 同步', group: '操作' },
   { id: 'act:data-diff', label: '数据对比 / 同步', group: '操作' },
+  { id: 'act:privileges', label: '用户与权限', group: '操作' },
   { id: 'act:settings', label: '设置', group: '操作' },
   { id: 'act:export-conns', label: '导出连接配置', group: '操作' },
   { id: 'act:import-conns', label: '导入连接配置', group: '操作' },
@@ -593,6 +596,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:object-search') objectSearchOpen.value = true
   else if (item.id === 'act:schema-diff') schemaDiffOpen.value = true
   else if (item.id === 'act:data-diff') dataDiffOpen.value = true
+  else if (item.id === 'act:privileges') privilegesOpen.value = true
   else if (item.id === 'act:settings') settingsOpen.value = true
   else if (item.id === 'act:export-conns') await exportConns()
   else if (item.id === 'act:import-conns') await importConns()
@@ -832,6 +836,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     v-if="dataDiffOpen"
     @open-sql="onDiffOpenSql"
     @close="dataDiffOpen = false"
+  />
+
+  <PrivilegesDialog
+    v-if="privilegesOpen"
+    @open-sql="onDiffOpenSql"
+    @close="privilegesOpen = false"
   />
 </template>
 
