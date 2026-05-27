@@ -65,7 +65,8 @@ function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfi
     password: withPassword ? decryptPassword(row.password_enc) : undefined,
     database: row.database ?? undefined,
     ssl: row.ssl_json ? JSON.parse(row.ssl_json) : undefined,
-    ssh: decryptSsh(row.ssh_json, withPassword),
+    // 仅在需要密码时（getConnection）才解密 SSH（含密钥）；列表脱敏，避免无谓的钥匙串读取
+    ssh: withPassword ? decryptSsh(row.ssh_json, true) : undefined,
     group: row.group_name ?? undefined,
     extra: row.extra_json ? JSON.parse(row.extra_json) : undefined,
     createdAt: row.created_at,
