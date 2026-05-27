@@ -324,7 +324,7 @@ async function applyChanges(): Promise<void> {
         <button class="ghost sm" :disabled="applying" @click="applyChanges">应用到库</button>
       </template>
       <button v-if="data?.tables.length || newTables.length" class="ghost sm" @click="generateDdl">生成 DDL</button>
-      <span class="hint">{{ editMode ? '拖列圆点到目标列建外键 · 拖表头移动' : '滚轮缩放 · 拖空白平移' }}</span>
+      <span class="hint">{{ editMode ? '拖列圆点到目标列建外键 · 拖表框移动' : '滚轮缩放 · 拖表框移动 · 拖空白平移' }}</span>
     </div>
 
     <div v-if="loading" class="msg">加载中…</div>
@@ -359,8 +359,9 @@ async function applyChanges(): Promise<void> {
           class="tbox"
           :class="{ 'is-new': b.editable }"
           :style="{ left: `${pos[b.id]?.x ?? 0}px`, top: `${pos[b.id]?.y ?? 0}px`, width: `${BOX_W}px` }"
+          @mousedown.prevent="startDrag(b.id, $event)"
         >
-          <div class="tbox-head" @mousedown.prevent="startDrag(b.id, $event)">
+          <div class="tbox-head">
             <template v-if="b.editable && editMode">
               <input
                 v-model="newTables[newTables.findIndex((t) => t.id === b.id)].name"
@@ -390,7 +391,7 @@ async function applyChanges(): Promise<void> {
                 @mousedown.stop.prevent="portDown(b.id, c.name, $event)"
               />
             </div>
-            <div v-if="b.editable && editMode" class="add-col" @click="addColumn(newTables[newTables.findIndex((t) => t.id === b.id)])">
+            <div v-if="b.editable && editMode" class="add-col" @mousedown.stop @click="addColumn(newTables[newTables.findIndex((t) => t.id === b.id)])">
               + 列
             </div>
           </div>
@@ -486,6 +487,7 @@ async function applyChanges(): Promise<void> {
   border-radius: 8px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   overflow: hidden;
+  cursor: move;
 }
 .tbox.is-new {
   border-color: var(--accent);
@@ -499,7 +501,7 @@ async function applyChanges(): Promise<void> {
   font-size: 13px;
   background: var(--accent);
   color: #fff;
-  cursor: grab;
+  cursor: move;
   user-select: none;
 }
 .tname-input {
