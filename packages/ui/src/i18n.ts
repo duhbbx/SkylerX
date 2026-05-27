@@ -78,6 +78,8 @@ const DICT: Record<string, [string, string]> = {
   // ── 查询页 QueryPane ──
   'query.run': ['执行', 'Run'],
   'query.run.title': ['执行（选中则只跑选区） ⌘/Ctrl+Enter', 'Run (selection only, if any) ⌘/Ctrl+Enter'],
+  'query.runToCursor': ['运行到此', 'Run to cursor'],
+  'query.runToCursor.title': ['只执行光标之前的 SQL', 'Run only the SQL before the cursor'],
   'query.explain': ['解释', 'Explain'],
   'query.explain.title': ['解释执行计划 (EXPLAIN)', 'Explain plan (EXPLAIN)'],
   'query.format': ['格式化', 'Format'],

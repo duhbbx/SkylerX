@@ -362,6 +362,12 @@ function run(): void {
   runText(selected || sql.value)
 }
 
+// 运行到光标处：只执行光标之前的 SQL
+function runToCursor(): void {
+  const before = editorRef.value?.getTextBeforeCursor()?.trim()
+  if (before) runText(before)
+}
+
 function runText(text: string): void {
   const names = paramNames(text)
   if (names.length) {
@@ -638,6 +644,7 @@ onMounted(() => {
       <button class="primary" :disabled="running" :title="t('query.run.title')" @click="run">
         ▶ {{ t('query.run') }}
       </button>
+      <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭ {{ t('query.runToCursor') }}</button>
       <button :disabled="running" :title="t('query.explain.title')" @click="explain">{{ t('query.explain') }}</button>
       <button :title="t('query.format.title')" @click="formatSql">{{ t('query.format') }}</button>
       <button :disabled="!running" @click="cancel">■ {{ t('query.stop') }}</button>

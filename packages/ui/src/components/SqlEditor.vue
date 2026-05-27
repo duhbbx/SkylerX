@@ -80,7 +80,15 @@ function getSelectedText(): string {
   return editor.getModel()?.getValueInRange(sel) ?? ''
 }
 
-defineExpose({ getSelectedText })
+/** 光标之前的全部文本（含光标所在列）。供「运行到光标处」用。 */
+function getTextBeforeCursor(): string {
+  const pos = editor?.getPosition()
+  const model = editor?.getModel()
+  if (!editor || !pos || !model) return ''
+  return model.getValueInRange({ startLineNumber: 1, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column })
+}
+
+defineExpose({ getSelectedText, getTextBeforeCursor })
 
 onBeforeUnmount(() => {
   if (model) clearCompletionSource(model)
