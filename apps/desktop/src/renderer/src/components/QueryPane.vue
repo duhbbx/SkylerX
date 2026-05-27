@@ -6,6 +6,7 @@ import {
   type QueryResult,
 } from '@db-tool/shared-types'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
 import { explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
@@ -16,6 +17,8 @@ import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import HistoryPanel from './HistoryPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SqlEditor from './SqlEditor.vue'
+
+const client = useDataClient()
 
 const PAGINATABLE = ['mysql', 'mariadb', 'oceanbase', 'postgresql', 'kingbase', 'sqlserver']
 function isSelect(s: string): boolean {
@@ -91,7 +94,7 @@ const selectedSchema = ref('')
 
 async function loadContext(): Promise<void> {
   try {
-    const top = await window.api.connections.metadata(props.conn.id, {
+    const top = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Connection,
       path: [],
     })
@@ -114,7 +117,7 @@ async function onDbChange(): Promise<void> {
   schemaOptions.value = []
   if (!selectedDb.value) return
   try {
-    const sub = await window.api.connections.metadata(props.conn.id, {
+    const sub = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Database,
       path: [selectedDb.value],
     })
@@ -179,7 +182,7 @@ async function loadTables(): Promise<string[]> {
     return tableList
   }
   try {
-    const nodes = await window.api.connections.metadata(props.conn.id, {
+    const nodes = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Group,
       path,
       group: 'tables',
@@ -197,7 +200,7 @@ async function loadColumns(table: string): Promise<string[]> {
   const path = containerPath()
   if (!path) return []
   try {
-    const nodes = await window.api.connections.metadata(props.conn.id, {
+    const nodes = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Group,
       path: [...path, table],
       group: 'columns',
@@ -234,7 +237,7 @@ async function completion(ctx: { text: string; word: string }): Promise<Suggesti
 }
 
 async function loadHistory(): Promise<void> {
-  history.value = await window.api.connections.history(props.conn.id)
+  history.value = await client.connections.history(props.conn.id)
 }
 
 async function run(): Promise<void> {
@@ -264,7 +267,7 @@ async function run(): Promise<void> {
         const opts = pageable
           ? { ...execOptions(), limit: tab.pageSize, offset: 0 }
           : execOptions()
-        tab.result = await window.api.connections.execute(props.conn.id, stmt, [], opts)
+        tab.result = await client.connections.execute(props.conn.id, stmt, [], opts)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         tab.error = msg
@@ -307,7 +310,7 @@ async function explain(): Promise<void> {
     editTable: null,
   }
   try {
-    tab.result = await window.api.connections.execute(props.conn.id, ex, [], execOptions())
+    tab.result = await client.connections.execute(props.conn.id, ex, [], execOptions())
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     tab.error = msg
@@ -321,7 +324,7 @@ async function explain(): Promise<void> {
 
 /** 取消：服务端取消正在执行的查询（MySQL KILL QUERY / PG pg_cancel_backend）+ 渲染端放弃在途结果。 */
 function cancel(): void {
-  void window.api.connections.cancel(props.conn.id)
+  void client.connections.cancel(props.conn.id)
   runToken++
   running.value = false
 }
@@ -355,7 +358,7 @@ async function gotoPage(tab: ResultTab | undefined, page: number): Promise<void>
   if (!tab || !tab.pageable || page < 0 || tab.loading) return
   tab.loading = true
   try {
-    tab.result = await window.api.connections.execute(props.conn.id, tab.sql, [], {
+    tab.result = await client.connections.execute(props.conn.id, tab.sql, [], {
       ...execOptions(),
       limit: tab.pageSize,
       offset: page * tab.pageSize,
@@ -384,7 +387,7 @@ async function onCommit(changes: EditChanges): Promise<void> {
   const stmts = buildEditDml(props.conn.dialect, tab.editTable, columns, changes)
   if (!stmts.length) return
   try {
-    await window.api.connections.executeBatch(props.conn.id, stmts, execOptions())
+    await client.connections.executeBatch(props.conn.id, stmts, execOptions())
     await gotoPage(tab, tab.page) // 刷新当前页（结果变更会重置网格编辑态）
     await loadHistory()
   } catch (e) {
@@ -403,7 +406,7 @@ function onPickHistory(picked: string): void {
 }
 
 async function onClearHistory(): Promise<void> {
-  await window.api.connections.historyClear(props.conn.id)
+  await client.connections.historyClear(props.conn.id)
   await loadHistory()
 }
 

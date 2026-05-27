@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
+import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
 import { rowInserts } from '../io'
 import Modal from './Modal.vue'
 import type { TreeNode } from './treeNode'
+
+const client = useDataClient()
 
 const props = defineProps<{
   connId: string
@@ -31,8 +34,8 @@ const targetConn = computed(() => conns.value.find((c) => c.id === targetConnId.
 
 onMounted(async () => {
   try {
-    conns.value = await window.api.connections.list()
-    const meta = await window.api.connections.metadata(props.connId, {
+    conns.value = await client.connections.list()
+    const meta = await client.connections.metadata(props.connId, {
       parentKind: MetaNodeKind.Group,
       path: [...props.node.path],
       group: 'columns',
@@ -67,11 +70,11 @@ async function run(): Promise<void> {
   const dstOpts = { database: targetDb.value || undefined, schema: targetSchema.value || undefined }
   try {
     if (truncateFirst.value) {
-      await window.api.connections.execute(tc.id, `DELETE FROM ${dstRef}`, [], dstOpts)
+      await client.connections.execute(tc.id, `DELETE FROM ${dstRef}`, [], dstOpts)
     }
     const size = Math.max(1, chunkSize.value)
     for (let page = 0; page < 100000; page++) {
-      const res = await window.api.connections.execute(props.connId, `SELECT * FROM ${srcRef}`, [], {
+      const res = await client.connections.execute(props.connId, `SELECT * FROM ${srcRef}`, [], {
         database: props.ctx.database,
         schema: props.ctx.schema,
         limit: size,
@@ -80,7 +83,7 @@ async function run(): Promise<void> {
       const rows = res.rows
       if (!rows.length) break
       const stmts = rowInserts(tc.dialect, dstRef, cols.value, rows)
-      await window.api.connections.executeBatch(tc.id, stmts, dstOpts)
+      await client.connections.executeBatch(tc.id, stmts, dstOpts)
       done.value += rows.length
       if (rows.length < size) break
     }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, provide, reactive, ref } from 'vue'
+import { useDataClient } from '../data-client'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
 import { isConnectionError } from '../connError'
@@ -8,6 +9,8 @@ import type { ObjectKind } from '../ddl'
 import { type TreeAction, actionsFor } from './tree-actions'
 import { type TreeController, TreeControllerKey } from './tree-controller'
 import { type TreeNode, fromMetadata, rootNode } from './treeNode'
+
+const client = useDataClient()
 
 // 上抛给 App 的高层事件（动作原语桥接到这里）
 const emit = defineEmits<{
@@ -82,7 +85,7 @@ const controller: TreeController = {
     node.loading = true
     node.error = null
     try {
-      const children = await window.api.connections.metadata(connId, {
+      const children = await client.connections.metadata(connId, {
         parentKind: node.kind,
         path: [...node.path],
         group: node.group,
@@ -159,7 +162,7 @@ function onMenuPick(action: TreeAction): void {
 }
 
 async function reload(): Promise<void> {
-  const conns: ConnectionConfig[] = await window.api.connections.list()
+  const conns: ConnectionConfig[] = await client.connections.list()
   const prev = new Map(roots.value.map((r) => [r.id, r.node]))
   roots.value = conns.map((c) => ({
     id: c.id,

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { DbDialect, QueryResult } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
+import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import type { EditChanges } from '../editable'
 import { type ExportFormat, exportRows, toCSV, toJSON } from '../io'
 import Modal from './Modal.vue'
+
+const client = useDataClient()
 
 type Row = Record<string, unknown>
 
@@ -140,7 +143,7 @@ async function doExport(format: ExportFormat): Promise<void> {
   }
   const content = exportRows(format, cols, rows, { dialect: props.dialect, tableRef })
   const ext = format
-  await window.api.files.saveText({
+  await client.files.saveText({
     defaultName: `export.${ext}`,
     content,
     filters: [{ name: format.toUpperCase(), extensions: [ext] }],

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
 import { onMounted, ref } from 'vue'
+import { useDataClient } from '../data-client'
 import { deriveContext } from '../ddl'
 import { buildCreateFromColumns } from '../dump'
 import SqlEditor from './SqlEditor.vue'
 import type { TreeNode } from './treeNode'
+
+const client = useDataClient()
 
 const props = defineProps<{ connId: string; node: TreeNode; dialect: DbDialect }>()
 
@@ -26,7 +29,7 @@ const loading = ref(true)
 const isMysql = ['mysql', 'mariadb', 'oceanbase'].includes(props.dialect)
 
 function meta(group: string): Promise<MetadataNode[]> {
-  return window.api.connections.metadata(props.connId, {
+  return client.connections.metadata(props.connId, {
     parentKind: MetaNodeKind.Group,
     path: [...props.node.path],
     group,
@@ -53,7 +56,7 @@ async function loadDdl(columns: MetadataNode[]): Promise<string> {
   const ref0 = props.node.sqlName ?? props.node.name
   if (isMysql) {
     const ctx = deriveContext(props.dialect, props.node)
-    const r = await window.api.connections.execute(props.connId, `SHOW CREATE TABLE ${ref0}`, [], {
+    const r = await client.connections.execute(props.connId, `SHOW CREATE TABLE ${ref0}`, [], {
       database: ctx.database,
       schema: ctx.schema,
     })

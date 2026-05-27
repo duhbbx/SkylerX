@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useDataClient } from '../data-client'
 import {
   type ColumnDef,
   type TableContext,
@@ -14,6 +15,8 @@ import {
 import { splitStatements } from '../sqlSplit'
 import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
+
+const client = useDataClient()
 
 const props = withDefaults(
   defineProps<{
@@ -73,7 +76,7 @@ async function loadExisting(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const cols: MetadataNode[] = await window.api.connections.metadata(props.connId, {
+    const cols: MetadataNode[] = await client.connections.metadata(props.connId, {
       parentKind: MetaNodeKind.Group,
       path: [...props.node.path],
       group: 'columns',
@@ -158,7 +161,7 @@ async function run(stmts: string[]): Promise<void> {
   error.value = null
   try {
     for (const stmt of stmts) {
-      await window.api.connections.execute(props.connId, stmt, [], {
+      await client.connections.execute(props.connId, stmt, [], {
         database: props.ctx.database,
         schema: props.ctx.schema,
       })

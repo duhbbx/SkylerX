@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
+import { useDataClient } from '../data-client'
 import type { TableContext } from '../ddl'
 import { buildInsertStatements, parseCSV } from '../io'
 import Modal from './Modal.vue'
 import type { TreeNode } from './treeNode'
+
+const client = useDataClient()
 
 const props = defineProps<{
   connId: string
@@ -33,7 +36,7 @@ const mappedCols = computed(() => tableCols.value.filter((c) => (mapping.value[c
 
 onMounted(async () => {
   try {
-    const cols: MetadataNode[] = await window.api.connections.metadata(props.connId, {
+    const cols: MetadataNode[] = await client.connections.metadata(props.connId, {
       parentKind: MetaNodeKind.Group,
       path: [...props.node.path],
       group: 'columns',
@@ -54,7 +57,7 @@ function autoMap(): void {
 
 async function pickFile(): Promise<void> {
   error.value = null
-  const f = await window.api.files.openText([
+  const f = await client.files.openText([
     { name: 'CSV', extensions: ['csv', 'txt'] },
     { name: '所有文件', extensions: ['*'] },
   ])
@@ -79,7 +82,7 @@ async function runImport(): Promise<void> {
     const cols = mappedCols.value
     const aligned = dataRows.value.map((r) => cols.map((c) => r[mapping.value[c]] ?? ''))
     const stmts = buildInsertStatements(props.dialect, props.node.sqlName ?? props.node.name, cols, aligned)
-    await window.api.connections.executeBatch(props.connId, stmts, {
+    await client.connections.executeBatch(props.connId, stmts, {
       database: props.ctx.database,
       schema: props.ctx.schema,
     })

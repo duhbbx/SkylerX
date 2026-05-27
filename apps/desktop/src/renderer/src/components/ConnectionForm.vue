@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { type ConnectionConfig, DbDialect, type TestResult } from '@db-tool/shared-types'
 import { reactive, ref, watch } from 'vue'
+import { useDataClient } from '../data-client'
+
+const client = useDataClient()
 
 const props = defineProps<{ connId: string | null; initialError?: string }>()
 const emit = defineEmits<{ saved: [ConnectionConfig]; deleted: [string]; cancel: [] }>()
@@ -60,7 +63,7 @@ async function load(): Promise<void> {
   testResult.value = null
   section.value = 'general'
   if (props.connId) {
-    const full = await window.api.connections.get(props.connId)
+    const full = await client.connections.get(props.connId)
     Object.assign(form, { ...full, password: full.password ?? '' })
   } else {
     Object.assign(form, blankForm())
@@ -68,7 +71,7 @@ async function load(): Promise<void> {
   normalize()
   // 收集已有分组用于输入提示
   try {
-    const all = await window.api.connections.list()
+    const all = await client.connections.list()
     groups.value = [...new Set(all.map((c) => c.group).filter((g): g is string => !!g))]
   } catch {
     groups.value = []
@@ -95,8 +98,8 @@ async function save(): Promise<void> {
   busy.value = true
   try {
     const saved = props.connId
-      ? await window.api.connections.update({ ...buildConfig(), id: props.connId })
-      : await window.api.connections.create(buildConfig())
+      ? await client.connections.update({ ...buildConfig(), id: props.connId })
+      : await client.connections.create(buildConfig())
     emit('saved', saved)
   } finally {
     busy.value = false
@@ -107,7 +110,7 @@ async function testConnection(): Promise<void> {
   busy.value = true
   testResult.value = null
   try {
-    testResult.value = await window.api.connections.test(buildConfig())
+    testResult.value = await client.connections.test(buildConfig())
   } finally {
     busy.value = false
   }
@@ -115,7 +118,7 @@ async function testConnection(): Promise<void> {
 
 async function remove(): Promise<void> {
   if (!props.connId) return
-  await window.api.connections.remove(props.connId)
+  await client.connections.remove(props.connId)
   emit('deleted', props.connId)
 }
 </script>

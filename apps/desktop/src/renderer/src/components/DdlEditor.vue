@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import type { DbDialect } from '@db-tool/shared-types'
 import { onMounted, ref } from 'vue'
+import { useDataClient } from '../data-client'
 import { type ObjectKind, type TableContext, objectDdlQuery, objectRef, objectTemplate } from '../ddl'
 import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
+
+const client = useDataClient()
 
 const props = withDefaults(
   defineProps<{
@@ -37,7 +40,7 @@ async function loadDefinition(): Promise<void> {
   }
   loading.value = true
   try {
-    const r = await window.api.connections.execute(props.connId, q.sql, [], {
+    const r = await client.connections.execute(props.connId, q.sql, [], {
       database: props.ctx.database,
       schema: props.ctx.schema,
     })
@@ -64,7 +67,7 @@ async function create(): Promise<void> {
   error.value = null
   try {
     // 整段作为单条语句执行（函数/存储过程体含分号，不能按分号拆）
-    await window.api.connections.execute(props.connId, code.value, [], {
+    await client.connections.execute(props.connId, code.value, [], {
       database: props.ctx.database,
       schema: props.ctx.schema,
     })
