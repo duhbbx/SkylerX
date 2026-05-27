@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '../i18n'
+
 defineProps<{ title?: string; wide?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 </script>
@@ -8,7 +10,7 @@ const emit = defineEmits<{ close: [] }>()
     <div class="modal" :class="{ wide }">
       <div class="modal-head">
         <span>{{ title }}</span>
-        <button class="x" title="关闭" @click="emit('close')">×</button>
+        <button class="x" :title="t('common.close')" @click="emit('close')">×</button>
       </div>
       <div class="modal-body">
         <slot />

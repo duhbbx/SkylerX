@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { t } from '../i18n'
 import Modal from './Modal.vue'
 
 defineProps<{ title: string }>()
@@ -13,15 +14,15 @@ const withData = ref(true)
     <div class="exp">
       <label class="row">
         <input v-model="withData" type="radio" :value="false" />
-        <span>仅结构（CREATE TABLE）</span>
+        <span>{{ t('export.structOnly') }}</span>
       </label>
       <label class="row">
         <input v-model="withData" type="radio" :value="true" />
-        <span>结构 + 数据（CREATE + INSERT）</span>
+        <span>{{ t('export.structData') }}</span>
       </label>
       <div class="actions">
-        <button class="ghost" @click="emit('close')">取消</button>
-        <button class="primary" @click="emit('pick', withData)">导出</button>
+        <button class="ghost" @click="emit('close')">{{ t('common.cancel') }}</button>
+        <button class="primary" @click="emit('pick', withData)">{{ t('export.go') }}</button>
       </div>
     </div>
   </Modal>

@@ -284,6 +284,148 @@ const DICT: Record<string, [string, string]> = {
     'Tablespace / storage parameters (dialect-specific, no UI yet).',
   ],
   'designer.commentPh': ['表注释', 'Table comment'],
+
+  // ── 通用补充 ──
+  'common.close': ['关闭', 'Close'],
+  'common.none': ['（无）', '(none)'],
+  'diff.onlyMyPg': ['暂仅支持 MySQL / PostgreSQL 系方言', 'MySQL / PostgreSQL dialects only'],
+  'diff.onlyMyPgShort': ['暂仅支持 MySQL / PostgreSQL 系', 'MySQL / PostgreSQL only'],
+  'diff.selectConn': ['选择连接', 'Select connection'],
+  'diff.schemaPh': ['库/schema', 'database/schema'],
+  'diff.comparing': ['对比中…', 'Comparing…'],
+  'diff.compare': ['对比', 'Compare'],
+  'diff.openTarget': ['在目标查询页打开', 'Open in target query page'],
+
+  // ── 全局对象搜索 ObjectSearchDialog ──
+  'osearch.title': ['全局对象搜索', 'Global object search'],
+  'osearch.ph': ['搜表 / 视图 / 列名（≥2 字，回车）', 'Search tables / views / columns (≥2 chars, Enter)'],
+  'osearch.unsupported': [
+    '该连接方言暂不支持搜索（仅 MySQL / PostgreSQL 系）',
+    'Search not supported for this dialect (MySQL / PostgreSQL only)',
+  ],
+  'osearch.searching': ['搜索中…', 'Searching…'],
+  'osearch.noMatch': ['无匹配对象', 'No matching objects'],
+  'osearch.min': ['输入至少 2 个字符', 'Type at least 2 characters'],
+  'osearch.col': ['列', 'Column'],
+  'osearch.view': ['视图', 'View'],
+  'osearch.table': ['表', 'Table'],
+  'osearch.previewTitle': ['查询前 200 行', 'Preview first 200 rows'],
+  'osearch.preview': ['预览', 'Preview'],
+  'osearch.foot': [
+    '点击结果在导航树中定位选中；「预览」查询前 200 行',
+    'Click a result to locate it in the tree; "Preview" shows first 200 rows',
+  ],
+
+  // ── 结构对比 SchemaDiffDialog ──
+  'sdiff.status.added': ['新增表', 'New table'],
+  'sdiff.status.changed': ['改表', 'Changed'],
+  'sdiff.status.removed': ['仅目标有', 'Target-only'],
+  'sdiff.title': ['结构对比（源 → 目标）', 'Schema diff (source → target)'],
+  'sdiff.srcConn': ['源连接', 'Source connection'],
+  'sdiff.tgtConn': ['目标连接（将被改成与源一致）', 'Target connection (will match source)'],
+  'sdiff.identical': ['结构一致 ✓', 'Identical ✓'],
+  'sdiff.diffLabel': ['差异：', 'Diff: '],
+  'sdiff.added': ['新增表', 'new'],
+  'sdiff.changed': ['改表', 'changed'],
+  'sdiff.removed': ['仅目标有', 'target-only'],
+  'sdiff.migSql': ['迁移 SQL（在目标执行）', 'Migration SQL (run on target)'],
+
+  // ── 数据对比 DataDiffDialog ──
+  'ddiff.needKey': [
+    '源表未检测到主键，请在「配对列」手动填写用于配对行的列（逗号分隔）。',
+    'No primary key on source; enter pairing columns manually (comma-separated).',
+  ],
+  'ddiff.consistent': ['-- 数据一致，无需同步', '-- data is identical, nothing to sync'],
+  'ddiff.title': ['数据对比 / 同步（源 → 目标）', 'Data diff / sync (source → target)'],
+  'ddiff.srcConn': ['源连接 / 库 / 表', 'Source connection / db / table'],
+  'ddiff.tgtConn': ['目标连接 / 库 / 表（将被同步）', 'Target connection / db / table (will be synced)'],
+  'ddiff.tablePh': ['表名', 'Table name'],
+  'ddiff.keyCols': ['配对列', 'Pairing cols'],
+  'ddiff.keyColsPh': ['留空=自动取主键', 'empty = use PK'],
+  'ddiff.maxRows': ['最多行数', 'Max rows'],
+  'ddiff.pk': ['主键：', 'PK: '],
+  'ddiff.ins': ['新增', 'inserts'],
+  'ddiff.upd': ['更新', 'updates'],
+  'ddiff.del': ['删除', 'deletes'],
+  'ddiff.syncSql': ['同步 SQL（在目标执行）', 'Sync SQL (run on target)'],
+
+  // ── 用户与权限 PrivilegesDialog ──
+  'priv.unsupported': [
+    '该方言暂不支持用户管理（仅 MySQL / PostgreSQL 系）',
+    'User management not supported for this dialect (MySQL / PostgreSQL only)',
+  ],
+  'priv.readFail': ['（读取授权失败：{msg}）', '(failed to read grants: {msg})'],
+  'priv.title': ['用户与权限', 'Users & privileges'],
+  'priv.usersRoles': ['用户 / 角色（{n}）', 'Users / roles ({n})'],
+  'priv.existingGrants': ['已有授权', 'Existing grants'],
+  'priv.grantTitle': ['授予权限（GRANT）', 'Grant privileges'],
+  'priv.targetPh': ['目标，如 `db`.* / schema.table / *.*', 'Target, e.g. `db`.* / schema.table / *.*'],
+  'priv.openQuery': ['在查询页打开', 'Open in query page'],
+  'priv.pickUser': [
+    '选择左侧用户查看授权并生成 GRANT',
+    'Select a user on the left to view grants and build GRANT',
+  ],
+  'priv.noneOrLoading': ['（无 / 读取中）', '(none / loading)'],
+
+  // ── 查询页签 QueryTabs ──
+  'tabs.titleStructure': ['{name} · 结构', '{name} · Structure'],
+  'tabs.titleEdit': ['{name} · 编辑', '{name} · Edit'],
+  'tabs.titleDesign': ['{name} · 设计', '{name} · Design'],
+  'tabs.empty': [
+    '展开左侧连接，右键「新建查询 / 新建表…」或双击连接开始',
+    'Expand a connection, right-click "New query / New table…" or double-click to start',
+  ],
+  'tabs.newQuery': ['新建查询', 'New query'],
+
+  // ── 表结构 TableStructure ──
+  'struct.tab.columns': ['字段', 'Fields'],
+  'struct.tab.indexes': ['索引', 'Indexes'],
+  'struct.tab.keys': ['键', 'Keys'],
+  'struct.tab.ddl': ['DDL', 'DDL'],
+  'struct.h.field': ['字段', 'Field'],
+  'struct.h.type': ['类型', 'Type'],
+  'struct.h.nullable': ['可空', 'Nullable'],
+  'struct.h.pk': ['主键', 'PK'],
+  'struct.h.default': ['默认值', 'Default'],
+  'struct.h.comment': ['注释', 'Comment'],
+  'struct.indexName': ['索引名', 'Index name'],
+  'struct.constraintName': ['约束名', 'Constraint name'],
+
+  // ── DDL 编辑器 DdlEditor ──
+  'ddl.unsupported': [
+    '当前方言暂不支持载入该对象定义（目前支持 MySQL / PostgreSQL 的 视图/函数/过程）',
+    'Loading this object definition is not supported for this dialect (MySQL / PostgreSQL views/functions/procedures only)',
+  ],
+  'ddl.noDef': ['未取到对象定义', 'Object definition not found'],
+  'ddl.executing': ['执行中…', 'Running…'],
+  'ddl.saveExec': ['保存（执行）', 'Save (run)'],
+  'ddl.create': ['创建', 'Create'],
+  'ddl.loadingDef': ['载入定义中…', 'Loading definition…'],
+  'ddl.location': ['位置：{target}', 'Location: {target}'],
+
+  // ── 历史 HistoryPanel ──
+  'hist.searchPh': ['🔍 搜索历史…', '🔍 Search history…'],
+  'hist.clear': ['清空', 'Clear'],
+  'hist.empty': ['还没有执行记录', 'No history yet'],
+  'hist.noMatch': ['无匹配记录', 'No matching records'],
+  'hist.loadEditor': ['双击载入编辑器', 'Double-click to load into editor'],
+  'hist.saveSnippet': ['存为片段', 'Save as snippet'],
+
+  // ── 执行计划 PlanPanel ──
+  'plan.head': ['执行计划（节点 · 代价 · 预估行）', 'Plan (node · cost · est. rows)'],
+  'plan.empty': ['无执行计划', 'No plan'],
+
+  // ── 命令面板 CommandPalette ──
+  'palette.ph': ['跳转连接 / 执行命令…', 'Jump to connection / run command…'],
+  'palette.empty': ['无匹配', 'No match'],
+
+  // ── 导出选项 ExportOptionsDialog ──
+  'export.structOnly': ['仅结构（CREATE TABLE）', 'Structure only (CREATE TABLE)'],
+  'export.structData': ['结构 + 数据（CREATE + INSERT）', 'Structure + data (CREATE + INSERT)'],
+  'export.go': ['导出', 'Export'],
+
+  // ── 右键菜单 ContextMenu ──
+  'ctx.empty': ['无可用操作', 'No actions'],
 }
 
 /** 翻译：取当前语言文案，缺失回退 key；支持 {name} 插值。 */

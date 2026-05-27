@@ -2,6 +2,7 @@
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
+import { t } from '../i18n'
 import {
   COMMON_PRIVS,
   buildGrant,
@@ -66,7 +67,7 @@ async function loadUsers(): Promise<void> {
   if (!c) return
   const sql = listUsersQuery(c.dialect)
   if (!sql) {
-    error.value = '该方言暂不支持用户管理（仅 MySQL / PostgreSQL 系）'
+    error.value = t('priv.unsupported')
     return
   }
   busy.value = true
@@ -98,7 +99,7 @@ async function pickUser(u: User): Promise<void> {
         .join('　·　'),
     )
   } catch (e) {
-    grants.value = [`（读取授权失败：${e instanceof Error ? e.message : String(e)}）`]
+    grants.value = [t('priv.readFail', { msg: e instanceof Error ? e.message : String(e) })]
   }
 }
 
@@ -119,19 +120,19 @@ function openInQuery(): void {
 </script>
 
 <template>
-  <Modal title="用户与权限" @close="emit('close')">
+  <Modal :title="t('priv.title')" @close="emit('close')">
     <div class="priv">
       <div class="bar">
         <select v-model="connId" @change="loadUsers">
           <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
         </select>
-        <span v-if="busy" class="muted">加载中…</span>
+        <span v-if="busy" class="muted">{{ t('common.loading') }}</span>
       </div>
       <div v-if="error" class="banner err">✗ {{ error }}</div>
 
       <div v-else-if="supported" class="cols">
         <div class="users">
-          <div class="lbl">用户 / 角色（{{ users.length }}）</div>
+          <div class="lbl">{{ t('priv.usersRoles', { n: users.length }) }}</div>
           <div class="ulist">
             <div
               v-for="u in users"
@@ -147,27 +148,27 @@ function openInQuery(): void {
 
         <div class="detail">
           <template v-if="selUser">
-            <div class="lbl">已有授权</div>
+            <div class="lbl">{{ t('priv.existingGrants') }}</div>
             <div class="grants">
-              <div v-if="!grants.length" class="muted">（无 / 读取中）</div>
+              <div v-if="!grants.length" class="muted">{{ t('priv.noneOrLoading') }}</div>
               <code v-for="(g, i) in grants" :key="i" class="grow">{{ g }}</code>
             </div>
 
-            <div class="lbl">授予权限（GRANT）</div>
+            <div class="lbl">{{ t('priv.grantTitle') }}</div>
             <div class="priv-row">
               <label v-for="p in COMMON_PRIVS" :key="p" class="chk">
                 <input type="checkbox" :checked="privs.includes(p)" @change="togglePriv(p)" /> {{ p }}
               </label>
             </div>
-            <input v-model="target" class="target" placeholder="目标，如 `db`.* / schema.table / *.*" />
+            <input v-model="target" class="target" :placeholder="t('priv.targetPh')" />
             <label class="chk"><input v-model="withGrant" type="checkbox" /> WITH GRANT OPTION</label>
             <pre v-if="grantSql" class="sql">{{ grantSql }}</pre>
             <div class="actions">
-              <button :disabled="!grantSql" @click="copySql">复制</button>
-              <button class="primary" :disabled="!grantSql" @click="openInQuery">在查询页打开</button>
+              <button :disabled="!grantSql" @click="copySql">{{ t('common.copy') }}</button>
+              <button class="primary" :disabled="!grantSql" @click="openInQuery">{{ t('priv.openQuery') }}</button>
             </div>
           </template>
-          <div v-else class="muted pad">选择左侧用户查看授权并生成 GRANT</div>
+          <div v-else class="muted pad">{{ t('priv.pickUser') }}</div>
         </div>
       </div>
     </div>

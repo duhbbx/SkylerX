@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { t } from '../i18n'
 
 export interface PaletteItem {
   id: string
@@ -45,7 +46,7 @@ onMounted(() => {
         ref="inputEl"
         v-model="query"
         class="cp-input"
-        placeholder="跳转连接 / 执行命令…"
+        :placeholder="t('palette.ph')"
         @input="active = 0"
         @keydown.down.prevent="move(1)"
         @keydown.up.prevent="move(-1)"
@@ -53,7 +54,7 @@ onMounted(() => {
         @keydown.esc.prevent="emit('close')"
       />
       <div class="cp-list">
-        <div v-if="!filtered.length" class="cp-empty">无匹配</div>
+        <div v-if="!filtered.length" class="cp-empty">{{ t('palette.empty') }}</div>
         <div
           v-for="(it, i) in filtered"
           :key="it.id"

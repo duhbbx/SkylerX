@@ -3,6 +3,7 @@ import type { DbDialect } from '@db-tool/shared-types'
 import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type ObjectKind, type TableContext, objectDdlQuery, objectRef, objectTemplate } from '../ddl'
+import { t } from '../i18n'
 import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
 
@@ -35,7 +36,7 @@ async function loadDefinition(): Promise<void> {
   if (!isEdit || !props.node) return
   const q = objectDdlQuery(props.dialect, props.objectKind, objectRef(props.dialect, props.node))
   if (!q) {
-    error.value = '当前方言暂不支持载入该对象定义（目前支持 MySQL / PostgreSQL 的 视图/函数/过程）'
+    error.value = t('ddl.unsupported')
     return
   }
   loading.value = true
@@ -45,7 +46,7 @@ async function loadDefinition(): Promise<void> {
       schema: props.ctx.schema,
     })
     const row = r.rows[0] as Record<string, unknown> | undefined
-    if (!row) throw new Error('未取到对象定义')
+    if (!row) throw new Error(t('ddl.noDef'))
     if (q.mode === 'showCreate') {
       const key = Object.keys(row).find((k) => /^create/i.test(k))
       code.value = String(row[key ?? ''] ?? '')
@@ -84,11 +85,11 @@ async function create(): Promise<void> {
   <div class="ddl">
     <div class="toolbar">
       <button class="primary" :disabled="busy || loading" @click="create">
-        {{ busy ? '执行中…' : isEdit ? '保存（执行）' : '创建' }}
+        {{ busy ? t('ddl.executing') : isEdit ? t('ddl.saveExec') : t('ddl.create') }}
       </button>
-      <button class="ghost" @click="emit('cancel')">取消</button>
-      <span v-if="loading" class="target">载入定义中…</span>
-      <span v-else-if="target" class="target">位置：{{ target }}</span>
+      <button class="ghost" @click="emit('cancel')">{{ t('common.cancel') }}</button>
+      <span v-if="loading" class="target">{{ t('ddl.loadingDef') }}</span>
+      <span v-else-if="target" class="target">{{ t('ddl.location', { target }) }}</span>
     </div>
     <div class="editor">
       <SqlEditor v-model="code" @run="create" />

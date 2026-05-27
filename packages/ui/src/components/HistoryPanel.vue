@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { QueryHistoryEntry } from '@db-tool/shared-types'
 import { computed, ref } from 'vue'
+import { t } from '../i18n'
 
 const props = defineProps<{ entries: QueryHistoryEntry[] }>()
 const emit = defineEmits<{ pick: [string]; clear: []; saveSnippet: [string] }>()
@@ -19,24 +20,24 @@ function fmtTime(ts: number): string {
 <template>
   <div class="history">
     <div class="history-bar">
-      <input v-model="q" class="hist-search" placeholder="🔍 搜索历史…" />
+      <input v-model="q" class="hist-search" :placeholder="t('hist.searchPh')" />
       <span class="cnt">{{ filtered.length }} / {{ entries.length }}</span>
-      <button class="ghost sm" :disabled="!entries.length" @click="emit('clear')">清空</button>
+      <button class="ghost sm" :disabled="!entries.length" @click="emit('clear')">{{ t('hist.clear') }}</button>
     </div>
     <div class="history-list">
-      <div v-if="!entries.length" class="history-empty">还没有执行记录</div>
-      <div v-else-if="!filtered.length" class="history-empty">无匹配记录</div>
+      <div v-if="!entries.length" class="history-empty">{{ t('hist.empty') }}</div>
+      <div v-else-if="!filtered.length" class="history-empty">{{ t('hist.noMatch') }}</div>
       <div
         v-for="e in filtered"
         :key="e.id"
         class="history-item"
-        title="双击载入编辑器"
+        :title="t('hist.loadEditor')"
         @dblclick="emit('pick', e.sql)"
       >
         <span class="dot" :class="e.success ? 'ok' : 'err'"></span>
         <code class="sql">{{ e.sql }}</code>
         <span class="ts">{{ fmtTime(e.executedAt) }}<template v-if="e.durationMs != null"> · {{ e.durationMs }}ms</template></span>
-        <button class="star" title="存为片段" @click.stop="emit('saveSnippet', e.sql)">★</button>
+        <button class="star" :title="t('hist.saveSnippet')" @click.stop="emit('saveSnippet', e.sql)">★</button>
       </div>
     </div>
   </div>

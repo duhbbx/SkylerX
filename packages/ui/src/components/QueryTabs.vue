@@ -2,6 +2,7 @@
 import type { ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref } from 'vue'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
+import { t as tr } from '../i18n'
 import DdlEditor from './DdlEditor.vue'
 import ErdView from './ErdView.vue'
 import QueryPane from './QueryPane.vue'
@@ -78,7 +79,7 @@ function openStructure(conn: ConnectionConfig, node: TreeNode): void {
     activeId.value = existing.id
     return
   }
-  push({ kind: 'structure', conn, title: `${node.name} · 结构`, pending: null, node })
+  push({ kind: 'structure', conn, title: tr('tabs.titleStructure', { name: node.name }), pending: null, node })
 }
 
 /** 打开 ER 图页（按库/schema）。 */
@@ -98,7 +99,7 @@ function editObject(conn: ConnectionConfig, kind: ObjectKind, ctx: TableContext,
     kind,
     mode: 'edit',
     conn,
-    title: `${node.name} · 编辑`,
+    title: tr('tabs.titleEdit', { name: node.name }),
     pending: null,
     ctx,
     node,
@@ -120,7 +121,7 @@ function editTable(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): v
     kind: 'table',
     mode: 'alter',
     conn,
-    title: `${node.name} · 设计`,
+    title: tr('tabs.titleDesign', { name: node.name }),
     pending: null,
     ctx,
     node,
@@ -151,7 +152,7 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
 <template>
   <div class="qtabs">
     <div v-if="!tabs.length" class="placeholder">
-      展开左侧连接，右键「新建查询 / 新建表…」或双击连接开始
+      {{ tr('tabs.empty') }}
     </div>
     <template v-else>
       <div class="qtab-bar">
@@ -163,9 +164,9 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
           @click="activeId = t.id"
         >
           <span class="t-title">{{ t.title }}</span>
-          <button class="t-close" title="关闭" @click.stop="close(t.id)">×</button>
+          <button class="t-close" :title="tr('common.close')" @click.stop="close(t.id)">×</button>
         </div>
-        <button class="qtab-add" title="新建查询" @click="newForCurrent">＋</button>
+        <button class="qtab-add" :title="tr('tabs.newQuery')" @click="newForCurrent">＋</button>
       </div>
       <div class="qtab-body">
         <div v-for="t in tabs" v-show="t.id === activeId" :key="t.id" class="pane-wrap">

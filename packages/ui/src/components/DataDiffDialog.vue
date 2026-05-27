@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type DataDiff, diffRows, generateDataSync } from '../data-diff'
 import { quoteId } from '../ddl'
+import { t } from '../i18n'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
@@ -86,8 +87,8 @@ async function fetchRows(
 
 async function runDiff(): Promise<void> {
   const s = connOf(srcId.value)
-  const t = connOf(tgtId.value)
-  if (!s || !t || !srcTable.value.trim() || !tgtTable.value.trim()) return
+  const tc = connOf(tgtId.value)
+  if (!s || !tc || !srcTable.value.trim() || !tgtTable.value.trim()) return
   busy.value = true
   error.value = null
   sql.value = null
@@ -102,20 +103,20 @@ async function runDiff(): Promise<void> {
       ? manual
       : await primaryKey(s.id, srcSchema.value.trim(), srcTable.value.trim())
     if (!pk.length) {
-      error.value = '源表未检测到主键，请在「配对列」手动填写用于配对行的列（逗号分隔）。'
+      error.value = t('ddiff.needKey')
       return
     }
     keyColsInput.value = pk.join(', ') // 回填，便于查看/调整
     keyInfo.value = pk.join(', ')
     const [src, tgt] = await Promise.all([
       fetchRows(s, srcSchema.value.trim(), srcTable.value.trim(), pk),
-      fetchRows(t, tgtSchema.value.trim(), tgtTable.value.trim(), pk),
+      fetchRows(tc, tgtSchema.value.trim(), tgtTable.value.trim(), pk),
     ])
     const cols = src.cols
     const d = diffRows(src.rows, tgt.rows, pk, cols)
     diff.value = d
-    const tgtRef = `${quoteId(t.dialect, tgtSchema.value.trim())}.${quoteId(t.dialect, tgtTable.value.trim())}`
-    sql.value = generateDataSync(d, t.dialect, tgtRef, pk, cols) || '-- 数据一致，无需同步'
+    const tgtRef = `${quoteId(tc.dialect, tgtSchema.value.trim())}.${quoteId(tc.dialect, tgtTable.value.trim())}`
+    sql.value = generateDataSync(d, tc.dialect, tgtRef, pk, cols) || t('ddiff.consistent')
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -135,56 +136,56 @@ function openInQuery(): void {
 </script>
 
 <template>
-  <Modal title="数据对比 / 同步（源 → 目标）" @close="emit('close')">
+  <Modal :title="t('ddiff.title')" @close="emit('close')">
     <div class="ddiff">
       <div class="pickers">
         <div class="side">
-          <label>源连接 / 库 / 表</label>
+          <label>{{ t('ddiff.srcConn') }}</label>
           <select v-model="srcId" @change="onPickSrc">
-            <option value="" disabled>选择连接</option>
+            <option value="" disabled>{{ t('diff.selectConn') }}</option>
             <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
           </select>
-          <input v-model="srcSchema" placeholder="库/schema" />
-          <input v-model="srcTable" placeholder="表名" />
+          <input v-model="srcSchema" :placeholder="t('diff.schemaPh')" />
+          <input v-model="srcTable" :placeholder="t('ddiff.tablePh')" />
         </div>
         <span class="arrow">→</span>
         <div class="side">
-          <label>目标连接 / 库 / 表（将被同步）</label>
+          <label>{{ t('ddiff.tgtConn') }}</label>
           <select v-model="tgtId" @change="onPickTgt">
-            <option value="" disabled>选择连接</option>
+            <option value="" disabled>{{ t('diff.selectConn') }}</option>
             <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
           </select>
-          <input v-model="tgtSchema" placeholder="库/schema" />
-          <input v-model="tgtTable" placeholder="表名" />
+          <input v-model="tgtSchema" :placeholder="t('diff.schemaPh')" />
+          <input v-model="tgtTable" :placeholder="t('ddiff.tablePh')" />
         </div>
       </div>
 
       <div class="actions">
-        <label class="lim">配对列 <input v-model="keyColsInput" class="keycol" placeholder="留空=自动取主键" /></label>
-        <label class="lim">最多行数 <input v-model.number="limit" type="number" min="1" /></label>
+        <label class="lim">{{ t('ddiff.keyCols') }} <input v-model="keyColsInput" class="keycol" :placeholder="t('ddiff.keyColsPh')" /></label>
+        <label class="lim">{{ t('ddiff.maxRows') }} <input v-model.number="limit" type="number" min="1" /></label>
         <button
           class="primary"
           :disabled="busy || !supported || !srcTable.trim() || !tgtTable.trim()"
           @click="runDiff"
         >
-          {{ busy ? '对比中…' : '对比' }}
+          {{ busy ? t('diff.comparing') : t('diff.compare') }}
         </button>
-        <span v-if="srcId && tgtId && !supported" class="warn">暂仅支持 MySQL / PostgreSQL 系</span>
+        <span v-if="srcId && tgtId && !supported" class="warn">{{ t('diff.onlyMyPgShort') }}</span>
       </div>
 
       <div v-if="error" class="banner err">✗ {{ error }}</div>
 
       <template v-if="sql !== null">
         <div class="sumline">
-          主键：<code>{{ keyInfo }}</code> ·
-          <b>{{ summary?.ins }}</b> 新增 · <b>{{ summary?.upd }}</b> 更新 ·
-          <b>{{ summary?.del }}</b> 删除
+          {{ t('ddiff.pk') }}<code>{{ keyInfo }}</code> ·
+          <b>{{ summary?.ins }}</b> {{ t('ddiff.ins') }} · <b>{{ summary?.upd }}</b> {{ t('ddiff.upd') }} ·
+          <b>{{ summary?.del }}</b> {{ t('ddiff.del') }}
         </div>
         <div class="sql-head">
-          <span>同步 SQL（在目标执行）</span>
+          <span>{{ t('ddiff.syncSql') }}</span>
           <span class="grow" />
-          <button @click="copySql">复制</button>
-          <button class="primary" @click="openInQuery">在目标查询页打开</button>
+          <button @click="copySql">{{ t('common.copy') }}</button>
+          <button class="primary" @click="openInQuery">{{ t('diff.openTarget') }}</button>
         </div>
         <pre class="sql">{{ sql }}</pre>
       </template>

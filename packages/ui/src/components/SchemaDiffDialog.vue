@@ -7,6 +7,7 @@ import {
   diffSchemas,
   generateMigration,
 } from '../schema-diff'
+import { t } from '../i18n'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
@@ -120,51 +121,50 @@ function openInQuery(): void {
   }
 }
 
-const STATUS_LABEL = { added: '新增表', changed: '改表', removed: '仅目标有' } as const
 </script>
 
 <template>
-  <Modal title="结构对比（源 → 目标）" @close="emit('close')">
+  <Modal :title="t('sdiff.title')" @close="emit('close')">
     <div class="diff">
       <div class="pickers">
         <div class="side">
-          <label>源连接</label>
+          <label>{{ t('sdiff.srcConn') }}</label>
           <select v-model="srcId" @change="onPickSrc">
-            <option value="" disabled>选择连接</option>
+            <option value="" disabled>{{ t('diff.selectConn') }}</option>
             <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
           </select>
-          <input v-model="srcSchema" placeholder="库/schema" />
+          <input v-model="srcSchema" :placeholder="t('diff.schemaPh')" />
         </div>
         <span class="arrow">→</span>
         <div class="side">
-          <label>目标连接（将被改成与源一致）</label>
+          <label>{{ t('sdiff.tgtConn') }}</label>
           <select v-model="tgtId" @change="onPickTgt">
-            <option value="" disabled>选择连接</option>
+            <option value="" disabled>{{ t('diff.selectConn') }}</option>
             <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
           </select>
-          <input v-model="tgtSchema" placeholder="库/schema" />
+          <input v-model="tgtSchema" :placeholder="t('diff.schemaPh')" />
         </div>
       </div>
 
       <div class="actions">
         <button class="primary" :disabled="busy || !supported || !srcId || !tgtId" @click="runDiff">
-          {{ busy ? '对比中…' : '对比' }}
+          {{ busy ? t('diff.comparing') : t('diff.compare') }}
         </button>
-        <span v-if="srcId && tgtId && !supported" class="warn">暂仅支持 MySQL / PostgreSQL 系方言</span>
+        <span v-if="srcId && tgtId && !supported" class="warn">{{ t('diff.onlyMyPg') }}</span>
       </div>
 
       <div v-if="error" class="banner err">✗ {{ error }}</div>
 
       <template v-if="migration !== null">
         <div class="sumline">
-          差异：<b>{{ summary.added }}</b> 新增表 · <b>{{ summary.changed }}</b> 改表 ·
-          <b>{{ summary.removed }}</b> 仅目标有
-          <span v-if="!diffs.length" class="ok">　结构一致 ✓</span>
+          {{ t('sdiff.diffLabel') }}<b>{{ summary.added }}</b> {{ t('sdiff.added') }} · <b>{{ summary.changed }}</b> {{ t('sdiff.changed') }} ·
+          <b>{{ summary.removed }}</b> {{ t('sdiff.removed') }}
+          <span v-if="!diffs.length" class="ok">　{{ t('sdiff.identical') }}</span>
         </div>
 
         <div v-if="diffs.length" class="difflist">
           <div v-for="d in diffs" :key="d.table" class="drow">
-            <span class="badge" :class="d.status">{{ STATUS_LABEL[d.status] }}</span>
+            <span class="badge" :class="d.status">{{ t('sdiff.status.' + d.status) }}</span>
             <b>{{ d.table }}</b>
             <span v-if="d.columnChanges" class="cols">
               <span v-for="ch in d.columnChanges" :key="ch.column" class="cch" :class="ch.kind">
@@ -176,10 +176,10 @@ const STATUS_LABEL = { added: '新增表', changed: '改表', removed: '仅目�
 
         <template v-if="migration">
           <div class="sql-head">
-            <span>迁移 SQL（在目标执行）</span>
+            <span>{{ t('sdiff.migSql') }}</span>
             <span class="grow" />
-            <button @click="copySql">复制</button>
-            <button class="primary" @click="openInQuery">在目标查询页打开</button>
+            <button @click="copySql">{{ t('common.copy') }}</button>
+            <button class="primary" @click="openInQuery">{{ t('diff.openTarget') }}</button>
           </div>
           <pre class="sql">{{ migration }}</pre>
         </template>

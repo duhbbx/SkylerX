@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../i18n'
 import type { TreeAction } from './tree-actions'
 
 defineProps<{ x: number; y: number; actions: TreeAction[] }>()
@@ -8,7 +9,7 @@ const emit = defineEmits<{ pick: [TreeAction]; close: [] }>()
 <template>
   <div class="cm-backdrop" @click="emit('close')" @contextmenu.prevent="emit('close')">
     <ul class="cm" :style="{ left: x + 'px', top: y + 'px' }" @click.stop>
-      <li v-if="!actions.length" class="empty">无可用操作</li>
+      <li v-if="!actions.length" class="empty">{{ t('ctx.empty') }}</li>
       <li
         v-for="a in actions"
         :key="a.id"

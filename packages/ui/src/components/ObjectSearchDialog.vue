@@ -3,6 +3,7 @@ import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/sha
 import { onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
+import { t } from '../i18n'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
@@ -51,7 +52,7 @@ async function search(): Promise<void> {
   error.value = null
   if (!c || q.length < 2) return
   if (fam(c.dialect) === 'other') {
-    error.value = '暂仅支持 MySQL / PostgreSQL 系方言'
+    error.value = t('diff.onlyMyPg')
     return
   }
   const my = fam(c.dialect) === 'mysql'
@@ -126,7 +127,7 @@ function preview(h: Hit): void {
 </script>
 
 <template>
-  <Modal title="全局对象搜索" @close="emit('close')">
+  <Modal :title="t('osearch.title')" @close="emit('close')">
     <div class="osearch">
       <div class="bar">
         <select v-model="connId" class="conn">
@@ -136,26 +137,26 @@ function preview(h: Hit): void {
           v-model="term"
           class="q"
           autofocus
-          placeholder="搜表 / 视图 / 列名（≥2 字，回车）"
+          :placeholder="t('osearch.ph')"
           @keyup.enter="search"
         />
       </div>
 
-      <div v-if="!supported()" class="hint warn">该连接方言暂不支持搜索（仅 MySQL / PostgreSQL 系）</div>
+      <div v-if="!supported()" class="hint warn">{{ t('osearch.unsupported') }}</div>
       <div v-else-if="error" class="hint err">{{ error }}</div>
-      <div v-else-if="busy" class="hint">搜索中…</div>
-      <div v-else-if="term.trim().length >= 2 && !hits.length" class="hint">无匹配对象</div>
-      <div v-else-if="term.trim().length < 2" class="hint">输入至少 2 个字符</div>
+      <div v-else-if="busy" class="hint">{{ t('osearch.searching') }}</div>
+      <div v-else-if="term.trim().length >= 2 && !hits.length" class="hint">{{ t('osearch.noMatch') }}</div>
+      <div v-else-if="term.trim().length < 2" class="hint">{{ t('osearch.min') }}</div>
 
       <div v-if="hits.length" class="results">
         <div v-for="(h, i) in hits" :key="i" class="hit" @click="reveal(h)">
           <span class="ico">{{ icon(h) }}</span>
           <span class="path">{{ h.schema }}.<b>{{ h.table }}</b><template v-if="h.column">.<span class="col">{{ h.column }}</span></template></span>
-          <span class="kind">{{ h.kind === 'column' ? '列' : h.kind === 'view' ? '视图' : '表' }}</span>
-          <button class="prev-btn" title="查询前 200 行" @click.stop="preview(h)">预览</button>
+          <span class="kind">{{ h.kind === 'column' ? t('osearch.col') : h.kind === 'view' ? t('osearch.view') : t('osearch.table') }}</span>
+          <button class="prev-btn" :title="t('osearch.previewTitle')" @click.stop="preview(h)">{{ t('osearch.preview') }}</button>
         </div>
       </div>
-      <p v-if="hits.length" class="foot">点击结果在导航树中定位选中；「预览」查询前 200 行</p>
+      <p v-if="hits.length" class="foot">{{ t('osearch.foot') }}</p>
     </div>
   </Modal>
 </template>

@@ -4,6 +4,7 @@ import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { deriveContext } from '../ddl'
 import { buildCreateFromColumns } from '../dump'
+import { t } from '../i18n'
 import SqlEditor from './SqlEditor.vue'
 import type { TreeNode } from './treeNode'
 
@@ -11,13 +12,9 @@ const client = useDataClient()
 
 const props = defineProps<{ connId: string; node: TreeNode; dialect: DbDialect }>()
 
-const TABS = [
-  { key: 'columns', label: '字段' },
-  { key: 'indexes', label: '索引' },
-  { key: 'keys', label: '键' },
-  { key: 'ddl', label: 'DDL' },
-] as const
-const tab = ref<(typeof TABS)[number]['key']>('columns')
+// 标签经 t('struct.tab.<key>') 渲染
+const TABS = ['columns', 'indexes', 'keys', 'ddl'] as const
+const tab = ref<(typeof TABS)[number]>('columns')
 
 const cols = ref<MetadataNode[]>([])
 const indexes = ref<MetadataNode[]>([])
@@ -75,25 +72,25 @@ onMounted(load)
   <div class="struct">
     <div class="head">
       <span class="title">{{ node.sqlName ?? node.name }}</span>
-      <button class="ghost" title="刷新" @click="load">⟳</button>
+      <button class="ghost" :title="t('common.refresh')" @click="load">⟳</button>
     </div>
 
     <div class="tabs">
-      <button v-for="t in TABS" :key="t.key" class="tab" :class="{ active: tab === t.key }" @click="tab = t.key">
-        {{ t.label
-        }}<span v-if="t.key === 'columns'" class="cnt">{{ cols.length }}</span
-        ><span v-else-if="t.key === 'indexes'" class="cnt">{{ indexes.length }}</span
-        ><span v-else-if="t.key === 'keys'" class="cnt">{{ keys.length }}</span>
+      <button v-for="tk in TABS" :key="tk" class="tab" :class="{ active: tab === tk }" @click="tab = tk">
+        {{ t('struct.tab.' + tk)
+        }}<span v-if="tk === 'columns'" class="cnt">{{ cols.length }}</span
+        ><span v-else-if="tk === 'indexes'" class="cnt">{{ indexes.length }}</span
+        ><span v-else-if="tk === 'keys'" class="cnt">{{ keys.length }}</span>
       </button>
     </div>
 
-    <div v-if="loading" class="msg">加载中…</div>
+    <div v-if="loading" class="msg">{{ t('common.loading') }}</div>
     <div v-else-if="error" class="msg err">✗ {{ error }}</div>
     <div v-else class="body">
       <!-- 字段 -->
       <table v-if="tab === 'columns'" class="grid">
         <thead>
-          <tr><th>字段</th><th>类型</th><th>可空</th><th>主键</th><th>默认值</th><th>注释</th></tr>
+          <tr><th>{{ t('struct.h.field') }}</th><th>{{ t('struct.h.type') }}</th><th>{{ t('struct.h.nullable') }}</th><th>{{ t('struct.h.pk') }}</th><th>{{ t('struct.h.default') }}</th><th>{{ t('struct.h.comment') }}</th></tr>
         </thead>
         <tbody>
           <tr v-for="c in cols" :key="c.name">
@@ -109,19 +106,19 @@ onMounted(load)
 
       <!-- 索引 -->
       <table v-else-if="tab === 'indexes'" class="grid">
-        <thead><tr><th>索引名</th></tr></thead>
+        <thead><tr><th>{{ t('struct.indexName') }}</th></tr></thead>
         <tbody>
           <tr v-for="x in indexes" :key="x.name"><td>{{ x.name }}</td></tr>
-          <tr v-if="!indexes.length"><td class="muted">（无）</td></tr>
+          <tr v-if="!indexes.length"><td class="muted">{{ t('common.none') }}</td></tr>
         </tbody>
       </table>
 
       <!-- 键 -->
       <table v-else-if="tab === 'keys'" class="grid">
-        <thead><tr><th>约束名</th></tr></thead>
+        <thead><tr><th>{{ t('struct.constraintName') }}</th></tr></thead>
         <tbody>
           <tr v-for="x in keys" :key="x.name"><td>{{ x.name }}</td></tr>
-          <tr v-if="!keys.length"><td class="muted">（无）</td></tr>
+          <tr v-if="!keys.length"><td class="muted">{{ t('common.none') }}</td></tr>
         </tbody>
       </table>
 

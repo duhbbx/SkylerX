@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '../i18n'
 import { type PlanNode, flattenPlan } from '../plan'
 
 const props = defineProps<{ tree: PlanNode | null; text: string | null }>()
@@ -11,7 +12,7 @@ const maxCost = computed(() => rows.value.reduce((m, r) => Math.max(m, r.node.co
 <template>
   <div class="plan">
     <div v-if="tree" class="plan-tree">
-      <div class="plan-head">执行计划（节点 · 代价 · 预估行）</div>
+      <div class="plan-head">{{ t('plan.head') }}</div>
       <div
         v-for="(r, i) in rows"
         :key="i"
@@ -25,7 +26,7 @@ const maxCost = computed(() => rows.value.reduce((m, r) => Math.max(m, r.node.co
       </div>
     </div>
     <pre v-else-if="text" class="plan-text">{{ text }}</pre>
-    <div v-else class="plan-empty">无执行计划</div>
+    <div v-else class="plan-empty">{{ t('plan.empty') }}</div>
   </div>
 </template>
 
