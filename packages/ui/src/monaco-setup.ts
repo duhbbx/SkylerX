@@ -20,7 +20,11 @@ export interface Suggestion {
   detail?: string
   kind: 'keyword' | 'table' | 'column' | 'schema' | 'function' | 'snippet'
 }
-type CompletionSource = (ctx: { text: string; word: string }) => Promise<Suggestion[]> | Suggestion[]
+type CompletionSource = (ctx: {
+  text: string
+  word: string
+  before: string
+}) => Promise<Suggestion[]> | Suggestion[]
 
 const sources = new Map<monaco.editor.ITextModel, CompletionSource>()
 export function setCompletionSource(model: monaco.editor.ITextModel, fn: CompletionSource): void {
@@ -46,7 +50,10 @@ monaco.languages.registerCompletionItemProvider('sql', {
     if (!src) return { suggestions: [] }
     const w = model.getWordUntilPosition(position)
     const range = new monaco.Range(position.lineNumber, w.startColumn, position.lineNumber, w.endColumn)
-    const items = await src({ text: model.getValue(), word: w.word })
+    const before = model.getValueInRange(
+      new monaco.Range(1, 1, position.lineNumber, position.column),
+    )
+    const items = await src({ text: model.getValue(), word: w.word, before })
     return {
       suggestions: items.map((s) => ({
         label: s.label,

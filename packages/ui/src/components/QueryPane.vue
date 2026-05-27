@@ -256,7 +256,28 @@ function parseFromTables(text: string): string[] {
   return [...out]
 }
 
-async function completion(ctx: { text: string; word: string }): Promise<Suggestion[]> {
+/** 把 from/join 里的「表 [as] 别名」解析成 别名/表名 → 表名。 */
+function resolveAlias(text: string, alias: string): string | null {
+  const re = /\b(?:from|join)\s+([`"[]?[\w$.]+[`"\]]?)(?:\s+as)?(?:\s+([a-z_]\w*))?/gi
+  for (const m of text.matchAll(re)) {
+    const tbl = m[1].replace(/[`"[\]]/g, '')
+    const tname = tbl.split('.').pop() ?? tbl
+    if (m[2] === alias || tname === alias) return tname
+  }
+  return null
+}
+
+async function completion(ctx: {
+  text: string
+  word: string
+  before: string
+}): Promise<Suggestion[]> {
+  // 限定列：「别名. / 表名.」→ 只补该表的列
+  const dot = /([\w$]+)\s*\.\s*\w*$/.exec(ctx.before)
+  if (dot) {
+    const table = resolveAlias(ctx.text, dot[1]) ?? dot[1]
+    return (await loadColumns(table)).map((c) => ({ label: c, kind: 'column' as const, detail: table }))
+  }
   const out: Suggestion[] = KEYWORDS.map((k) => ({ label: k, kind: 'keyword' as const }))
   for (const fn of dialectFuncs()) out.push({ label: fn, insertText: `${fn}()`, kind: 'function', detail: '函数' })
   for (const s of snippets) out.push({ label: s.name, insertText: s.sql, kind: 'snippet', detail: '片段' })
