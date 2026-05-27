@@ -25,6 +25,7 @@ const emit = defineEmits<{
   editObject: [string, TreeNode]
   importData: [string, TreeNode]
   exportSql: [string, TreeNode]
+  exportSchemaSql: [string, TreeNode]
   previewTable: [string, TreeNode]
   openErd: [string, TreeNode]
   openSettings: []
@@ -134,6 +135,7 @@ const controller: TreeController = {
   openErd: (node, connId) => emit('openErd', connId, node),
   importData: (node, connId) => emit('importData', connId, node),
   exportSql: (node, connId) => emit('exportSql', connId, node),
+  exportSchemaSql: (node, connId) => emit('exportSchemaSql', connId, node),
   editConnection: (connId) => emit('editConn', connId),
   newConnection: () => emit('newConn'),
   deleteConnection: (connId) => emit('deleteConn', connId),

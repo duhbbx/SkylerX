@@ -106,6 +106,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.openErd(node, connId),
   },
   {
+    id: 'export-schema-sql',
+    label: '导出库为 SQL（结构+数据）',
+    kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    run: ({ node, connId, ctrl }) => ctrl.exportSchemaSql(node, connId),
+  },
+  {
     id: 'refresh',
     label: '刷新',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema, MetaNodeKind.Group],

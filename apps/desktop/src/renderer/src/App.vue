@@ -168,6 +168,45 @@ async function onExportSql(connId: string, node: TreeNode): Promise<void> {
   }
 }
 
+// 导出整库/schema 为 SQL（迭代所有表）
+async function onExportSchemaSql(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  const ctx = erdContext(conn.dialect, node)
+  try {
+    const tables = await window.api.connections.metadata(connId, {
+      parentKind: MetaNodeKind.Group,
+      path: [...node.path],
+      group: 'tables',
+    })
+    if (!tables.length) {
+      window.alert('该库/schema 下没有表')
+      return
+    }
+    const parts: string[] = []
+    for (const t of tables) {
+      const cols = await window.api.connections.metadata(connId, {
+        parentKind: MetaNodeKind.Group,
+        path: [...t.path],
+        group: 'columns',
+      })
+      const ref = t.sqlName ?? t.name
+      const data = await window.api.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
+        database: ctx.database,
+        schema: ctx.schema,
+      })
+      parts.push(buildTableDump(conn.dialect, ref, cols, data.rows))
+    }
+    const label = ctx.schema || ctx.database || 'schema'
+    await window.api.files.saveText({
+      defaultName: `${label}.sql`,
+      content: `-- SkylerX 库导出：${label}（${tables.length} 表）\n\n${parts.join('\n\n')}`,
+      filters: [{ name: 'SQL', extensions: ['sql'] }],
+    })
+  } catch (e) {
+    window.alert(`导出失败：${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 function onImportDone(count: number): void {
   const imp = importing.value
   importing.value = null
@@ -290,6 +329,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @open-erd="onOpenErd"
     @import-data="onImportData"
     @export-sql="onExportSql"
+    @export-schema-sql="onExportSchemaSql"
     @open-settings="settingsOpen = true"
   />
 
