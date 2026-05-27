@@ -18,6 +18,20 @@ function brq(id: string): string {
   return '[' + id.replace(/]/g, ']]') + ']'
 }
 
+function isSelect(sql: string): boolean {
+  return /^\s*(select|with)\b/i.test(sql)
+}
+
+/**
+ * SQL Server 分页：包子查询 + `ORDER BY (SELECT NULL)` + OFFSET/FETCH。
+ * 注意：内层查询不可自带 ORDER BY（SQL Server 派生表限制）；浏览类分页均无内层排序。
+ */
+function paginate(sql: string, options?: ExecuteOptions): string {
+  if (options?.limit == null || !isSelect(sql)) return sql
+  const inner = sql.trim().replace(/;\s*$/, '')
+  return `SELECT * FROM (${inner}) AS _pg ORDER BY (SELECT NULL) OFFSET ${options.offset ?? 0} ROWS FETCH NEXT ${options.limit} ROWS ONLY`
+}
+
 function buildConfig(config: ConnectionConfig): mssql.config {
   return {
     server: config.host,
@@ -44,8 +58,9 @@ class MssqlConnection implements DriverConnection {
     const start = Date.now()
     const req = this.pool.request()
     params.forEach((p, i) => req.input(`p${i}`, p))
+    const paged = paginate(sql, options)
     // 切库：批处理前置 USE（mssql 连接池下同批次生效）
-    const text = options?.database ? `USE ${brq(options.database)};\n${sql}` : sql
+    const text = options?.database ? `USE ${brq(options.database)};\n${paged}` : paged
     const result = await req.query(text)
     const executionTimeMs = Date.now() - start
 
@@ -67,8 +82,9 @@ class MssqlConnection implements DriverConnection {
     return { columns: [], rows: [], rowCount: 0, affectedRows, executionTimeMs }
   }
 
-  // SQL Server 树形（库 → schema → 对象，用三段式名跨库）：
-  //   Connection → Database → Schema → Group(表/视图) → Table/View → Column
+  // SQL Server 树形（用三段式名跨库），与 MySQL/PG 对齐：
+  //   Connection → Database → Schema → Group(表/视图, 带计数) → Table/View
+  //                  → Group(列/索引/键, 带计数) → Column/Index/Key
   async fetchMetadata(scope: MetaScope): Promise<MetadataNode[]> {
     switch (scope.parentKind) {
       case MetaNodeKind.Connection:
@@ -76,15 +92,59 @@ class MssqlConnection implements DriverConnection {
       case MetaNodeKind.Database:
         return this.listSchemas(scope.path[0])
       case MetaNodeKind.Schema:
-        return schemaGroups(scope.path)
+        return this.schemaGroups(scope.path[0], scope.path[1])
       case MetaNodeKind.Group:
         return this.listGroupObjects(scope.path, scope.group)
       case MetaNodeKind.Table:
       case MetaNodeKind.View:
-        return this.listColumns(scope.path[0], scope.path[1], scope.path[2])
+        return this.tableSubGroups(scope.path[0], scope.path[1], scope.path[2])
       default:
         return []
     }
+  }
+
+  private async scalar(sql: string, binds: Record<string, unknown>): Promise<number> {
+    const req = this.pool.request()
+    for (const [k, v] of Object.entries(binds)) req.input(k, v)
+    const r = await req.query(sql)
+    const rows = r.recordset as unknown as Array<{ c: number }>
+    return Number(rows[0]?.c ?? 0)
+  }
+
+  private async schemaGroups(db: string, schema: string): Promise<MetadataNode[]> {
+    const tablesSql = `SELECT COUNT(*) c FROM ${brq(db)}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=@s AND TABLE_TYPE=@t`
+    const [tables, views] = await Promise.all([
+      this.scalar(tablesSql, { s: schema, t: 'BASE TABLE' }),
+      this.scalar(tablesSql, { s: schema, t: 'VIEW' }),
+    ])
+    const p = [db, schema]
+    return [
+      { kind: MetaNodeKind.Group, name: '表', path: p, group: 'tables', hasChildren: true, count: tables },
+      { kind: MetaNodeKind.Group, name: '视图', path: p, group: 'views', hasChildren: true, count: views },
+    ]
+  }
+
+  private async tableSubGroups(db: string, schema: string, table: string): Promise<MetadataNode[]> {
+    const [cols, idx, keys] = await Promise.all([
+      this.scalar(
+        `SELECT COUNT(*) c FROM ${brq(db)}.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t`,
+        { s: schema, t: table },
+      ),
+      this.scalar(
+        `SELECT COUNT(*) c FROM ${brq(db)}.sys.indexes i JOIN ${brq(db)}.sys.objects o ON i.object_id=o.object_id JOIN ${brq(db)}.sys.schemas sc ON o.schema_id=sc.schema_id WHERE sc.name=@s AND o.name=@t AND i.name IS NOT NULL`,
+        { s: schema, t: table },
+      ),
+      this.scalar(
+        `SELECT COUNT(*) c FROM ${brq(db)}.INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t`,
+        { s: schema, t: table },
+      ),
+    ])
+    const p = [db, schema, table]
+    return [
+      { kind: MetaNodeKind.Group, name: '列', path: p, group: 'columns', hasChildren: true, count: cols },
+      { kind: MetaNodeKind.Group, name: '索引', path: p, group: 'indexes', hasChildren: true, count: idx },
+      { kind: MetaNodeKind.Group, name: '键', path: p, group: 'keys', hasChildren: true, count: keys },
+    ]
   }
 
   private async listDatabases(): Promise<MetadataNode[]> {
@@ -111,23 +171,60 @@ class MssqlConnection implements DriverConnection {
 
   private async listGroupObjects(path: string[], group?: string): Promise<MetadataNode[]> {
     const [db, schema] = path
-    if (group === 'columns') return this.listColumns(db, schema, path[2])
-    if (group !== 'tables' && group !== 'views') return []
-    const wanted = group === 'views' ? 'VIEW' : 'BASE TABLE'
-    const r = await this.pool
-      .request()
-      .input('s', schema)
-      .input('t', wanted)
-      .query(
-        `SELECT TABLE_NAME AS name FROM ${brq(db)}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=@s AND TABLE_TYPE=@t ORDER BY TABLE_NAME`,
-      )
-    return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
-      kind: group === 'views' ? MetaNodeKind.View : MetaNodeKind.Table,
-      name: row.name,
-      path: [db, schema, row.name],
-      hasChildren: true,
-      sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
-    }))
+    switch (group) {
+      case 'tables':
+      case 'views': {
+        const wanted = group === 'views' ? 'VIEW' : 'BASE TABLE'
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .input('t', wanted)
+          .query(
+            `SELECT TABLE_NAME AS name FROM ${brq(db)}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=@s AND TABLE_TYPE=@t ORDER BY TABLE_NAME`,
+          )
+        return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
+          kind: group === 'views' ? MetaNodeKind.View : MetaNodeKind.Table,
+          name: row.name,
+          path: [db, schema, row.name],
+          hasChildren: true,
+          sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
+        }))
+      }
+      case 'columns':
+        return this.listColumns(db, schema, path[2])
+      case 'indexes': {
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .input('t', path[2])
+          .query(
+            `SELECT i.name AS name FROM ${brq(db)}.sys.indexes i JOIN ${brq(db)}.sys.objects o ON i.object_id=o.object_id JOIN ${brq(db)}.sys.schemas sc ON o.schema_id=sc.schema_id WHERE sc.name=@s AND o.name=@t AND i.name IS NOT NULL ORDER BY i.name`,
+          )
+        return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
+          kind: MetaNodeKind.Index,
+          name: row.name,
+          path: [...path, row.name],
+          hasChildren: false,
+        }))
+      }
+      case 'keys': {
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .input('t', path[2])
+          .query(
+            `SELECT CONSTRAINT_NAME AS name, CONSTRAINT_TYPE AS t FROM ${brq(db)}.INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t ORDER BY CONSTRAINT_NAME`,
+          )
+        return (r.recordset as unknown as Array<{ name: string; t: string }>).map((row) => ({
+          kind: MetaNodeKind.Index,
+          name: `${row.name} (${row.t})`,
+          path: [...path, row.name],
+          hasChildren: false,
+        }))
+      }
+      default:
+        return []
+    }
   }
 
   private async listColumns(db: string, schema: string, table: string): Promise<MetadataNode[]> {
@@ -136,8 +233,17 @@ class MssqlConnection implements DriverConnection {
       .input('s', schema)
       .input('t', table)
       .query(
-        `SELECT COLUMN_NAME AS name, DATA_TYPE AS datatype, IS_NULLABLE AS isnullable, COLUMN_DEFAULT AS dflt
-           FROM ${brq(db)}.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t ORDER BY ORDINAL_POSITION`,
+        `SELECT c.COLUMN_NAME AS name, c.DATA_TYPE AS datatype, c.IS_NULLABLE AS isnullable, c.COLUMN_DEFAULT AS dflt,
+                CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS ispk
+           FROM ${brq(db)}.INFORMATION_SCHEMA.COLUMNS c
+           LEFT JOIN (
+             SELECT ku.COLUMN_NAME
+               FROM ${brq(db)}.INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+               JOIN ${brq(db)}.INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                 ON tc.CONSTRAINT_NAME=ku.CONSTRAINT_NAME AND tc.TABLE_SCHEMA=ku.TABLE_SCHEMA AND tc.TABLE_NAME=ku.TABLE_NAME
+              WHERE tc.CONSTRAINT_TYPE='PRIMARY KEY' AND tc.TABLE_SCHEMA=@s AND tc.TABLE_NAME=@t
+           ) pk ON pk.COLUMN_NAME=c.COLUMN_NAME
+          WHERE c.TABLE_SCHEMA=@s AND c.TABLE_NAME=@t ORDER BY c.ORDINAL_POSITION`,
       )
     return (r.recordset as unknown as Array<Record<string, unknown>>).map((row) => ({
       kind: MetaNodeKind.Column,
@@ -147,6 +253,7 @@ class MssqlConnection implements DriverConnection {
       detail: {
         dataType: String(row.datatype),
         nullable: row.isnullable === 'YES',
+        primaryKey: Number(row.ispk) === 1,
         defaultValue: (row.dflt as string | null) ?? null,
       },
     }))
@@ -159,19 +266,6 @@ class MssqlConnection implements DriverConnection {
   async close(): Promise<void> {
     await this.pool.close()
   }
-}
-
-function schemaGroups(path: string[]): MetadataNode[] {
-  return [
-    { group: 'tables', label: '表' },
-    { group: 'views', label: '视图' },
-  ].map(({ group, label }) => ({
-    kind: MetaNodeKind.Group,
-    name: label,
-    path,
-    group,
-    hasChildren: true,
-  }))
 }
 
 export function createSqlServerDriver(dialect: DbDialect): DatabaseDriver {

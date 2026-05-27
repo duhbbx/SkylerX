@@ -104,6 +104,19 @@ function familyOf(dialect: DbDialect): Family {
   }
 }
 
+/** 「查询前 N 行」的方言正确写法（SQL Server 无 LIMIT；Oracle/达梦用 FETCH FIRST）。 */
+export function previewSql(dialect: DbDialect, tableRef: string, n = 200): string {
+  switch (familyOf(dialect)) {
+    case 'mysql':
+    case 'pg':
+      return `SELECT * FROM ${tableRef} LIMIT ${n};`
+    case 'sqlserver':
+      return `SELECT TOP ${n} * FROM ${tableRef};`
+    case 'oracle':
+      return `SELECT * FROM ${tableRef} FETCH FIRST ${n} ROWS ONLY;`
+  }
+}
+
 export function quoteId(dialect: DbDialect, id: string): string {
   switch (familyOf(dialect)) {
     case 'mysql':

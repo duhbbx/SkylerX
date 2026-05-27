@@ -14,6 +14,7 @@ import {
   deriveContext,
   dropSupportsCascade,
   objectKindLabel,
+  previewSql,
 } from './ddl'
 
 const navRef = useTemplateRef('navRef')
@@ -105,6 +106,12 @@ async function onViewStructure(connId: string, node: TreeNode): Promise<void> {
   tabsRef.value?.openStructure(conn, node)
 }
 
+// 查询前 200 行 → 按方言生成限行 SQL 并在查询页执行
+async function onPreviewTable(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  tabsRef.value?.runSql(conn, previewSql(conn.dialect, node.sqlName ?? node.name, 200))
+}
+
 // 设计表（修改现有表）→ 开设计器 Tab（alter 模式，载入现有结构）
 async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
   const conn = await window.api.connections.get(connId)
@@ -192,6 +199,7 @@ function onCancel(): void {
     @new-object="onNewObject"
     @drop-object="onDropObject"
     @view-structure="onViewStructure"
+    @preview-table="onPreviewTable"
     @design-table="onDesignTable"
     @import-data="onImportData"
   />

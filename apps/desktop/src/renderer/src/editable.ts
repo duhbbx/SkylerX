@@ -13,9 +13,9 @@ export interface EditChanges {
 }
 
 const MYSQL = ['mysql', 'mariadb', 'oceanbase']
-const PAGINATABLE = ['mysql', 'mariadb', 'oceanbase', 'postgresql', 'kingbase']
+const PAGINATABLE = ['mysql', 'mariadb', 'oceanbase', 'postgresql', 'kingbase', 'sqlserver']
 
-/** 该方言是否支持可编辑网格（phase 1：MySQL 系 + PG 系）。 */
+/** 该方言是否支持可编辑网格（MySQL 系 + PG 系 + SQL Server）。 */
 export function dialectEditable(dialect: DbDialect): boolean {
   return PAGINATABLE.includes(dialect)
 }
@@ -38,7 +38,10 @@ export function parseEditableTable(sql: string): string | null {
 function lit(v: unknown, dialect: DbDialect): string {
   if (v === null || v === undefined) return 'NULL'
   if (typeof v === 'number') return String(v)
-  if (typeof v === 'boolean') return MYSQL.includes(dialect) ? (v ? '1' : '0') : v ? 'TRUE' : 'FALSE'
+  // MySQL 系与 SQL Server(bit) 用 1/0；PG 系用 TRUE/FALSE
+  if (typeof v === 'boolean') {
+    return MYSQL.includes(dialect) || dialect === 'sqlserver' ? (v ? '1' : '0') : v ? 'TRUE' : 'FALSE'
+  }
   if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, "''")}'`
   return `'${String(v).replace(/'/g, "''")}'`
 }

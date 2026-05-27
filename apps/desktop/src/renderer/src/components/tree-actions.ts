@@ -36,7 +36,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     label: '查询前 200 行',
     kinds: [MetaNodeKind.Table, MetaNodeKind.View],
     enabled: (n) => !!n.sqlName,
-    run: ({ node, connId, ctrl }) => ctrl.runSql(connId, `SELECT * FROM ${node.sqlName} LIMIT 200;`),
+    run: ({ node, connId, ctrl }) => ctrl.previewTable(node, connId),
   },
   {
     id: 'view-structure',

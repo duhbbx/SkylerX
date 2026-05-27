@@ -14,7 +14,7 @@ import HistoryPanel from './HistoryPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SqlEditor from './SqlEditor.vue'
 
-const PAGINATABLE = ['mysql', 'mariadb', 'oceanbase', 'postgresql', 'kingbase']
+const PAGINATABLE = ['mysql', 'mariadb', 'oceanbase', 'postgresql', 'kingbase', 'sqlserver']
 function isSelect(s: string): boolean {
   return /^\s*(select|with)\b/i.test(s)
 }
