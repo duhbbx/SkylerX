@@ -15,6 +15,12 @@ export interface TreeController {
   select(node: TreeNode, connId: string): void
   /** 该节点是否为当前选中节点 */
   isSelected(node: TreeNode, connId: string): boolean
+  /** Ctrl/⌘ 点击：把对象节点加入/移出批量选择集（仅可删除的对象类型） */
+  toggleMulti(node: TreeNode, connId: string): void
+  /** 该节点是否在批量选择集中 */
+  isMultiSelected(node: TreeNode, connId: string): boolean
+  /** 清空批量选择集 */
+  clearMulti(): void
   /** 双击：打开节点（连接→打开连接；表/视图→查询前 200 行；其余由调用方展开） */
   openNode(node: TreeNode, connId: string): void
   /** 在光标处弹出该节点的右键菜单 */

@@ -15,13 +15,19 @@ async function toggle(): Promise<void> {
   if (node.expanded && node.children === null) await ctrl.loadChildren(node, props.connId)
 }
 
-// 单击：仅选中
-function onSelect(): void {
+// 单击：Ctrl/⌘ 切换批量选择；普通单击清空批量集并单选
+function onSelect(e: MouseEvent): void {
+  if (e.metaKey || e.ctrlKey) {
+    ctrl.toggleMulti(props.node, props.connId)
+    return
+  }
+  ctrl.clearMulti()
   ctrl.select(props.node, props.connId)
 }
 
 // 双击：选中 + 打开节点（连接/表）+ 展开折叠
 function onOpen(): void {
+  ctrl.clearMulti()
   ctrl.select(props.node, props.connId)
   ctrl.openNode(props.node, props.connId)
   void toggle()
@@ -38,7 +44,11 @@ function onContext(e: MouseEvent): void {
   <div class="tree-item">
     <div
       class="tree-node"
-      :class="{ conn: node.kind === 'connection', selected: ctrl.isSelected(node, connId) }"
+      :class="{
+        conn: node.kind === 'connection',
+        selected: ctrl.isSelected(node, connId),
+        multi: ctrl.isMultiSelected(node, connId),
+      }"
       :style="{ paddingLeft: depth * 14 + 8 + 'px' }"
       @click="onSelect"
       @dblclick="onOpen"
@@ -92,6 +102,10 @@ function onContext(e: MouseEvent): void {
 }
 .tree-node.selected {
   background: rgba(124, 108, 255, 0.28);
+}
+.tree-node.multi {
+  background: rgba(124, 108, 255, 0.18);
+  box-shadow: inset 3px 0 0 var(--accent, #7c6cff);
 }
 .tree-node.conn {
   font-weight: 600;

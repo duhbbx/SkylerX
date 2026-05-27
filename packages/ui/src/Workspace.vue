@@ -48,6 +48,15 @@ const dropConfirm = ref<{
   error: string | null
 } | null>(null)
 
+// 批量删除确认弹窗
+const bulkDropState = ref<{
+  items: { connId: string; node: TreeNode; dialect: DbDialect }[]
+  cascade: boolean
+  busy: boolean
+  done: number
+  error: string | null
+} | null>(null)
+
 // CSV 导入对话框
 const importing = ref<{ connId: string; node: TreeNode; dialect: DbDialect; ctx: TableContext } | null>(
   null,
@@ -347,6 +356,54 @@ async function confirmDrop(): Promise<void> {
   }
 }
 
+// 批量删除：解析各对象的方言（按连接缓存），过滤不可删除项后弹一次确认
+async function onBulkDrop(items: { connId: string; node: TreeNode }[]): Promise<void> {
+  const connCache = new Map<string, ConnectionConfig>()
+  const resolved: { connId: string; node: TreeNode; dialect: DbDialect }[] = []
+  for (const it of items) {
+    let conn = connCache.get(it.connId)
+    if (!conn) {
+      conn = await client.connections.get(it.connId)
+      connCache.set(it.connId, conn)
+    }
+    if (!buildDrop(conn.dialect, it.node)) continue // 跳过不可删除的节点
+    resolved.push({ connId: it.connId, node: it.node, dialect: conn.dialect })
+  }
+  if (!resolved.length) return
+  bulkDropState.value = { items: resolved, cascade: false, busy: false, done: 0, error: null }
+}
+
+// 顺序执行批量删除；中途失败保留进度（done）便于「继续」重试
+async function confirmBulkDrop(): Promise<void> {
+  const b = bulkDropState.value
+  if (!b) return
+  b.busy = true
+  b.error = null
+  const parents = new Map<TreeNode, string>()
+  try {
+    for (let i = b.done; i < b.items.length; i++) {
+      const it = b.items[i]
+      const r = buildDrop(it.dialect, it.node, b.cascade)
+      if (!r) {
+        b.done = i + 1
+        continue
+      }
+      await client.connections.execute(it.connId, r.sql, [], {
+        database: r.ctx.database,
+        schema: r.ctx.schema,
+      })
+      b.done = i + 1
+      if (it.node.parent) parents.set(it.node.parent, it.connId)
+    }
+    bulkDropState.value = null
+    navRef.value?.clearMulti()
+    for (const [parent, connId] of parents) navRef.value?.refreshNode(parent, connId)
+  } catch (e) {
+    b.error = e instanceof Error ? e.message : String(e)
+    b.busy = false
+  }
+}
+
 async function onSaved(conn: ConnectionConfig): Promise<void> {
   editing.value = null
   await navRef.value?.reload()
@@ -463,6 +520,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @export-sql="onExportSql"
     @export-schema-sql="onExportSchemaSql"
     @transfer-data="onTransferData"
+    @bulk-drop="onBulkDrop"
     @open-settings="settingsOpen = true"
   />
 
@@ -500,6 +558,38 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           {{ dropConfirm.busy ? '删除中…' : '删除' }}
         </button>
         <button class="ghost" @click="dropConfirm = null">取消</button>
+      </div>
+    </div>
+  </Modal>
+
+  <Modal v-if="bulkDropState" title="批量删除确认" @close="bulkDropState = null">
+    <div class="confirm">
+      <p>
+        确定删除以下 <b>{{ bulkDropState.items.length }}</b> 个对象吗？此操作不可撤销。
+      </p>
+      <ul class="bulk-list">
+        <li v-for="(it, i) in bulkDropState.items" :key="i" :class="{ gone: i < bulkDropState.done }">
+          {{ objectKindLabel(it.node.kind) }} · {{ it.node.sqlName ?? it.node.name }}
+        </li>
+      </ul>
+      <label class="cascade">
+        <input v-model="bulkDropState.cascade" type="checkbox" />
+        级联删除（CASCADE，对支持的对象连同依赖一并删除）
+      </label>
+      <div v-if="bulkDropState.error" class="banner err">
+        ✗ 已删除 {{ bulkDropState.done }}/{{ bulkDropState.items.length }}，中断于：{{ bulkDropState.error }}
+      </div>
+      <div class="actions">
+        <button class="danger" :disabled="bulkDropState.busy" @click="confirmBulkDrop">
+          {{
+            bulkDropState.busy
+              ? `删除中… ${bulkDropState.done}/${bulkDropState.items.length}`
+              : bulkDropState.error
+                ? '继续删除'
+                : `删除 ${bulkDropState.items.length} 项`
+          }}
+        </button>
+        <button class="ghost" @click="bulkDropState = null">取消</button>
       </div>
     </div>
   </Modal>
@@ -564,6 +654,23 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   font-size: 12px;
   white-space: pre-wrap;
   margin: 0 0 12px;
+}
+.bulk-list {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0 0 12px;
+  padding: 8px 10px 8px 26px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.bulk-list li {
+  margin: 2px 0;
+}
+.bulk-list li.gone {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 </style>
 

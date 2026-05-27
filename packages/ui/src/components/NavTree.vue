@@ -35,7 +35,21 @@ const emit = defineEmits<{
   previewTable: [string, TreeNode]
   openErd: [string, TreeNode]
   openSettings: []
+  bulkDrop: [{ connId: string; node: TreeNode }[]]
 }>()
+
+// 批量可选的对象类型（与可删除类型一致）
+const MULTI_KINDS: MetaNodeKind[] = [
+  MetaNodeKind.Table,
+  MetaNodeKind.View,
+  MetaNodeKind.Function,
+  MetaNodeKind.Procedure,
+  MetaNodeKind.Sequence,
+  MetaNodeKind.Trigger,
+  MetaNodeKind.Event,
+]
+// 批量选择集：key → {node, connId}（保留 connId 以支持跨连接批量）
+const multiSel = reactive(new Map<string, { node: TreeNode; connId: string }>())
 
 interface ConnRoot {
   id: string
@@ -115,6 +129,18 @@ const controller: TreeController = {
   isSelected(node, connId) {
     return selectedKey.value === nodeKey(node, connId)
   },
+  toggleMulti(node, connId) {
+    if (!MULTI_KINDS.includes(node.kind)) return
+    const k = nodeKey(node, connId)
+    if (multiSel.has(k)) multiSel.delete(k)
+    else multiSel.set(k, { node, connId })
+  },
+  isMultiSelected(node, connId) {
+    return multiSel.has(nodeKey(node, connId))
+  },
+  clearMulti() {
+    multiSel.clear()
+  },
   openNode(node, connId) {
     // 双击连接 = 打开连接；双击表/视图等其它节点仅展开/折叠（由 TreeItem toggle 处理），
     // 不查询、不改编辑器。查表数据请用右键「查询前 200 行」。
@@ -185,7 +211,16 @@ function refreshNode(node: TreeNode, connId: string): void {
   void controller.refreshNode(node, connId)
 }
 
-defineExpose({ reload, refreshNode })
+// ── 批量操作 ──
+function bulkDrop(): void {
+  emit('bulkDrop', [...multiSel.values()])
+}
+function bulkCopyNames(): void {
+  const text = [...multiSel.values()].map((s) => s.node.sqlName ?? s.node.name).join('\n')
+  void navigator.clipboard?.writeText(text)
+}
+
+defineExpose({ reload, refreshNode, clearMulti: () => multiSel.clear() })
 onMounted(reload)
 </script>
 
@@ -215,6 +250,13 @@ onMounted(reload)
       </template>
 
       <TreeItem v-for="r in ungrouped" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" />
+    </div>
+
+    <div v-if="multiSel.size" class="bulk-bar">
+      <span class="bcount">已选 {{ multiSel.size }} 项</span>
+      <button class="danger" title="批量删除所选对象" @click="bulkDrop">批量删除</button>
+      <button title="复制所选对象的限定名（每行一个）" @click="bulkCopyNames">复制名</button>
+      <button class="ghost" title="取消选择" @click="controller.clearMulti()">✕</button>
     </div>
 
     <ContextMenu
@@ -283,5 +325,35 @@ onMounted(reload)
 .group-row .gcount {
   color: var(--muted);
   font-size: 11px;
+}
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.bulk-bar .bcount {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: auto;
+}
+.bulk-bar button {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.bulk-bar button.danger {
+  border-color: var(--err);
+  color: var(--err);
+}
+.bulk-bar button.ghost {
+  border: none;
+  color: var(--muted);
 }
 </style>
