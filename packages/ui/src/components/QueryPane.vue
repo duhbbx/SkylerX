@@ -12,10 +12,12 @@ import { explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { type Suggestion } from '../monaco-setup'
 import { settings } from '../settings'
+import { addSnippet } from '../snippets'
 import { splitStatements } from '../sqlSplit'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import HistoryPanel from './HistoryPanel.vue'
 import ResultGrid from './ResultGrid.vue'
+import SnippetsPanel from './SnippetsPanel.vue'
 import SqlEditor from './SqlEditor.vue'
 
 const client = useDataClient()
@@ -52,6 +54,7 @@ const sql = ref('SELECT 1;')
 const tabs = ref<ResultTab[]>([])
 const activeTab = ref(0)
 const showHistory = ref(false)
+const showSnippets = ref(false)
 const history = ref<QueryHistoryEntry[]>([])
 const running = ref(false)
 const pageSize = ref(settings.pageSize) // 新查询的默认每页行数（取自设置）
@@ -397,6 +400,7 @@ async function onCommit(changes: EditChanges): Promise<void> {
 
 async function openHistory(): Promise<void> {
   await loadHistory()
+  showSnippets.value = false
   showHistory.value = true
 }
 
@@ -410,8 +414,26 @@ async function onClearHistory(): Promise<void> {
   await loadHistory()
 }
 
+// ── SQL 片段 ──
+function openSnippets(): void {
+  showHistory.value = false
+  showSnippets.value = true
+}
+function onPickSnippet(picked: string): void {
+  sql.value = picked
+  showSnippets.value = false
+}
+function saveSnippet(sqlText: string): void {
+  const text = sqlText.trim()
+  if (!text) return
+  const name = window.prompt('片段名称', text.slice(0, 40))
+  if (name === null) return
+  addSnippet(name, text)
+}
+
 function selectTab(i: number): void {
   showHistory.value = false
+  showSnippets.value = false
   activeTab.value = i
 }
 
@@ -445,6 +467,7 @@ onMounted(() => {
       <button title="格式化 SQL" @click="formatSql">格式化</button>
       <button :disabled="!running" @click="cancel">■ 停止</button>
       <button class="ghost" @click="clearEditor">清空</button>
+      <button class="ghost" title="把当前 SQL 存为片段" @click="saveSnippet(sql)">存为片段</button>
 
       <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
         <option value="">（默认库）</option>
@@ -474,12 +497,13 @@ onMounted(() => {
         v-for="(t, i) in tabs"
         :key="t.id"
         class="rtab"
-        :class="{ active: !showHistory && activeTab === i }"
+        :class="{ active: !showHistory && !showSnippets && activeTab === i }"
         @click="selectTab(i)"
       >
         结果 {{ i + 1 }}<span v-if="t.error" class="err-dot">!</span>
       </button>
       <button class="rtab" :class="{ active: showHistory }" @click="openHistory">历史</button>
+      <button class="rtab" :class="{ active: showSnippets }" @click="openSnippets">片段</button>
     </div>
 
     <div class="result">
@@ -488,7 +512,9 @@ onMounted(() => {
         :entries="history"
         @pick="onPickHistory"
         @clear="onClearHistory"
+        @save-snippet="saveSnippet"
       />
+      <SnippetsPanel v-else-if="showSnippets" @pick="onPickSnippet" />
       <ResultGrid
         v-else
         :result="cur?.result ?? null"

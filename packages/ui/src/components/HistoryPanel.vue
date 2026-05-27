@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import type { QueryHistoryEntry } from '@db-tool/shared-types'
+import { computed, ref } from 'vue'
 
-defineProps<{ entries: QueryHistoryEntry[] }>()
-const emit = defineEmits<{ pick: [string]; clear: [] }>()
+const props = defineProps<{ entries: QueryHistoryEntry[] }>()
+const emit = defineEmits<{ pick: [string]; clear: []; saveSnippet: [string] }>()
+
+const q = ref('')
+const filtered = computed(() => {
+  const k = q.value.trim().toLowerCase()
+  return k ? props.entries.filter((e) => e.sql.toLowerCase().includes(k)) : props.entries
+})
 
 function fmtTime(ts: number): string {
   return new Date(ts).toLocaleString()
@@ -12,21 +19,24 @@ function fmtTime(ts: number): string {
 <template>
   <div class="history">
     <div class="history-bar">
-      <span>{{ entries.length }} 条历史</span>
+      <input v-model="q" class="hist-search" placeholder="🔍 搜索历史…" />
+      <span class="cnt">{{ filtered.length }} / {{ entries.length }}</span>
       <button class="ghost sm" :disabled="!entries.length" @click="emit('clear')">清空</button>
     </div>
     <div class="history-list">
       <div v-if="!entries.length" class="history-empty">还没有执行记录</div>
+      <div v-else-if="!filtered.length" class="history-empty">无匹配记录</div>
       <div
-        v-for="e in entries"
+        v-for="e in filtered"
         :key="e.id"
         class="history-item"
-        :title="'双击载入编辑器'"
+        title="双击载入编辑器"
         @dblclick="emit('pick', e.sql)"
       >
         <span class="dot" :class="e.success ? 'ok' : 'err'"></span>
         <code class="sql">{{ e.sql }}</code>
         <span class="ts">{{ fmtTime(e.executedAt) }}<template v-if="e.durationMs != null"> · {{ e.durationMs }}ms</template></span>
+        <button class="star" title="存为片段" @click.stop="emit('saveSnippet', e.sql)">★</button>
       </div>
     </div>
   </div>
@@ -94,5 +104,30 @@ function fmtTime(ts: number): string {
 .ghost.sm {
   padding: 2px 10px;
   font-size: 12px;
+}
+.hist-search {
+  flex: 1;
+  padding: 3px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+.history-bar .cnt {
+  font-size: 11px;
+  color: var(--muted);
+  flex: none;
+}
+.star {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  flex: none;
+}
+.star:hover {
+  color: var(--accent);
 }
 </style>
