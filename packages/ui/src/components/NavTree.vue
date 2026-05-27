@@ -203,7 +203,7 @@ async function reload(): Promise<void> {
   const prev = new Map(roots.value.map((r) => [r.id, r.node]))
   roots.value = conns.map((c) => ({
     id: c.id,
-    node: prev.get(c.id) ?? rootNode(c.name || '(未命名)'),
+    node: prev.get(c.id) ?? rootNode(c.name || t('common.untitled')),
     group: c.group,
     env: connEnv(c),
   }))

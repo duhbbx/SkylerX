@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useDataClient } from './data-client'
+import { t } from './i18n'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
@@ -36,7 +37,6 @@ import {
   dropSupportsCascade,
   erdContext,
   extractDefinition,
-  objectKindLabel,
   previewSql,
 } from './ddl'
 
@@ -118,7 +118,7 @@ async function onRunSql(connId: string, sql: string): Promise<void> {
 }
 
 async function onDeleteConn(id: string): Promise<void> {
-  if (!window.confirm('确定删除该连接？')) return
+  if (!window.confirm(t('conn.removeConfirm'))) return
   await client.connections.remove(id)
   await navRef.value?.reload()
   tabsRef.value?.closeConnTabs(id)
@@ -166,7 +166,7 @@ async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
 // 生成测试数据 → 取列信息，按类型造多行 INSERT 填入查询页（不执行）
 async function onMockData(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
-  const countStr = window.prompt(`为 ${node.name} 生成多少行测试数据？`, '20')
+  const countStr = window.prompt(t('ws.mockPrompt', { name: node.name }), '20')
   const count = Number(countStr)
   if (!Number.isFinite(count) || count < 1) return
   const colNodes = await client.connections.metadata(connId, {
@@ -180,12 +180,12 @@ async function onMockData(connId: string, node: TreeNode): Promise<void> {
     pk: !!c.detail?.primaryKey,
   }))
   if (!cols.length) {
-    window.alert('未取到列信息')
+    window.alert(t('ws.noCols'))
     return
   }
   const ref = node.sqlName ?? node.name
   const sql = buildMockInserts(conn.dialect, ref, cols, Math.floor(count))
-  tabsRef.value?.openDraft(conn, sql, `${node.name} · 测试数据`)
+  tabsRef.value?.openDraft(conn, sql, t('ws.tabMockData', { name: node.name }))
 }
 
 // 表统计信息 → 弹窗展示行数 / 数据 / 索引占用
@@ -201,7 +201,7 @@ async function onTableStats(connId: string, node: TreeNode): Promise<void> {
   const sql = tableStatsQuery(conn.dialect, ctx, node.name)
   tableStats.value = { name: node.name, stats: null, error: null, fmt: formatBytes }
   if (!sql) {
-    tableStats.value.error = '该方言暂不支持统计信息（仅 MySQL / PostgreSQL 系）'
+    tableStats.value.error = t('ws.statsUnsupported')
     return
   }
   try {
@@ -210,7 +210,7 @@ async function onTableStats(connId: string, node: TreeNode): Promise<void> {
       schema: ctx.schema,
     })
     const row = (r.rows as Record<string, unknown>[])[0]
-    if (!row) tableStats.value.error = '未取到统计信息'
+    if (!row) tableStats.value.error = t('ws.noStats')
     else tableStats.value.stats = parseTableStats(row)
   } catch (e) {
     if (tableStats.value) tableStats.value.error = e instanceof Error ? e.message : String(e)
@@ -240,7 +240,7 @@ async function onDeps(connId: string, node: TreeNode): Promise<void> {
   const outSql = existingForeignKeysQuery(conn.dialect, ctx, node.name)
   const inSql = incomingForeignKeysQuery(conn.dialect, ctx, node.name)
   if (!outSql || !inSql) {
-    deps.value.error = '该方言暂不支持依赖分析（仅 MySQL / PostgreSQL 系）'
+    deps.value.error = t('ws.depsUnsupported')
     return
   }
   try {
@@ -286,7 +286,7 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const f = definitionQuery(conn.dialect, node)
   if (!f) {
-    window.alert('该对象暂不支持查看定义')
+    window.alert(t('ws.defUnsupported'))
     return
   }
   const ctx = deriveContext(conn.dialect, node)
@@ -297,12 +297,12 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
     })
     const row = r.rows[0] as Record<string, unknown> | undefined
     if (!row) {
-      window.alert('未取到定义')
+      window.alert(t('ws.noDef'))
       return
     }
-    tabsRef.value?.openDraft(conn, extractDefinition(conn.dialect, node, f.mode, row), `${node.name} · 定义`)
+    tabsRef.value?.openDraft(conn, extractDefinition(conn.dialect, node, f.mode, row), t('ws.tabDef', { name: node.name }))
   } catch (e) {
-    window.alert(`查看定义失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('ws.viewDefFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -323,7 +323,7 @@ async function onGenerateSql(
     const sql = buildSqlTemplate(conn.dialect, kind, node.sqlName ?? node.name, colInfo)
     tabsRef.value?.openDraft(conn, sql, `${node.name} · ${kind.toUpperCase()}`)
   } catch (e) {
-    window.alert(`生成 SQL 失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -346,7 +346,7 @@ async function onExportPick(withData: boolean): Promise<void> {
   exportReq.value = null
   if (!req) return
   if (!client.files) {
-    window.alert('文件接口未就绪：请完整重启应用（preload 更新需重启，非热更新）。')
+    window.alert(t('erd.fileNotReady'))
     return
   }
   if (req.scope === 'table') await doTableExport(req.connId, req.node, withData)
@@ -376,7 +376,7 @@ async function doTableExport(connId: string, node: TreeNode, withData: boolean):
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    window.alert(`导出失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -391,17 +391,17 @@ async function doSchemaExport(connId: string, node: TreeNode, withData: boolean)
       group: 'tables',
     })
     if (!tables.length) {
-      window.alert('该库/schema 下没有表')
+      window.alert(t('ws.noTables'))
       return
     }
     const parts: string[] = []
-    for (const t of tables) {
+    for (const tbl of tables) {
       const cols = await client.connections.metadata(connId, {
         parentKind: MetaNodeKind.Group,
-        path: [...t.path],
+        path: [...tbl.path],
         group: 'columns',
       })
-      const ref = t.sqlName ?? t.name
+      const ref = tbl.sqlName ?? tbl.name
       const rows = withData
         ? (await client.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
             database: ctx.database,
@@ -413,11 +413,11 @@ async function doSchemaExport(connId: string, node: TreeNode, withData: boolean)
     const label = ctx.schema || ctx.database || 'schema'
     await client.files.saveText({
       defaultName: `${label}.sql`,
-      content: `-- SkylerX 库导出：${label}（${tables.length} 表）\n\n${parts.join('\n\n')}`,
+      content: `${t('ws.dumpHeader', { label, n: tables.length })}\n\n${parts.join('\n\n')}`,
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    window.alert(`导出失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -428,7 +428,7 @@ async function onTransferData(connId: string, node: TreeNode): Promise<void> {
 }
 function onTransferDone(count: number): void {
   transferring.value = null
-  window.alert(`数据传输完成：${count} 行`)
+  window.alert(t('ws.transferDone', { count }))
 }
 
 function onImportDone(count: number): void {
@@ -436,7 +436,7 @@ function onImportDone(count: number): void {
   importing.value = null
   if (imp) {
     navRef.value?.refreshNode(imp.node, imp.connId)
-    window.alert(`已导入 ${count} 行到 ${imp.node.name}`)
+    window.alert(t('ws.importDone', { count, name: imp.node.name }))
   }
 }
 
@@ -448,7 +448,7 @@ async function onDropObject(connId: string, node: TreeNode): Promise<void> {
     connId,
     node,
     dialect: conn.dialect,
-    label: objectKindLabel(node.kind),
+    label: t(`obj.${node.kind}`),
     cascade: false,
     busy: false,
     error: null,
@@ -560,7 +560,7 @@ async function onSearchReveal(connId: string, schema: string, table: string): Pr
 // 结构对比生成的迁移 SQL → 在目标连接开一个草稿查询页
 async function onDiffOpenSql(connId: string, sql: string): Promise<void> {
   const conn = await client.connections.get(connId)
-  tabsRef.value?.openDraft(conn, sql, '结构迁移')
+  tabsRef.value?.openDraft(conn, sql, t('ws.tabMigration'))
 }
 
 // ── ⌘K 命令面板 ──
@@ -568,20 +568,20 @@ const paletteOpen = ref(false)
 const paletteConns = ref<ConnectionConfig[]>([])
 
 const paletteItems = computed<PaletteItem[]>(() => [
-  { id: 'act:new-conn', label: '新建连接', group: '操作' },
-  { id: 'act:object-search', label: '全局对象搜索（表/视图/列）', group: '操作' },
-  { id: 'act:schema-diff', label: '结构对比 / 同步', group: '操作' },
-  { id: 'act:data-diff', label: '数据对比 / 同步', group: '操作' },
-  { id: 'act:privileges', label: '用户与权限', group: '操作' },
-  { id: 'act:settings', label: '设置', group: '操作' },
-  { id: 'act:export-conns', label: '导出连接配置', group: '操作' },
-  { id: 'act:import-conns', label: '导入连接配置', group: '操作' },
-  { id: 'act:refresh', label: '刷新导航树', group: '操作' },
+  { id: 'act:new-conn', label: t('pal.newConn'), group: t('pal.groupActions') },
+  { id: 'act:object-search', label: t('pal.objectSearch'), group: t('pal.groupActions') },
+  { id: 'act:schema-diff', label: t('pal.schemaDiff'), group: t('pal.groupActions') },
+  { id: 'act:data-diff', label: t('pal.dataDiff'), group: t('pal.groupActions') },
+  { id: 'act:privileges', label: t('pal.privileges'), group: t('pal.groupActions') },
+  { id: 'act:settings', label: t('pal.settings'), group: t('pal.groupActions') },
+  { id: 'act:export-conns', label: t('pal.exportConns'), group: t('pal.groupActions') },
+  { id: 'act:import-conns', label: t('pal.importConns'), group: t('pal.groupActions') },
+  { id: 'act:refresh', label: t('pal.refresh'), group: t('pal.groupActions') },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
-    label: c.name || '(未命名)',
+    label: c.name || t('common.untitled'),
     hint: c.dialect,
-    group: '连接',
+    group: t('pal.groupConns'),
   })),
 ])
 
@@ -628,9 +628,9 @@ async function importConns(): Promise<void> {
       }
     }
     await navRef.value?.reload()
-    window.alert(`导入 ${n} 个连接（密码未含，请逐个补填）`)
+    window.alert(t('ws.importConnsResult', { n }))
   } catch (e) {
-    window.alert(`导入失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('ws.importConnsFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -685,7 +685,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   <Modal
     v-if="editing"
-    :title="editing.connId ? '编辑连接' : '新建连接'"
+    :title="editing.connId ? t('ws.titleEditConn') : t('ws.titleNewConn')"
     @close="onCancel"
   >
     <ConnectionForm
@@ -697,54 +697,50 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     />
   </Modal>
 
-  <Modal v-if="dropConfirm" title="删除确认" @close="dropConfirm = null">
+  <Modal v-if="dropConfirm" :title="t('ws.dropTitle')" @close="dropConfirm = null">
     <div class="confirm">
-      <p>
-        确定删除{{ dropConfirm.label }} <b>{{ dropConfirm.node.name }}</b> 吗？此操作不可撤销。
-      </p>
+      <p>{{ t('ws.dropMsg', { label: dropConfirm.label, name: dropConfirm.node.name }) }}</p>
       <label v-if="dropCascadeApplicable" class="cascade">
         <input v-model="dropConfirm.cascade" type="checkbox" />
-        级联删除（CASCADE，连同依赖对象一并删除）
+        {{ t('ws.cascade') }}
       </label>
       <pre class="confirm-sql">{{ dropResult?.sql }}</pre>
       <div v-if="dropConfirm.error" class="banner err">✗ {{ dropConfirm.error }}</div>
       <div class="actions">
         <button class="danger" :disabled="dropConfirm.busy" @click="confirmDrop">
-          {{ dropConfirm.busy ? '删除中…' : '删除' }}
+          {{ dropConfirm.busy ? t('ws.deleting') : t('common.delete') }}
         </button>
-        <button class="ghost" @click="dropConfirm = null">取消</button>
+        <button class="ghost" @click="dropConfirm = null">{{ t('common.cancel') }}</button>
       </div>
     </div>
   </Modal>
 
-  <Modal v-if="bulkDropState" title="批量删除确认" @close="bulkDropState = null">
+  <Modal v-if="bulkDropState" :title="t('ws.bulkDropTitle')" @close="bulkDropState = null">
     <div class="confirm">
-      <p>
-        确定删除以下 <b>{{ bulkDropState.items.length }}</b> 个对象吗？此操作不可撤销。
-      </p>
+      <p>{{ t('ws.bulkDropMsg', { n: bulkDropState.items.length }) }}</p>
       <ul class="bulk-list">
         <li v-for="(it, i) in bulkDropState.items" :key="i" :class="{ gone: i < bulkDropState.done }">
-          {{ objectKindLabel(it.node.kind) }} · {{ it.node.sqlName ?? it.node.name }}
+          {{ t(`obj.${it.node.kind}`) }} · {{ it.node.sqlName ?? it.node.name }}
         </li>
       </ul>
       <label class="cascade">
         <input v-model="bulkDropState.cascade" type="checkbox" />
-        级联删除（CASCADE，对支持的对象连同依赖一并删除）
+        {{ t('ws.cascadeBulk') }}
       </label>
       <div v-if="bulkDropState.error" class="banner err">
-        ✗ 已删除 {{ bulkDropState.done }}/{{ bulkDropState.items.length }}，中断于：{{ bulkDropState.error }}
+        {{ t('ws.bulkErr', { done: bulkDropState.done, total: bulkDropState.items.length, msg: bulkDropState.error }) }}
       </div>
       <div class="actions">
         <button class="danger" :disabled="bulkDropState.busy" @click="confirmBulkDrop">
           {{
             bulkDropState.busy
-              ? `删除中… ${bulkDropState.done}/${bulkDropState.items.length}`
+              ? t('ws.bulkDeleting', { done: bulkDropState.done, total: bulkDropState.items.length })
               : bulkDropState.error
-                ? '继续删除'
-                : `删除 ${bulkDropState.items.length} 项`
+                ? t('ws.bulkContinue')
+                : t('ws.bulkDeleteN', { n: bulkDropState.items.length })
           }}
         </button>
-        <button class="ghost" @click="bulkDropState = null">取消</button>
+        <button class="ghost" @click="bulkDropState = null">{{ t('common.cancel') }}</button>
       </div>
     </div>
   </Modal>
@@ -778,42 +774,42 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   <ExportOptionsDialog
     v-if="exportReq"
-    :title="exportReq.scope === 'schema' ? `导出库 ${exportReq.node.name} 为 SQL` : `导出表 ${exportReq.node.name} 为 SQL`"
+    :title="exportReq.scope === 'schema' ? t('ws.exportSchemaTitle', { name: exportReq.node.name }) : t('ws.exportTableTitle', { name: exportReq.node.name })"
     @pick="onExportPick"
     @close="exportReq = null"
   />
 
-  <Modal v-if="deps" :title="`依赖关系 · ${deps.name}`" @close="deps = null">
+  <Modal v-if="deps" :title="t('ws.depsTitle', { name: deps.name })" @close="deps = null">
     <div class="confirm">
       <div v-if="deps.error" class="banner err">✗ {{ deps.error }}</div>
       <template v-else>
-        <div class="dep-sec">引用的表（本表外键 →）</div>
-        <div v-if="!deps.out.length" class="dep-empty">无</div>
+        <div class="dep-sec">{{ t('ws.depsOut') }}</div>
+        <div v-if="!deps.out.length" class="dep-empty">{{ t('ws.depsNone') }}</div>
         <div v-for="(d, i) in deps.out" :key="'o' + i" class="dep-row" @click="onDepReveal(d.table)">
           → <b>{{ d.table }}</b> <span class="dep-cols">({{ d.cols }})</span>
         </div>
-        <div class="dep-sec">被引用（← 外键指向本表）</div>
-        <div v-if="!deps.inc.length" class="dep-empty">无</div>
+        <div class="dep-sec">{{ t('ws.depsIn') }}</div>
+        <div v-if="!deps.inc.length" class="dep-empty">{{ t('ws.depsNone') }}</div>
         <div v-for="(d, i) in deps.inc" :key="'i' + i" class="dep-row" @click="onDepReveal(d.table)">
           ← <b>{{ d.table }}</b> <span class="dep-cols">({{ d.cols }})</span>
         </div>
-        <p class="dep-foot">点击表名在导航树中定位</p>
+        <p class="dep-foot">{{ t('ws.depsFoot') }}</p>
       </template>
     </div>
   </Modal>
 
-  <Modal v-if="tableStats" :title="`统计信息 · ${tableStats.name}`" @close="tableStats = null">
+  <Modal v-if="tableStats" :title="t('ws.statsTitle', { name: tableStats.name })" @close="tableStats = null">
     <div class="confirm">
       <div v-if="tableStats.error" class="banner err">✗ {{ tableStats.error }}</div>
       <template v-else-if="tableStats.stats">
-        <div class="kv-row"><span>行数（估算）</span><b>{{ tableStats.stats.rows.toLocaleString() }}</b></div>
-        <div class="kv-row"><span>数据大小</span><b>{{ tableStats.fmt(tableStats.stats.dataBytes) }}</b></div>
-        <div class="kv-row"><span>索引大小</span><b>{{ tableStats.fmt(tableStats.stats.indexBytes) }}</b></div>
+        <div class="kv-row"><span>{{ t('ws.statsRows') }}</span><b>{{ tableStats.stats.rows.toLocaleString() }}</b></div>
+        <div class="kv-row"><span>{{ t('ws.statsData') }}</span><b>{{ tableStats.fmt(tableStats.stats.dataBytes) }}</b></div>
+        <div class="kv-row"><span>{{ t('ws.statsIndex') }}</span><b>{{ tableStats.fmt(tableStats.stats.indexBytes) }}</b></div>
         <div class="kv-row total">
-          <span>合计</span><b>{{ tableStats.fmt(tableStats.stats.dataBytes + tableStats.stats.indexBytes) }}</b>
+          <span>{{ t('ws.statsTotal') }}</span><b>{{ tableStats.fmt(tableStats.stats.dataBytes + tableStats.stats.indexBytes) }}</b>
         </div>
       </template>
-      <div v-else class="banner">加载中…</div>
+      <div v-else class="banner">{{ t('common.loading') }}</div>
     </div>
   </Modal>
 
