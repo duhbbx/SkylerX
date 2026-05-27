@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { inject } from 'vue'
+import { t } from '../i18n'
 import { TreeControllerKey } from './tree-controller'
 import { type TreeNode, iconFor } from './treeNode'
 
@@ -73,7 +74,7 @@ function onContext(e: MouseEvent): void {
 
     <template v-if="node.expanded">
       <div v-if="node.loading" class="tree-msg" :style="{ paddingLeft: (depth + 1) * 14 + 8 + 'px' }">
-        加载中…
+        {{ t('nav.loading') }}
       </div>
       <TreeItem
         v-for="child in node.children || []"

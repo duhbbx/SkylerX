@@ -2,6 +2,7 @@
 import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, provide, reactive, ref } from 'vue'
 import { useDataClient } from '../data-client'
+import { t } from '../i18n'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
 import { isConnectionError } from '../connError'
@@ -227,15 +228,15 @@ onMounted(reload)
 <template>
   <div class="tree">
     <div class="tree-head">
-      <span>导航</span>
+      <span>{{ t('nav.title') }}</span>
       <span class="head-actions">
-        <button class="icon" title="新建连接" @click="controller.newConnection()">+</button>
-        <button class="icon" title="刷新" @click="reload">⟳</button>
-        <button class="icon" title="设置" @click="emit('openSettings')">⚙</button>
+        <button class="icon" :title="t('nav.newConn')" @click="controller.newConnection()">+</button>
+        <button class="icon" :title="t('nav.refresh')" @click="reload">⟳</button>
+        <button class="icon" :title="t('nav.settings')" @click="emit('openSettings')">⚙</button>
       </span>
     </div>
     <div class="tree-body">
-      <div v-if="!roots.length" class="tree-status">还没有连接，点上方 + 新建</div>
+      <div v-if="!roots.length" class="tree-status">{{ t('nav.empty') }}</div>
 
       <template v-for="g in groupList" :key="'g:' + g.name">
         <div class="group-row" @click="toggleGroup(g.name)">
@@ -253,10 +254,10 @@ onMounted(reload)
     </div>
 
     <div v-if="multiSel.size" class="bulk-bar">
-      <span class="bcount">已选 {{ multiSel.size }} 项</span>
-      <button class="danger" title="批量删除所选对象" @click="bulkDrop">批量删除</button>
-      <button title="复制所选对象的限定名（每行一个）" @click="bulkCopyNames">复制名</button>
-      <button class="ghost" title="取消选择" @click="controller.clearMulti()">✕</button>
+      <span class="bcount">{{ t('bulk.selected', { n: multiSel.size }) }}</span>
+      <button class="danger" :title="t('bulk.delete')" @click="bulkDrop">{{ t('bulk.delete') }}</button>
+      <button :title="t('bulk.copyNames')" @click="bulkCopyNames">{{ t('bulk.copyNames') }}</button>
+      <button class="ghost" :title="t('common.cancel')" @click="controller.clearMulti()">✕</button>
     </div>
 
     <ContextMenu

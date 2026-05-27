@@ -1,49 +1,58 @@
 <script setup lang="ts">
+import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
 import { resetSettings, settings } from '../settings'
 import Modal from './Modal.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const PAGE_SIZES = [50, 100, 200, 500, 1000]
+const LOCALES: Locale[] = ['zh', 'en']
 </script>
 
 <template>
-  <Modal title="设置" @close="emit('close')">
+  <Modal :title="t('settings.title')" @close="emit('close')">
     <div class="settings">
       <label class="row">
-        <span class="lbl">主题</span>
-        <select v-model="settings.theme">
-          <option value="dark">深色</option>
-          <option value="light">浅色</option>
+        <span class="lbl">{{ t('settings.language') }}</span>
+        <select :value="locale" @change="setLocale(($event.target as HTMLSelectElement).value as Locale)">
+          <option v-for="l in LOCALES" :key="l" :value="l">{{ LOCALE_LABEL[l] }}</option>
         </select>
       </label>
 
       <label class="row">
-        <span class="lbl">默认每页条数</span>
+        <span class="lbl">{{ t('settings.theme') }}</span>
+        <select v-model="settings.theme">
+          <option value="dark">{{ t('settings.theme.dark') }}</option>
+          <option value="light">{{ t('settings.theme.light') }}</option>
+        </select>
+      </label>
+
+      <label class="row">
+        <span class="lbl">{{ t('settings.pageSize') }}</span>
         <select v-model.number="settings.pageSize">
           <option v-for="s in PAGE_SIZES" :key="s" :value="s">{{ s }}</option>
         </select>
       </label>
 
       <label class="row">
-        <span class="lbl">编辑器字号</span>
+        <span class="lbl">{{ t('settings.fontSize') }}</span>
         <input v-model.number="settings.fontSize" type="number" min="10" max="24" />
         <span class="unit">px</span>
       </label>
 
       <label class="row">
-        <span class="lbl">SQL 格式化关键字</span>
+        <span class="lbl">{{ t('settings.keywordCase') }}</span>
         <select v-model="settings.keywordCase">
-          <option value="upper">大写 UPPER</option>
-          <option value="lower">小写 lower</option>
-          <option value="preserve">保持原样</option>
+          <option value="upper">{{ t('settings.keywordCase.upper') }}</option>
+          <option value="lower">{{ t('settings.keywordCase.lower') }}</option>
+          <option value="preserve">{{ t('settings.keywordCase.preserve') }}</option>
         </select>
       </label>
 
       <div class="actions">
-        <button class="ghost" @click="resetSettings">恢复默认</button>
-        <button class="primary" @click="emit('close')">完成</button>
+        <button class="ghost" @click="resetSettings">{{ t('common.resetDefault') }}</button>
+        <button class="primary" @click="emit('close')">{{ t('common.done') }}</button>
       </div>
-      <p class="note">设置即时生效并本地保存；字号对新打开的编辑器生效。</p>
+      <p class="note">{{ t('settings.note') }}</p>
     </div>
   </Modal>
 </template>
