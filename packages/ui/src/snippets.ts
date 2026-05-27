@@ -4,6 +4,8 @@ export interface Snippet {
   id: string
   name: string
   sql: string
+  /** 标签（用于归类 / 过滤） */
+  tags?: string[]
   createdAt: number
 }
 
@@ -33,15 +35,22 @@ watch(
   { deep: true },
 )
 
-export function addSnippet(name: string, sql: string): void {
+export function addSnippet(name: string, sql: string, tags: string[] = []): void {
   const trimmed = sql.trim()
   if (!trimmed) return
+  const cleanTags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))]
   snippets.unshift({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: name.trim() || trimmed.slice(0, 40),
     sql: trimmed,
+    tags: cleanTags.length ? cleanTags : undefined,
     createdAt: Date.now(),
   })
+}
+
+/** 所有片段用到的标签集合（去重排序）。 */
+export function allTags(): string[] {
+  return [...new Set(snippets.flatMap((s) => s.tags ?? []))].sort()
 }
 
 export function removeSnippet(id: string): void {

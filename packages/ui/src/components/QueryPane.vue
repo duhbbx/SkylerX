@@ -589,7 +589,8 @@ function saveSnippet(sqlText: string): void {
   if (!text) return
   const name = window.prompt('片段名称', text.slice(0, 40))
   if (name === null) return
-  addSnippet(name, text)
+  const tags = window.prompt('标签（逗号分隔，可留空）', '') ?? ''
+  addSnippet(name, text, tags.split(','))
 }
 // 工具栏「存为片段」：有选区则存选中语句，否则存整个编辑器内容
 function saveCurrentSnippet(): void {

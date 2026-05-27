@@ -1,14 +1,25 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { removeSnippet, snippets } from '../snippets'
+import { allTags, removeSnippet, snippets } from '../snippets'
 
 const emit = defineEmits<{ pick: [string] }>()
 
 const q = ref('')
+const activeTag = ref<string | null>(null)
+const tags = computed(() => allTags())
+
 const filtered = computed(() => {
   const k = q.value.trim().toLowerCase()
-  return k ? snippets.filter((s) => `${s.name} ${s.sql}`.toLowerCase().includes(k)) : snippets
+  return snippets.filter(
+    (s) =>
+      (!activeTag.value || (s.tags ?? []).includes(activeTag.value)) &&
+      (!k || `${s.name} ${s.sql} ${(s.tags ?? []).join(' ')}`.toLowerCase().includes(k)),
+  )
 })
+
+function toggleTag(t: string): void {
+  activeTag.value = activeTag.value === t ? null : t
+}
 </script>
 
 <template>
@@ -16,6 +27,17 @@ const filtered = computed(() => {
     <div class="snip-bar">
       <input v-model="q" class="snip-search" placeholder="🔍 搜索片段…" />
       <span class="cnt">{{ filtered.length }} / {{ snippets.length }}</span>
+    </div>
+    <div v-if="tags.length" class="tag-bar">
+      <button
+        v-for="t in tags"
+        :key="t"
+        class="tag-chip"
+        :class="{ on: activeTag === t }"
+        @click="toggleTag(t)"
+      >
+        #{{ t }}
+      </button>
     </div>
     <div class="snip-list">
       <div v-if="!snippets.length" class="snip-empty">
@@ -30,7 +52,10 @@ const filtered = computed(() => {
         @dblclick="emit('pick', s.sql)"
       >
         <div class="snip-main">
-          <div class="snip-name">{{ s.name }}</div>
+          <div class="snip-name">
+            {{ s.name }}
+            <span v-for="t in s.tags ?? []" :key="t" class="itag">#{{ t }}</span>
+          </div>
           <code class="snip-sql">{{ s.sql }}</code>
         </div>
         <button class="x" title="删除片段" @click.stop="removeSnippet(s.id)">×</button>
@@ -64,6 +89,33 @@ const filtered = computed(() => {
 .snip-bar .cnt {
   font-size: 11px;
   color: var(--muted);
+}
+.tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tag-chip {
+  font-size: 11px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+.tag-chip.on {
+  background: var(--accent, #7c6cff);
+  border-color: var(--accent, #7c6cff);
+  color: #fff;
+}
+.itag {
+  font-size: 10px;
+  color: var(--accent, #7c6cff);
+  margin-left: 6px;
+  font-weight: 400;
 }
 .snip-list {
   flex: 1;
