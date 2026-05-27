@@ -13,7 +13,21 @@ export function getDb(): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(SCHEMA_SQL)
+  migrate(db)
   return db
+}
+
+/** 为既有库补齐新增列（幂等）。 */
+function migrate(db: Database.Database): void {
+  ensureColumn(db, 'connections', 'ssh_json', 'TEXT')
+  ensureColumn(db, 'connections', 'group_name', 'TEXT')
+}
+
+function ensureColumn(db: Database.Database, table: string, col: string, decl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (!cols.some((c) => c.name === col)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`)
+  }
 }
 
 export function closeDb(): void {

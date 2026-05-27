@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { ConnectionConfig, ConnectionConfigStore } from '@db-tool/core-driver'
+import type { ConnectionConfig, ConnectionConfigStore, SshConfig } from '@db-tool/core-driver'
 import { DbDialect } from '@db-tool/core-driver'
 import { safeStorage } from 'electron'
 import { getDb } from './sqlite.js'
@@ -14,6 +14,8 @@ interface ConnectionRow {
   password_enc: string | null
   database: string | null
   ssl_json: string | null
+  ssh_json: string | null
+  group_name: string | null
   extra_json: string | null
   created_at: number
   updated_at: number
@@ -39,6 +41,19 @@ function decryptPassword(stored: string | null): string | undefined {
   return stored
 }
 
+/** SSH 配置含密码/私钥，整体加密存储。 */
+function encryptSsh(ssh?: SshConfig): string | null {
+  return ssh ? encryptPassword(JSON.stringify(ssh)) : null
+}
+
+/** 解出 SSH 配置；脱敏时（列表）剔除密码/私钥/口令。 */
+function decryptSsh(stored: string | null, withSecrets: boolean): SshConfig | undefined {
+  const dec = decryptPassword(stored)
+  if (!dec) return undefined
+  const ssh = JSON.parse(dec) as SshConfig
+  return withSecrets ? ssh : { ...ssh, password: undefined, privateKey: undefined, passphrase: undefined }
+}
+
 function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfig {
   return {
     id: row.id,
@@ -50,6 +65,8 @@ function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfi
     password: withPassword ? decryptPassword(row.password_enc) : undefined,
     database: row.database ?? undefined,
     ssl: row.ssl_json ? JSON.parse(row.ssl_json) : undefined,
+    ssh: decryptSsh(row.ssh_json, withPassword),
+    group: row.group_name ?? undefined,
     extra: row.extra_json ? JSON.parse(row.extra_json) : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -78,8 +95,8 @@ export function createConnection(input: ConnectionConfig): ConnectionConfig {
   getDb()
     .prepare(
       `INSERT INTO connections
-        (id, name, dialect, host, port, username, password_enc, database, ssl_json, extra_json, created_at, updated_at)
-       VALUES (@id, @name, @dialect, @host, @port, @username, @password_enc, @database, @ssl_json, @extra_json, @created_at, @updated_at)`,
+        (id, name, dialect, host, port, username, password_enc, database, ssl_json, ssh_json, group_name, extra_json, created_at, updated_at)
+       VALUES (@id, @name, @dialect, @host, @port, @username, @password_enc, @database, @ssl_json, @ssh_json, @group_name, @extra_json, @created_at, @updated_at)`,
     )
     .run({
       id,
@@ -91,6 +108,8 @@ export function createConnection(input: ConnectionConfig): ConnectionConfig {
       password_enc: encryptPassword(input.password),
       database: input.database ?? null,
       ssl_json: input.ssl ? JSON.stringify(input.ssl) : null,
+      ssh_json: encryptSsh(input.ssh),
+      group_name: input.group?.trim() || null,
       extra_json: input.extra ? JSON.stringify(input.extra) : null,
       created_at: now,
       updated_at: now,
@@ -112,6 +131,7 @@ export function updateConnection(input: ConnectionConfig): ConnectionConfig {
     `UPDATE connections SET
        name=@name, dialect=@dialect, host=@host, port=@port, username=@username,
        password_enc=@password_enc, database=@database, ssl_json=@ssl_json,
+       ssh_json=@ssh_json, group_name=@group_name,
        extra_json=@extra_json, updated_at=@updated_at
      WHERE id=@id`,
   ).run({
@@ -124,6 +144,8 @@ export function updateConnection(input: ConnectionConfig): ConnectionConfig {
     password_enc: passwordEnc,
     database: input.database ?? null,
     ssl_json: input.ssl ? JSON.stringify(input.ssl) : null,
+    ssh_json: encryptSsh(input.ssh),
+    group_name: input.group?.trim() || null,
     extra_json: input.extra ? JSON.stringify(input.extra) : null,
     updated_at: now,
   })
@@ -146,6 +168,8 @@ function toRow(input: ConnectionConfig, id: string, createdAt: number, updatedAt
     password_enc: encryptPassword(input.password),
     database: input.database ?? null,
     ssl_json: input.ssl ? JSON.stringify(input.ssl) : null,
+    ssh_json: encryptSsh(input.ssh),
+    group_name: input.group?.trim() || null,
     extra_json: input.extra ? JSON.stringify(input.extra) : null,
     created_at: createdAt,
     updated_at: updatedAt,

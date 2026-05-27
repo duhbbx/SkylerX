@@ -8,6 +8,7 @@ import {
   updateConnection,
 } from '../db/connectionStore.js'
 import { clearHistory, listHistory, recordHistory } from '../db/historyStore.js'
+import { closeTunnel, ensureTunnel } from '../ssh-tunnel.js'
 import { getTransport } from '../transport.js'
 
 /** IPC 通道名集中定义，preload 侧需保持一致。 */
@@ -36,19 +37,26 @@ export function registerConnectionIpc(): void {
 
   ipcMain.handle(IPC.update, async (_e, config: ConnectionConfig) => {
     const updated = updateConnection(config)
-    // 失效该连接的缓存连接（池），让新配置立即生效
+    // 失效该连接的缓存连接（池）+ 关闭旧 SSH 隧道，让新配置立即生效
     await getTransport().disconnect(config.id)
+    closeTunnel(config.id)
     return updated
   })
 
   ipcMain.handle(IPC.remove, async (_e, id: string) => {
     deleteConnection(id)
     await getTransport().disconnect(id)
+    closeTunnel(id)
   })
 
-  ipcMain.handle(IPC.test, (_e, config: ConnectionConfig) =>
-    getTransport().testConnection(config),
-  )
+  ipcMain.handle(IPC.test, async (_e, config: ConnectionConfig) => {
+    if (config.ssh?.enabled && config.ssh.host) {
+      const key = config.id || `test:${config.ssh.host}:${config.host}:${config.port}`
+      const ep = await ensureTunnel(key, config)
+      return getTransport().testConnection({ ...config, host: ep.host, port: ep.port })
+    }
+    return getTransport().testConnection(config)
+  })
 
   ipcMain.handle(
     IPC.execute,

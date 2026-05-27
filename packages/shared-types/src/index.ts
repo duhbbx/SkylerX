@@ -37,6 +37,18 @@ export interface SslConfig {
   key?: string
 }
 
+/** SSH 隧道配置（经跳板机连内网库）。 */
+export interface SshConfig {
+  enabled: boolean
+  host: string
+  port: number
+  user: string
+  /** 鉴权：密码 或 私钥二选一 */
+  password?: string
+  privateKey?: string
+  passphrase?: string
+}
+
 /**
  * 完整连接配置（含敏感信息）。
  * 持久化时 password 应加密；跨边界传输时按需脱敏。
@@ -53,6 +65,10 @@ export interface ConnectionConfig {
   /** 默认库 / schema */
   database?: string
   ssl?: SslConfig
+  /** SSH 隧道（经跳板机连内网库） */
+  ssh?: SshConfig
+  /** 连接分组 / 文件夹名（导航树根层据此分组；空 = 未分组） */
+  group?: string
   /** 通道模式；缺省按部署环境默认（桌面端恒为 local） */
   transport?: TransportMode
   /** agent 模式下的目标 agent 标识 */

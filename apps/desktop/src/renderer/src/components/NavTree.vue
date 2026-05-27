@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
-import { onMounted, provide, reactive, ref } from 'vue'
+import { computed, onMounted, provide, reactive, ref } from 'vue'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
 import { isConnectionError } from '../connError'
@@ -28,9 +28,31 @@ const emit = defineEmits<{
 interface ConnRoot {
   id: string
   node: TreeNode
+  group?: string
 }
 
 const roots = ref<ConnRoot[]>([])
+const expandedGroups = ref<Set<string>>(new Set())
+
+// 按 group 聚合：有分组的归入文件夹，未分组的平铺
+const groupList = computed(() => {
+  const m = new Map<string, ConnRoot[]>()
+  for (const r of roots.value) {
+    if (!r.group) continue
+    const arr = m.get(r.group)
+    if (arr) arr.push(r)
+    else m.set(r.group, [r])
+  }
+  return [...m.entries()].map(([name, conns]) => ({ name, conns }))
+})
+const ungrouped = computed(() => roots.value.filter((r) => !r.group))
+
+function toggleGroup(name: string): void {
+  const s = new Set(expandedGroups.value)
+  if (s.has(name)) s.delete(name)
+  else s.add(name)
+  expandedGroups.value = s
+}
 
 const menu = reactive<{
   visible: boolean
@@ -127,8 +149,16 @@ async function reload(): Promise<void> {
   roots.value = conns.map((c) => ({
     id: c.id,
     node: prev.get(c.id) ?? rootNode(c.name || '(未命名)'),
+    group: c.group,
   }))
+  // 新出现的分组默认展开（保留用户已折叠的）
+  const s = new Set(expandedGroups.value)
+  const known = new Set(roots.value.map((r) => r.group).filter(Boolean) as string[])
+  for (const g of known) if (!seenGroups.has(g)) s.add(g)
+  seenGroups = known
+  expandedGroups.value = s
 }
+let seenGroups = new Set<string>()
 
 /** 刷新某节点（如新建表后刷新所属"表"目录）。 */
 function refreshNode(node: TreeNode, connId: string): void {
@@ -150,7 +180,20 @@ onMounted(reload)
     </div>
     <div class="tree-body">
       <div v-if="!roots.length" class="tree-status">还没有连接，点上方 + 新建</div>
-      <TreeItem v-for="r in roots" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" />
+
+      <template v-for="g in groupList" :key="'g:' + g.name">
+        <div class="group-row" @click="toggleGroup(g.name)">
+          <span class="caret">{{ expandedGroups.has(g.name) ? '▾' : '▸' }}</span>
+          <span class="folder">📁</span>
+          <span class="gname">{{ g.name }}</span>
+          <span class="gcount">{{ g.conns.length }}</span>
+        </div>
+        <div v-show="expandedGroups.has(g.name)">
+          <TreeItem v-for="r in g.conns" :key="r.id" :node="r.node" :conn-id="r.id" :depth="1" />
+        </div>
+      </template>
+
+      <TreeItem v-for="r in ungrouped" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" />
     </div>
 
     <ContextMenu
@@ -193,5 +236,31 @@ onMounted(reload)
   padding: 16px 12px;
   color: var(--muted);
   font-size: 13px;
+}
+.group-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text);
+}
+.group-row:hover {
+  background: var(--hover, rgba(124, 108, 255, 0.1));
+}
+.group-row .caret {
+  width: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.group-row .gname {
+  flex: 1;
+  font-weight: 500;
+}
+.group-row .gcount {
+  color: var(--muted);
+  font-size: 11px;
 }
 </style>

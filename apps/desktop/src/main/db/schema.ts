@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS connections (
   password_enc TEXT,
   database     TEXT,
   ssl_json     TEXT,
+  ssh_json     TEXT,
+  group_name   TEXT,
   extra_json   TEXT,
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL

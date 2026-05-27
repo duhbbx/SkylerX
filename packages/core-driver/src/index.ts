@@ -24,6 +24,7 @@ export type {
   MetaScope,
   QueryColumn,
   QueryResult,
+  SshConfig,
   SslConfig,
   TestResult,
 } from '@db-tool/shared-types'
