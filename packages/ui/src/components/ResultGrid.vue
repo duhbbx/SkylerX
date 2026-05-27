@@ -22,11 +22,14 @@ const props = defineProps<{
   editable?: boolean
   /** 用于 SQL 导出时的标识符引用 */
   dialect?: DbDialect
+  /** 可服务端筛选（浏览单表时）：列头出现漏斗，生成 WHERE 重查 */
+  filterable?: boolean
 }>()
 const emit = defineEmits<{
   changePage: [number]
   changePageSize: [number]
   commit: [EditChanges]
+  filter: [string]
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -53,6 +56,8 @@ const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
 // 列宽（px，按列名）
 const colWidths = ref<Record<string, number>>({})
+// 服务端列筛选：列名 → 条件串（如 "= 5"）
+const colFilters = ref<Record<string, string>>({})
 
 function startResize(col: string, e: MouseEvent): void {
   const th = (e.target as HTMLElement).closest('th') as HTMLElement | null
@@ -166,6 +171,7 @@ function resetEdits(): void {
   showColsMenu.value = false
   showCopyMenu.value = false
   colWidths.value = {}
+  colFilters.value = {}
 }
 watch(() => props.result, resetEdits, { immediate: true })
 
@@ -302,6 +308,27 @@ function copyText(text: string): void {
   void navigator.clipboard?.writeText(text)
 }
 
+// ── 服务端列筛选（生成 WHERE，由 QueryPane 重查）──
+function filterCol(col: string): void {
+  const cur = colFilters.value[col] ?? ''
+  const input = window.prompt(
+    `筛选「${col}」——输入条件（如  = 5  /  > 10  /  LIKE '%a%'  /  IS NULL），留空清除`,
+    cur,
+  )
+  if (input === null) return
+  const next = { ...colFilters.value }
+  if (input.trim()) next[col] = input.trim()
+  else delete next[col]
+  colFilters.value = next
+  const q = (s: string) => (props.dialect != null ? quoteId(props.dialect, s) : `"${s}"`)
+  emit(
+    'filter',
+    Object.entries(colFilters.value)
+      .map(([c, cond]) => `${q(c)} ${cond}`)
+      .join(' AND '),
+  )
+}
+
 // ── 大文本/JSON 单元格编辑器 ──
 const editBuf = ref('')
 function openCellEditor(rowIndex: number, col: string): void {
@@ -381,6 +408,15 @@ function applyCellEdit(): void {
               >
                 {{ c.name }}<span class="th-type">{{ c.dataType }}</span>
                 <span v-if="sortCol === c.name" class="sort-ind">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                <button
+                  v-if="filterable"
+                  class="funnel"
+                  :class="{ on: colFilters[c.name] }"
+                  title="筛选该列（生成 WHERE）"
+                  @click.stop="filterCol(c.name)"
+                >
+                  ⏷
+                </button>
                 <span
                   class="col-resize"
                   title="拖拽调整列宽"
@@ -762,6 +798,17 @@ th.sortable {
 }
 th.sortable:hover {
   color: var(--text);
+}
+.funnel {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+}
+.funnel.on {
+  color: var(--accent);
 }
 .sort-ind {
   margin-left: 4px;

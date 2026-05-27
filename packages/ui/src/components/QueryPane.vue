@@ -414,6 +414,13 @@ async function gotoPage(tab: ResultTab | undefined, page: number): Promise<void>
   }
 }
 
+// 列筛选 → 重建单表查询并从第 0 页重查
+function applyServerFilter(tab: ResultTab | undefined, where: string): void {
+  if (!tab?.editTable) return
+  tab.sql = where ? `SELECT * FROM ${tab.editTable} WHERE ${where}` : `SELECT * FROM ${tab.editTable}`
+  void gotoPage(tab, 0)
+}
+
 function changePageSize(tab: ResultTab | undefined, size: number): void {
   if (!tab) return
   tab.pageSize = size
@@ -565,9 +572,11 @@ onMounted(() => {
         :has-more="(cur?.result?.rowCount ?? 0) === (cur?.pageSize ?? 200)"
         :editable="!!cur?.editTable"
         :dialect="conn.dialect"
+        :filterable="!!cur?.editTable"
         @change-page="(p) => gotoPage(cur, p)"
         @change-page-size="(s) => changePageSize(cur, s)"
         @commit="onCommit"
+        @filter="(w) => applyServerFilter(cur, w)"
       />
     </div>
   </div>
