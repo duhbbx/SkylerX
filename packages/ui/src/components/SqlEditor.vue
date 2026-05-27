@@ -34,10 +34,26 @@ onMounted(() => {
   })
 
   editor.onDidChangeModelContent(() => emit('update:modelValue', editor!.getValue()))
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => emit('run'))
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () =>
-    emit('format'),
-  )
+
+  // 在 onKeyDown 拦截执行/格式化快捷键：addCommand 注册的键位会被自动补全弹窗
+  // （suggestWidget 可见时）等上下文吞掉，导致刚打完字、弹窗还开着时 ⌘/Ctrl+Enter 不生效。
+  // 这里抢先处理并 stopPropagation，阻止 Monaco 后续按键派发，保证任何状态下都能触发。
+  editor.onKeyDown((e) => {
+    const mod = e.metaKey || e.ctrlKey
+    // ⌘/Ctrl+Enter 执行
+    if (mod && !e.altKey && e.keyCode === monaco.KeyCode.Enter) {
+      e.preventDefault()
+      e.stopPropagation()
+      emit('run')
+      return
+    }
+    // ⌘/Ctrl+Shift+F 格式化
+    if (mod && e.shiftKey && e.keyCode === monaco.KeyCode.KeyF) {
+      e.preventDefault()
+      e.stopPropagation()
+      emit('format')
+    }
+  })
 
   model = editor.getModel()
   if (model && props.completion) setCompletionSource(model, props.completion)
