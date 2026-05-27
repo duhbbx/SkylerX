@@ -39,6 +39,8 @@ const props = defineProps<{
   conn: ConnectionConfig
   /** 外部（双击表）注入的待执行 SQL；seq 变化即触发一次执行 */
   pending: { sql: string; seq: number } | null
+  /** 初始草稿 SQL（只填入编辑器、不执行；如「查看定义」） */
+  initialSql?: string
 }>()
 
 const emit = defineEmits<{ connError: [string, string] }>()
@@ -426,6 +428,8 @@ onMounted(() => {
   if (props.pending) {
     sql.value = props.pending.sql
     void run()
+  } else if (props.initialSql) {
+    sql.value = props.initialSql // 草稿：只填入，不执行
   }
 })
 </script>

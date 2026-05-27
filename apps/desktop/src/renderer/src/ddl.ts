@@ -1,4 +1,4 @@
-import { DbDialect } from '@db-tool/shared-types'
+import { DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import type { TreeNode } from './components/treeNode'
 
 /** 表设计器里的一列定义。 */
@@ -146,6 +146,55 @@ export function objectDdlQuery(
     return null
   }
   return null
+}
+
+/** 查看「触发器 / 序列」定义：取定义的查询 + 解析方式（MySQL 触发器、PG 触发器/序列）。 */
+export interface DefinitionFetch {
+  sql: string
+  mode: 'mysql-trigger' | 'pg-trigger' | 'pg-sequence'
+}
+
+export function definitionQuery(dialect: DbDialect, node: TreeNode): DefinitionFetch | null {
+  const fam = familyOf(dialect)
+  const p = node.path
+  const name = p[p.length - 1]
+  const esc = (s: string) => s.replace(/'/g, "''")
+  if (node.kind === MetaNodeKind.Trigger) {
+    if (fam === 'mysql') return { sql: `SHOW CREATE TRIGGER ${quoteId(dialect, name)}`, mode: 'mysql-trigger' }
+    if (fam === 'pg') {
+      const schema = p[p.length - 3]
+      const table = p[p.length - 2]
+      return {
+        sql: `SELECT pg_get_triggerdef(t.oid) AS ddl FROM pg_trigger t JOIN pg_class c ON t.tgrelid=c.oid JOIN pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname='${esc(schema)}' AND c.relname='${esc(table)}' AND t.tgname='${esc(name)}'`,
+        mode: 'pg-trigger',
+      }
+    }
+    return null
+  }
+  if (node.kind === MetaNodeKind.Sequence && fam === 'pg') {
+    const schema = p[p.length - 2]
+    return {
+      sql: `SELECT * FROM information_schema.sequences WHERE sequence_schema='${esc(schema)}' AND sequence_name='${esc(name)}'`,
+      mode: 'pg-sequence',
+    }
+  }
+  return null
+}
+
+export function extractDefinition(
+  dialect: DbDialect,
+  node: TreeNode,
+  mode: DefinitionFetch['mode'],
+  row: Record<string, unknown>,
+): string {
+  if (mode === 'mysql-trigger') {
+    const k = Object.keys(row).find((key) => /statement|create/i.test(key))
+    return String(row[k ?? ''] ?? '')
+  }
+  if (mode === 'pg-trigger') return String(row.ddl ?? '')
+  // pg-sequence：由参数重建 CREATE SEQUENCE
+  const q = (s: string) => quoteId(dialect, s)
+  return `CREATE SEQUENCE ${q(node.name)}\n  INCREMENT BY ${row.increment}\n  MINVALUE ${row.minimum_value}\n  MAXVALUE ${row.maximum_value}\n  START WITH ${row.start_value};`
 }
 
 /** 生成「解释执行计划」SQL（目前支持 MySQL / PostgreSQL 系；其余返回 null）。 */
@@ -333,9 +382,12 @@ export function buildDrop(
       return { sql: `DROP PROCEDURE ${q(name)}`, ctx }
     case 'sequence':
       return { sql: `DROP SEQUENCE ${node.sqlName ?? q(name)}${cs}`, ctx }
-    case 'trigger':
-      // 仅 MySQL 系可凭名删除；PG/Oracle 触发器需 ON 表，暂不支持
-      return fam === 'mysql' ? { sql: `DROP TRIGGER ${q(name)}`, ctx } : null
+    case 'trigger': {
+      if (fam === 'mysql') return { sql: `DROP TRIGGER ${q(name)}`, ctx }
+      // PG/Oracle：DROP TRIGGER name ON 表（表取自 path 倒数第二段）
+      const tbl = node.path[node.path.length - 2]
+      return tbl ? { sql: `DROP TRIGGER ${q(name)} ON ${q(tbl)}${cs}`, ctx } : null
+    }
     case 'event':
       return fam === 'mysql' ? { sql: `DROP EVENT ${q(name)}`, ctx } : null
     case 'database':

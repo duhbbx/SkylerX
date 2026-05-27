@@ -19,6 +19,7 @@ interface Tab {
   refreshTarget?: TreeNode // designer：成功后刷新的树节点
   node?: TreeNode // structure：要查看的表/视图节点；table designer：改表时载入用
   mode?: 'create' | 'alter' | 'edit' // table designer：新建/改表；DDL 编辑器：新建/编辑
+  draft?: string // query：初始草稿 SQL（只填入不执行，如「查看定义」）
 }
 
 const emit = defineEmits<{ connError: [string, string]; refresh: [TreeNode, string] }>()
@@ -52,6 +53,11 @@ function runSql(conn: ConnectionConfig, sql: string): void {
 }
 function newForCurrent(): void {
   if (active.value) newQuery(active.value.conn)
+}
+
+/** 打开一个带初始 SQL 的查询页（不执行，如「查看定义」）。 */
+function openDraft(conn: ConnectionConfig, sql: string, title: string): void {
+  push({ kind: 'query', conn, title, pending: null, draft: sql })
 }
 
 // ── 新建对象设计器页（表 / 视图 / 函数 / 存储过程）──
@@ -139,7 +145,7 @@ function onCreated(tab: Tab): void {
   close(tab.id)
 }
 
-defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, openErd, closeConnTabs })
+defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, openErd, openDraft, closeConnTabs })
 </script>
 
 <template>
@@ -167,6 +173,7 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             v-if="t.kind === 'query'"
             :conn="t.conn"
             :pending="t.pending"
+            :initial-sql="t.draft"
             @conn-error="(id, msg) => emit('connError', id, msg)"
           />
           <TableDesigner

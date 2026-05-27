@@ -51,6 +51,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.editObject(node, connId),
   },
   {
+    id: 'view-definition',
+    label: '查看定义',
+    kinds: [MetaNodeKind.Trigger, MetaNodeKind.Sequence],
+    run: ({ node, connId, ctrl }) => ctrl.viewDefinition(node, connId),
+  },
+  {
     id: 'design-table',
     label: '设计表',
     kinds: [MetaNodeKind.Table],

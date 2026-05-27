@@ -15,9 +15,11 @@ import {
   type ObjectKind,
   type TableContext,
   buildDrop,
+  definitionQuery,
   deriveContext,
   dropSupportsCascade,
   erdContext,
+  extractDefinition,
   objectKindLabel,
   previewSql,
 } from './ddl'
@@ -142,6 +144,31 @@ async function onEditObject(connId: string, node: TreeNode): Promise<void> {
 async function onOpenErd(connId: string, node: TreeNode): Promise<void> {
   const conn = await window.api.connections.get(connId)
   tabsRef.value?.openErd(conn, erdContext(conn.dialect, node), node)
+}
+
+// 查看触发器/序列定义 → 取定义填入查询页（可改后手动执行）
+async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  const f = definitionQuery(conn.dialect, node)
+  if (!f) {
+    window.alert('该对象暂不支持查看定义')
+    return
+  }
+  const ctx = deriveContext(conn.dialect, node)
+  try {
+    const r = await window.api.connections.execute(connId, f.sql, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
+    const row = r.rows[0] as Record<string, unknown> | undefined
+    if (!row) {
+      window.alert('未取到定义')
+      return
+    }
+    tabsRef.value?.openDraft(conn, extractDefinition(conn.dialect, node, f.mode, row), `${node.name} · 定义`)
+  } catch (e) {
+    window.alert(`查看定义失败：${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 // 导入数据（CSV → 表）→ 弹导入对话框
@@ -344,6 +371,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @preview-table="onPreviewTable"
     @design-table="onDesignTable"
     @edit-object="onEditObject"
+    @view-definition="onViewDefinition"
     @open-erd="onOpenErd"
     @import-data="onImportData"
     @export-sql="onExportSql"

@@ -23,6 +23,7 @@ const emit = defineEmits<{
   viewStructure: [string, TreeNode]
   designTable: [string, TreeNode]
   editObject: [string, TreeNode]
+  viewDefinition: [string, TreeNode]
   importData: [string, TreeNode]
   exportSql: [string, TreeNode]
   exportSchemaSql: [string, TreeNode]
@@ -133,6 +134,7 @@ const controller: TreeController = {
   previewTable: (node, connId) => emit('previewTable', connId, node),
   designTable: (node, connId) => emit('designTable', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
+  viewDefinition: (node, connId) => emit('viewDefinition', connId, node),
   openErd: (node, connId) => emit('openErd', connId, node),
   importData: (node, connId) => emit('importData', connId, node),
   exportSql: (node, connId) => emit('exportSql', connId, node),

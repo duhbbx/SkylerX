@@ -162,7 +162,7 @@ class PgConnection implements DriverConnection {
 
   private async schemaGroups(path: string[]): Promise<MetadataNode[]> {
     const [, schema] = path
-    const [tables, views, funcs, seqs, triggers] = await Promise.all([
+    const [tables, views, funcs, seqs] = await Promise.all([
       this.scalar(
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='BASE TABLE'",
         [schema],
@@ -178,23 +178,18 @@ class PgConnection implements DriverConnection {
       this.scalar('SELECT COUNT(*) c FROM information_schema.sequences WHERE sequence_schema=$1', [
         schema,
       ]),
-      this.scalar(
-        'SELECT COUNT(DISTINCT trigger_name) c FROM information_schema.triggers WHERE trigger_schema=$1',
-        [schema],
-      ),
     ])
     return [
       { kind: MetaNodeKind.Group, name: '表', path, group: 'tables', hasChildren: true, count: tables },
       { kind: MetaNodeKind.Group, name: '视图', path, group: 'views', hasChildren: true, count: views },
       { kind: MetaNodeKind.Group, name: '函数', path, group: 'functions', hasChildren: true, count: funcs },
       { kind: MetaNodeKind.Group, name: '序列', path, group: 'sequences', hasChildren: true, count: seqs },
-      { kind: MetaNodeKind.Group, name: '触发器', path, group: 'triggers', hasChildren: true, count: triggers },
     ]
   }
 
   private async tableSubGroups(path: string[]): Promise<MetadataNode[]> {
     const [, schema, table] = path
-    const [cols, idx, keys] = await Promise.all([
+    const [cols, idx, keys, trgs] = await Promise.all([
       this.scalar(
         'SELECT COUNT(*) c FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2',
         [schema, table],
@@ -207,11 +202,16 @@ class PgConnection implements DriverConnection {
         'SELECT COUNT(*) c FROM information_schema.table_constraints WHERE table_schema=$1 AND table_name=$2',
         [schema, table],
       ),
+      this.scalar(
+        'SELECT COUNT(DISTINCT trigger_name) c FROM information_schema.triggers WHERE trigger_schema=$1 AND event_object_table=$2',
+        [schema, table],
+      ),
     ])
     return [
       { kind: MetaNodeKind.Group, name: '列', path, group: 'columns', hasChildren: true, count: cols },
       { kind: MetaNodeKind.Group, name: '索引', path, group: 'indexes', hasChildren: true, count: idx },
       { kind: MetaNodeKind.Group, name: '键', path, group: 'keys', hasChildren: true, count: keys },
+      { kind: MetaNodeKind.Group, name: '触发器', path, group: 'triggers', hasChildren: true, count: trgs },
     ]
   }
 
@@ -271,14 +271,15 @@ class PgConnection implements DriverConnection {
         }))
       }
       case 'triggers': {
+        // 表级：path=[db, schema, table]
         const res = await this.pool.query(
-          'SELECT DISTINCT trigger_name AS name FROM information_schema.triggers WHERE trigger_schema = $1 ORDER BY trigger_name',
-          [schema],
+          'SELECT DISTINCT trigger_name AS name FROM information_schema.triggers WHERE trigger_schema = $1 AND event_object_table = $2 ORDER BY trigger_name',
+          [schema, path[2]],
         )
         return (res.rows as Array<Record<string, unknown>>).map((r) => ({
           kind: MetaNodeKind.Trigger,
           name: String(r.name),
-          path: [db, schema, String(r.name)],
+          path: [...path, String(r.name)],
           hasChildren: false,
         }))
       }
