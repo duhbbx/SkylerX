@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import Modal from './components/Modal.vue'
@@ -191,6 +192,43 @@ async function onDeleted(id: string): Promise<void> {
 function onCancel(): void {
   editing.value = null
 }
+
+// ── ⌘K 命令面板 ──
+const paletteOpen = ref(false)
+const paletteConns = ref<ConnectionConfig[]>([])
+
+const paletteItems = computed<PaletteItem[]>(() => [
+  { id: 'act:new-conn', label: '新建连接', group: '操作' },
+  { id: 'act:refresh', label: '刷新导航树', group: '操作' },
+  ...paletteConns.value.map((c) => ({
+    id: `conn:${c.id}`,
+    label: c.name || '(未命名)',
+    hint: c.dialect,
+    group: '连接',
+  })),
+])
+
+async function openPalette(): Promise<void> {
+  paletteConns.value = await window.api.connections.list()
+  paletteOpen.value = true
+}
+
+async function onPaletteSelect(item: PaletteItem): Promise<void> {
+  paletteOpen.value = false
+  if (item.id === 'act:new-conn') onNew()
+  else if (item.id === 'act:refresh') await navRef.value?.reload()
+  else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
+}
+
+function onKeydown(e: KeyboardEvent): void {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    if (paletteOpen.value) paletteOpen.value = false
+    else void openPalette()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
@@ -258,6 +296,13 @@ function onCancel(): void {
     :node="importing.node"
     @done="onImportDone"
     @close="importing = null"
+  />
+
+  <CommandPalette
+    v-if="paletteOpen"
+    :items="paletteItems"
+    @select="onPaletteSelect"
+    @close="paletteOpen = false"
   />
 </template>
 

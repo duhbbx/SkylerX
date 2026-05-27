@@ -11,6 +11,7 @@ import { explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { type Suggestion } from '../monaco-setup'
 import { splitStatements } from '../sqlSplit'
+import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import HistoryPanel from './HistoryPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SqlEditor from './SqlEditor.vue'
@@ -326,6 +327,23 @@ function clearEditor(): void {
   sql.value = ''
 }
 
+/** 方言 → sql-formatter 语言。 */
+function fmtLang(d: string): SqlLanguage {
+  if (['mysql', 'mariadb', 'oceanbase'].includes(d)) return 'mysql'
+  if (['postgresql', 'kingbase'].includes(d)) return 'postgresql'
+  if (d === 'sqlserver') return 'transactsql'
+  if (['oracle', 'dm'].includes(d)) return 'plsql'
+  return 'sql'
+}
+function formatSql(): void {
+  if (!sql.value.trim()) return
+  try {
+    sql.value = sqlFormat(sql.value, { language: fmtLang(props.conn.dialect), keywordCase: 'upper' })
+  } catch {
+    /* 格式化失败（语法不完整）则保持原样 */
+  }
+}
+
 // ── 分页 ──
 async function gotoPage(tab: ResultTab | undefined, page: number): Promise<void> {
   if (!tab || !tab.pageable || page < 0 || tab.loading) return
@@ -413,6 +431,7 @@ onMounted(() => {
     <div class="toolbar">
       <button class="primary" :disabled="running" @click="run">▶ 执行</button>
       <button :disabled="running" title="解释执行计划 (EXPLAIN)" @click="explain">解释</button>
+      <button title="格式化 SQL" @click="formatSql">格式化</button>
       <button :disabled="!running" @click="cancel">■ 停止</button>
       <button class="ghost" @click="clearEditor">清空</button>
 
