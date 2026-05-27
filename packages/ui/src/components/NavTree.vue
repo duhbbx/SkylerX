@@ -29,6 +29,7 @@ const emit = defineEmits<{
   designTable: [string, TreeNode]
   tableStats: [string, TreeNode]
   mockData: [string, TreeNode]
+  deps: [string, TreeNode]
   editObject: [string, TreeNode]
   viewDefinition: [string, TreeNode]
   generateSql: [SqlTemplateKind, string, TreeNode]
@@ -170,6 +171,7 @@ const controller: TreeController = {
   designTable: (node, connId) => emit('designTable', connId, node),
   tableStats: (node, connId) => emit('tableStats', connId, node),
   generateMockData: (node, connId) => emit('mockData', connId, node),
+  viewDependencies: (node, connId) => emit('deps', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
   viewDefinition: (node, connId) => emit('viewDefinition', connId, node),
   generateSql: (kind, node, connId) => emit('generateSql', kind, connId, node),

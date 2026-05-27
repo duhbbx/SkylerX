@@ -770,6 +770,33 @@ export function existingIndexesQuery(dialect: DbDialect, ctx: TableContext, tabl
   }
 }
 
+/** 入向外键：哪些表通过外键引用了本表（依赖反向）。MySQL / PG，返回 {srctab, name, cols}。其余 null。 */
+export function incomingForeignKeysQuery(
+  dialect: DbDialect,
+  ctx: TableContext,
+  table: string,
+): string | null {
+  const esc = (s: string) => s.replace(/'/g, "''")
+  switch (familyOf(dialect)) {
+    case 'mysql':
+      return `SELECT TABLE_NAME AS srctab, CONSTRAINT_NAME AS name,
+        GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) AS cols
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE REFERENCED_TABLE_SCHEMA = '${esc(ctx.database ?? '')}' AND REFERENCED_TABLE_NAME = '${esc(table)}'
+        GROUP BY TABLE_NAME, CONSTRAINT_NAME`
+    case 'pg':
+      return `SELECT t.relname AS srctab, con.conname AS name,
+        (SELECT string_agg(a.attname, ',') FROM pg_attribute a WHERE a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)) AS cols
+        FROM pg_constraint con
+        JOIN pg_class t ON t.oid = con.conrelid
+        JOIN pg_class rt ON rt.oid = con.confrelid
+        JOIN pg_namespace rn ON rn.oid = rt.relnamespace
+        WHERE con.contype = 'f' AND rn.nspname = '${esc(ctx.schema ?? 'public')}' AND rt.relname = '${esc(table)}'`
+    default:
+      return null
+  }
+}
+
 /** 现有外键查询；MySQL / PG，返回 {name, columns, refTable, refColumns}。其余 null。 */
 export function existingForeignKeysQuery(
   dialect: DbDialect,

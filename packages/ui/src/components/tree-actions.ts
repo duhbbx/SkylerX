@@ -127,6 +127,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.generateMockData(node, connId),
   },
   {
+    id: 'deps',
+    label: '依赖关系（外键）',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.viewDependencies(node, connId),
+  },
+  {
     id: 'import-data',
     label: '导入数据（CSV）',
     kinds: [MetaNodeKind.Table],

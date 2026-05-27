@@ -27,7 +27,9 @@ import {
   contextOfNode,
   definitionQuery,
   deriveContext,
+  existingForeignKeysQuery,
   formatBytes,
+  incomingForeignKeysQuery,
   parseTableStats,
   tableStatsQuery,
   dropSupportsCascade,
@@ -212,6 +214,57 @@ async function onTableStats(connId: string, node: TreeNode): Promise<void> {
   } catch (e) {
     if (tableStats.value) tableStats.value.error = e instanceof Error ? e.message : String(e)
   }
+}
+
+// 外键依赖关系 → 弹窗展示「引用的表 / 被引用」，可点击在树中定位
+const deps = ref<{
+  name: string
+  connId: string
+  schema: string
+  out: { table: string; cols: string }[]
+  inc: { table: string; cols: string }[]
+  error: string | null
+} | null>(null)
+async function onDeps(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  deps.value = {
+    name: node.name,
+    connId,
+    schema: ctx.schema ?? ctx.database ?? '',
+    out: [],
+    inc: [],
+    error: null,
+  }
+  const outSql = existingForeignKeysQuery(conn.dialect, ctx, node.name)
+  const inSql = incomingForeignKeysQuery(conn.dialect, ctx, node.name)
+  if (!outSql || !inSql) {
+    deps.value.error = '该方言暂不支持依赖分析（仅 MySQL / PostgreSQL 系）'
+    return
+  }
+  try {
+    const opts = { database: ctx.database, schema: ctx.schema }
+    const [o, i] = await Promise.all([
+      client.connections.execute(connId, outSql, [], opts),
+      client.connections.execute(connId, inSql, [], opts),
+    ])
+    deps.value.out = (o.rows as Record<string, unknown>[]).map((r) => ({
+      table: String(r.reftab ?? ''),
+      cols: String(r.cols ?? ''),
+    }))
+    deps.value.inc = (i.rows as Record<string, unknown>[]).map((r) => ({
+      table: String(r.srctab ?? ''),
+      cols: String(r.cols ?? ''),
+    }))
+  } catch (e) {
+    if (deps.value) deps.value.error = e instanceof Error ? e.message : String(e)
+  }
+}
+function onDepReveal(table: string): void {
+  const d = deps.value
+  if (!d) return
+  void navRef.value?.revealObject(d.connId, d.schema, table)
+  deps.value = null
 }
 
 // 编辑视图/函数/存储过程 → 载入定义后开 DDL 编辑器 Tab
@@ -609,6 +662,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @design-table="onDesignTable"
     @table-stats="onTableStats"
     @mock-data="onMockData"
+    @deps="onDeps"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"
@@ -725,6 +779,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @close="exportReq = null"
   />
 
+  <Modal v-if="deps" :title="`依赖关系 · ${deps.name}`" @close="deps = null">
+    <div class="confirm">
+      <div v-if="deps.error" class="banner err">✗ {{ deps.error }}</div>
+      <template v-else>
+        <div class="dep-sec">引用的表（本表外键 →）</div>
+        <div v-if="!deps.out.length" class="dep-empty">无</div>
+        <div v-for="(d, i) in deps.out" :key="'o' + i" class="dep-row" @click="onDepReveal(d.table)">
+          → <b>{{ d.table }}</b> <span class="dep-cols">({{ d.cols }})</span>
+        </div>
+        <div class="dep-sec">被引用（← 外键指向本表）</div>
+        <div v-if="!deps.inc.length" class="dep-empty">无</div>
+        <div v-for="(d, i) in deps.inc" :key="'i' + i" class="dep-row" @click="onDepReveal(d.table)">
+          ← <b>{{ d.table }}</b> <span class="dep-cols">({{ d.cols }})</span>
+        </div>
+        <p class="dep-foot">点击表名在导航树中定位</p>
+      </template>
+    </div>
+  </Modal>
+
   <Modal v-if="tableStats" :title="`统计信息 · ${tableStats.name}`" @close="tableStats = null">
     <div class="confirm">
       <div v-if="tableStats.error" class="banner err">✗ {{ tableStats.error }}</div>
@@ -816,6 +889,36 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .kv-row.total {
   border-bottom: none;
   font-weight: 600;
+}
+.dep-sec {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0 4px;
+  font-weight: 600;
+}
+.dep-row {
+  padding: 5px 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+}
+.dep-row:hover {
+  background: rgba(124, 108, 255, 0.14);
+}
+.dep-cols {
+  color: var(--muted);
+  font-size: 12px;
+}
+.dep-empty {
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.dep-foot {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--muted);
 }
 </style>
 
