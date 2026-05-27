@@ -373,6 +373,8 @@ const paletteConns = ref<ConnectionConfig[]>([])
 const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:new-conn', label: '新建连接', group: '操作' },
   { id: 'act:settings', label: '设置', group: '操作' },
+  { id: 'act:export-conns', label: '导出连接配置', group: '操作' },
+  { id: 'act:import-conns', label: '导入连接配置', group: '操作' },
   { id: 'act:refresh', label: '刷新导航树', group: '操作' },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
@@ -391,8 +393,40 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   paletteOpen.value = false
   if (item.id === 'act:new-conn') onNew()
   else if (item.id === 'act:settings') settingsOpen.value = true
+  else if (item.id === 'act:export-conns') await exportConns()
+  else if (item.id === 'act:import-conns') await importConns()
   else if (item.id === 'act:refresh') await navRef.value?.reload()
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
+}
+
+// 连接配置导入/导出（不含密码，迁移/备份用）
+async function exportConns(): Promise<void> {
+  const conns = await client.connections.list()
+  await client.files.saveText({
+    defaultName: 'skylerx-connections.json',
+    content: JSON.stringify(conns, null, 2),
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+}
+async function importConns(): Promise<void> {
+  const f = await client.files.openText([{ name: 'JSON', extensions: ['json'] }])
+  if (!f) return
+  try {
+    const arr = JSON.parse(f.content) as ConnectionConfig[]
+    let n = 0
+    for (const c of arr) {
+      try {
+        await client.connections.create({ ...c, id: '' })
+        n++
+      } catch {
+        /* 跳过无效条目 */
+      }
+    }
+    await navRef.value?.reload()
+    window.alert(`导入 ${n} 个连接（密码未含，请逐个补填）`)
+  } catch (e) {
+    window.alert(`导入失败：${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 function onKeydown(e: KeyboardEvent): void {
