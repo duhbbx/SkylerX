@@ -4,27 +4,27 @@ import type { DatabaseDriver, DriverConnection, SqlDialectHelpers } from '../dri
 
 /** MySQL / MariaDB / OceanBase 系：反引号转义 + LIMIT offset,count。 */
 export const mysqlFamilyHelpers: SqlDialectHelpers = {
-  quoteIdentifier: (name) => '`' + name.replace(/`/g, '``') + '`',
+  quoteIdentifier: (name) => `\`${name.replace(/`/g, '``')}\``,
   paginate: (sql, limit, offset) => `${stripTrailingSemicolon(sql)} LIMIT ${offset}, ${limit}`,
 }
 
 /** PostgreSQL / KingbaseES 系：双引号转义 + LIMIT count OFFSET offset。 */
 export const pgFamilyHelpers: SqlDialectHelpers = {
-  quoteIdentifier: (name) => '"' + name.replace(/"/g, '""') + '"',
+  quoteIdentifier: (name) => `"${name.replace(/"/g, '""')}"`,
   paginate: (sql, limit, offset) =>
     `${stripTrailingSemicolon(sql)} LIMIT ${limit} OFFSET ${offset}`,
 }
 
 /** SQL Server：方括号转义 + OFFSET ... FETCH NEXT。 */
 export const sqlServerHelpers: SqlDialectHelpers = {
-  quoteIdentifier: (name) => '[' + name.replace(/]/g, ']]') + ']',
+  quoteIdentifier: (name) => `[${name.replace(/]/g, ']]')}]`,
   paginate: (sql, limit, offset) =>
     `${stripTrailingSemicolon(sql)} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`,
 }
 
 /** Oracle / 达梦：双引号转义 + OFFSET ... FETCH NEXT（12c+ / DM8 支持）。 */
 export const oracleFamilyHelpers: SqlDialectHelpers = {
-  quoteIdentifier: (name) => '"' + name.replace(/"/g, '""') + '"',
+  quoteIdentifier: (name) => `"${name.replace(/"/g, '""')}"`,
   paginate: (sql, limit, offset) =>
     `${stripTrailingSemicolon(sql)} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`,
 }

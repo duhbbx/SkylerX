@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { ConnectionConfig, ConnectionConfigStore, SshConfig } from '@db-tool/core-driver'
-import { DbDialect } from '@db-tool/core-driver'
+import type { DbDialect } from '@db-tool/core-driver'
 import { safeStorage } from 'electron'
 import { getDb } from './sqlite.js'
 
@@ -25,9 +25,9 @@ interface ConnectionRow {
 function encryptPassword(plain?: string): string | null {
   if (!plain) return null
   if (safeStorage.isEncryptionAvailable()) {
-    return 'enc:' + safeStorage.encryptString(plain).toString('base64')
+    return `enc:${safeStorage.encryptString(plain).toString('base64')}`
   }
-  return 'plain:' + Buffer.from(plain, 'utf8').toString('base64')
+  return `plain:${Buffer.from(plain, 'utf8').toString('base64')}`
 }
 
 function decryptPassword(stored: string | null): string | undefined {

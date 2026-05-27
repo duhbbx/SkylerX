@@ -41,7 +41,7 @@ function createWindow(): void {
   })
 
   // 开发态加载 Vite dev server，生产态加载打包后的 index.html（均不自动开 DevTools）
-  const rendererUrl = process.env['ELECTRON_RENDERER_URL']
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL
   if (isDev && rendererUrl) {
     void mainWindow.loadURL(rendererUrl)
   } else {

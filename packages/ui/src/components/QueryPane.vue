@@ -10,7 +10,7 @@ import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
 import { type TableContext, explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
-import { type Suggestion } from '../monaco-setup'
+import type { Suggestion } from '../monaco-setup'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
 import { splitStatements } from '../sqlSplit'
@@ -21,7 +21,7 @@ import Modal from './Modal.vue'
 import PlanPanel from './PlanPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SnippetsPanel from './SnippetsPanel.vue'
-import SqlEditor from './SqlEditor.vue'
+import type SqlEditor from './SqlEditor.vue'
 
 const client = useDataClient()
 

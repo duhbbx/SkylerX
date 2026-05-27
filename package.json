@@ -14,9 +14,11 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "echo \"TODO: add eslint\""
+    "lint": "biome lint .",
+    "format": "biome format --write ."
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   },

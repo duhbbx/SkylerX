@@ -243,7 +243,7 @@ function deleteSelected(): void {
     if (key[0] === 'r') deleted.value[i] = true
     else insIdx.push(i)
   }
-  insIdx.sort((a, b) => b - a).forEach((k) => inserts.value.splice(k, 1))
+  for (const k of insIdx.sort((a, b) => b - a)) inserts.value.splice(k, 1)
   selected.value = new Set()
 }
 

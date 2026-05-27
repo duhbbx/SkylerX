@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  typecheck:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # 仅类型检查：--ignore-scripts 跳过原生模块重建 / Electron 下载，秒级完成
+      # --ignore-scripts 跳过原生模块重建 / Electron 下载；vitest 需要的 esbuild 单独构建
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm rebuild esbuild
       - run: pnpm -r typecheck
+      - run: pnpm test
+      - run: pnpm lint

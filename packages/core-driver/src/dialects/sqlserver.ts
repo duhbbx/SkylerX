@@ -15,7 +15,7 @@ import { sqlServerHelpers } from './base.js'
 
 /** 方括号转义标识符（用于库名插值，参数无法绑定标识符）。 */
 function brq(id: string): string {
-  return '[' + id.replace(/]/g, ']]') + ']'
+  return `[${id.replace(/]/g, ']]')}]`
 }
 
 function isSelect(sql: string): boolean {

@@ -252,52 +252,36 @@ export function buildSqlTemplate(
       return `DELETE FROM ${tableRef}\nWHERE ${where};`
     case 'createlike': {
       // 复制表结构（把 new_table_copy 改成目标名后执行）
-      switch (familyOf(dialect)) {
-        case 'mysql':
-          return `CREATE TABLE new_table_copy LIKE ${tableRef};`
-        case 'pg':
-          return `CREATE TABLE new_table_copy (LIKE ${tableRef} INCLUDING ALL);`
-        case 'sqlserver':
-          return `SELECT * INTO new_table_copy FROM ${tableRef} WHERE 1 = 0;`
-        case 'oracle':
-          return `CREATE TABLE new_table_copy AS SELECT * FROM ${tableRef} WHERE 1 = 0;`
-      }
+      const fam = familyOf(dialect)
+      if (fam === 'mysql') return `CREATE TABLE new_table_copy LIKE ${tableRef};`
+      if (fam === 'pg') return `CREATE TABLE new_table_copy (LIKE ${tableRef} INCLUDING ALL);`
+      if (fam === 'sqlserver') return `SELECT * INTO new_table_copy FROM ${tableRef} WHERE 1 = 0;`
+      return `CREATE TABLE new_table_copy AS SELECT * FROM ${tableRef} WHERE 1 = 0;` // oracle
     }
     case 'createindex': {
       // 新建索引模板：把列、索引名按需改写后执行；唯一索引去掉行首注释。
       const firstCol = names[0] ?? q('column_name')
       const idxName = `idx_${tableRef.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}_${cols[0]?.name ?? 'col'}`
       return (
-        `CREATE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n` +
-        `-- 唯一索引：CREATE UNIQUE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n` +
-        `-- 复合索引：在括号内追加更多列，逗号分隔。`
+        `CREATE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n-- 唯一索引：CREATE UNIQUE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n-- 复合索引：在括号内追加更多列，逗号分隔。`
       )
     }
     case 'comment': {
       // 表/列注释模板（方言写法差异较大）。
       const c0 = names[0] ?? q('column_name')
-      switch (familyOf(dialect)) {
-        case 'mysql':
-          return (
-            `ALTER TABLE ${tableRef} COMMENT = '表注释';\n` +
-            `-- 列注释需带完整列定义：\n` +
-            `-- ALTER TABLE ${tableRef} MODIFY ${c0} <类型> COMMENT '列注释';`
-          )
-        case 'pg':
-        case 'oracle':
-          return (
-            `COMMENT ON TABLE ${tableRef} IS '表注释';\n` +
-            cols.map((col) => `COMMENT ON COLUMN ${tableRef}.${q(col.name)} IS '列注释';`).join('\n')
-          )
-        case 'sqlserver':
-          return (
-            `-- SQL Server 用扩展属性记录注释：\n` +
-            `EXEC sys.sp_addextendedproperty\n` +
-            `  @name = N'MS_Description', @value = N'表注释',\n` +
-            `  @level0type = N'SCHEMA', @level0name = N'dbo',\n` +
-            `  @level1type = N'TABLE',  @level1name = N'表名';`
-          )
-      }
+      const fam = familyOf(dialect)
+      if (fam === 'mysql')
+        return `ALTER TABLE ${tableRef} COMMENT = '表注释';\n-- 列注释需带完整列定义：\n-- ALTER TABLE ${tableRef} MODIFY ${c0} <类型> COMMENT '列注释';`
+      if (fam === 'sqlserver')
+        return (
+          '-- SQL Server 用扩展属性记录注释：\n' +
+          'EXEC sys.sp_addextendedproperty\n' +
+          `  @name = N'MS_Description', @value = N'表注释',\n` +
+          `  @level0type = N'SCHEMA', @level0name = N'dbo',\n` +
+          `  @level1type = N'TABLE',  @level1name = N'表名';`
+        )
+      // pg / oracle
+      return `COMMENT ON TABLE ${tableRef} IS '表注释';\n${cols.map((col) => `COMMENT ON COLUMN ${tableRef}.${q(col.name)} IS '列注释';`).join('\n')}`
     }
   }
 }
@@ -318,11 +302,11 @@ export function previewSql(dialect: DbDialect, tableRef: string, n = 200): strin
 export function quoteId(dialect: DbDialect, id: string): string {
   switch (familyOf(dialect)) {
     case 'mysql':
-      return '`' + id.replace(/`/g, '``') + '`'
+      return `\`${id.replace(/`/g, '``')}\``
     case 'sqlserver':
-      return '[' + id.replace(/]/g, ']]') + ']'
+      return `[${id.replace(/]/g, ']]')}]`
     default:
-      return '"' + id.replace(/"/g, '""') + '"'
+      return `"${id.replace(/"/g, '""')}"`
   }
 }
 

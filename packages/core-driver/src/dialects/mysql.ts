@@ -1,6 +1,6 @@
 import {
   type ConnectionConfig,
-  DbDialect,
+  type DbDialect,
   type ExecuteOptions,
   type MetadataNode,
   MetaNodeKind,
