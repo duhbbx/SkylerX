@@ -80,6 +80,20 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.generateSql('createlike', node, connId),
   },
   {
+    id: 'create-index',
+    label: '新建索引',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.generateSql('createindex', node, connId),
+  },
+  {
+    id: 'edit-comment',
+    label: '编辑注释',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.generateSql('comment', node, connId),
+  },
+  {
     id: 'edit-object',
     label: '编辑定义',
     kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure],

@@ -210,7 +210,14 @@ export function explainSql(dialect: DbDialect, sql: string): string | null {
   }
 }
 
-export type SqlTemplateKind = 'select' | 'insert' | 'update' | 'delete' | 'createlike'
+export type SqlTemplateKind =
+  | 'select'
+  | 'insert'
+  | 'update'
+  | 'delete'
+  | 'createlike'
+  | 'createindex'
+  | 'comment'
 
 export const SQL_TEMPLATE_LABEL: Record<SqlTemplateKind, string> = {
   select: '生成 SELECT',
@@ -218,6 +225,8 @@ export const SQL_TEMPLATE_LABEL: Record<SqlTemplateKind, string> = {
   update: '生成 UPDATE',
   delete: '生成 DELETE',
   createlike: '复制表结构',
+  createindex: '新建索引',
+  comment: '编辑注释',
 }
 
 /** 由列信息生成 SELECT/INSERT/UPDATE/DELETE 模板（WHERE 优先用主键，否则取首列占位）。 */
@@ -252,6 +261,42 @@ export function buildSqlTemplate(
           return `SELECT * INTO new_table_copy FROM ${tableRef} WHERE 1 = 0;`
         case 'oracle':
           return `CREATE TABLE new_table_copy AS SELECT * FROM ${tableRef} WHERE 1 = 0;`
+      }
+    }
+    case 'createindex': {
+      // 新建索引模板：把列、索引名按需改写后执行；唯一索引去掉行首注释。
+      const firstCol = names[0] ?? q('column_name')
+      const idxName = `idx_${tableRef.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}_${cols[0]?.name ?? 'col'}`
+      return (
+        `CREATE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n` +
+        `-- 唯一索引：CREATE UNIQUE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n` +
+        `-- 复合索引：在括号内追加更多列，逗号分隔。`
+      )
+    }
+    case 'comment': {
+      // 表/列注释模板（方言写法差异较大）。
+      const c0 = names[0] ?? q('column_name')
+      switch (familyOf(dialect)) {
+        case 'mysql':
+          return (
+            `ALTER TABLE ${tableRef} COMMENT = '表注释';\n` +
+            `-- 列注释需带完整列定义：\n` +
+            `-- ALTER TABLE ${tableRef} MODIFY ${c0} <类型> COMMENT '列注释';`
+          )
+        case 'pg':
+        case 'oracle':
+          return (
+            `COMMENT ON TABLE ${tableRef} IS '表注释';\n` +
+            cols.map((col) => `COMMENT ON COLUMN ${tableRef}.${q(col.name)} IS '列注释';`).join('\n')
+          )
+        case 'sqlserver':
+          return (
+            `-- SQL Server 用扩展属性记录注释：\n` +
+            `EXEC sys.sp_addextendedproperty\n` +
+            `  @name = N'MS_Description', @value = N'表注释',\n` +
+            `  @level0type = N'SCHEMA', @level0name = N'dbo',\n` +
+            `  @level1type = N'TABLE',  @level1name = N'表名';`
+          )
       }
     }
   }
