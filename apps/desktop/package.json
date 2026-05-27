@@ -34,6 +34,7 @@
   "devDependencies": {
     "@db-tool/core-driver": "workspace:*",
     "@db-tool/shared-types": "workspace:*",
+    "@db-tool/ui": "workspace:*",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.7",
     "@types/pg": "^8.11.10",

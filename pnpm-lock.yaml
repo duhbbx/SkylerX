@@ -36,6 +36,9 @@ importers:
       '@db-tool/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@db-tool/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
@@ -109,6 +112,28 @@ importers:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
+
+  packages/ui:
+    dependencies:
+      '@db-tool/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      monaco-editor:
+        specifier: ^0.52.2
+        version: 0.52.2
+      sql-formatter:
+        specifier: ^15.4.0
+        version: 15.8.0
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vue:
+        specifier: ^3.5.13
+        version: 3.5.34(typescript@5.9.3)
+      vue-tsc:
+        specifier: ^2.2.0
+        version: 2.2.12(typescript@5.9.3)
 
 packages:
 

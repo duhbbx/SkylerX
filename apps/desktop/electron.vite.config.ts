@@ -19,6 +19,8 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src'),
       },
     },
+    // @db-tool/ui 是 TS/Vue 源码工作区包，排除预打包让 vue 插件按源码编译它
+    optimizeDeps: { exclude: ['@db-tool/ui'] },
     plugins: [vue()],
   },
 })
