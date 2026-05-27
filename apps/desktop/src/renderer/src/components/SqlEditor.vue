@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { type Suggestion, clearCompletionSource, monaco, setCompletionSource } from '../monaco-setup'
+import { settings } from '../settings'
 
 const props = defineProps<{
   modelValue: string
@@ -20,7 +21,7 @@ onMounted(() => {
     theme: 'vs-dark',
     automaticLayout: true,
     minimap: { enabled: false },
-    fontSize: 14,
+    fontSize: settings.fontSize,
     scrollBeyondLastLine: false,
     tabSize: 2,
     renderLineHighlight: 'line',
@@ -41,6 +42,12 @@ watch(
   (v) => {
     if (editor && v !== editor.getValue()) editor.setValue(v)
   },
+)
+
+// 设置里改字号 → 实时应用
+watch(
+  () => settings.fontSize,
+  (fs) => editor?.updateOptions({ fontSize: fs }),
 )
 
 onBeforeUnmount(() => {

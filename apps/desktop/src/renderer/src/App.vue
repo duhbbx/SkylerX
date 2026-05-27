@@ -5,6 +5,7 @@ import ConnectionForm from './components/ConnectionForm.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
@@ -227,12 +228,16 @@ function onCancel(): void {
   editing.value = null
 }
 
+// ── 设置中心 ──
+const settingsOpen = ref(false)
+
 // ── ⌘K 命令面板 ──
 const paletteOpen = ref(false)
 const paletteConns = ref<ConnectionConfig[]>([])
 
 const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:new-conn', label: '新建连接', group: '操作' },
+  { id: 'act:settings', label: '设置', group: '操作' },
   { id: 'act:refresh', label: '刷新导航树', group: '操作' },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
@@ -250,6 +255,7 @@ async function openPalette(): Promise<void> {
 async function onPaletteSelect(item: PaletteItem): Promise<void> {
   paletteOpen.value = false
   if (item.id === 'act:new-conn') onNew()
+  else if (item.id === 'act:settings') settingsOpen.value = true
   else if (item.id === 'act:refresh') await navRef.value?.reload()
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
 }
@@ -284,6 +290,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @open-erd="onOpenErd"
     @import-data="onImportData"
     @export-sql="onExportSql"
+    @open-settings="settingsOpen = true"
   />
 
   <main class="main">
@@ -340,6 +347,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @select="onPaletteSelect"
     @close="paletteOpen = false"
   />
+
+  <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
 </template>
 
 <style scoped>

@@ -10,6 +10,7 @@ import { isConnectionError } from '../connError'
 import { explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { type Suggestion } from '../monaco-setup'
+import { settings } from '../settings'
 import { splitStatements } from '../sqlSplit'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import HistoryPanel from './HistoryPanel.vue'
@@ -48,7 +49,7 @@ const activeTab = ref(0)
 const showHistory = ref(false)
 const history = ref<QueryHistoryEntry[]>([])
 const running = ref(false)
-const pageSize = ref(200) // 新查询的默认每页行数
+const pageSize = ref(settings.pageSize) // 新查询的默认每页行数（取自设置）
 let tabSeq = 0
 let runToken = 0 // 软取消令牌：停止后丢弃在途结果
 
@@ -338,7 +339,10 @@ function fmtLang(d: string): SqlLanguage {
 function formatSql(): void {
   if (!sql.value.trim()) return
   try {
-    sql.value = sqlFormat(sql.value, { language: fmtLang(props.conn.dialect), keywordCase: 'upper' })
+    sql.value = sqlFormat(sql.value, {
+      language: fmtLang(props.conn.dialect),
+      keywordCase: settings.keywordCase,
+    })
   } catch {
     /* 格式化失败（语法不完整）则保持原样 */
   }

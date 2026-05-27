@@ -27,6 +27,7 @@ const emit = defineEmits<{
   exportSql: [string, TreeNode]
   previewTable: [string, TreeNode]
   openErd: [string, TreeNode]
+  openSettings: []
 }>()
 
 interface ConnRoot {
@@ -184,6 +185,7 @@ onMounted(reload)
       <span class="head-actions">
         <button class="icon" title="新建连接" @click="controller.newConnection()">+</button>
         <button class="icon" title="刷新" @click="reload">⟳</button>
+        <button class="icon" title="设置" @click="emit('openSettings')">⚙</button>
       </span>
     </div>
     <div class="tree-body">
