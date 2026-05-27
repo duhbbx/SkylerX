@@ -4,11 +4,15 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import {
   type ColumnDef,
+  type ForeignKeyDef,
+  type IndexDef,
   type TableContext,
   buildAlterTable,
   buildCreateTable,
   emptyColumn,
   emptyTableSpec,
+  existingForeignKeysQuery,
+  existingIndexesQuery,
   parseType,
   typeOptions,
 } from '../ddl'
@@ -35,6 +39,8 @@ const isAlter = computed(() => props.mode === 'alter')
 const tableName = ref('')
 const spec = reactive(emptyTableSpec())
 const original = ref<ColumnDef[]>([]) // 改表模式：加载时的列快照，用于 diff
+const originalIndexes = ref<IndexDef[]>([]) // 现有索引快照
+const originalForeignKeys = ref<ForeignKeyDef[]>([]) // 现有外键快照
 const loading = ref(false)
 const types = typeOptions(props.dialect)
 const isMysql = ['mysql', 'mariadb', 'oceanbase'].includes(props.dialect)
@@ -59,7 +65,12 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 
 const alterStmts = computed(() =>
-  isAlter.value ? buildAlterTable(props.dialect, tableRef.value, original.value, spec) : [],
+  isAlter.value
+    ? buildAlterTable(props.dialect, tableRef.value, original.value, spec, {
+        indexes: originalIndexes.value,
+        foreignKeys: originalForeignKeys.value,
+      })
+    : [],
 )
 const ddl = computed(() => {
   if (isAlter.value)
@@ -97,11 +108,14 @@ async function loadExisting(): Promise<void> {
       }
     })
     spec.columns = mapped.length ? mapped : [emptyColumn()]
-    spec.indexes = []
-    spec.foreignKeys = []
     spec.uniques = []
     spec.checks = []
     original.value = mapped.map((c) => ({ ...c }))
+    // 载入现有索引 / 外键（用于查看 + diff 出新增/删除；失败则留空，仅支持新增）
+    spec.indexes = await loadIndexes()
+    spec.foreignKeys = await loadForeignKeys()
+    originalIndexes.value = spec.indexes.map((x) => ({ ...x }))
+    originalForeignKeys.value = spec.foreignKeys.map((x) => ({ ...x }))
     tableName.value = props.node.name
     selected.value = 0
   } catch (e) {
@@ -110,6 +124,49 @@ async function loadExisting(): Promise<void> {
     loading.value = false
   }
 }
+const truthy = (v: unknown) => v === true || v === 1 || v === '1' || v === 't'
+
+async function loadIndexes(): Promise<IndexDef[]> {
+  if (!props.node) return []
+  const sql = existingIndexesQuery(props.dialect, props.ctx, props.node.name)
+  if (!sql) return []
+  try {
+    const r = await client.connections.execute(props.connId, sql, [], {
+      database: props.ctx.database,
+      schema: props.ctx.schema,
+    })
+    return (r.rows as Record<string, unknown>[]).map((row) => ({
+      name: String(row.name ?? ''),
+      columns: String(row.cols ?? ''),
+      unique: truthy(row.uniq),
+    }))
+  } catch {
+    return []
+  }
+}
+
+async function loadForeignKeys(): Promise<ForeignKeyDef[]> {
+  if (!props.node) return []
+  const sql = existingForeignKeysQuery(props.dialect, props.ctx, props.node.name)
+  if (!sql) return []
+  try {
+    const r = await client.connections.execute(props.connId, sql, [], {
+      database: props.ctx.database,
+      schema: props.ctx.schema,
+    })
+    return (r.rows as Record<string, unknown>[]).map((row) => ({
+      name: String(row.name ?? ''),
+      columns: String(row.cols ?? ''),
+      refTable: String(row.reftab ?? ''),
+      refColumns: String(row.refcols ?? ''),
+      onDelete: '',
+      onUpdate: '',
+    }))
+  } catch {
+    return []
+  }
+}
+
 onMounted(loadExisting)
 
 // ── 字段工具栏操作 ──

@@ -628,6 +628,8 @@ export function buildAlterTable(
   tableRef: string,
   original: ColumnDef[],
   spec: TableSpec,
+  /** 改表模式载入的现有索引 / 外键快照；用于 diff 出新增与删除（缺省视为全新增） */
+  originalExtras: { indexes?: IndexDef[]; foreignKeys?: ForeignKeyDef[] } = {},
 ): string[] {
   const q = (id: string) => quoteId(dialect, id)
   const fam = familyOf(dialect)
@@ -695,20 +697,104 @@ export function buildAlterTable(
     if (!ck.expression.trim()) continue
     stmts.push(`ALTER TABLE ${tableRef} ADD ${ck.name.trim() ? `CONSTRAINT ${q(ck.name.trim())} ` : ''}CHECK (${ck.expression.trim()})`)
   }
+  // ── 外键：diff 出新增 / 删除（按名字；定义变化 = 先删后加）──
+  const fkSig = (f: ForeignKeyDef) =>
+    `${splitCols(f.columns).join(',')}>${f.refTable.trim()}(${splitCols(f.refColumns).join(',')})|${f.onDelete}|${f.onUpdate}`
+  const origFks = originalExtras.foreignKeys ?? []
+  const specFkByName = new Map(spec.foreignKeys.filter((f) => f.name.trim()).map((f) => [f.name.trim(), f]))
+  const dropFk = (name: string) =>
+    fam === 'mysql'
+      ? `ALTER TABLE ${tableRef} DROP FOREIGN KEY ${q(name)}`
+      : `ALTER TABLE ${tableRef} DROP CONSTRAINT ${q(name)}`
+  for (const o of origFks) {
+    const s = o.name ? specFkByName.get(o.name) : undefined
+    if (!s || fkSig(s) !== fkSig(o)) stmts.push(dropFk(o.name))
+  }
+  const origFkByName = new Map(origFks.map((f) => [f.name, f]))
   for (const fk of spec.foreignKeys) {
     const lc = splitCols(fk.columns)
     const rc = splitCols(fk.refColumns)
     if (!lc.length || !fk.refTable.trim() || !rc.length) continue
+    const o = fk.name.trim() ? origFkByName.get(fk.name.trim()) : undefined
+    if (o && fkSig(o) === fkSig(fk)) continue // 未变化，跳过
     let s = `ALTER TABLE ${tableRef} ADD ${fk.name.trim() ? `CONSTRAINT ${q(fk.name.trim())} ` : ''}FOREIGN KEY (${lc.map(q).join(', ')}) REFERENCES ${q(fk.refTable.trim())} (${rc.map(q).join(', ')})`
     if (fk.onDelete) s += ` ON DELETE ${fk.onDelete}`
     if (fk.onUpdate) s += ` ON UPDATE ${fk.onUpdate}`
     stmts.push(s)
   }
+
+  // ── 索引：diff 出新增 / 删除（按名字；列或唯一性变化 = 先删后建）──
+  const idxSig = (ix: IndexDef) => `${splitCols(ix.columns).join(',')}|${ix.unique ? 1 : 0}`
+  const origIdx = originalExtras.indexes ?? []
+  const specIdxByName = new Map(spec.indexes.filter((i) => i.name.trim()).map((i) => [i.name.trim(), i]))
+  const dropIdx = (name: string) =>
+    fam === 'mysql' ? `ALTER TABLE ${tableRef} DROP INDEX ${q(name)}` : `DROP INDEX IF EXISTS ${q(name)}`
+  for (const o of origIdx) {
+    const s = o.name ? specIdxByName.get(o.name) : undefined
+    if (!s || idxSig(s) !== idxSig(o)) stmts.push(dropIdx(o.name))
+  }
+  const origIdxByName = new Map(origIdx.map((i) => [i.name, i]))
   for (const idx of spec.indexes) {
     const cols = splitCols(idx.columns)
     if (!cols.length) continue
-    stmts.push(`CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${cols.join('_')}`)} ON ${tableRef} (${cols.map(q).join(', ')})`)
+    const o = idx.name.trim() ? origIdxByName.get(idx.name.trim()) : undefined
+    if (o && idxSig(o) === idxSig(idx)) continue // 未变化，跳过
+    stmts.push(
+      `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${cols.join('_')}`)} ON ${tableRef} (${cols.map(q).join(', ')})`,
+    )
   }
 
   return stmts
+}
+
+/** 现有索引查询（排除主键）；MySQL / PG，返回 {name, columns(逗号), unique}。其余 null。 */
+export function existingIndexesQuery(dialect: DbDialect, ctx: TableContext, table: string): string | null {
+  const esc = (s: string) => s.replace(/'/g, "''")
+  switch (familyOf(dialect)) {
+    case 'mysql':
+      return `SELECT INDEX_NAME AS name, (1 - MIN(NON_UNIQUE)) AS uniq,
+        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = '${esc(ctx.database ?? '')}' AND TABLE_NAME = '${esc(table)}' AND INDEX_NAME <> 'PRIMARY'
+        GROUP BY INDEX_NAME`
+    case 'pg':
+      return `SELECT i.relname AS name, ix.indisunique AS uniq,
+        (SELECT string_agg(a.attname, ',') FROM pg_attribute a WHERE a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)) AS cols
+        FROM pg_index ix
+        JOIN pg_class i ON i.oid = ix.indexrelid
+        JOIN pg_class t ON t.oid = ix.indrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = '${esc(ctx.schema ?? 'public')}' AND t.relname = '${esc(table)}' AND NOT ix.indisprimary`
+    default:
+      return null
+  }
+}
+
+/** 现有外键查询；MySQL / PG，返回 {name, columns, refTable, refColumns}。其余 null。 */
+export function existingForeignKeysQuery(
+  dialect: DbDialect,
+  ctx: TableContext,
+  table: string,
+): string | null {
+  const esc = (s: string) => s.replace(/'/g, "''")
+  switch (familyOf(dialect)) {
+    case 'mysql':
+      return `SELECT CONSTRAINT_NAME AS name, GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) AS cols,
+        REFERENCED_TABLE_NAME AS reftab, GROUP_CONCAT(REFERENCED_COLUMN_NAME ORDER BY ORDINAL_POSITION) AS refcols
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = '${esc(ctx.database ?? '')}' AND TABLE_NAME = '${esc(table)}' AND REFERENCED_TABLE_NAME IS NOT NULL
+        GROUP BY CONSTRAINT_NAME, REFERENCED_TABLE_NAME`
+    case 'pg':
+      return `SELECT con.conname AS name,
+        (SELECT string_agg(a.attname, ',') FROM pg_attribute a WHERE a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)) AS cols,
+        cl.relname AS reftab,
+        (SELECT string_agg(a.attname, ',') FROM pg_attribute a WHERE a.attrelid = con.confrelid AND a.attnum = ANY(con.confkey)) AS refcols
+        FROM pg_constraint con
+        JOIN pg_class t ON t.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        JOIN pg_class cl ON cl.oid = con.confrelid
+        WHERE n.nspname = '${esc(ctx.schema ?? 'public')}' AND t.relname = '${esc(table)}' AND con.contype = 'f'`
+    default:
+      return null
+  }
 }

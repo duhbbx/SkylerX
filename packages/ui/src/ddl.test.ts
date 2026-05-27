@@ -1,6 +1,15 @@
 import { DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { describe, expect, it } from 'vitest'
-import { buildDrop, buildSqlTemplate, formatBytes, previewSql, quoteId } from './ddl'
+import {
+  buildAlterTable,
+  buildDrop,
+  buildSqlTemplate,
+  emptyColumn,
+  emptyTableSpec,
+  formatBytes,
+  previewSql,
+  quoteId,
+} from './ddl'
 import type { TreeNode } from './components/treeNode'
 
 function node(kind: MetaNodeKind, name: string, sqlName?: string, path: string[] = [name]): TreeNode {
@@ -81,6 +90,35 @@ describe('buildSqlTemplate', () => {
     expect(pg).toContain('COMMENT ON TABLE t')
     expect(pg).toContain('COMMENT ON COLUMN t."id"')
     expect(buildSqlTemplate(DbDialect.SqlServer, 'comment', 't', cols)).toContain('sp_addextendedproperty')
+  })
+})
+
+describe('buildAlterTable index/FK diff', () => {
+  const col = { ...emptyColumn(), name: 'id', type: 'int', nullable: false, originalName: 'id' }
+  const baseSpec = () => ({ ...emptyTableSpec(), columns: [{ ...col }] })
+
+  it('drops removed indexes and creates added ones', () => {
+    const spec = { ...baseSpec(), indexes: [{ name: 'idx_b', columns: 'b', unique: false }] }
+    const out = buildAlterTable(DbDialect.MySQL, '`t`', [{ ...col }], spec, {
+      indexes: [{ name: 'idx_a', columns: 'a', unique: false }],
+    }).join('\n')
+    expect(out).toContain('DROP INDEX `idx_a`')
+    expect(out).toContain('CREATE INDEX `idx_b` ON `t` (`b`)')
+  })
+
+  it('leaves unchanged indexes alone', () => {
+    const idx = { name: 'idx_a', columns: 'a', unique: false }
+    const spec = { ...baseSpec(), indexes: [{ ...idx }] }
+    const out = buildAlterTable(DbDialect.MySQL, '`t`', [{ ...col }], spec, { indexes: [{ ...idx }] })
+    expect(out.join('\n')).not.toMatch(/INDEX/)
+  })
+
+  it('drops a removed FK with dialect-correct syntax', () => {
+    const orig = { name: 'fk1', columns: 'a', refTable: 'r', refColumns: 'id', onDelete: '', onUpdate: '' }
+    const my = buildAlterTable(DbDialect.MySQL, '`t`', [{ ...col }], baseSpec(), { foreignKeys: [orig] })
+    expect(my.join('\n')).toContain('DROP FOREIGN KEY `fk1`')
+    const pg = buildAlterTable(DbDialect.PostgreSQL, '"t"', [{ ...col }], baseSpec(), { foreignKeys: [orig] })
+    expect(pg.join('\n')).toContain('DROP CONSTRAINT "fk1"')
   })
 })
 
