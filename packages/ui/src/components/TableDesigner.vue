@@ -16,6 +16,7 @@ import {
   parseType,
   typeOptions,
 } from '../ddl'
+import { t } from '../i18n'
 import { splitStatements } from '../sqlSplit'
 import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
@@ -46,19 +47,20 @@ const types = typeOptions(props.dialect)
 const isMysql = ['mysql', 'mariadb', 'oceanbase'].includes(props.dialect)
 const tableRef = computed(() => props.node?.sqlName ?? props.node?.name ?? tableName.value)
 
+// tab 标签经 t('designer.tab.<key>') 渲染（随语言切换）
 const INNER = [
-  { key: 'fields', label: '字段' },
-  { key: 'indexes', label: '索引' },
-  { key: 'fk', label: '外键' },
-  { key: 'unique', label: '唯一键' },
-  { key: 'check', label: '检查' },
-  { key: 'trigger', label: '触发器' },
-  { key: 'options', label: '选项' },
-  { key: 'storage', label: '存储' },
-  { key: 'comment', label: '注释' },
-  { key: 'sql', label: 'SQL 预览' },
+  'fields',
+  'indexes',
+  'fk',
+  'unique',
+  'check',
+  'trigger',
+  'options',
+  'storage',
+  'comment',
+  'sql',
 ] as const
-const inner = ref<(typeof INNER)[number]['key']>('fields')
+const inner = ref<(typeof INNER)[number]>('fields')
 const selected = ref(0)
 
 const busy = ref(false)
@@ -76,7 +78,7 @@ const ddl = computed(() => {
   if (isAlter.value)
     return alterStmts.value.length
       ? alterStmts.value.map((s) => `${s};`).join('\n')
-      : '-- 无字段 / 约束变更'
+      : t('designer.noChanges')
   return buildCreateTable(props.dialect, props.ctx, tableName.value, spec)
 })
 const target = [props.ctx.database, props.ctx.schema].filter(Boolean).join(' / ')
@@ -235,7 +237,7 @@ async function run(stmts: string[]): Promise<void> {
 async function save(): Promise<void> {
   if (isAlter.value) {
     if (!alterStmts.value.length) {
-      error.value = '没有可应用的变更'
+      error.value = t('designer.noApply')
       inner.value = 'sql'
       return
     }
@@ -243,12 +245,12 @@ async function save(): Promise<void> {
     return
   }
   if (!tableName.value.trim()) {
-    error.value = '请输入表名'
+    error.value = t('designer.needName')
     gotoFields()
     return
   }
   if (!spec.columns.some((c) => c.name.trim() && c.type.trim())) {
-    error.value = '至少需要一个有效字段'
+    error.value = t('designer.needField')
     gotoFields()
     return
   }
@@ -257,7 +259,7 @@ async function save(): Promise<void> {
 
 // 另存为：用当前结构 CREATE 一张新表（改表模式下相当于「复制结构为新表」）。
 function saveAs(): void {
-  const n = window.prompt('另存为（新表名）', tableName.value)
+  const n = window.prompt(t('designer.saveAsPrompt'), tableName.value)
   if (!n || !n.trim()) return
   void run(splitStatements(buildCreateTable(props.dialect, props.ctx, n.trim(), spec)))
 }
@@ -266,34 +268,34 @@ function saveAs(): void {
 <template>
   <div class="designer">
     <div class="toolbar">
-      <span v-if="isAlter" class="mode-badge">修改表</span>
-      <button v-if="!isAlter" @click="resetTable">新建</button>
-      <button class="primary" :disabled="busy || loading" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
-      <button :disabled="busy || loading" @click="saveAs">另存为</button>
+      <span v-if="isAlter" class="mode-badge">{{ t('designer.alterBadge') }}</span>
+      <button v-if="!isAlter" @click="resetTable">{{ t('designer.new') }}</button>
+      <button class="primary" :disabled="busy || loading" @click="save">{{ busy ? t('designer.saving') : t('designer.save') }}</button>
+      <button :disabled="busy || loading" @click="saveAs">{{ t('designer.saveAs') }}</button>
       <span class="sep" />
-      <button @click="addField">添加字段</button>
-      <button @click="insertField">插入字段</button>
-      <button @click="deleteField">删除字段</button>
-      <button @click="togglePk">主键</button>
-      <button @click="move(-1)">上移</button>
-      <button @click="move(1)">下移</button>
+      <button @click="addField">{{ t('designer.addField') }}</button>
+      <button @click="insertField">{{ t('designer.insertField') }}</button>
+      <button @click="deleteField">{{ t('designer.deleteField') }}</button>
+      <button @click="togglePk">{{ t('designer.pk') }}</button>
+      <button @click="move(-1)">{{ t('designer.up') }}</button>
+      <button @click="move(1)">{{ t('designer.down') }}</button>
       <span class="name-box">
-        <label>表名</label>
-        <input v-model="tableName" :readonly="isAlter" placeholder="新表名" />
+        <label>{{ t('designer.tableName') }}</label>
+        <input v-model="tableName" :readonly="isAlter" :placeholder="t('designer.newTableName')" />
       </span>
-      <span v-if="loading" class="target">加载结构中…</span>
+      <span v-if="loading" class="target">{{ t('designer.loadingStruct') }}</span>
       <span v-else-if="target" class="target">{{ target }}</span>
     </div>
 
     <div class="inner-tabs">
       <button
-        v-for="t in INNER"
-        :key="t.key"
+        v-for="key in INNER"
+        :key="key"
         class="itab"
-        :class="{ active: inner === t.key }"
-        @click="inner = t.key"
+        :class="{ active: inner === key }"
+        @click="inner = key"
       >
-        {{ t.label }}
+        {{ t('designer.tab.' + key) }}
       </button>
     </div>
 
@@ -302,14 +304,14 @@ function saveAs(): void {
       <table v-if="inner === 'fields'" class="grid">
         <thead>
           <tr>
-            <th>字段名</th>
-            <th>类型</th>
-            <th>长度</th>
-            <th>小数点</th>
-            <th title="允许 NULL">NULL</th>
-            <th title="主键">主键</th>
-            <th>默认值</th>
-            <th>注释</th>
+            <th>{{ t('designer.h.fieldName') }}</th>
+            <th>{{ t('designer.h.type') }}</th>
+            <th>{{ t('designer.h.length') }}</th>
+            <th>{{ t('designer.h.scale') }}</th>
+            <th :title="t('designer.h.allowNull')">NULL</th>
+            <th :title="t('designer.h.pk')">{{ t('designer.h.pk') }}</th>
+            <th>{{ t('designer.h.default') }}</th>
+            <th>{{ t('designer.h.comment') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -333,9 +335,9 @@ function saveAs(): void {
 
       <!-- 索引 -->
       <div v-else-if="inner === 'indexes'" class="sub">
-        <button class="ghost sm" @click="spec.indexes.push({ name: '', columns: '', unique: false })">+ 添加索引</button>
+        <button class="ghost sm" @click="spec.indexes.push({ name: '', columns: '', unique: false })">{{ t('designer.addIndex') }}</button>
         <table class="grid">
-          <thead><tr><th>名称</th><th>字段(逗号分隔)</th><th>唯一</th><th></th></tr></thead>
+          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.colsComma') }}</th><th>{{ t('designer.h.unique') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="(ix, i) in spec.indexes" :key="i">
               <td><input v-model="ix.name" /></td>
@@ -349,9 +351,9 @@ function saveAs(): void {
 
       <!-- 外键 -->
       <div v-else-if="inner === 'fk'" class="sub">
-        <button class="ghost sm" @click="spec.foreignKeys.push({ name: '', columns: '', refTable: '', refColumns: '', onDelete: '', onUpdate: '' })">+ 添加外键</button>
+        <button class="ghost sm" @click="spec.foreignKeys.push({ name: '', columns: '', refTable: '', refColumns: '', onDelete: '', onUpdate: '' })">{{ t('designer.addFk') }}</button>
         <table class="grid">
-          <thead><tr><th>名称</th><th>字段</th><th>引用表</th><th>引用字段</th><th>ON DELETE</th><th>ON UPDATE</th><th></th></tr></thead>
+          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.cols') }}</th><th>{{ t('designer.h.refTable') }}</th><th>{{ t('designer.h.refCols') }}</th><th>ON DELETE</th><th>ON UPDATE</th><th></th></tr></thead>
           <tbody>
             <tr v-for="(fk, i) in spec.foreignKeys" :key="i">
               <td><input v-model="fk.name" /></td>
@@ -378,9 +380,9 @@ function saveAs(): void {
 
       <!-- 唯一键 -->
       <div v-else-if="inner === 'unique'" class="sub">
-        <button class="ghost sm" @click="spec.uniques.push({ name: '', columns: '' })">+ 添加唯一键</button>
+        <button class="ghost sm" @click="spec.uniques.push({ name: '', columns: '' })">{{ t('designer.addUnique') }}</button>
         <table class="grid">
-          <thead><tr><th>名称</th><th>字段(逗号分隔)</th><th></th></tr></thead>
+          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.colsComma') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="(u, i) in spec.uniques" :key="i">
               <td><input v-model="u.name" /></td>
@@ -393,13 +395,13 @@ function saveAs(): void {
 
       <!-- 检查 -->
       <div v-else-if="inner === 'check'" class="sub">
-        <button class="ghost sm" @click="spec.checks.push({ name: '', expression: '' })">+ 添加检查</button>
+        <button class="ghost sm" @click="spec.checks.push({ name: '', expression: '' })">{{ t('designer.addCheck') }}</button>
         <table class="grid">
-          <thead><tr><th>名称</th><th>表达式</th><th></th></tr></thead>
+          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.expr') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="(ck, i) in spec.checks" :key="i">
               <td><input v-model="ck.name" /></td>
-              <td><input v-model="ck.expression" placeholder="如 age >= 0" /></td>
+              <td><input v-model="ck.expression" :placeholder="t('designer.exprPh')" /></td>
               <td class="c"><button class="x" @click="spec.checks.splice(i, 1)">×</button></td>
             </tr>
           </tbody>
@@ -408,26 +410,26 @@ function saveAs(): void {
 
       <!-- 触发器 -->
       <div v-else-if="inner === 'trigger'" class="hint-pane">
-        触发器需在表创建后单独管理（CREATE TRIGGER）。可在表创建完后用查询页添加。
+        {{ t('designer.triggerNote') }}
       </div>
 
       <!-- 选项 -->
       <div v-else-if="inner === 'options'" class="sub">
         <template v-if="isMysql">
-          <div class="opt-row"><label>引擎</label><input v-model="spec.engine" placeholder="InnoDB" /></div>
-          <div class="opt-row"><label>字符集</label><input v-model="spec.charset" placeholder="utf8mb4" /></div>
+          <div class="opt-row"><label>{{ t('designer.engine') }}</label><input v-model="spec.engine" placeholder="InnoDB" /></div>
+          <div class="opt-row"><label>{{ t('designer.charset') }}</label><input v-model="spec.charset" placeholder="utf8mb4" /></div>
         </template>
-        <div v-else class="hint-pane">当前方言无额外表选项。</div>
+        <div v-else class="hint-pane">{{ t('designer.noOptions') }}</div>
       </div>
 
       <!-- 存储 -->
       <div v-else-if="inner === 'storage'" class="hint-pane">
-        表空间 / 存储参数（方言相关，暂未提供 UI）。
+        {{ t('designer.storageNote') }}
       </div>
 
       <!-- 注释 -->
       <div v-else-if="inner === 'comment'" class="sub">
-        <textarea v-model="spec.comment" rows="5" placeholder="表注释" class="comment-area" />
+        <textarea v-model="spec.comment" rows="5" :placeholder="t('designer.commentPh')" class="comment-area" />
       </div>
 
       <!-- SQL 预览（只读 Monaco，带语法高亮） -->
