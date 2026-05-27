@@ -113,6 +113,57 @@ const viewRows = computed<Row[]>(() => {
   return rows
 })
 
+// ── 大结果集虚拟滚动：超过阈值只渲染可视窗口 + 上下占位，保留真实行索引 ──
+const VIRT_THRESHOLD = 150
+const gridScrollEl = ref<HTMLElement>()
+const scrollTop = ref(0)
+const viewportH = ref(480)
+const rowH = ref(27) // 实测行高（保证占位高度与渲染行一致，避免滚动错位）
+
+const virtual = computed(() => viewRows.value.length > VIRT_THRESHOLD)
+const winStart = computed(() =>
+  virtual.value ? Math.max(0, Math.floor(scrollTop.value / rowH.value) - 8) : 0,
+)
+const winEnd = computed(() => {
+  if (!virtual.value) return viewRows.value.length
+  const visible = Math.ceil(viewportH.value / rowH.value) + 16
+  return Math.min(viewRows.value.length, winStart.value + visible)
+})
+const windowRows = computed(() => {
+  const out: { row: Row; i: number }[] = []
+  for (let i = winStart.value; i < winEnd.value; i++) out.push({ row: viewRows.value[i], i })
+  return out
+})
+const padTop = computed(() => winStart.value * rowH.value)
+const padBottom = computed(() => Math.max(0, (viewRows.value.length - winEnd.value) * rowH.value))
+
+let rafPending = false
+function onGridScroll(e: Event): void {
+  const el = e.target as HTMLElement
+  if (rafPending) return
+  rafPending = true
+  requestAnimationFrame(() => {
+    scrollTop.value = el.scrollTop
+    viewportH.value = el.clientHeight
+    rafPending = false
+  })
+}
+// 实测一行高度（首个数据行），用于精确占位
+function measureRowH(): void {
+  const row = gridScrollEl.value?.querySelector('tr[data-row]') as HTMLElement | null
+  if (row?.offsetHeight) rowH.value = row.offsetHeight
+  viewportH.value = gridScrollEl.value?.clientHeight ?? viewportH.value
+}
+watch(
+  () => [props.result, viewRows.value.length],
+  () => {
+    scrollTop.value = 0
+    if (gridScrollEl.value) gridScrollEl.value.scrollTop = 0
+    void Promise.resolve().then(measureRowH)
+  },
+  { flush: 'post' },
+)
+
 function cmp(a: unknown, b: unknown): number {
   if (a === b) return 0
   if (a === null || a === undefined) return 1
@@ -408,7 +459,7 @@ function applyCellEdit(): void {
         <span class="hint">点列头排序 · 双击单元格查看 · 点行号看整行</span>
       </div>
 
-      <div v-if="result.columns.length" class="grid-scroll">
+      <div v-if="result.columns.length" ref="gridScrollEl" class="grid-scroll" @scroll="onGridScroll">
         <table>
           <thead>
             <tr>
@@ -441,9 +492,11 @@ function applyCellEdit(): void {
             </tr>
           </thead>
           <tbody>
+            <tr v-if="padTop" class="spacer"><td :colspan="visibleColumns.length + 1" :style="{ height: padTop + 'px' }" /></tr>
             <tr
-              v-for="(row, i) in viewRows"
+              v-for="{ row, i } in windowRows"
               :key="'r' + i"
+              data-row
               :class="{ selected: isSel('r', i), deleted: editable && deleted[i] }"
               @click="onRowClick('r', i, $event)"
             >
@@ -477,6 +530,7 @@ function applyCellEdit(): void {
                 <template v-else>{{ fmt(row[c.name]) }}</template>
               </td>
             </tr>
+            <tr v-if="padBottom" class="spacer"><td :colspan="visibleColumns.length + 1" :style="{ height: padBottom + 'px' }" /></tr>
             <tr
               v-for="(row, k) in inserts"
               :key="'n' + k"
@@ -675,6 +729,10 @@ td {
 }
 td.editing {
   padding: 0;
+}
+tr.spacer td {
+  padding: 0;
+  border: none;
 }
 thead th {
   position: sticky;
