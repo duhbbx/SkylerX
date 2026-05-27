@@ -28,15 +28,17 @@ export function buildCreateFromColumns(
   return `CREATE TABLE ${tableRef} (\n${lines.join(',\n')}\n);`
 }
 
-/** 生成单表 SQL dump：结构 + 数据 INSERT。 */
+/** 生成单表 SQL dump：结构（+可选数据 INSERT）。 */
 export function buildTableDump(
   dialect: DbDialect,
   tableRef: string,
   cols: MetadataNode[],
   rows: Row[],
+  withData = true,
 ): string {
   const create = buildCreateFromColumns(dialect, tableRef, cols)
+  if (!withData) return `-- 表结构\n${create}\n`
   const colNames = cols.map((c) => c.name)
   const inserts = rows.length ? toInsertSql(dialect, tableRef, colNames, rows) : '-- （无数据）'
-  return `-- SkylerX 导出\n\n-- 表结构\n${create}\n\n-- 数据（${rows.length} 行）\n${inserts}\n`
+  return `-- 表结构\n${create}\n\n-- 数据（${rows.length} 行）\n${inserts}\n`
 }

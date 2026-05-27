@@ -190,6 +190,7 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             v-else-if="t.kind === 'structure'"
             :conn-id="t.conn.id"
             :node="t.node!"
+            :dialect="t.conn.dialect"
           />
           <ErdView
             v-else-if="t.kind === 'erd'"

@@ -266,11 +266,19 @@ function buildDdl(onlyNew: boolean): string {
 }
 
 async function generateDdl(): Promise<void> {
-  await window.api.files.saveText({
-    defaultName: `${props.ctx.schema || props.ctx.database || 'schema'}.sql`,
-    content: buildDdl(false),
-    filters: [{ name: 'SQL', extensions: ['sql'] }],
-  })
+  if (!window.api.files) {
+    window.alert('文件接口未就绪：请完整重启应用（preload 更新需重启，非热更新）。')
+    return
+  }
+  try {
+    await window.api.files.saveText({
+      defaultName: `${props.ctx.schema || props.ctx.database || 'schema'}.sql`,
+      content: buildDdl(false),
+      filters: [{ name: 'SQL', extensions: ['sql'] }],
+    })
+  } catch (e) {
+    window.alert(`生成 DDL 失败：${e instanceof Error ? e.message : String(e)}`)
+  }
 }
 
 const applying = ref(false)

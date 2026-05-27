@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
+import ExportOptionsDialog from './components/ExportOptionsDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
@@ -177,8 +178,27 @@ async function onImportData(connId: string, node: TreeNode): Promise<void> {
   importing.value = { connId, node, dialect: conn.dialect, ctx: deriveContext(conn.dialect, node) }
 }
 
-// 导出表为 SQL（结构 + 数据）→ 取列元数据 + 全表数据 → 生成 dump → 保存
-async function onExportSql(connId: string, node: TreeNode): Promise<void> {
+// 导出：先弹「仅结构 / 结构+数据」选项，再执行
+const exportReq = ref<{ scope: 'table' | 'schema'; connId: string; node: TreeNode } | null>(null)
+function onExportSql(connId: string, node: TreeNode): void {
+  exportReq.value = { scope: 'table', connId, node }
+}
+function onExportSchemaSql(connId: string, node: TreeNode): void {
+  exportReq.value = { scope: 'schema', connId, node }
+}
+async function onExportPick(withData: boolean): Promise<void> {
+  const req = exportReq.value
+  exportReq.value = null
+  if (!req) return
+  if (!window.api.files) {
+    window.alert('文件接口未就绪：请完整重启应用（preload 更新需重启，非热更新）。')
+    return
+  }
+  if (req.scope === 'table') await doTableExport(req.connId, req.node, withData)
+  else await doSchemaExport(req.connId, req.node, withData)
+}
+
+async function doTableExport(connId: string, node: TreeNode, withData: boolean): Promise<void> {
   const conn = await window.api.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   const ref = node.sqlName ?? node.name
@@ -188,11 +208,13 @@ async function onExportSql(connId: string, node: TreeNode): Promise<void> {
       path: [...node.path],
       group: 'columns',
     })
-    const data = await window.api.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
-      database: ctx.database,
-      schema: ctx.schema,
-    })
-    const sql = buildTableDump(conn.dialect, ref, cols, data.rows)
+    const rows = withData
+      ? (await window.api.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
+          database: ctx.database,
+          schema: ctx.schema,
+        })).rows
+      : []
+    const sql = buildTableDump(conn.dialect, ref, cols, rows, withData)
     await window.api.files.saveText({
       defaultName: `${node.name}.sql`,
       content: sql,
@@ -204,7 +226,7 @@ async function onExportSql(connId: string, node: TreeNode): Promise<void> {
 }
 
 // 导出整库/schema 为 SQL（迭代所有表）
-async function onExportSchemaSql(connId: string, node: TreeNode): Promise<void> {
+async function doSchemaExport(connId: string, node: TreeNode, withData: boolean): Promise<void> {
   const conn = await window.api.connections.get(connId)
   const ctx = erdContext(conn.dialect, node)
   try {
@@ -225,11 +247,13 @@ async function onExportSchemaSql(connId: string, node: TreeNode): Promise<void> 
         group: 'columns',
       })
       const ref = t.sqlName ?? t.name
-      const data = await window.api.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
-        database: ctx.database,
-        schema: ctx.schema,
-      })
-      parts.push(buildTableDump(conn.dialect, ref, cols, data.rows))
+      const rows = withData
+        ? (await window.api.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
+            database: ctx.database,
+            schema: ctx.schema,
+          })).rows
+        : []
+      parts.push(buildTableDump(conn.dialect, ref, cols, rows, withData))
     }
     const label = ctx.schema || ctx.database || 'schema'
     await window.api.files.saveText({
@@ -443,6 +467,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     :ctx="transferring.ctx"
     @done="onTransferDone"
     @close="transferring = null"
+  />
+
+  <ExportOptionsDialog
+    v-if="exportReq"
+    :title="exportReq.scope === 'schema' ? `导出库 ${exportReq.node.name} 为 SQL` : `导出表 ${exportReq.node.name} 为 SQL`"
+    @pick="onExportPick"
+    @close="exportReq = null"
   />
 
   <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
