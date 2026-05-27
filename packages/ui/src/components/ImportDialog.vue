@@ -3,6 +3,7 @@ import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import type { TableContext } from '../ddl'
+import { t } from '../i18n'
 import { buildInsertStatements, parseCSV, parseJSON } from '../io'
 import Modal from './Modal.vue'
 import type { TreeNode } from './treeNode'
@@ -28,7 +29,7 @@ const error = ref<string | null>(null)
 
 const header = computed<string[]>(() => {
   const first = csvRows.value[0] ?? []
-  return hasHeader.value ? first : first.map((_c, i) => `列 ${i + 1}`)
+  return hasHeader.value ? first : first.map((_c, i) => t('import.colN', { n: i + 1 }))
 })
 const dataRows = computed<string[][]>(() => (hasHeader.value ? csvRows.value.slice(1) : csvRows.value))
 const preview = computed(() => dataRows.value.slice(0, 5))
@@ -58,8 +59,8 @@ function autoMap(): void {
 async function pickFile(): Promise<void> {
   error.value = null
   const f = await client.files.openText([
-    { name: '数据文件', extensions: ['csv', 'txt', 'json'] },
-    { name: '所有文件', extensions: ['*'] },
+    { name: t('import.dataFiles'), extensions: ['csv', 'txt', 'json'] },
+    { name: t('common.allFiles'), extensions: ['*'] },
   ])
   if (!f) return
   fileName.value = f.name
@@ -69,7 +70,7 @@ async function pickFile(): Promise<void> {
     csvRows.value = isJson ? parseJSON(f.content) : parseCSV(f.content)
     if (isJson) hasHeader.value = true // JSON 首行即键名
   } catch (e) {
-    error.value = `解析失败：${e instanceof Error ? e.message : String(e)}`
+    error.value = t('import.parseFail', { msg: e instanceof Error ? e.message : String(e) })
     csvRows.value = []
     return
   }
@@ -92,7 +93,7 @@ async function onXlsxPicked(e: Event): Promise<void> {
     hasHeader.value = true // Excel 首行作表头
     autoMap()
   } catch (err) {
-    error.value = `解析 Excel 失败：${err instanceof Error ? err.message : String(err)}`
+    error.value = t('import.excelFail', { msg: err instanceof Error ? err.message : String(err) })
     csvRows.value = []
   } finally {
     if (xlsxInput.value) xlsxInput.value.value = '' // 允许重选同一文件
@@ -101,11 +102,11 @@ async function onXlsxPicked(e: Event): Promise<void> {
 
 async function runImport(): Promise<void> {
   if (!mappedCols.value.length) {
-    error.value = '请至少映射一列'
+    error.value = t('import.needMap')
     return
   }
   if (!dataRows.value.length) {
-    error.value = '没有可导入的数据行'
+    error.value = t('import.noRows')
     return
   }
   busy.value = true
@@ -128,10 +129,10 @@ async function runImport(): Promise<void> {
 </script>
 
 <template>
-  <Modal :title="`导入数据 → ${node.name}`" wide @close="emit('close')">
+  <Modal :title="t('import.title', { name: node.name })" wide @close="emit('close')">
     <div class="imp">
       <div class="row">
-        <button class="primary" @click="pickFile">选择文件（CSV / JSON）…</button>
+        <button class="primary" @click="pickFile">{{ t('import.pickFile') }}</button>
         <button @click="xlsxInput?.click()">Excel…</button>
         <input
           ref="xlsxInput"
@@ -142,26 +143,26 @@ async function runImport(): Promise<void> {
         />
         <span v-if="fileName" class="fname">{{ fileName }}</span>
         <label v-if="csvRows.length" class="chk">
-          <input v-model="hasHeader" type="checkbox" @change="autoMap" /> 首行为表头
+          <input v-model="hasHeader" type="checkbox" @change="autoMap" /> {{ t('import.hasHeader') }}
         </label>
-        <span v-if="csvRows.length" class="muted">共 {{ dataRows.length }} 行数据</span>
+        <span v-if="csvRows.length" class="muted">{{ t('import.rowCount', { n: dataRows.length }) }}</span>
       </div>
 
       <template v-if="csvRows.length">
         <div class="map">
-          <div class="map-head">列映射（目标列 ← 源列）</div>
+          <div class="map-head">{{ t('import.mapHead') }}</div>
           <div v-for="col in tableCols" :key="col" class="map-row">
             <span class="tcol">{{ col }}</span>
             <span class="arrow">←</span>
             <select v-model.number="mapping[col]">
-              <option :value="-1">（不导入）</option>
+              <option :value="-1">{{ t('import.skip') }}</option>
               <option v-for="(h, i) in header" :key="i" :value="i">{{ h }}</option>
             </select>
           </div>
         </div>
 
         <div class="prev">
-          <div class="map-head">预览（前 5 行）</div>
+          <div class="map-head">{{ t('import.preview') }}</div>
           <div class="scroll">
             <table class="grid">
               <thead>
@@ -182,9 +183,9 @@ async function runImport(): Promise<void> {
       <div v-if="error" class="banner err">✗ {{ error }}</div>
 
       <div class="actions">
-        <button class="ghost" @click="emit('close')">取消</button>
+        <button class="ghost" @click="emit('close')">{{ t('common.cancel') }}</button>
         <button class="primary" :disabled="busy || !csvRows.length" @click="runImport">
-          {{ busy ? '导入中…' : `导入 ${mappedCols.length} 列` }}
+          {{ busy ? t('import.importing') : t('import.importN', { n: mappedCols.length }) }}
         </button>
       </div>
     </div>

@@ -426,6 +426,96 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 右键菜单 ContextMenu ──
   'ctx.empty': ['无可用操作', 'No actions'],
+
+  // ── ER 图 ErdView ──
+  'erd.fileNotReady': [
+    '文件接口未就绪：请完整重启应用（preload 更新需重启，非热更新）。',
+    'File API not ready: fully restart the app (preload changes need a restart, not HMR).',
+  ],
+  'erd.ddlFail': ['生成 DDL 失败：{msg}', 'Failed to generate DDL: {msg}'],
+  'erd.noNew': ['没有新增的表或外键', 'No new tables or foreign keys'],
+  'erd.applyConfirm': [
+    '将对数据库执行以下 DDL：\n\n{ddl}',
+    'The following DDL will run against the database:\n\n{ddl}',
+  ],
+  'erd.applyFail': ['应用失败：{msg}', 'Apply failed: {msg}'],
+  'erd.title': ['ER 图 · {name}', 'ER diagram · {name}'],
+  'erd.stats': ['{tables} 表 · {edges} 外键', '{tables} tables · {edges} FKs'],
+  'erd.zoomOut': ['缩小', 'Zoom out'],
+  'erd.zoomIn': ['放大', 'Zoom in'],
+  'erd.reset': ['重置视图', 'Reset view'],
+  'erd.editing': ['✓ 编辑中', '✓ Editing'],
+  'erd.edit': ['编辑', 'Edit'],
+  'erd.addTable': ['+ 表', '+ Table'],
+  'erd.applyToDb': ['应用到库', 'Apply to DB'],
+  'erd.genDdl': ['生成 DDL', 'Generate DDL'],
+  'erd.hintEdit': [
+    '拖列圆点到目标列建外键 · 拖表框移动',
+    'Drag a column dot onto a target column to create a FK · drag a box to move',
+  ],
+  'erd.hintView': [
+    '滚轮缩放 · 拖表框移动 · 拖空白平移',
+    'Wheel to zoom · drag a box to move · drag empty space to pan',
+  ],
+  'erd.unsupported': [
+    '当前方言暂不支持 ER 图（目前支持 MySQL / PostgreSQL 系）',
+    'ER diagram not supported for this dialect (MySQL / PostgreSQL only)',
+  ],
+  'erd.delTable': ['删除表', 'Delete table'],
+  'erd.delCol': ['删除列', 'Delete column'],
+  'erd.fkDrag': ['拖到目标列建外键', 'Drag to a target column to create a FK'],
+  'erd.addCol': ['+ 列', '+ Column'],
+
+  // ── 导入 ImportDialog ──
+  'import.colN': ['列 {n}', 'Column {n}'],
+  'import.dataFiles': ['数据文件', 'Data files'],
+  'common.allFiles': ['所有文件', 'All files'],
+  'import.parseFail': ['解析失败：{msg}', 'Parse failed: {msg}'],
+  'import.excelFail': ['解析 Excel 失败：{msg}', 'Failed to parse Excel: {msg}'],
+  'import.needMap': ['请至少映射一列', 'Map at least one column'],
+  'import.noRows': ['没有可导入的数据行', 'No data rows to import'],
+  'import.title': ['导入数据 → {name}', 'Import data → {name}'],
+  'import.pickFile': ['选择文件（CSV / JSON）…', 'Choose file (CSV / JSON)…'],
+  'import.hasHeader': ['首行为表头', 'First row is header'],
+  'import.rowCount': ['共 {n} 行数据', '{n} data rows'],
+  'import.mapHead': ['列映射（目标列 ← 源列）', 'Column mapping (target ← source)'],
+  'import.skip': ['（不导入）', '(skip)'],
+  'import.preview': ['预览（前 5 行）', 'Preview (first 5 rows)'],
+  'import.importing': ['导入中…', 'Importing…'],
+  'import.importN': ['导入 {n} 列', 'Import {n} columns'],
+
+  // ── 数据传输 DataTransferDialog ──
+  'transfer.needTarget': ['请选择目标连接', 'Please select a target connection'],
+  'transfer.needTable': ['请填写目标表名', 'Please enter a target table name'],
+  'transfer.title': ['数据传输 · {name}', 'Data transfer · {name}'],
+  'transfer.sourceLabel': ['源：', 'Source: '],
+  'transfer.colsCount': ['（{n} 列）', '({n} cols)'],
+  'transfer.targetConn': ['目标连接', 'Target connection'],
+  'transfer.current': ['（当前）', '(current)'],
+  'transfer.targetDb': ['目标库', 'Target database'],
+  'transfer.targetSchema': ['目标 schema', 'Target schema'],
+  'transfer.schemaPh': ['（PG/SQLServer 需要）', '(needed for PG/SQLServer)'],
+  'transfer.targetTable': ['目标表', 'Target table'],
+  'transfer.tablePh': ['表名（需已存在且列匹配）', 'Table name (must exist with matching columns)'],
+  'transfer.batchRows': ['每批行数', 'Rows per batch'],
+  'transfer.truncateFirst': ['先清空目标', 'Truncate target first'],
+  'transfer.progress': ['已传输 {n} 行', 'Transferred {n} rows'],
+  'transfer.note': [
+    '按主键/列名对齐插入，要求目标表已存在且列兼容；跨方言时类型/布尔/日期为尽力转换。大表分批读写。',
+    'Inserts aligned by column name; target table must exist with compatible columns. Cross-dialect type/boolean/date are best-effort. Large tables are batched.',
+  ],
+  'transfer.transferring': ['传输中…', 'Transferring…'],
+  'transfer.start': ['开始传输', 'Start transfer'],
+
+  // ── 片段面板 SnippetsPanel ──
+  'snip.searchPh': ['🔍 搜索片段…', '🔍 Search snippets…'],
+  'snip.empty': [
+    '还没有片段。在编辑器里写好 SQL，点工具栏「存为片段」，或在历史里「★」收藏。',
+    'No snippets yet. Write SQL and click "Save snippet", or star one from history.',
+  ],
+  'snip.noMatch': ['无匹配片段', 'No matching snippets'],
+  'snip.loadEditor': ['双击载入编辑器', 'Double-click to load into editor'],
+  'snip.del': ['删除片段', 'Delete snippet'],
 }
 
 /** 翻译：取当前语言文案，缺失回退 key；支持 {name} 插值。 */

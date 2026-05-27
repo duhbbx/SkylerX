@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { t } from '../i18n'
 import { allTags, removeSnippet, snippets } from '../snippets'
 
 const emit = defineEmits<{ pick: [string] }>()
@@ -25,40 +26,40 @@ function toggleTag(t: string): void {
 <template>
   <div class="snip">
     <div class="snip-bar">
-      <input v-model="q" class="snip-search" placeholder="🔍 搜索片段…" />
+      <input v-model="q" class="snip-search" :placeholder="t('snip.searchPh')" />
       <span class="cnt">{{ filtered.length }} / {{ snippets.length }}</span>
     </div>
     <div v-if="tags.length" class="tag-bar">
       <button
-        v-for="t in tags"
-        :key="t"
+        v-for="tag in tags"
+        :key="tag"
         class="tag-chip"
-        :class="{ on: activeTag === t }"
-        @click="toggleTag(t)"
+        :class="{ on: activeTag === tag }"
+        @click="toggleTag(tag)"
       >
-        #{{ t }}
+        #{{ tag }}
       </button>
     </div>
     <div class="snip-list">
       <div v-if="!snippets.length" class="snip-empty">
-        还没有片段。在编辑器里写好 SQL，点工具栏「存为片段」，或在历史里「★」收藏。
+        {{ t('snip.empty') }}
       </div>
-      <div v-else-if="!filtered.length" class="snip-empty">无匹配片段</div>
+      <div v-else-if="!filtered.length" class="snip-empty">{{ t('snip.noMatch') }}</div>
       <div
         v-for="s in filtered"
         :key="s.id"
         class="snip-item"
-        title="双击载入编辑器"
+        :title="t('snip.loadEditor')"
         @dblclick="emit('pick', s.sql)"
       >
         <div class="snip-main">
           <div class="snip-name">
             {{ s.name }}
-            <span v-for="t in s.tags ?? []" :key="t" class="itag">#{{ t }}</span>
+            <span v-for="tag in s.tags ?? []" :key="tag" class="itag">#{{ tag }}</span>
           </div>
           <code class="snip-sql">{{ s.sql }}</code>
         </div>
-        <button class="x" title="删除片段" @click.stop="removeSnippet(s.id)">×</button>
+        <button class="x" :title="t('snip.del')" @click.stop="removeSnippet(s.id)">×</button>
       </div>
     </div>
   </div>
