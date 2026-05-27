@@ -20,6 +20,7 @@ import {
   type TableContext,
   buildDrop,
   buildSqlTemplate,
+  contextOfNode,
   definitionQuery,
   deriveContext,
   dropSupportsCascade,
@@ -94,9 +95,11 @@ async function onSelectConn(id: string): Promise<void> {
   tabsRef.value?.openConnection(conn)
 }
 
-async function onNewQuery(id: string): Promise<void> {
+async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
   const conn = await client.connections.get(id)
-  tabsRef.value?.newQuery(conn)
+  // 用触发节点所在的库/schema 作为查询上下文（找不到则查询页落默认库）
+  const ctx = node ? contextOfNode(conn.dialect, node) : undefined
+  tabsRef.value?.newQuery(conn, ctx)
 }
 
 async function onRunSql(connId: string, sql: string): Promise<void> {

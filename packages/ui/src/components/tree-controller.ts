@@ -29,8 +29,8 @@ export interface TreeController {
   // ── 动作原语（供 tree-actions 中的动作调用）──
   /** 聚焦该连接已有查询页，没有则开一个 */
   openConnection(connId: string): void
-  /** 总是为该连接新开一个查询页（支持一个连接多开） */
-  newQuery(connId: string): void
+  /** 为该连接新开一个查询页；node 用于预选其所在库/schema 作为查询上下文 */
+  newQuery(node: TreeNode, connId: string): void
   /** 在该节点所属库/schema 下新建对象（表/视图/函数/存储过程） */
   createObject(kind: ObjectKind, node: TreeNode, connId: string): void
   /** 删除对象（表/视图/函数/存储过程/库/schema），需二次确认 */

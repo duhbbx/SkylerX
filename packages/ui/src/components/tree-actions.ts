@@ -29,7 +29,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-query',
     label: '新建查询',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
-    run: ({ connId, ctrl }) => ctrl.newQuery(connId),
+    run: ({ node, connId, ctrl }) => ctrl.newQuery(node, connId),
   },
   {
     id: 'select-200',

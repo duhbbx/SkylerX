@@ -8,7 +8,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
-import { explainSql } from '../ddl'
+import { type TableContext, explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { type Suggestion } from '../monaco-setup'
 import { settings } from '../settings'
@@ -49,6 +49,8 @@ const props = defineProps<{
   pending: { sql: string; seq: number } | null
   /** 初始草稿 SQL（只填入编辑器、不执行；如「查看定义」） */
   initialSql?: string
+  /** 初始库/schema 上下文（新建查询时按触发节点预选；找不到则用默认库） */
+  initialCtx?: TableContext
 }>()
 
 const emit = defineEmits<{ connError: [string, string] }>()
@@ -112,29 +114,44 @@ async function loadContext(): Promise<void> {
       // Oracle / 达梦：顶层即 schema
       topKind.value = 'schema'
       schemaOptions.value = top.map((n) => n.name)
+      // 预选触发节点的 schema（命中才选，否则留默认）
+      const s = props.initialCtx?.schema
+      if (s && schemaOptions.value.includes(s)) selectedSchema.value = s
     } else {
       topKind.value = 'database'
       dbOptions.value = top.map((n) => n.name)
+      // 预选触发节点的库；命中则进一步加载并预选其 schema
+      const db = props.initialCtx?.database
+      if (db && dbOptions.value.includes(db)) {
+        selectedDb.value = db
+        await loadSchemaOptions(db)
+        const s = props.initialCtx?.schema
+        if (s && schemaOptions.value.includes(s)) selectedSchema.value = s
+      }
     }
   } catch {
     // 连接不可达等：保持空，查询用默认上下文
   }
 }
 
-async function onDbChange(): Promise<void> {
-  selectedSchema.value = ''
+/** 加载某库下的 schema 下拉（PG / SQLServer 才有 schema 子层）。 */
+async function loadSchemaOptions(db: string): Promise<void> {
   schemaOptions.value = []
-  if (!selectedDb.value) return
+  if (!db) return
   try {
     const sub = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Database,
-      path: [selectedDb.value],
+      path: [db],
     })
-    // 有 schema 子层（PG / SQLServer）才填充 schema 下拉
     if (sub[0]?.kind === MetaNodeKind.Schema) schemaOptions.value = sub.map((n) => n.name)
   } catch {
     /* ignore */
   }
+}
+
+async function onDbChange(): Promise<void> {
+  selectedSchema.value = ''
+  await loadSchemaOptions(selectedDb.value)
 }
 
 function execOptions(): { database?: string; schema?: string } {

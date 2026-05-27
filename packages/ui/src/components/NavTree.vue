@@ -16,7 +16,7 @@ const client = useDataClient()
 // 上抛给 App 的高层事件（动作原语桥接到这里）
 const emit = defineEmits<{
   selectConn: [string]
-  newQuery: [string]
+  newQuery: [string, TreeNode]
   editConn: [string]
   newConn: []
   deleteConn: [string]
@@ -158,7 +158,7 @@ const controller: TreeController = {
     menu.visible = true
   },
   openConnection: (connId) => emit('selectConn', connId),
-  newQuery: (connId) => emit('newQuery', connId),
+  newQuery: (node, connId) => emit('newQuery', connId, node),
   createObject: (kind, node, connId) => emit('newObject', kind, connId, node),
   dropObject: (node, connId) => emit('dropObject', connId, node),
   viewStructure: (node, connId) => emit('viewStructure', connId, node),

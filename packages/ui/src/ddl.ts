@@ -356,6 +356,24 @@ export function deriveContext(dialect: DbDialect, node: TreeNode): TableContext 
   }
 }
 
+/**
+ * 从「容器节点本身」（连接 / 库 / schema / 分组）推断库 + schema，
+ * 用于新建查询时预选上下文 —— 这类节点的 path 就是其所在层级。
+ * 连接节点 path 为空 → 返回空上下文（落到默认库）。
+ */
+export function contextOfNode(dialect: DbDialect, node: TreeNode): TableContext {
+  const container = node.path
+  switch (familyOf(dialect)) {
+    case 'mysql':
+      return { database: container[0] }
+    case 'pg':
+    case 'sqlserver':
+      return { database: container[0], schema: container[1] }
+    case 'oracle':
+      return { schema: container[0] }
+  }
+}
+
 /** ER 图：由「库 / schema」节点自身推断目标 database/schema。 */
 export function erdContext(dialect: DbDialect, node: TreeNode): TableContext {
   const p = node.path

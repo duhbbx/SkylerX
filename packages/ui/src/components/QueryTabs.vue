@@ -43,8 +43,8 @@ function openConnection(conn: ConnectionConfig): void {
   if (existing) activeId.value = existing.id
   else push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: null })
 }
-function newQuery(conn: ConnectionConfig): void {
-  push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: null })
+function newQuery(conn: ConnectionConfig, ctx?: TableContext): void {
+  push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: null, ctx })
 }
 function runSql(conn: ConnectionConfig, sql: string): void {
   const cur = active.value
@@ -174,6 +174,7 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             :conn="t.conn"
             :pending="t.pending"
             :initial-sql="t.draft"
+            :initial-ctx="t.ctx"
             @conn-error="(id, msg) => emit('connError', id, msg)"
           />
           <TableDesigner
