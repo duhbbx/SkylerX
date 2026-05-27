@@ -1,0 +1,45 @@
+import type {
+  ConnectionConfig,
+  ExecuteOptions,
+  MetadataNode,
+  MetaScope,
+  QueryHistoryEntry,
+  QueryResult,
+  TestResult,
+} from '@db-tool/shared-types'
+import { contextBridge, ipcRenderer } from 'electron'
+
+/** 暴露给渲染进程的安全 API（经 contextBridge，渲染进程无 Node 权限）。 */
+const api = {
+  connections: {
+    list: (): Promise<ConnectionConfig[]> => ipcRenderer.invoke('connections:list'),
+    get: (id: string): Promise<ConnectionConfig> => ipcRenderer.invoke('connections:get', id),
+    create: (config: ConnectionConfig): Promise<ConnectionConfig> =>
+      ipcRenderer.invoke('connections:create', config),
+    update: (config: ConnectionConfig): Promise<ConnectionConfig> =>
+      ipcRenderer.invoke('connections:update', config),
+    remove: (id: string): Promise<void> => ipcRenderer.invoke('connections:remove', id),
+    test: (config: ConnectionConfig): Promise<TestResult> =>
+      ipcRenderer.invoke('connections:test', config),
+    execute: (
+      connId: string,
+      sql: string,
+      params?: unknown[],
+      options?: ExecuteOptions,
+    ): Promise<QueryResult> =>
+      ipcRenderer.invoke('connections:execute', connId, sql, params, options),
+    metadata: (connId: string, scope: MetaScope): Promise<MetadataNode[]> =>
+      ipcRenderer.invoke('connections:metadata', connId, scope),
+    executeBatch: (connId: string, statements: string[], options?: ExecuteOptions): Promise<void> =>
+      ipcRenderer.invoke('connections:executeBatch', connId, statements, options),
+    cancel: (connId: string): Promise<void> => ipcRenderer.invoke('connections:cancel', connId),
+    history: (connId: string, limit?: number): Promise<QueryHistoryEntry[]> =>
+      ipcRenderer.invoke('connections:history', connId, limit),
+    historyClear: (connId: string): Promise<void> =>
+      ipcRenderer.invoke('connections:historyClear', connId),
+  },
+}
+
+contextBridge.exposeInMainWorld('api', api)
+
+export type DesktopApi = typeof api

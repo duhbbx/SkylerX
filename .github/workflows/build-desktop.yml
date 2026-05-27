@@ -1,0 +1,67 @@
+name: build-desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # electron-builder 在 pnpm monorepo 下需要 hoisted 布局：
+      # 默认的符号链接会让原生依赖指向 app 目录之外，触发 “must be under appDir”。
+      NPM_CONFIG_NODE_LINKER: hoisted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # node-gyp 在 Python ≥3.12 缺 distutils；固定 3.11 以稳定重建原生模块（better-sqlite3 等）
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @db-tool/desktop typecheck
+
+      - name: Build (electron-vite)
+        run: pnpm --filter @db-tool/desktop exec electron-vite build
+
+      - name: Rebuild native modules for Electron ABI
+        run: pnpm --filter @db-tool/desktop exec electron-builder install-app-deps
+
+      - name: Package installers
+        run: pnpm --filter @db-tool/desktop exec electron-builder --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dbtool-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          if-no-files-found: ignore
+
+# 备注：若 hoisted 布局仍报 “must be under appDir”，改用 `pnpm --filter @db-tool/desktop deploy`
+# 生成自包含目录后在其中 electron-builder。Oracle/达梦 原生驱动二期再纳入打包矩阵。

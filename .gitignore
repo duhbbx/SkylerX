@@ -1,0 +1,27 @@
+node_modules/
+dist/
+out/
+*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Electron 构建产物
+release/
+*.app
+
+# 本地 SQLite 数据（开发时）
+*.db
+*.db-shm
+*.db-wal
+
+# 环境变量
+.env
+.env.local
+
+# 闭源部分（不进开源仓）：Web 端（独立部署，闭源）+ 企业插件
+# 开源仓只含 PC 桌面端 + 共用内核（core-driver / shared-types）
+apps/web-server/
+apps/web-frontend/
+packages/enterprise/

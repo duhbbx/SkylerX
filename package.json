@@ -1,0 +1,26 @@
+{
+  "name": "skylerx",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SkylerX — 跨平台数据库管理工具（桌面端开源 + Web 端独立部署）",
+  "packageManager": "pnpm@10.26.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:desktop": "pnpm --filter @db-tool/desktop dev",
+    "build:desktop": "pnpm --filter @db-tool/desktop build",
+    "build:packages": "pnpm --filter \"./packages/**\" build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "echo \"TODO: add eslint\""
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  }
+}

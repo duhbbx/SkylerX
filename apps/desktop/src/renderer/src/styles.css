@@ -1,0 +1,206 @@
+:root {
+  --bg: #1e1e2e;
+  --panel: #27293d;
+  --border: #3a3d52;
+  --text: #e4e4ef;
+  --muted: #9a9ab0;
+  --accent: #7c6cff;
+  --ok: #4caf50;
+  --err: #ef5350;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 320px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+
+.sidebar header {
+  padding: 14px 16px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.conn-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.conn-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.conn-item:hover {
+  background: rgba(124, 108, 255, 0.12);
+}
+
+.conn-item.active {
+  background: rgba(124, 108, 255, 0.22);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.conn-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.conn-item .name {
+  font-weight: 600;
+}
+
+.conn-item .meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.icon {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.icon:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.placeholder {
+  margin: auto;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+h2 {
+  margin-top: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px 16px;
+  max-width: 520px;
+  align-items: center;
+}
+
+label {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* 统一的下拉样式：去掉浏览器原生外观，用主题色 + 自绘箭头 */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%239a9ab0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+button.danger {
+  background: var(--err);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.banner {
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.banner.ok {
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid #4caf50;
+}
+
+.banner.err {
+  background: rgba(239, 83, 80, 0.15);
+  border: 1px solid var(--err);
+}
+
+.empty {
+  color: var(--muted);
+  padding: 24px 16px;
+  text-align: center;
+}

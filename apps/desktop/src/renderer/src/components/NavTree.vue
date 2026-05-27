@@ -1,0 +1,193 @@
+<script setup lang="ts">
+import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
+import { onMounted, provide, reactive, ref } from 'vue'
+import ContextMenu from './ContextMenu.vue'
+import TreeItem from './TreeItem.vue'
+import { isConnectionError } from '../connError'
+import type { ObjectKind } from '../ddl'
+import { type TreeAction, actionsFor } from './tree-actions'
+import { type TreeController, TreeControllerKey } from './tree-controller'
+import { type TreeNode, fromMetadata, rootNode } from './treeNode'
+
+// 上抛给 App 的高层事件（动作原语桥接到这里）
+const emit = defineEmits<{
+  selectConn: [string]
+  newQuery: [string]
+  editConn: [string]
+  newConn: []
+  deleteConn: [string]
+  runSql: [string, string]
+  connError: [string, string]
+  newObject: [ObjectKind, string, TreeNode]
+  dropObject: [string, TreeNode]
+  viewStructure: [string, TreeNode]
+}>()
+
+interface ConnRoot {
+  id: string
+  node: TreeNode
+}
+
+const roots = ref<ConnRoot[]>([])
+
+const menu = reactive<{
+  visible: boolean
+  x: number
+  y: number
+  actions: TreeAction[]
+  node: TreeNode | null
+  connId: string
+}>({ visible: false, x: 0, y: 0, actions: [], node: null, connId: '' })
+
+const selectedKey = ref<string | null>(null)
+function nodeKey(node: TreeNode, connId: string): string {
+  return `${connId}::${node.kind}::${node.path.join('/')}::${node.group ?? ''}`
+}
+
+// 唯一的控制器实例：provide 给整棵树；动作原语桥接到 App
+const controller: TreeController = {
+  async loadChildren(node, connId) {
+    node.loading = true
+    node.error = null
+    try {
+      const children = await window.api.connections.metadata(connId, {
+        parentKind: node.kind,
+        path: [...node.path],
+        group: node.group,
+      })
+      node.children = children.map((n) => {
+        const child = fromMetadata(n)
+        child.parent = node
+        return child
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      // 不在树里显示错误：收起该节点，错误只通过弹窗呈现
+      node.children = null
+      node.expanded = false
+      // 连接节点打不开，或任意层级的连接级错误 → 弹出该连接编辑框
+      if (node.kind === MetaNodeKind.Connection || isConnectionError(msg)) {
+        emit('connError', connId, msg)
+      }
+    } finally {
+      node.loading = false
+    }
+  },
+  select(node, connId) {
+    selectedKey.value = nodeKey(node, connId)
+  },
+  isSelected(node, connId) {
+    return selectedKey.value === nodeKey(node, connId)
+  },
+  openNode(node, connId) {
+    // 双击连接 = 打开连接；双击表/视图等其它节点仅展开/折叠（由 TreeItem toggle 处理），
+    // 不查询、不改编辑器。查表数据请用右键「查询前 200 行」。
+    if (node.kind === MetaNodeKind.Connection) {
+      emit('selectConn', connId)
+    }
+  },
+  openContextMenu(x, y, node, connId) {
+    menu.x = x
+    menu.y = y
+    menu.node = node
+    menu.connId = connId
+    menu.actions = actionsFor(node)
+    menu.visible = true
+  },
+  openConnection: (connId) => emit('selectConn', connId),
+  newQuery: (connId) => emit('newQuery', connId),
+  createObject: (kind, node, connId) => emit('newObject', kind, connId, node),
+  dropObject: (node, connId) => emit('dropObject', connId, node),
+  viewStructure: (node, connId) => emit('viewStructure', connId, node),
+  editConnection: (connId) => emit('editConn', connId),
+  newConnection: () => emit('newConn'),
+  deleteConnection: (connId) => emit('deleteConn', connId),
+  runSql: (connId, sql) => emit('runSql', connId, sql),
+  async refreshNode(node, connId) {
+    node.children = null
+    if (node.expanded) await this.loadChildren(node, connId)
+  },
+  copyText: (text) => void navigator.clipboard?.writeText(text),
+}
+
+provide(TreeControllerKey, controller)
+
+function onMenuPick(action: TreeAction): void {
+  if (menu.node) action.run({ node: menu.node, connId: menu.connId, ctrl: controller })
+  menu.visible = false
+}
+
+async function reload(): Promise<void> {
+  const conns: ConnectionConfig[] = await window.api.connections.list()
+  const prev = new Map(roots.value.map((r) => [r.id, r.node]))
+  roots.value = conns.map((c) => ({
+    id: c.id,
+    node: prev.get(c.id) ?? rootNode(c.name || '(未命名)'),
+  }))
+}
+
+/** 刷新某节点（如新建表后刷新所属"表"目录）。 */
+function refreshNode(node: TreeNode, connId: string): void {
+  void controller.refreshNode(node, connId)
+}
+
+defineExpose({ reload, refreshNode })
+onMounted(reload)
+</script>
+
+<template>
+  <div class="tree">
+    <div class="tree-head">
+      <span>导航</span>
+      <span class="head-actions">
+        <button class="icon" title="新建连接" @click="controller.newConnection()">+</button>
+        <button class="icon" title="刷新" @click="reload">⟳</button>
+      </span>
+    </div>
+    <div class="tree-body">
+      <div v-if="!roots.length" class="tree-status">还没有连接，点上方 + 新建</div>
+      <TreeItem v-for="r in roots" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" />
+    </div>
+
+    <ContextMenu
+      v-if="menu.visible"
+      :x="menu.x"
+      :y="menu.y"
+      :actions="menu.actions"
+      @pick="onMenuPick"
+      @close="menu.visible = false"
+    />
+  </div>
+</template>
+
+<style scoped>
+.tree {
+  width: 300px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+.tree-head {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.head-actions {
+  display: flex;
+  gap: 6px;
+}
+.tree-body {
+  flex: 1;
+  overflow: auto;
+}
+.tree-status {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+</style>

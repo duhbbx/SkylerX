@@ -1,0 +1,41 @@
+{
+  "name": "@db-tool/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "数据库管理工具 - 桌面端 (Electron + Vue3)",
+  "main": "./out/main/index.js",
+  "author": "db-tool",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "pnpm typecheck && electron-vite build",
+    "start": "electron-vite preview",
+    "pack": "pnpm build && electron-builder --dir",
+    "dist": "pnpm build && electron-builder",
+    "postinstall": "electron-builder install-app-deps",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "pnpm typecheck:node && pnpm typecheck:web"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "mssql": "^11.0.1",
+    "mysql2": "^3.11.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@db-tool/core-driver": "workspace:*",
+    "@db-tool/shared-types": "workspace:*",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.7",
+    "@types/pg": "^8.11.10",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.1.0",
+    "monaco-editor": "^0.52.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vue": "^3.5.13",
+    "vue-tsc": "^2.2.0"
+  }
+}

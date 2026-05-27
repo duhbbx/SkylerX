@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+  - '!packages/enterprise'
+  - 'apps/*'
+  # 闭源（不进开源仓）：Web 端独立部署
+  - '!apps/web-server'
+  - '!apps/web-frontend'

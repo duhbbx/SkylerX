@@ -1,0 +1,33 @@
+appId: com.skylerx.desktop
+productName: SkylerX
+directories:
+  output: release
+  buildResources: build
+files:
+  - out
+  - package.json
+  - '!**/*.{map,ts,tsx}'
+# 原生模块（better-sqlite3 等）需经 install-app-deps / electron-rebuild 按 ABI 重编，
+# 且 .node 不能进 asar，必须解包。
+asarUnpack:
+  - '**/*.node'
+win:
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-setup.${ext}
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+  # 本地 / 未配签名的 CI 跳过签名（正式发布再配证书）
+  identity: null
+  artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  artifactName: ${productName}-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
