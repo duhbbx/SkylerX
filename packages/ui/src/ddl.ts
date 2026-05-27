@@ -299,6 +299,42 @@ export function previewSql(dialect: DbDialect, tableRef: string, n = 200): strin
   }
 }
 
+export interface TableStats {
+  rows: number
+  dataBytes: number
+  indexBytes: number
+}
+
+/** 表统计查询（行数 + 数据/索引占用）；仅 MySQL / PG 系，其余返回 null。 */
+export function tableStatsQuery(dialect: DbDialect, ctx: TableContext, table: string): string | null {
+  const esc = (s: string) => s.replace(/'/g, "''")
+  switch (familyOf(dialect)) {
+    case 'mysql':
+      return `SELECT TABLE_ROWS AS row_cnt, DATA_LENGTH AS data_len, INDEX_LENGTH AS index_len
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = '${esc(ctx.database ?? '')}' AND TABLE_NAME = '${esc(table)}'`
+    case 'pg':
+      return `SELECT c.reltuples::bigint AS row_cnt, pg_table_size(c.oid) AS data_len, pg_indexes_size(c.oid) AS index_len
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = '${esc(ctx.schema ?? 'public')}' AND c.relname = '${esc(table)}'`
+    default:
+      return null
+  }
+}
+
+export function parseTableStats(row: Record<string, unknown>): TableStats {
+  const g = (k: string) => Number(row[k] ?? 0)
+  return { rows: g('row_cnt'), dataBytes: g('data_len'), indexBytes: g('index_len') }
+}
+
+/** 字节数转可读单位。 */
+export function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)))
+  return `${(n / 1024 ** i).toFixed(i ? 2 : 0)} ${units[i]}`
+}
+
 export function quoteId(dialect: DbDialect, id: string): string {
   switch (familyOf(dialect)) {
     case 'mysql':

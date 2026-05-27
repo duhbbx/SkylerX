@@ -27,6 +27,7 @@ const emit = defineEmits<{
   dropObject: [string, TreeNode]
   viewStructure: [string, TreeNode]
   designTable: [string, TreeNode]
+  tableStats: [string, TreeNode]
   editObject: [string, TreeNode]
   viewDefinition: [string, TreeNode]
   generateSql: [SqlTemplateKind, string, TreeNode]
@@ -166,6 +167,7 @@ const controller: TreeController = {
   viewStructure: (node, connId) => emit('viewStructure', connId, node),
   previewTable: (node, connId) => emit('previewTable', connId, node),
   designTable: (node, connId) => emit('designTable', connId, node),
+  tableStats: (node, connId) => emit('tableStats', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
   viewDefinition: (node, connId) => emit('viewDefinition', connId, node),
   generateSql: (kind, node, connId) => emit('generateSql', kind, connId, node),

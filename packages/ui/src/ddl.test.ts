@@ -1,6 +1,6 @@
 import { DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { describe, expect, it } from 'vitest'
-import { buildDrop, buildSqlTemplate, previewSql, quoteId } from './ddl'
+import { buildDrop, buildSqlTemplate, formatBytes, previewSql, quoteId } from './ddl'
 import type { TreeNode } from './components/treeNode'
 
 function node(kind: MetaNodeKind, name: string, sqlName?: string, path: string[] = [name]): TreeNode {
@@ -81,6 +81,16 @@ describe('buildSqlTemplate', () => {
     expect(pg).toContain('COMMENT ON TABLE t')
     expect(pg).toContain('COMMENT ON COLUMN t."id"')
     expect(buildSqlTemplate(DbDialect.SqlServer, 'comment', 't', cols)).toContain('sp_addextendedproperty')
+  })
+})
+
+describe('formatBytes', () => {
+  it('renders human-readable sizes', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(512)).toBe('512 B')
+    expect(formatBytes(1024)).toBe('1.00 KB')
+    expect(formatBytes(1536)).toBe('1.50 KB')
+    expect(formatBytes(1048576)).toBe('1.00 MB')
   })
 })
 

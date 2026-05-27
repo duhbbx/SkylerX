@@ -20,11 +20,15 @@ import {
   type ObjectKind,
   type SqlTemplateKind,
   type TableContext,
+  type TableStats,
   buildDrop,
   buildSqlTemplate,
   contextOfNode,
   definitionQuery,
   deriveContext,
+  formatBytes,
+  parseTableStats,
+  tableStatsQuery,
   dropSupportsCascade,
   erdContext,
   extractDefinition,
@@ -153,6 +157,35 @@ async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   tabsRef.value?.editTable(conn, ctx, node)
+}
+
+// 表统计信息 → 弹窗展示行数 / 数据 / 索引占用
+const tableStats = ref<{
+  name: string
+  stats: TableStats | null
+  error: string | null
+  fmt: (n: number) => string
+} | null>(null)
+async function onTableStats(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  const sql = tableStatsQuery(conn.dialect, ctx, node.name)
+  tableStats.value = { name: node.name, stats: null, error: null, fmt: formatBytes }
+  if (!sql) {
+    tableStats.value.error = '该方言暂不支持统计信息（仅 MySQL / PostgreSQL 系）'
+    return
+  }
+  try {
+    const r = await client.connections.execute(connId, sql, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
+    const row = (r.rows as Record<string, unknown>[])[0]
+    if (!row) tableStats.value.error = '未取到统计信息'
+    else tableStats.value.stats = parseTableStats(row)
+  } catch (e) {
+    if (tableStats.value) tableStats.value.error = e instanceof Error ? e.message : String(e)
+  }
 }
 
 // 编辑视图/函数/存储过程 → 载入定义后开 DDL 编辑器 Tab
@@ -548,6 +581,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @view-structure="onViewStructure"
     @preview-table="onPreviewTable"
     @design-table="onDesignTable"
+    @table-stats="onTableStats"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"
@@ -664,6 +698,21 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @close="exportReq = null"
   />
 
+  <Modal v-if="tableStats" :title="`统计信息 · ${tableStats.name}`" @close="tableStats = null">
+    <div class="confirm">
+      <div v-if="tableStats.error" class="banner err">✗ {{ tableStats.error }}</div>
+      <template v-else-if="tableStats.stats">
+        <div class="kv-row"><span>行数（估算）</span><b>{{ tableStats.stats.rows.toLocaleString() }}</b></div>
+        <div class="kv-row"><span>数据大小</span><b>{{ tableStats.fmt(tableStats.stats.dataBytes) }}</b></div>
+        <div class="kv-row"><span>索引大小</span><b>{{ tableStats.fmt(tableStats.stats.indexBytes) }}</b></div>
+        <div class="kv-row total">
+          <span>合计</span><b>{{ tableStats.fmt(tableStats.stats.dataBytes + tableStats.stats.indexBytes) }}</b>
+        </div>
+      </template>
+      <div v-else class="banner">加载中…</div>
+    </div>
+  </Modal>
+
   <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
 
   <SchemaDiffDialog
@@ -726,6 +775,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .bulk-list li.gone {
   color: var(--muted);
   text-decoration: line-through;
+}
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 2px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.kv-row span {
+  color: var(--muted);
+}
+.kv-row.total {
+  border-bottom: none;
+  font-weight: 600;
 }
 </style>
 
