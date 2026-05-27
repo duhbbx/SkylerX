@@ -287,6 +287,9 @@ const DROP_LABEL: Record<string, string> = {
   view: '视图',
   function: '函数',
   procedure: '存储过程',
+  sequence: '序列',
+  trigger: '触发器',
+  event: '事件',
   database: '数据库',
   schema: 'Schema',
 }
@@ -328,6 +331,13 @@ export function buildDrop(
       return { sql: `DROP FUNCTION ${q(name)}${cs}`, ctx }
     case 'procedure':
       return { sql: `DROP PROCEDURE ${q(name)}`, ctx }
+    case 'sequence':
+      return { sql: `DROP SEQUENCE ${node.sqlName ?? q(name)}${cs}`, ctx }
+    case 'trigger':
+      // 仅 MySQL 系可凭名删除；PG/Oracle 触发器需 ON 表，暂不支持
+      return fam === 'mysql' ? { sql: `DROP TRIGGER ${q(name)}`, ctx } : null
+    case 'event':
+      return fam === 'mysql' ? { sql: `DROP EVENT ${q(name)}`, ctx } : null
     case 'database':
       return { sql: `DROP DATABASE ${q(name)}`, ctx: {} }
     case 'schema':
