@@ -7,10 +7,12 @@ export interface Settings {
   fontSize: number
   /** SQL 格式化关键字大小写 */
   keywordCase: 'upper' | 'lower' | 'preserve'
+  /** 主题 */
+  theme: 'dark' | 'light'
 }
 
 const KEY = 'skylerx.settings'
-const DEFAULTS: Settings = { pageSize: 200, fontSize: 13, keywordCase: 'upper' }
+const DEFAULTS: Settings = { pageSize: 200, fontSize: 13, keywordCase: 'upper', theme: 'dark' }
 
 function load(): Settings {
   try {
@@ -35,6 +37,13 @@ watch(
   },
   { deep: true },
 )
+
+// 主题：应用到根元素的 data-theme（styles.css 据此切换变量）
+function applyTheme(): void {
+  document.documentElement.setAttribute('data-theme', settings.theme)
+}
+applyTheme()
+watch(() => settings.theme, applyTheme)
 
 export function resetSettings(): void {
   Object.assign(settings, DEFAULTS)

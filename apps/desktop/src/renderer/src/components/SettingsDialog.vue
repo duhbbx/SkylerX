@@ -10,6 +10,14 @@ const PAGE_SIZES = [50, 100, 200, 500, 1000]
   <Modal title="设置" @close="emit('close')">
     <div class="settings">
       <label class="row">
+        <span class="lbl">主题</span>
+        <select v-model="settings.theme">
+          <option value="dark">深色</option>
+          <option value="light">浅色</option>
+        </select>
+      </label>
+
+      <label class="row">
         <span class="lbl">默认每页条数</span>
         <select v-model.number="settings.pageSize">
           <option v-for="s in PAGE_SIZES" :key="s" :value="s">{{ s }}</option>

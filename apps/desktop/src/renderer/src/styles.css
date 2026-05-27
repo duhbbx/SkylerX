@@ -10,8 +10,44 @@
   font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
 }
 
+/* 浅色主题（data-theme="light" 时覆盖变量） */
+:root[data-theme='light'] {
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --border: #dcdce5;
+  --text: #1f2233;
+  --muted: #6b6f82;
+  --accent: #6c5ce7;
+  --ok: #2e7d32;
+  --err: #d32f2f;
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* 统一深/浅主题滚动条（替换刺眼的白色原生滚动条） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
 }
 
 body {
