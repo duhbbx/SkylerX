@@ -16,11 +16,25 @@
 
 ## 功能
 
-- **Navicat 式导航树**：连接 → 库 → (schema) → 表/视图/函数… → 列/索引/键，目录带对象计数；树形由驱动按方言决定。
-- **查询**：Monaco 编辑器（SQL 高亮 + 表/列自动补全）、多查询页签、SQL 历史、库/schema 切换、查询服务端取消（KILL / pg_cancel）。
-- **结果集**：分页（翻页/跳页/每页）、可编辑网格（多选行、改单元格、增删行 → 事务提交）。
-- **对象管理**：可视化表设计器（字段/索引/外键/唯一键/检查 + SQL 预览）、新建视图/函数/存储过程、删除（含级联）、表结构查看页。
-- **连接**：增删改、测试、本地 SQLite + safeStorage 加密存储、连不上自动弹编辑框。
+- **Navicat 式导航树**：连接 → 库 → (schema) → 表/视图/函数… → 列/索引/键，目录带对象计数；树形由驱动按方言决定。连接可标 **环境**（dev/test/**prod**，prod 着红点）。
+- **查询**：Monaco 编辑器（SQL 高亮 + 表/列/函数/片段自动补全）、多查询页签、SQL 历史（搜索/收藏）、库/schema 切换、服务端取消（KILL / pg_cancel）。
+  - **⌘/Ctrl+Enter 执行**（有选区只跑选中语句）、**EXPLAIN 可视化执行计划**、SQL 格式化（⌘⇧F）、查询参数（`:name`）。
+  - **SQL 片段库**（含标签筛选）、**生成 SQL 模板**（SELECT/INSERT/UPDATE/DELETE/复制表结构/新建索引/编辑注释）。
+  - **prod 连接的高危操作**（DROP/DELETE/TRUNCATE/UPDATE）需键入连接名二次确认。
+- **结果集**：分页、**大结果集虚拟滚动**、可编辑网格（多选行、改单元格、增删行 → 事务提交）、单元格查看器、列筛选、导出 CSV/JSON/SQL、**一键图表**（后续）。
+- **对象管理**：可视化表设计器（字段/索引/外键/唯一键/检查 + SQL 预览，**改表时加载并 diff 现有索引/外键**）、新建视图/函数/存储过程、删除（含级联、批量多选）、表结构查看、**表统计信息**（行数/大小）、**生成测试数据**、**外键依赖关系**。
+- **数据迁移 / 对比**：CSV / JSON / **Excel 导入**、导出表/库为 SQL、数据传输、**结构对比/同步**、**数据级对比/同步**（按主键生成 INSERT/UPDATE/DELETE）。
+- **效率**：⌘K **命令面板**、⌘⇧O **全局对象搜索**（搜表/视图/列并在树中定位）、ER 图、**用户与权限（GRANT）**、设置中心（主题/字号/中英文 i18n）。
+- **连接**：增删改、测试、本地 SQLite + safeStorage 加密存储、SSH 隧道、SSL、分组、连不上自动弹编辑框、自动更新（electron-updater）。
+
+### 常用快捷键
+
+| 快捷键 | 作用 |
+| --- | --- |
+| ⌘/Ctrl + K | 命令面板 |
+| ⌘/Ctrl + ⇧ + O | 全局对象搜索 |
+| ⌘/Ctrl + Enter | 执行（有选区只跑选中） |
+| ⌘/Ctrl + ⇧ + F | 格式化 SQL |
 
 ## 结构
 
@@ -41,8 +55,12 @@ pnpm install          # 安装依赖（首次会下载 Electron）
 pnpm --filter @db-tool/desktop rebuild:native   # 首次按 Electron ABI 重建原生模块（better-sqlite3 等），仅需一次
 pnpm dev:desktop      # 启动桌面端（electron-vite dev，热更新）
 pnpm typecheck        # 全量类型检查
+pnpm test             # 单元测试（Vitest：ddl / plan / schema-diff / data-diff / mockgen / privileges …）
+pnpm lint             # Biome 规则检查（pnpm format 可自动格式化）
 pnpm build:desktop    # 构建桌面端
 ```
+
+CI（`.github/workflows/ci.yml`）在 push / PR 跑 typecheck + test + lint。
 
 ## 打包
 
