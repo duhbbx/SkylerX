@@ -12,7 +12,7 @@ import { explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { type Suggestion } from '../monaco-setup'
 import { settings } from '../settings'
-import { addSnippet } from '../snippets'
+import { addSnippet, snippets } from '../snippets'
 import { splitStatements } from '../sqlSplit'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import HistoryPanel from './HistoryPanel.vue'
@@ -141,13 +141,38 @@ function execOptions(): { database?: string; schema?: string } {
 // ── SQL 自动补全（关键字 + 表名 + FROM/JOIN 引用表的列）──
 const KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'INSERT INTO', 'UPDATE', 'DELETE FROM', 'JOIN', 'LEFT JOIN',
-  'INNER JOIN', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'HAVING', 'AS', 'ON', 'AND', 'OR',
-  'NOT', 'NULL', 'IS NULL', 'IN', 'LIKE', 'BETWEEN', 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MIN',
-  'MAX', 'VALUES', 'SET', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'CASE', 'WHEN', 'THEN', 'END',
+  'INNER JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET',
+  'HAVING', 'AS', 'ON', 'USING', 'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL', 'IN', 'EXISTS',
+  'LIKE', 'BETWEEN', 'DISTINCT', 'UNION', 'UNION ALL', 'ASC', 'DESC', 'VALUES', 'SET',
+  'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
 ]
 const MYSQL_FAM = ['mysql', 'mariadb', 'oceanbase']
 const PG_FAM = ['postgresql', 'kingbase']
 const ORA_FAM = ['oracle', 'dm']
+
+const COMMON_FUNCS = [
+  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'COALESCE', 'NULLIF', 'CAST', 'UPPER', 'LOWER',
+  'TRIM', 'LENGTH', 'SUBSTRING', 'REPLACE', 'ROUND', 'ABS',
+]
+const FAM_FUNCS: Record<string, string[]> = {
+  mysql: ['CONCAT', 'IFNULL', 'IF', 'DATE_FORMAT', 'NOW', 'CURDATE', 'GROUP_CONCAT', 'UNIX_TIMESTAMP', 'JSON_EXTRACT'],
+  pg: ['STRING_AGG', 'ARRAY_AGG', 'TO_CHAR', 'TO_DATE', 'NOW', 'DATE_TRUNC', 'GENERATE_SERIES', 'JSONB_BUILD_OBJECT'],
+  oracle: ['NVL', 'NVL2', 'DECODE', 'TO_CHAR', 'TO_DATE', 'SYSDATE', 'SUBSTR', 'INSTR', 'LISTAGG'],
+  sqlserver: ['ISNULL', 'GETDATE', 'CONVERT', 'DATEADD', 'DATEDIFF', 'LEN', 'CHARINDEX', 'STRING_AGG'],
+}
+function dialectFuncs(): string[] {
+  const d = props.conn.dialect
+  const fam = MYSQL_FAM.includes(d)
+    ? 'mysql'
+    : PG_FAM.includes(d)
+      ? 'pg'
+      : ORA_FAM.includes(d)
+        ? 'oracle'
+        : d === 'sqlserver'
+          ? 'sqlserver'
+          : ''
+  return [...COMMON_FUNCS, ...(FAM_FUNCS[fam] ?? [])]
+}
 
 let tableList: string[] | null = null
 const colCache = new Map<string, string[]>()
@@ -232,6 +257,8 @@ function parseFromTables(text: string): string[] {
 
 async function completion(ctx: { text: string; word: string }): Promise<Suggestion[]> {
   const out: Suggestion[] = KEYWORDS.map((k) => ({ label: k, kind: 'keyword' as const }))
+  for (const fn of dialectFuncs()) out.push({ label: fn, insertText: `${fn}()`, kind: 'function', detail: '函数' })
+  for (const s of snippets) out.push({ label: s.name, insertText: s.sql, kind: 'snippet', detail: '片段' })
   for (const t of await loadTables()) out.push({ label: t, kind: 'table', detail: '表' })
   for (const t of parseFromTables(ctx.text)) {
     for (const c of await loadColumns(t)) out.push({ label: c, kind: 'column', detail: t })

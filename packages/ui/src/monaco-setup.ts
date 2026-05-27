@@ -18,7 +18,7 @@ export interface Suggestion {
   label: string
   insertText?: string
   detail?: string
-  kind: 'keyword' | 'table' | 'column' | 'schema'
+  kind: 'keyword' | 'table' | 'column' | 'schema' | 'function' | 'snippet'
 }
 type CompletionSource = (ctx: { text: string; word: string }) => Promise<Suggestion[]> | Suggestion[]
 
@@ -35,6 +35,8 @@ const KIND_MAP: Record<Suggestion['kind'], monaco.languages.CompletionItemKind> 
   table: monaco.languages.CompletionItemKind.Struct,
   column: monaco.languages.CompletionItemKind.Field,
   schema: monaco.languages.CompletionItemKind.Module,
+  function: monaco.languages.CompletionItemKind.Function,
+  snippet: monaco.languages.CompletionItemKind.Snippet,
 }
 
 monaco.languages.registerCompletionItemProvider('sql', {
