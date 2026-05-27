@@ -17,6 +17,7 @@ const tgtSchema = ref('')
 const srcTable = ref('')
 const tgtTable = ref('')
 const limit = ref(2000)
+const keyColsInput = ref('') // 配对列（逗号分隔）：留空时自动检测主键，可手填/覆盖
 const busy = ref(false)
 const error = ref<string | null>(null)
 const sql = ref<string | null>(null)
@@ -92,11 +93,19 @@ async function runDiff(): Promise<void> {
   sql.value = null
   diff.value = null
   try {
-    const pk = await primaryKey(s.id, srcSchema.value.trim(), srcTable.value.trim())
+    // 配对列：优先用手填的，否则自动检测源表主键
+    const manual = keyColsInput.value
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+    const pk = manual.length
+      ? manual
+      : await primaryKey(s.id, srcSchema.value.trim(), srcTable.value.trim())
     if (!pk.length) {
-      error.value = '源表未检测到主键，数据对比需要主键来配对行。'
+      error.value = '源表未检测到主键，请在「配对列」手动填写用于配对行的列（逗号分隔）。'
       return
     }
+    keyColsInput.value = pk.join(', ') // 回填，便于查看/调整
     keyInfo.value = pk.join(', ')
     const [src, tgt] = await Promise.all([
       fetchRows(s, srcSchema.value.trim(), srcTable.value.trim(), pk),
@@ -151,7 +160,8 @@ function openInQuery(): void {
       </div>
 
       <div class="actions">
-        <label class="lim">最多对比行数 <input v-model.number="limit" type="number" min="1" /></label>
+        <label class="lim">配对列 <input v-model="keyColsInput" class="keycol" placeholder="留空=自动取主键" /></label>
+        <label class="lim">最多行数 <input v-model.number="limit" type="number" min="1" /></label>
         <button
           class="primary"
           :disabled="busy || !supported || !srcTable.trim() || !tgtTable.trim()"
@@ -236,6 +246,9 @@ function openInQuery(): void {
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
+}
+.actions .lim input.keycol {
+  width: 170px;
 }
 .warn {
   font-size: 12px;
