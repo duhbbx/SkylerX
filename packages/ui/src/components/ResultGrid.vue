@@ -135,6 +135,20 @@ function toggleSort(col: string): void {
 
 // ── 导出 ──
 const showExport = ref(false)
+// 导出菜单用 fixed 定位（锚定按钮上方），避免被 .statusbar 的 overflow 裁掉
+const exportMenuPos = ref<{ right: number; bottom: number } | null>(null)
+function toggleExport(e: MouseEvent): void {
+  if (showExport.value) {
+    showExport.value = false
+    return
+  }
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  exportMenuPos.value = {
+    right: Math.round(window.innerWidth - r.right),
+    bottom: Math.round(window.innerHeight - r.top + 4),
+  }
+  showExport.value = true
+}
 async function doExport(format: ExportFormat): Promise<void> {
   showExport.value = false
   const cols = columnNames.value
@@ -521,10 +535,18 @@ function applyCellEdit(): void {
         </span>
 
         <div v-if="result.columns.length" class="export-box">
-          <button class="exp-btn" title="导出结果" @click.stop="showExport = !showExport">导出 ▾</button>
+          <button class="exp-btn" title="导出结果" @click.stop="toggleExport">导出 ▾</button>
           <template v-if="showExport">
             <div class="exp-overlay" @click="showExport = false" />
-            <div class="exp-menu" @click.stop>
+            <div
+              class="exp-menu fixed"
+              :style="
+                exportMenuPos
+                  ? { right: exportMenuPos.right + 'px', bottom: exportMenuPos.bottom + 'px' }
+                  : undefined
+              "
+              @click.stop
+            >
               <button @click="doExport('csv')">CSV</button>
               <button @click="doExport('json')">JSON</button>
               <button @click="doExport('sql')">SQL INSERT</button>
@@ -773,6 +795,12 @@ td input {
   bottom: calc(100% + 4px);
   right: 0;
   z-index: 20;
+}
+/* 导出菜单：脱离 statusbar 的 overflow 裁剪，定位到视口（坐标由 JS 锚定按钮上方） */
+.exp-menu.fixed {
+  position: fixed;
+  bottom: auto;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   min-width: 130px;
