@@ -25,6 +25,7 @@ const emit = defineEmits<{
   editObject: [string, TreeNode]
   importData: [string, TreeNode]
   previewTable: [string, TreeNode]
+  openErd: [string, TreeNode]
 }>()
 
 interface ConnRoot {
@@ -128,6 +129,7 @@ const controller: TreeController = {
   previewTable: (node, connId) => emit('previewTable', connId, node),
   designTable: (node, connId) => emit('designTable', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
+  openErd: (node, connId) => emit('openErd', connId, node),
   importData: (node, connId) => emit('importData', connId, node),
   editConnection: (connId) => emit('editConn', connId),
   newConnection: () => emit('newConn'),

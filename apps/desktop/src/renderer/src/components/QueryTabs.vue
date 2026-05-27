@@ -3,6 +3,7 @@ import type { ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref } from 'vue'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
 import DdlEditor from './DdlEditor.vue'
+import ErdView from './ErdView.vue'
 import QueryPane from './QueryPane.vue'
 import TableDesigner from './TableDesigner.vue'
 import TableStructure from './TableStructure.vue'
@@ -10,7 +11,7 @@ import type { TreeNode } from './treeNode'
 
 interface Tab {
   id: number
-  kind: 'query' | 'structure' | ObjectKind
+  kind: 'query' | 'structure' | 'erd' | ObjectKind
   conn: ConnectionConfig
   title: string
   pending: { sql: string; seq: number } | null // query
@@ -74,6 +75,17 @@ function openStructure(conn: ConnectionConfig, node: TreeNode): void {
   push({ kind: 'structure', conn, title: `${node.name} · 结构`, pending: null, node })
 }
 
+/** 打开 ER 图页（按库/schema）。 */
+function openErd(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): void {
+  const label = ctx.schema || ctx.database || node.name
+  const existing = tabs.value.find((t) => t.kind === 'erd' && t.title === `ER · ${label}`)
+  if (existing) {
+    activeId.value = existing.id
+    return
+  }
+  push({ kind: 'erd', conn, title: `ER · ${label}`, pending: null, ctx })
+}
+
 /** 打开「编辑视图/函数/过程」页（DDL 编辑器 edit 模式）。 */
 function editObject(conn: ConnectionConfig, kind: ObjectKind, ctx: TableContext, node: TreeNode): void {
   push({
@@ -127,7 +139,7 @@ function onCreated(tab: Tab): void {
   close(tab.id)
 }
 
-defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, closeConnTabs })
+defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, openErd, closeConnTabs })
 </script>
 
 <template>
@@ -171,6 +183,12 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             v-else-if="t.kind === 'structure'"
             :conn-id="t.conn.id"
             :node="t.node!"
+          />
+          <ErdView
+            v-else-if="t.kind === 'erd'"
+            :conn-id="t.conn.id"
+            :dialect="t.conn.dialect"
+            :ctx="t.ctx!"
           />
           <DdlEditor
             v-else

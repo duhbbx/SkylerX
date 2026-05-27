@@ -93,6 +93,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.createObject('procedure', node, connId),
   },
   {
+    id: 'erd',
+    label: 'ER 图',
+    kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    run: ({ node, connId, ctrl }) => ctrl.openErd(node, connId),
+  },
+  {
     id: 'refresh',
     label: '刷新',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema, MetaNodeKind.Group],

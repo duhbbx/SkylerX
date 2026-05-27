@@ -14,6 +14,7 @@ import {
   buildDrop,
   deriveContext,
   dropSupportsCascade,
+  erdContext,
   objectKindLabel,
   previewSql,
 } from './ddl'
@@ -125,6 +126,12 @@ async function onEditObject(connId: string, node: TreeNode): Promise<void> {
   const conn = await window.api.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   tabsRef.value?.editObject(conn, node.kind as ObjectKind, ctx, node)
+}
+
+// ER 图 → 开 ER 图 Tab（按库/schema 节点推断目标）
+async function onOpenErd(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  tabsRef.value?.openErd(conn, erdContext(conn.dialect, node), node)
 }
 
 // 导入数据（CSV → 表）→ 弹导入对话框
@@ -247,6 +254,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @preview-table="onPreviewTable"
     @design-table="onDesignTable"
     @edit-object="onEditObject"
+    @open-erd="onOpenErd"
     @import-data="onImportData"
   />
 

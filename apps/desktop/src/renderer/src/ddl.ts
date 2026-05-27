@@ -215,6 +215,20 @@ export function deriveContext(dialect: DbDialect, node: TreeNode): TableContext 
   }
 }
 
+/** ER 图：由「库 / schema」节点自身推断目标 database/schema。 */
+export function erdContext(dialect: DbDialect, node: TreeNode): TableContext {
+  const p = node.path
+  switch (familyOf(dialect)) {
+    case 'mysql':
+      return { database: p[0] }
+    case 'pg':
+    case 'sqlserver':
+      return { database: p[0], schema: p[1] ?? node.name }
+    case 'oracle':
+      return { schema: p[0] }
+  }
+}
+
 /** 可在 Tab 中新建的对象类型。 */
 export type ObjectKind = 'table' | 'view' | 'function' | 'procedure'
 
