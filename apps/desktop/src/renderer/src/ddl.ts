@@ -104,6 +104,19 @@ function familyOf(dialect: DbDialect): Family {
   }
 }
 
+/** 生成「解释执行计划」SQL（目前支持 MySQL / PostgreSQL 系；其余返回 null）。 */
+export function explainSql(dialect: DbDialect, sql: string): string | null {
+  const s = sql.trim().replace(/;\s*$/, '')
+  if (!s) return null
+  switch (familyOf(dialect)) {
+    case 'mysql':
+    case 'pg':
+      return `EXPLAIN ${s}`
+    default:
+      return null
+  }
+}
+
 /** 「查询前 N 行」的方言正确写法（SQL Server 无 LIMIT；Oracle/达梦用 FETCH FIRST）。 */
 export function previewSql(dialect: DbDialect, tableRef: string, n = 200): string {
   switch (familyOf(dialect)) {

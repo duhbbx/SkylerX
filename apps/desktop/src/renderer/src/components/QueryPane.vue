@@ -7,6 +7,7 @@ import {
 } from '@db-tool/shared-types'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isConnectionError } from '../connError'
+import { explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { type Suggestion } from '../monaco-setup'
 import { splitStatements } from '../sqlSplit'
@@ -278,6 +279,42 @@ async function run(): Promise<void> {
   }
 }
 
+/** 解释执行计划：对首条语句跑方言 EXPLAIN，结果以普通结果集呈现（不分页/不可编辑）。 */
+async function explain(): Promise<void> {
+  const statements = splitStatements(sql.value)
+  if (!statements.length) return
+  const ex = explainSql(props.conn.dialect, statements[0])
+  if (!ex) {
+    window.alert('当前数据库方言暂不支持「解释」（目前支持 MySQL / PostgreSQL 系）')
+    return
+  }
+  const token = ++runToken
+  running.value = true
+  showHistory.value = false
+  const tab: ResultTab = {
+    id: ++tabSeq,
+    sql: ex,
+    result: null,
+    error: null,
+    pageable: false,
+    page: 0,
+    pageSize: pageSize.value,
+    loading: false,
+    editTable: null,
+  }
+  try {
+    tab.result = await window.api.connections.execute(props.conn.id, ex, [], execOptions())
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    tab.error = msg
+    if (isConnectionError(msg)) emit('connError', props.conn.id, msg)
+  }
+  if (token !== runToken) return
+  tabs.value = [tab]
+  activeTab.value = 0
+  running.value = false
+}
+
 /** 取消：服务端取消正在执行的查询（MySQL KILL QUERY / PG pg_cancel_backend）+ 渲染端放弃在途结果。 */
 function cancel(): void {
   void window.api.connections.cancel(props.conn.id)
@@ -375,6 +412,7 @@ onMounted(() => {
   <div ref="paneEl" class="pane">
     <div class="toolbar">
       <button class="primary" :disabled="running" @click="run">▶ 执行</button>
+      <button :disabled="running" title="解释执行计划 (EXPLAIN)" @click="explain">解释</button>
       <button :disabled="!running" @click="cancel">■ 停止</button>
       <button class="ghost" @click="clearEditor">清空</button>
 
