@@ -217,7 +217,7 @@ class MysqlConnection implements DriverConnection {
   }
 
   private async databaseGroups(db: string): Promise<MetadataNode[]> {
-    const [tables, views, funcs, procs] = await Promise.all([
+    const [tables, views, funcs, procs, triggers, events] = await Promise.all([
       this.scalar(
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=? AND table_type='BASE TABLE'",
         [db],
@@ -231,12 +231,16 @@ class MysqlConnection implements DriverConnection {
         "SELECT COUNT(*) c FROM information_schema.routines WHERE routine_schema=? AND routine_type='PROCEDURE'",
         [db],
       ),
+      this.scalar('SELECT COUNT(*) c FROM information_schema.triggers WHERE trigger_schema=?', [db]),
+      this.scalar('SELECT COUNT(*) c FROM information_schema.events WHERE event_schema=?', [db]),
     ])
     return [
       { kind: MetaNodeKind.Group, name: '表', path: [db], group: 'tables', hasChildren: true, count: tables },
       { kind: MetaNodeKind.Group, name: '视图', path: [db], group: 'views', hasChildren: true, count: views },
       { kind: MetaNodeKind.Group, name: '函数', path: [db], group: 'functions', hasChildren: true, count: funcs },
       { kind: MetaNodeKind.Group, name: '存储过程', path: [db], group: 'procedures', hasChildren: true, count: procs },
+      { kind: MetaNodeKind.Group, name: '触发器', path: [db], group: 'triggers', hasChildren: true, count: triggers },
+      { kind: MetaNodeKind.Group, name: '事件', path: [db], group: 'events', hasChildren: true, count: events },
     ]
   }
 
@@ -291,6 +295,20 @@ class MysqlConnection implements DriverConnection {
         )
         return (raw as RowDataPacket[]).map((r) => ({
           kind: group === 'functions' ? MetaNodeKind.Function : MetaNodeKind.Procedure,
+          name: String(r.name),
+          path: [db, String(r.name)],
+          hasChildren: false,
+        }))
+      }
+      case 'triggers':
+      case 'events': {
+        const sql =
+          group === 'triggers'
+            ? 'SELECT trigger_name AS name FROM information_schema.triggers WHERE trigger_schema=? ORDER BY trigger_name'
+            : 'SELECT event_name AS name FROM information_schema.events WHERE event_schema=? ORDER BY event_name'
+        const [raw] = await this.pool.query(sql, [db])
+        return (raw as RowDataPacket[]).map((r) => ({
+          kind: group === 'triggers' ? MetaNodeKind.Trigger : MetaNodeKind.Event,
           name: String(r.name),
           path: [db, String(r.name)],
           hasChildren: false,

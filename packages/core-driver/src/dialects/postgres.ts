@@ -162,7 +162,7 @@ class PgConnection implements DriverConnection {
 
   private async schemaGroups(path: string[]): Promise<MetadataNode[]> {
     const [, schema] = path
-    const [tables, views, funcs, seqs] = await Promise.all([
+    const [tables, views, funcs, seqs, triggers] = await Promise.all([
       this.scalar(
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='BASE TABLE'",
         [schema],
@@ -178,12 +178,17 @@ class PgConnection implements DriverConnection {
       this.scalar('SELECT COUNT(*) c FROM information_schema.sequences WHERE sequence_schema=$1', [
         schema,
       ]),
+      this.scalar(
+        'SELECT COUNT(DISTINCT trigger_name) c FROM information_schema.triggers WHERE trigger_schema=$1',
+        [schema],
+      ),
     ])
     return [
       { kind: MetaNodeKind.Group, name: '表', path, group: 'tables', hasChildren: true, count: tables },
       { kind: MetaNodeKind.Group, name: '视图', path, group: 'views', hasChildren: true, count: views },
       { kind: MetaNodeKind.Group, name: '函数', path, group: 'functions', hasChildren: true, count: funcs },
       { kind: MetaNodeKind.Group, name: '序列', path, group: 'sequences', hasChildren: true, count: seqs },
+      { kind: MetaNodeKind.Group, name: '触发器', path, group: 'triggers', hasChildren: true, count: triggers },
     ]
   }
 
@@ -259,7 +264,19 @@ class PgConnection implements DriverConnection {
           [schema],
         )
         return (res.rows as Array<Record<string, unknown>>).map((r) => ({
-          kind: MetaNodeKind.Index,
+          kind: MetaNodeKind.Sequence,
+          name: String(r.name),
+          path: [db, schema, String(r.name)],
+          hasChildren: false,
+        }))
+      }
+      case 'triggers': {
+        const res = await this.pool.query(
+          'SELECT DISTINCT trigger_name AS name FROM information_schema.triggers WHERE trigger_schema = $1 ORDER BY trigger_name',
+          [schema],
+        )
+        return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+          kind: MetaNodeKind.Trigger,
           name: String(r.name),
           path: [db, schema, String(r.name)],
           hasChildren: false,

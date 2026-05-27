@@ -207,6 +207,9 @@ export enum MetaNodeKind {
   Function = 'function',
   Procedure = 'procedure',
   Index = 'index',
+  Trigger = 'trigger',
+  Sequence = 'sequence',
+  Event = 'event',
 }
 
 /**

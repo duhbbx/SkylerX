@@ -70,6 +70,12 @@ export function iconFor(node: TreeNode): string {
       return '⚙'
     case MetaNodeKind.Index:
       return '⊟'
+    case MetaNodeKind.Trigger:
+      return '⚡'
+    case MetaNodeKind.Sequence:
+      return '#'
+    case MetaNodeKind.Event:
+      return '⏱'
     case MetaNodeKind.Column:
       return node.detail?.primaryKey ? '🔑' : '·'
     default:
