@@ -526,7 +526,7 @@ onMounted(() => {
     </div>
 
     <div class="editor" :style="{ height: editorHeight + 'px' }">
-      <SqlEditor v-model="sql" :completion="completion" @run="run" />
+      <SqlEditor v-model="sql" :completion="completion" @run="run" @format="formatSql" />
     </div>
 
     <div class="splitter" title="拖拽调整高度" @pointerdown="onSplitDown"></div>

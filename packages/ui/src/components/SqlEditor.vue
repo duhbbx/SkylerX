@@ -8,7 +8,7 @@ const props = defineProps<{
   readonly?: boolean
   completion?: (ctx: { text: string; word: string }) => Promise<Suggestion[]> | Suggestion[]
 }>()
-const emit = defineEmits<{ 'update:modelValue': [string]; run: [] }>()
+const emit = defineEmits<{ 'update:modelValue': [string]; run: []; format: [] }>()
 
 const host = ref<HTMLDivElement>()
 let editor: monaco.editor.IStandaloneCodeEditor | undefined
@@ -31,6 +31,9 @@ onMounted(() => {
 
   editor.onDidChangeModelContent(() => emit('update:modelValue', editor!.getValue()))
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => emit('run'))
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () =>
+    emit('format'),
+  )
 
   model = editor.getModel()
   if (model && props.completion) setCompletionSource(model, props.completion)
