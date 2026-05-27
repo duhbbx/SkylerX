@@ -21,6 +21,9 @@
     "onlyBuiltDependencies": [
       "electron",
       "esbuild"
+    ],
+    "ignoredOptionalDependencies": [
+      "cpu-features"
     ]
   }
 }
