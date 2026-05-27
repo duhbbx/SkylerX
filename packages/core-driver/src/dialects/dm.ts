@@ -31,6 +31,17 @@ async function loadDmdb(): Promise<any> {
   }
 }
 
+function isSelect(sql: string): boolean {
+  return /^\s*(select|with)\b/i.test(sql)
+}
+
+/** 达梦分页：包子查询 + OFFSET/FETCH（DM 兼容 SQL 标准 OFFSET/FETCH）。 */
+function paginate(sql: string, options?: ExecuteOptions): string {
+  if (options?.limit == null || !isSelect(sql)) return sql
+  const inner = sql.trim().replace(/;\s*$/, '')
+  return `SELECT * FROM (${inner}) OFFSET ${options.offset ?? 0} ROWS FETCH NEXT ${options.limit} ROWS ONLY`
+}
+
 class DmConnection implements DriverConnection {
   constructor(private readonly pool: any) {}
 
@@ -47,7 +58,7 @@ class DmConnection implements DriverConnection {
           `SET SCHEMA ${oracleFamilyHelpers.quoteIdentifier(options.schema)}`,
         )
       }
-      const res = await conn.execute(sql, params as unknown[])
+      const res = await conn.execute(paginate(sql, options), params as unknown[])
       const executionTimeMs = Date.now() - start
       if (res.metaData) {
         const columns: QueryColumn[] = res.metaData.map((m: any) => ({
@@ -72,21 +83,54 @@ class DmConnection implements DriverConnection {
     }
   }
 
-  // 与 Oracle 同构：Connection → Schema → Group(表/视图) → Table/View → Column
+  // 与 Oracle 同构，并对齐 MySQL/PG：
+  //   Connection → Schema → Group(表/视图, 带计数) → Table/View
+  //                  → Group(列/索引/键, 带计数) → Column/Index/Key
   async fetchMetadata(scope: MetaScope): Promise<MetadataNode[]> {
     switch (scope.parentKind) {
       case MetaNodeKind.Connection:
         return this.listSchemas()
       case MetaNodeKind.Schema:
-        return schemaGroups(scope.path)
+        return this.schemaGroups(scope.path[0])
       case MetaNodeKind.Group:
         return this.listGroupObjects(scope.path, scope.group)
       case MetaNodeKind.Table:
       case MetaNodeKind.View:
-        return this.listColumns(scope.path[0], scope.path[1])
+        return this.tableSubGroups(scope.path[0], scope.path[1])
       default:
         return []
     }
+  }
+
+  private async scalar(sql: string, binds: unknown[]): Promise<number> {
+    const rows = await this.q(sql, binds)
+    return Number((rows[0] as { c?: number })?.c ?? 0)
+  }
+
+  private async schemaGroups(schema: string): Promise<MetadataNode[]> {
+    const [tables, views] = await Promise.all([
+      this.scalar('SELECT COUNT(*) AS "c" FROM all_tables WHERE owner = :1', [schema]),
+      this.scalar('SELECT COUNT(*) AS "c" FROM all_views WHERE owner = :1', [schema]),
+    ])
+    const p = [schema]
+    return [
+      { kind: MetaNodeKind.Group, name: '表', path: p, group: 'tables', hasChildren: true, count: tables },
+      { kind: MetaNodeKind.Group, name: '视图', path: p, group: 'views', hasChildren: true, count: views },
+    ]
+  }
+
+  private async tableSubGroups(schema: string, table: string): Promise<MetadataNode[]> {
+    const [cols, idx, keys] = await Promise.all([
+      this.scalar('SELECT COUNT(*) AS "c" FROM all_tab_columns WHERE owner = :1 AND table_name = :2', [schema, table]),
+      this.scalar('SELECT COUNT(*) AS "c" FROM all_indexes WHERE owner = :1 AND table_name = :2', [schema, table]),
+      this.scalar('SELECT COUNT(*) AS "c" FROM all_constraints WHERE owner = :1 AND table_name = :2', [schema, table]),
+    ])
+    const p = [schema, table]
+    return [
+      { kind: MetaNodeKind.Group, name: '列', path: p, group: 'columns', hasChildren: true, count: cols },
+      { kind: MetaNodeKind.Group, name: '索引', path: p, group: 'indexes', hasChildren: true, count: idx },
+      { kind: MetaNodeKind.Group, name: '键', path: p, group: 'keys', hasChildren: true, count: keys },
+    ]
   }
 
   private async q(sql: string, binds: unknown[] = []): Promise<any[]> {
@@ -113,6 +157,30 @@ class DmConnection implements DriverConnection {
     const schema = path[0]
     const quote = oracleFamilyHelpers.quoteIdentifier
     if (group === 'columns') return this.listColumns(schema, path[1])
+    if (group === 'indexes') {
+      const rows = await this.q(
+        'SELECT index_name AS "name" FROM all_indexes WHERE owner = :1 AND table_name = :2 ORDER BY index_name',
+        [schema, path[1]],
+      )
+      return rows.map((r: any) => ({
+        kind: MetaNodeKind.Index,
+        name: String(r.name),
+        path: [...path, String(r.name)],
+        hasChildren: false,
+      }))
+    }
+    if (group === 'keys') {
+      const rows = await this.q(
+        'SELECT constraint_name AS "name", constraint_type AS "t" FROM all_constraints WHERE owner = :1 AND table_name = :2 ORDER BY constraint_name',
+        [schema, path[1]],
+      )
+      return rows.map((r: any) => ({
+        kind: MetaNodeKind.Index,
+        name: `${String(r.name)} (${String(r.t)})`,
+        path: [...path, String(r.name)],
+        hasChildren: false,
+      }))
+    }
     if (group === 'tables') {
       const rows = await this.q(
         'SELECT table_name AS "name" FROM all_tables WHERE owner = :1 ORDER BY table_name',
@@ -164,19 +232,6 @@ class DmConnection implements DriverConnection {
   async close(): Promise<void> {
     await this.pool.close(0)
   }
-}
-
-function schemaGroups(path: string[]): MetadataNode[] {
-  return [
-    { group: 'tables', label: '表' },
-    { group: 'views', label: '视图' },
-  ].map(({ group, label }) => ({
-    kind: MetaNodeKind.Group,
-    name: label,
-    path,
-    group,
-    hasChildren: true,
-  }))
 }
 
 export function createDmDriver(dialect: DbDialect): DatabaseDriver {
