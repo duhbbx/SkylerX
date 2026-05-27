@@ -3,6 +3,7 @@ import type { DbDialect, QueryResult } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
+import { t } from '../i18n'
 import type { EditChanges } from '../editable'
 import { type ExportFormat, exportRows, toCSV, toJSON } from '../io'
 import Modal from './Modal.vue'
@@ -207,7 +208,7 @@ async function doExport(format: ExportFormat): Promise<void> {
   const rows = ((props.editable ? localRows.value : props.result?.rows) ?? []) as Row[]
   let tableRef = 'table_name'
   if (format === 'sql') {
-    const n = window.prompt('SQL 导出：目标表名', 'table_name')
+    const n = window.prompt(t('grid.exportPrompt'), 'table_name')
     if (!n || !n.trim()) return
     tableRef = props.dialect != null ? quoteId(props.dialect, n.trim()) : n.trim()
   }
@@ -377,7 +378,7 @@ function copyText(text: string): void {
 function filterCol(col: string): void {
   const cur = colFilters.value[col] ?? ''
   const input = window.prompt(
-    `筛选「${col}」——输入条件（如  = 5  /  > 10  /  LIKE '%a%'  /  IS NULL），留空清除`,
+    t('grid.filterPrompt', { col }),
     cur,
   )
   if (input === null) return
@@ -412,36 +413,36 @@ function applyCellEdit(): void {
 
 <template>
   <div class="grid-wrap">
-    <div v-if="running" class="grid-msg">执行中…</div>
+    <div v-if="running" class="grid-msg">{{ t('grid.running') }}</div>
     <div v-else-if="error" class="grid-err">✗ {{ error }}</div>
-    <div v-else-if="!result" class="grid-msg">在上方输入 SQL，⌘/Ctrl+Enter 或点「运行」执行</div>
+    <div v-else-if="!result" class="grid-msg">{{ t('grid.empty') }}</div>
     <template v-else>
       <div v-if="editable && result.columns.length" class="edit-tools">
-        <button title="新增行" @click="addRow">＋</button>
-        <button title="删除选中行" :disabled="!selected.size" @click="deleteSelected">－</button>
-        <button class="ok" title="提交修改" :disabled="!dirty" @click="commit">✓ 提交</button>
-        <button title="还原" :disabled="!dirty" @click="resetEdits">↺</button>
-        <span v-if="dirty" class="chg">{{ changeCount }} 项改动</span>
-        <span v-if="selected.size" class="chg muted">已选 {{ selected.size }} 行</span>
-        <span class="hint">双击单元格编辑 · 单击选行（⌘/Shift 多选）</span>
+        <button :title="t('grid.addRow')" @click="addRow">＋</button>
+        <button :title="t('grid.delRow')" :disabled="!selected.size" @click="deleteSelected">－</button>
+        <button class="ok" :title="t('grid.commitTitle')" :disabled="!dirty" @click="commit">✓ {{ t('grid.commit') }}</button>
+        <button :title="t('grid.revert')" :disabled="!dirty" @click="resetEdits">↺</button>
+        <span v-if="dirty" class="chg">{{ t('grid.changes', { n: changeCount }) }}</span>
+        <span v-if="selected.size" class="chg muted">{{ t('grid.selectedRows', { n: selected.size }) }}</span>
+        <span class="hint">{{ t('grid.editHint') }}</span>
       </div>
 
       <div v-if="!editable && result.columns.length" class="view-tools">
-        <input v-model="filterText" class="filter" placeholder="🔍 筛选当前页…" />
-        <span v-if="selected.size" class="chg muted">已选 {{ selected.size }} 行</span>
+        <input v-model="filterText" class="filter" :placeholder="t('grid.filterPh')" />
+        <span v-if="selected.size" class="chg muted">{{ t('grid.selectedRows', { n: selected.size }) }}</span>
         <span class="grow" />
         <div class="menu-box">
-          <button @click.stop="showCopyMenu = !showCopyMenu">复制 ▾</button>
+          <button @click.stop="showCopyMenu = !showCopyMenu">{{ t('grid.copy') }}</button>
           <template v-if="showCopyMenu">
             <div class="exp-overlay" @click="showCopyMenu = false" />
             <div class="exp-menu" @click.stop>
-              <button @click="copyRows('csv')">{{ selected.size ? '选中行' : '全部' }} → CSV</button>
-              <button @click="copyRows('json')">{{ selected.size ? '选中行' : '全部' }} → JSON</button>
+              <button @click="copyRows('csv')">{{ selected.size ? t('grid.selRows') : t('grid.all') }} → CSV</button>
+              <button @click="copyRows('json')">{{ selected.size ? t('grid.selRows') : t('grid.all') }} → JSON</button>
             </div>
           </template>
         </div>
         <div class="menu-box">
-          <button @click.stop="showColsMenu = !showColsMenu">列 ▾</button>
+          <button @click.stop="showColsMenu = !showColsMenu">{{ t('grid.cols') }}</button>
           <template v-if="showColsMenu">
             <div class="exp-overlay" @click="showColsMenu = false" />
             <div class="exp-menu cols-menu" @click.stop>
@@ -456,7 +457,7 @@ function applyCellEdit(): void {
             </div>
           </template>
         </div>
-        <span class="hint">点列头排序 · 双击单元格查看 · 点行号看整行</span>
+        <span class="hint">{{ t('grid.sortHint') }}</span>
       </div>
 
       <div v-if="result.columns.length" ref="gridScrollEl" class="grid-scroll" @scroll="onGridScroll">
@@ -477,14 +478,14 @@ function applyCellEdit(): void {
                   v-if="filterable"
                   class="funnel"
                   :class="{ on: colFilters[c.name] }"
-                  title="筛选该列（生成 WHERE）"
+                  :title="t('grid.filterColTitle')"
                   @click.stop="filterCol(c.name)"
                 >
                   ⏷
                 </button>
                 <span
                   class="col-resize"
-                  title="拖拽调整列宽"
+                  :title="t('grid.resizeColTitle')"
                   @mousedown.stop.prevent="startResize(c.name, $event)"
                   @click.stop
                 />
@@ -500,7 +501,7 @@ function applyCellEdit(): void {
               :class="{ selected: isSel('r', i), deleted: editable && deleted[i] }"
               @click="onRowClick('r', i, $event)"
             >
-              <td class="rownum" title="查看整行" @click.stop="openRow(i)">{{ i + 1 }}</td>
+              <td class="rownum" :title="t('grid.viewRowTitle')" @click.stop="openRow(i)">{{ i + 1 }}</td>
               <td
                 v-for="c in visibleColumns"
                 :key="c.name"
@@ -521,7 +522,7 @@ function applyCellEdit(): void {
                   />
                   <button
                     class="expand"
-                    title="大文本 / JSON 编辑器"
+                    :title="t('grid.cellEditorTitle')"
                     @mousedown.prevent.stop="openCellEditor(i, c.name)"
                   >
                     ⤢
@@ -559,15 +560,15 @@ function applyCellEdit(): void {
           </tbody>
         </table>
       </div>
-      <div v-else class="grid-msg">执行成功</div>
+      <div v-else class="grid-msg">{{ t('grid.execOk') }}</div>
 
       <div class="statusbar">
         <template v-if="pageable && result.columns.length">
-          <button :disabled="(page ?? 0) <= 0" @click="emit('changePage', (page ?? 0) - 1)">‹ 上一页</button>
-          <span class="pg-info">第 {{ (page ?? 0) + 1 }} 页</span>
-          <button :disabled="!hasMore" @click="emit('changePage', (page ?? 0) + 1)">下一页 ›</button>
+          <button :disabled="(page ?? 0) <= 0" @click="emit('changePage', (page ?? 0) - 1)">{{ t('grid.prevPage') }}</button>
+          <span class="pg-info">{{ t('grid.pageInfo', { n: (page ?? 0) + 1 }) }}</span>
+          <button :disabled="!hasMore" @click="emit('changePage', (page ?? 0) + 1)">{{ t('grid.nextPage') }}</button>
           <span class="sep" />
-          <label>每页</label>
+          <label>{{ t('grid.perPage') }}</label>
           <select
             class="pgsize"
             :value="pageSize"
@@ -576,20 +577,20 @@ function applyCellEdit(): void {
             <option v-for="s in PAGE_SIZES" :key="s" :value="s">{{ s }}</option>
           </select>
           <span class="sep" />
-          <label>跳至</label>
+          <label>{{ t('grid.jumpTo') }}</label>
           <input v-model="jumpTo" class="jump" type="number" min="1" @keyup.enter="doJump" />
-          <button @click="doJump">跳转</button>
+          <button @click="doJump">{{ t('grid.jump') }}</button>
         </template>
 
         <span class="meta">
-          <template v-if="result.columns.length">{{ result.rowCount }} 行</template>
-          <template v-else>影响 {{ result.affectedRows ?? 0 }} 行</template>
+          <template v-if="result.columns.length">{{ t('grid.rowCount', { n: result.rowCount }) }}</template>
+          <template v-else>{{ t('grid.affected', { n: result.affectedRows ?? 0 }) }}</template>
           · {{ result.executionTimeMs }} ms
-          <span v-if="result.truncated" class="trunc">（已截断）</span>
+          <span v-if="result.truncated" class="trunc">{{ t('grid.truncated') }}</span>
         </span>
 
         <div v-if="result.columns.length" class="export-box">
-          <button class="exp-btn" title="导出结果" @click.stop="toggleExport">导出 ▾</button>
+          <button class="exp-btn" :title="t('grid.exportTitle')" @click.stop="toggleExport">{{ t('grid.export') }}</button>
           <template v-if="showExport">
             <div class="exp-overlay" @click="showExport = false" />
             <div
@@ -611,15 +612,15 @@ function applyCellEdit(): void {
 
       <Modal
         v-if="viewer"
-        :title="viewer.col ? `单元格 · ${viewer.col}` : `第 ${viewer.row + 1} 行`"
+        :title="viewer.col ? t('grid.cellTitle', { col: viewer.col }) : t('grid.rowTitle', { n: viewer.row + 1 })"
         @close="viewer = null"
       >
         <template v-if="viewer.col">
           <textarea v-if="editable" v-model="editBuf" class="cell-edit" spellcheck="false" />
           <pre v-else class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
           <div class="viewer-actions">
-            <button v-if="editable" class="primary" @click="applyCellEdit">应用</button>
-            <button @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">复制</button>
+            <button v-if="editable" class="primary" @click="applyCellEdit">{{ t('grid.apply') }}</button>
+            <button @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
           </div>
         </template>
         <template v-else-if="viewerRow">
@@ -632,9 +633,9 @@ function applyCellEdit(): void {
             </tbody>
           </table>
           <div class="viewer-actions">
-            <button :disabled="viewer.row <= 0" @click="moveViewer(-1)">‹ 上一行</button>
-            <button :disabled="viewer.row >= viewRows.length - 1" @click="moveViewer(1)">下一行 ›</button>
-            <button @click="copyText(JSON.stringify(viewerRow, null, 2))">复制为 JSON</button>
+            <button :disabled="viewer.row <= 0" @click="moveViewer(-1)">{{ t('grid.prevRow') }}</button>
+            <button :disabled="viewer.row >= viewRows.length - 1" @click="moveViewer(1)">{{ t('grid.nextRow') }}</button>
+            <button @click="copyText(JSON.stringify(viewerRow, null, 2))">{{ t('grid.copyJson') }}</button>
           </div>
         </template>
       </Modal>
