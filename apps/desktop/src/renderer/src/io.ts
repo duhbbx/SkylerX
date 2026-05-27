@@ -32,16 +32,26 @@ function sqlLiteral(v: unknown): string {
   return `'${String(v).replace(/'/g, "''")}'`
 }
 
+/** 每行一条 INSERT 语句（数组形式，供 executeBatch 分批执行）。 */
+export function rowInserts(
+  dialect: DbDialect | undefined,
+  tableRef: string,
+  columns: string[],
+  rows: Row[],
+): string[] {
+  const colList = columns.map((c) => (dialect != null ? quoteId(dialect, c) : `"${c}"`)).join(', ')
+  return rows.map(
+    (r) => `INSERT INTO ${tableRef} (${colList}) VALUES (${columns.map((c) => sqlLiteral(r[c])).join(', ')});`,
+  )
+}
+
 export function toInsertSql(
   dialect: DbDialect | undefined,
   tableRef: string,
   columns: string[],
   rows: Row[],
 ): string {
-  const colList = columns.map((c) => (dialect != null ? quoteId(dialect, c) : `"${c}"`)).join(', ')
-  return rows
-    .map((r) => `INSERT INTO ${tableRef} (${colList}) VALUES (${columns.map((c) => sqlLiteral(r[c])).join(', ')});`)
-    .join('\n')
+  return rowInserts(dialect, tableRef, columns, rows).join('\n')
 }
 
 export function exportRows(

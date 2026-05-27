@@ -72,6 +72,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.exportSql(node, connId),
   },
   {
+    id: 'transfer-data',
+    label: '数据传输（复制到…）',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.transferData(node, connId),
+  },
+  {
     id: 'new-table',
     label: '新建表',
     kinds: [MetaNodeKind.Group, MetaNodeKind.Table, MetaNodeKind.View],

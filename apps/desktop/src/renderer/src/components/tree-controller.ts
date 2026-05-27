@@ -45,6 +45,8 @@ export interface TreeController {
   exportSql(node: TreeNode, connId: string): void
   /** 导出整库/schema 为 SQL 文件（所有表 结构 + 数据） */
   exportSchemaSql(node: TreeNode, connId: string): void
+  /** 数据传输：把该表数据复制到另一连接的表 */
+  transferData(node: TreeNode, connId: string): void
   editConnection(connId: string): void
   newConnection(): void
   deleteConnection(connId: string): void

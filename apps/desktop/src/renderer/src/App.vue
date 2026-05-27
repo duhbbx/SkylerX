@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
+import DataTransferDialog from './components/DataTransferDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
@@ -42,6 +43,13 @@ const dropConfirm = ref<{
 const importing = ref<{ connId: string; node: TreeNode; dialect: DbDialect; ctx: TableContext } | null>(
   null,
 )
+// 数据传输对话框
+const transferring = ref<{
+  connId: string
+  node: TreeNode
+  dialect: DbDialect
+  ctx: TableContext
+} | null>(null)
 
 const dropResult = computed(() =>
   dropConfirm.value
@@ -207,6 +215,16 @@ async function onExportSchemaSql(connId: string, node: TreeNode): Promise<void> 
   }
 }
 
+// 数据传输 → 弹对话框
+async function onTransferData(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  transferring.value = { connId, node, dialect: conn.dialect, ctx: deriveContext(conn.dialect, node) }
+}
+function onTransferDone(count: number): void {
+  transferring.value = null
+  window.alert(`数据传输完成：${count} 行`)
+}
+
 function onImportDone(count: number): void {
   const imp = importing.value
   importing.value = null
@@ -330,6 +348,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @import-data="onImportData"
     @export-sql="onExportSql"
     @export-schema-sql="onExportSchemaSql"
+    @transfer-data="onTransferData"
     @open-settings="settingsOpen = true"
   />
 
@@ -386,6 +405,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     :items="paletteItems"
     @select="onPaletteSelect"
     @close="paletteOpen = false"
+  />
+
+  <DataTransferDialog
+    v-if="transferring"
+    :conn-id="transferring.connId"
+    :dialect="transferring.dialect"
+    :node="transferring.node"
+    :ctx="transferring.ctx"
+    @done="onTransferDone"
+    @close="transferring = null"
   />
 
   <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
