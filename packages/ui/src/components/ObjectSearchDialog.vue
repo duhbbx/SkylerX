@@ -6,7 +6,11 @@ import { quoteId } from '../ddl'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
-const emit = defineEmits<{ close: []; preview: [string, string] }>()
+const emit = defineEmits<{
+  close: []
+  preview: [string, string]
+  reveal: [string, string, string]
+}>()
 
 interface Hit {
   schema: string
@@ -105,11 +109,18 @@ function icon(h: Hit): string {
   return h.kind === 'column' ? '·' : h.kind === 'view' ? '◫' : '▦'
 }
 
-function open(h: Hit): void {
+// 点击结果 = 在导航树中定位选中该对象
+function reveal(h: Hit): void {
   const c = connOf(connId.value)
   if (!c) return
-  const qualified = `${quoteId(c.dialect, h.schema)}.${quoteId(c.dialect, h.table)}`
-  emit('preview', c.id, qualified)
+  emit('reveal', c.id, h.schema, h.table)
+  emit('close')
+}
+// 预览 = 查询前 200 行
+function preview(h: Hit): void {
+  const c = connOf(connId.value)
+  if (!c) return
+  emit('preview', c.id, `${quoteId(c.dialect, h.schema)}.${quoteId(c.dialect, h.table)}`)
   emit('close')
 }
 </script>
@@ -137,13 +148,14 @@ function open(h: Hit): void {
       <div v-else-if="term.trim().length < 2" class="hint">输入至少 2 个字符</div>
 
       <div v-if="hits.length" class="results">
-        <div v-for="(h, i) in hits" :key="i" class="hit" @click="open(h)">
+        <div v-for="(h, i) in hits" :key="i" class="hit" @click="reveal(h)">
           <span class="ico">{{ icon(h) }}</span>
           <span class="path">{{ h.schema }}.<b>{{ h.table }}</b><template v-if="h.column">.<span class="col">{{ h.column }}</span></template></span>
           <span class="kind">{{ h.kind === 'column' ? '列' : h.kind === 'view' ? '视图' : '表' }}</span>
+          <button class="prev-btn" title="查询前 200 行" @click.stop="preview(h)">预览</button>
         </div>
       </div>
-      <p v-if="hits.length" class="foot">点击结果在该连接打开「查询前 200 行」</p>
+      <p v-if="hits.length" class="foot">点击结果在导航树中定位选中；「预览」查询前 200 行</p>
     </div>
   </Modal>
 </template>
@@ -219,6 +231,20 @@ function open(h: Hit): void {
 .kind {
   font-size: 11px;
   color: var(--muted);
+}
+.prev-btn {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0;
+}
+.hit:hover .prev-btn {
+  opacity: 1;
 }
 .foot {
   margin: 0;

@@ -438,6 +438,11 @@ async function onSearchPreview(connId: string, qualified: string): Promise<void>
   tabsRef.value?.runSql(conn, previewSql(conn.dialect, qualified, 200))
 }
 
+// 全局对象搜索命中 → 在导航树中展开并选中该对象
+async function onSearchReveal(connId: string, schema: string, table: string): Promise<void> {
+  await navRef.value?.revealObject(connId, schema, table)
+}
+
 // 结构对比生成的迁移 SQL → 在目标连接开一个草稿查询页
 async function onDiffOpenSql(connId: string, sql: string): Promise<void> {
   const conn = await client.connections.get(connId)
@@ -669,6 +674,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   <ObjectSearchDialog
     v-if="objectSearchOpen"
+    @reveal="onSearchReveal"
     @preview="onSearchPreview"
     @close="objectSearchOpen = false"
   />

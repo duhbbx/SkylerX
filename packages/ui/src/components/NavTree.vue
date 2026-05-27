@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type ConnectionConfig, type ConnectionEnv, MetaNodeKind } from '@db-tool/shared-types'
-import { computed, onMounted, provide, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, provide, reactive, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { connEnv } from '../connEnv'
 import { t } from '../i18n'
@@ -215,6 +215,74 @@ function refreshNode(node: TreeNode, connId: string): void {
   void controller.refreshNode(node, connId)
 }
 
+// ── 全局对象搜索：在树中逐层展开并选中目标对象 ──
+const treeBodyEl = ref<HTMLElement>()
+
+async function ensureLoaded(node: TreeNode, connId: string): Promise<void> {
+  if (node.hasChildren && node.children === null) await controller.loadChildren(node, connId)
+}
+
+function selectReveal(node: TreeNode, connId: string): void {
+  controller.select(node, connId)
+  void nextTick(() => {
+    treeBodyEl.value?.querySelector('.tree-node.selected')?.scrollIntoView({ block: 'center' })
+  })
+}
+
+/** 在节点下递归查找目标表/视图：schemaOk 表示已进入正确的库/schema 层。 */
+async function walkReveal(
+  node: TreeNode,
+  connId: string,
+  schema: string,
+  table: string,
+  schemaOk: boolean,
+): Promise<boolean> {
+  await ensureLoaded(node, connId)
+  const kids = node.children ?? []
+  const isObj = (c: TreeNode) => c.kind === MetaNodeKind.Table || c.kind === MetaNodeKind.View
+  if (schemaOk) {
+    const direct = kids.find((c) => isObj(c) && c.name === table)
+    if (direct) {
+      selectReveal(direct, connId)
+      return true
+    }
+    for (const g of kids) {
+      if (g.kind === MetaNodeKind.Group && (g.group === 'tables' || g.group === 'views')) {
+        g.expanded = true
+        await ensureLoaded(g, connId)
+        const hit = (g.children ?? []).find((c) => isObj(c) && c.name === table)
+        if (hit) {
+          selectReveal(hit, connId)
+          return true
+        }
+      }
+    }
+    return false
+  }
+  for (const c of kids) {
+    if (c.kind === MetaNodeKind.Schema) {
+      if (c.name !== schema) continue
+      c.expanded = true
+      if (await walkReveal(c, connId, schema, table, true)) return true
+    } else if (c.kind === MetaNodeKind.Database) {
+      c.expanded = true
+      await ensureLoaded(c, connId)
+      const nested = (c.children ?? []).some((x) => x.kind === MetaNodeKind.Schema)
+      if (nested ? await walkReveal(c, connId, schema, table, false) : false) return true
+      if (!nested && c.name === schema && (await walkReveal(c, connId, schema, table, true))) return true
+    }
+  }
+  return false
+}
+
+/** 展开连接并定位到 schema.table 对象（供全局对象搜索点击跳转）。 */
+async function revealObject(connId: string, schema: string, table: string): Promise<boolean> {
+  const root = roots.value.find((r) => r.id === connId)?.node
+  if (!root) return false
+  root.expanded = true
+  return walkReveal(root, connId, schema, table, false)
+}
+
 // ── 批量操作 ──
 function bulkDrop(): void {
   emit('bulkDrop', [...multiSel.values()])
@@ -224,7 +292,7 @@ function bulkCopyNames(): void {
   void navigator.clipboard?.writeText(text)
 }
 
-defineExpose({ reload, refreshNode, clearMulti: () => multiSel.clear() })
+defineExpose({ reload, refreshNode, clearMulti: () => multiSel.clear(), revealObject })
 onMounted(reload)
 </script>
 
@@ -238,7 +306,7 @@ onMounted(reload)
         <button class="icon" :title="t('nav.settings')" @click="emit('openSettings')">⚙</button>
       </span>
     </div>
-    <div class="tree-body">
+    <div ref="treeBodyEl" class="tree-body">
       <div v-if="!roots.length" class="tree-status">{{ t('nav.empty') }}</div>
 
       <template v-for="g in groupList" :key="'g:' + g.name">
