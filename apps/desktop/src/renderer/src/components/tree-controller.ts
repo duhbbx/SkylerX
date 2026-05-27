@@ -41,6 +41,8 @@ export interface TreeController {
   openErd(node: TreeNode, connId: string): void
   /** 导入数据：打开 CSV 导入对话框（导入到该表） */
   importData(node: TreeNode, connId: string): void
+  /** 导出该表为 SQL 文件（结构 + 数据） */
+  exportSql(node: TreeNode, connId: string): void
   editConnection(connId: string): void
   newConnection(): void
   deleteConnection(connId: string): void

@@ -65,6 +65,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.importData(node, connId),
   },
   {
+    id: 'export-sql',
+    label: '导出为 SQL（结构+数据）',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.exportSql(node, connId),
+  },
+  {
     id: 'new-table',
     label: '新建表',
     kinds: [MetaNodeKind.Group, MetaNodeKind.Table, MetaNodeKind.View],

@@ -7,7 +7,8 @@ import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
-import { type ConnectionConfig, type DbDialect } from '@db-tool/shared-types'
+import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
+import { buildTableDump } from './dump'
 import {
   type ObjectKind,
   type TableContext,
@@ -140,6 +141,32 @@ async function onImportData(connId: string, node: TreeNode): Promise<void> {
   importing.value = { connId, node, dialect: conn.dialect, ctx: deriveContext(conn.dialect, node) }
 }
 
+// 导出表为 SQL（结构 + 数据）→ 取列元数据 + 全表数据 → 生成 dump → 保存
+async function onExportSql(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  const ref = node.sqlName ?? node.name
+  try {
+    const cols = await window.api.connections.metadata(connId, {
+      parentKind: MetaNodeKind.Group,
+      path: [...node.path],
+      group: 'columns',
+    })
+    const data = await window.api.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
+    const sql = buildTableDump(conn.dialect, ref, cols, data.rows)
+    await window.api.files.saveText({
+      defaultName: `${node.name}.sql`,
+      content: sql,
+      filters: [{ name: 'SQL', extensions: ['sql'] }],
+    })
+  } catch (e) {
+    window.alert(`导出失败：${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 function onImportDone(count: number): void {
   const imp = importing.value
   importing.value = null
@@ -256,6 +283,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @edit-object="onEditObject"
     @open-erd="onOpenErd"
     @import-data="onImportData"
+    @export-sql="onExportSql"
   />
 
   <main class="main">
