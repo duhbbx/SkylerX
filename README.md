@@ -62,6 +62,14 @@ pnpm build:desktop    # 构建桌面端
 
 CI（`.github/workflows/ci.yml`）在 push / PR 跑 typecheck + test + lint。
 
+E2E 冒烟（opt-in，需先构建 + 重建原生模块，不在主 CI 跑）：
+
+```bash
+pnpm build:desktop
+pnpm --filter @db-tool/desktop rebuild:native
+pnpm e2e              # Playwright 启动 Electron，校验窗口 / 导航 / 命令面板渲染
+```
+
 ## 打包
 
 ```bash
