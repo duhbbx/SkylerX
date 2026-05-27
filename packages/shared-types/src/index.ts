@@ -73,11 +73,14 @@ export interface ConnectionConfig {
   transport?: TransportMode
   /** agent 模式下的目标 agent 标识 */
   agentId?: string
-  /** 方言特有的额外参数（如 oracle serviceName、mssql instanceName） */
+  /** 方言特有的额外参数（如 oracle serviceName、mssql instanceName）；环境标记 env 也存于此 */
   extra?: Record<string, unknown>
   createdAt?: number
   updatedAt?: number
 }
+
+/** 连接环境标记：用于导航树着色与生产库误操作防护（存于 ConnectionConfig.extra.env）。 */
+export type ConnectionEnv = 'dev' | 'test' | 'prod'
 
 /** 传给执行层的轻量连接引用（不一定携带明文密码，可由执行层按 id 解析）。 */
 export interface ConnectionRef {

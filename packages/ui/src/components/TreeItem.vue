@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { ConnectionEnv } from '@db-tool/shared-types'
 import { inject } from 'vue'
+import { ENV_META } from '../connEnv'
 import { t } from '../i18n'
 import { TreeControllerKey } from './tree-controller'
 import { type TreeNode, iconFor } from './treeNode'
 
-const props = defineProps<{ node: TreeNode; connId: string; depth: number }>()
+const props = defineProps<{ node: TreeNode; connId: string; depth: number; env?: ConnectionEnv }>()
 
 // 注入控制器：任意深度直接调用，无需逐层 emit 冒泡
 const ctrl = inject(TreeControllerKey)!
@@ -59,6 +61,12 @@ function onContext(e: MouseEvent): void {
         {{ node.hasChildren ? (node.expanded ? '▾' : '▸') : '' }}
       </span>
       <span class="ico">{{ iconFor(node) }}</span>
+      <span
+        v-if="node.kind === 'connection' && env"
+        class="env-dot"
+        :style="{ background: ENV_META[env].color }"
+        :title="`环境：${ENV_META[env].label}`"
+      />
       <span class="label">{{ node.name }}</span>
       <span v-if="node.count != null" class="count">({{ node.count }})</span>
       <span v-if="node.detail?.dataType" class="col-type">{{ node.detail.dataType }}</span>
@@ -132,6 +140,12 @@ function onContext(e: MouseEvent): void {
   width: 16px;
   flex: none;
   text-align: center;
+}
+.env-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
 }
 .label {
   overflow: hidden;

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { type ConnectionConfig, DbDialect, type TestResult } from '@db-tool/shared-types'
+import { type ConnectionConfig, type ConnectionEnv, DbDialect, type TestResult } from '@db-tool/shared-types'
 import { reactive, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
+import { ENV_META, ENV_OPTIONS, connEnv } from '../connEnv'
 
 const client = useDataClient()
 
@@ -31,6 +32,7 @@ const defaultPorts: Record<string, number> = {
 }
 
 const form = reactive<ConnectionConfig>(blankForm())
+const env = ref<ConnectionEnv | ''>('') // 环境标记，存于 extra.env
 const testResult = ref<TestResult | null>(null)
 const busy = ref(false)
 const section = ref<'general' | 'ssl' | 'ssh'>('general')
@@ -65,8 +67,10 @@ async function load(): Promise<void> {
   if (props.connId) {
     const full = await client.connections.get(props.connId)
     Object.assign(form, { ...full, password: full.password ?? '' })
+    env.value = connEnv(full) ?? ''
   } else {
     Object.assign(form, blankForm())
+    env.value = ''
   }
   normalize()
   // 收集已有分组用于输入提示
@@ -91,6 +95,10 @@ function buildConfig(): ConnectionConfig {
   cfg.ssl = form.ssl?.enabled ? cfg.ssl : undefined
   cfg.ssh = form.ssh?.enabled ? cfg.ssh : undefined
   cfg.group = form.group?.trim() || undefined
+  // 环境标记并入 extra.env（无则移除：先剔除旧 env，再按需加回）
+  const { env: _drop, ...restExtra } = (form.extra ?? {}) as Record<string, unknown>
+  const extra = env.value ? { ...restExtra, env: env.value } : restExtra
+  cfg.extra = Object.keys(extra).length ? extra : undefined
   return cfg
 }
 
@@ -167,6 +175,12 @@ async function remove(): Promise<void> {
       <datalist id="conn-groups">
         <option v-for="g in groups" :key="g" :value="g" />
       </datalist>
+
+      <label>环境</label>
+      <select v-model="env">
+        <option value="">未标记</option>
+        <option v-for="e in ENV_OPTIONS" :key="e" :value="e">{{ ENV_META[e].label }}（{{ e }}）</option>
+      </select>
     </div>
 
     <div v-show="section === 'ssl'" class="form-grid">

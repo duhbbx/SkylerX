@@ -8,6 +8,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
+import { ENV_META, connEnv } from '../connEnv'
 import { type TableContext, explainSql } from '../ddl'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import type { Suggestion } from '../monaco-setup'
@@ -71,6 +72,7 @@ let runToken = 0 // 软取消令牌：停止后丢弃在途结果
 
 const cur = computed<ResultTab | undefined>(() => tabs.value[activeTab.value])
 const paginatable = PAGINATABLE.includes(props.conn.dialect)
+const env = connEnv(props.conn) // 环境标记（生产库高危操作加强确认 + 工具栏标识）
 
 // ── 编辑器 / 结果区 高度可拖拽 ──
 const paneEl = ref<HTMLElement>()
@@ -368,7 +370,17 @@ async function execSql(text: string): Promise<void> {
   const statements = splitStatements(text)
   if (!statements.length) return
   const dangers = statements.map(dangerOf).filter(Boolean) as string[]
-  if (dangers.length && !window.confirm(`⚠️ 检测到高危操作：\n\n${dangers.join('\n')}\n\n确定执行？`)) return
+  if (dangers.length) {
+    if (env === 'prod') {
+      // 生产库高危操作：要求键入连接名二次确认，防误操作
+      const typed = window.prompt(
+        `⚠️ 这是【生产】连接的高危操作：\n\n${dangers.join('\n')}\n\n如确认执行，请键入连接名「${props.conn.name}」：`,
+      )
+      if (typed?.trim() !== props.conn.name) return
+    } else if (!window.confirm(`⚠️ 检测到高危操作：\n\n${dangers.join('\n')}\n\n确定执行？`)) {
+      return
+    }
+  }
   const token = ++runToken
   running.value = true
   showHistory.value = false
@@ -642,6 +654,12 @@ onMounted(() => {
       </select>
 
       <span class="hint">⌘/Ctrl+Enter 执行（选中则只跑选区）</span>
+      <span
+        v-if="env"
+        class="env-badge"
+        :style="{ background: ENV_META[env].color }"
+        :title="`环境：${ENV_META[env].label}（高危操作需键入连接名确认）`"
+      >{{ ENV_META[env].label }}</span>
       <span class="conn-tag">{{ conn.name || '(未命名)' }} · {{ conn.dialect }}</span>
     </div>
 
@@ -765,6 +783,14 @@ onMounted(() => {
 .toolbar .hint {
   font-size: 11px;
   color: var(--muted);
+}
+.toolbar .env-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  padding: 1px 7px;
+  border-radius: 4px;
 }
 .toolbar .conn-tag {
   margin-left: auto;

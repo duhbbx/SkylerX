@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
+import { type ConnectionConfig, type ConnectionEnv, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, provide, reactive, ref } from 'vue'
 import { useDataClient } from '../data-client'
+import { connEnv } from '../connEnv'
 import { t } from '../i18n'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
@@ -56,6 +57,7 @@ interface ConnRoot {
   id: string
   node: TreeNode
   group?: string
+  env?: ConnectionEnv
 }
 
 const roots = ref<ConnRoot[]>([])
@@ -197,6 +199,7 @@ async function reload(): Promise<void> {
     id: c.id,
     node: prev.get(c.id) ?? rootNode(c.name || '(未命名)'),
     group: c.group,
+    env: connEnv(c),
   }))
   // 新出现的分组默认展开（保留用户已折叠的）
   const s = new Set(expandedGroups.value)
@@ -246,11 +249,11 @@ onMounted(reload)
           <span class="gcount">{{ g.conns.length }}</span>
         </div>
         <div v-show="expandedGroups.has(g.name)">
-          <TreeItem v-for="r in g.conns" :key="r.id" :node="r.node" :conn-id="r.id" :depth="1" />
+          <TreeItem v-for="r in g.conns" :key="r.id" :node="r.node" :conn-id="r.id" :depth="1" :env="r.env" />
         </div>
       </template>
 
-      <TreeItem v-for="r in ungrouped" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" />
+      <TreeItem v-for="r in ungrouped" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" :env="r.env" />
     </div>
 
     <div v-if="multiSel.size" class="bulk-bar">
