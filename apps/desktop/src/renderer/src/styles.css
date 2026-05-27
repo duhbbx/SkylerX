@@ -160,7 +160,7 @@ label {
   font-size: 14px;
 }
 
-input,
+input:not([type='checkbox']):not([type='radio']),
 select,
 textarea {
   width: 100%;
@@ -170,6 +170,14 @@ textarea {
   border-radius: 6px;
   color: var(--text);
   font-size: 14px;
+}
+
+/* 单选/复选用原生外观，避免被上面的输入框样式撑大 */
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 /* 统一的下拉样式：去掉浏览器原生外观，用主题色 + 自绘箭头 */
