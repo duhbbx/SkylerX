@@ -301,6 +301,21 @@ const viewerRow = computed<Row | null>(() =>
 function copyText(text: string): void {
   void navigator.clipboard?.writeText(text)
 }
+
+// ── 大文本/JSON 单元格编辑器 ──
+const editBuf = ref('')
+function openCellEditor(rowIndex: number, col: string): void {
+  const v = localRows.value[rowIndex]?.[col]
+  editBuf.value = v == null ? '' : typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)
+  viewer.value = { row: rowIndex, col }
+}
+function applyCellEdit(): void {
+  if (!viewer.value?.col) return
+  const r = localRows.value[viewer.value.row]
+  if (r) r[viewer.value.col] = editBuf.value
+  editing.value = null
+  viewer.value = null
+}
 </script>
 
 <template>
@@ -393,14 +408,22 @@ function copyText(text: string): void {
                 }"
                 @dblclick="onCellDblClick('r', i, c.name)"
               >
-                <input
-                  v-if="editable && isEditing('r', i, c.name)"
-                  v-model="localRows[i][c.name]"
-                  autofocus
-                  @blur="editing = null"
-                  @keyup.enter="editing = null"
-                  @click.stop
-                />
+                <span v-if="editable && isEditing('r', i, c.name)" class="edit-cell">
+                  <input
+                    v-model="localRows[i][c.name]"
+                    autofocus
+                    @blur="editing = null"
+                    @keyup.enter="editing = null"
+                    @click.stop
+                  />
+                  <button
+                    class="expand"
+                    title="大文本 / JSON 编辑器"
+                    @mousedown.prevent.stop="openCellEditor(i, c.name)"
+                  >
+                    ⤢
+                  </button>
+                </span>
                 <template v-else>{{ fmt(row[c.name]) }}</template>
               </td>
             </tr>
@@ -480,9 +503,11 @@ function copyText(text: string): void {
         @close="viewer = null"
       >
         <template v-if="viewer.col">
-          <pre class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
+          <textarea v-if="editable" v-model="editBuf" class="cell-edit" spellcheck="false" />
+          <pre v-else class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
           <div class="viewer-actions">
-            <button @click="copyText(pretty(viewerRow?.[viewer.col]))">复制</button>
+            <button v-if="editable" class="primary" @click="applyCellEdit">应用</button>
+            <button @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">复制</button>
           </div>
         </template>
         <template v-else-if="viewerRow">
@@ -761,6 +786,40 @@ td.rownum {
 }
 td.rownum:hover {
   color: var(--accent);
+}
+.edit-cell {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.edit-cell input {
+  flex: 1;
+  min-width: 0;
+}
+.edit-cell .expand {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 3px;
+}
+.edit-cell .expand:hover {
+  color: var(--accent);
+}
+.cell-edit {
+  width: 100%;
+  min-height: 40vh;
+  max-height: 60vh;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  resize: vertical;
 }
 .cell-view {
   margin: 0;
