@@ -31,6 +31,8 @@ export interface TreeController {
   dropObject(node: TreeNode, connId: string): void
   /** 查看表/视图结构（只读列信息页） */
   viewStructure(node: TreeNode, connId: string): void
+  /** 设计表：在表设计器中以「修改表」(alter) 模式打开 */
+  designTable(node: TreeNode, connId: string): void
   editConnection(connId: string): void
   newConnection(): void
   deleteConnection(connId: string): void

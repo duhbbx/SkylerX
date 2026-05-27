@@ -45,6 +45,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.viewStructure(node, connId),
   },
   {
+    id: 'design-table',
+    label: '设计表',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.designTable(node, connId),
+  },
+  {
     id: 'new-table',
     label: '新建表',
     kinds: [MetaNodeKind.Group, MetaNodeKind.Table, MetaNodeKind.View],

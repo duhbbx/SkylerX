@@ -16,7 +16,8 @@ interface Tab {
   pending: { sql: string; seq: number } | null // query
   ctx?: TableContext // designer
   refreshTarget?: TreeNode // designer：成功后刷新的树节点
-  node?: TreeNode // structure：要查看的表/视图节点
+  node?: TreeNode // structure：要查看的表/视图节点；table designer：改表时载入用
+  mode?: 'create' | 'alter' // table designer：新建 / 改表
 }
 
 const emit = defineEmits<{ connError: [string, string]; refresh: [TreeNode, string] }>()
@@ -73,6 +74,28 @@ function openStructure(conn: ConnectionConfig, node: TreeNode): void {
   push({ kind: 'structure', conn, title: `${node.name} · 结构`, pending: null, node })
 }
 
+/** 打开「设计表 / 改表」页（alter 模式，已有则聚焦）。 */
+function editTable(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): void {
+  const key = node.sqlName ?? node.name
+  const existing = tabs.value.find(
+    (t) => t.kind === 'table' && t.mode === 'alter' && (t.node?.sqlName ?? t.node?.name) === key,
+  )
+  if (existing) {
+    activeId.value = existing.id
+    return
+  }
+  push({
+    kind: 'table',
+    mode: 'alter',
+    conn,
+    title: `${node.name} · 设计`,
+    pending: null,
+    ctx,
+    node,
+    refreshTarget: node.parent ?? node,
+  })
+}
+
 function close(id: number): void {
   const i = tabs.value.findIndex((t) => t.id === id)
   if (i < 0) return
@@ -90,7 +113,7 @@ function onCreated(tab: Tab): void {
   close(tab.id)
 }
 
-defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, closeConnTabs })
+defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, closeConnTabs })
 </script>
 
 <template>
@@ -125,6 +148,8 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             :conn-id="t.conn.id"
             :dialect="t.conn.dialect"
             :ctx="t.ctx!"
+            :mode="t.mode ?? 'create'"
+            :node="t.node"
             @created="onCreated(t)"
             @cancel="close(t.id)"
           />

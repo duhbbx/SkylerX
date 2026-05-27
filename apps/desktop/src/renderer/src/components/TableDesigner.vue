@@ -1,23 +1,41 @@
 <script setup lang="ts">
-import type { DbDialect } from '@db-tool/shared-types'
-import { computed, reactive, ref } from 'vue'
+import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
+  type ColumnDef,
   type TableContext,
+  buildAlterTable,
   buildCreateTable,
   emptyColumn,
   emptyTableSpec,
+  parseType,
   typeOptions,
 } from '../ddl'
 import { splitStatements } from '../sqlSplit'
+import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
 
-const props = defineProps<{ connId: string; dialect: DbDialect; ctx: TableContext }>()
+const props = withDefaults(
+  defineProps<{
+    connId: string
+    dialect: DbDialect
+    ctx: TableContext
+    /** 'create' 新建表（默认）；'alter' 修改现有表（需 node）。 */
+    mode?: 'create' | 'alter'
+    node?: TreeNode
+  }>(),
+  { mode: 'create', node: undefined },
+)
 const emit = defineEmits<{ created: []; cancel: [] }>()
 
+const isAlter = computed(() => props.mode === 'alter')
 const tableName = ref('')
 const spec = reactive(emptyTableSpec())
+const original = ref<ColumnDef[]>([]) // 改表模式：加载时的列快照，用于 diff
+const loading = ref(false)
 const types = typeOptions(props.dialect)
 const isMysql = ['mysql', 'mariadb', 'oceanbase'].includes(props.dialect)
+const tableRef = computed(() => props.node?.sqlName ?? props.node?.name ?? tableName.value)
 
 const INNER = [
   { key: 'fields', label: '字段' },
@@ -37,8 +55,59 @@ const selected = ref(0)
 const busy = ref(false)
 const error = ref<string | null>(null)
 
-const ddl = computed(() => buildCreateTable(props.dialect, props.ctx, tableName.value, spec))
+const alterStmts = computed(() =>
+  isAlter.value ? buildAlterTable(props.dialect, tableRef.value, original.value, spec) : [],
+)
+const ddl = computed(() => {
+  if (isAlter.value)
+    return alterStmts.value.length
+      ? alterStmts.value.map((s) => `${s};`).join('\n')
+      : '-- 无字段 / 约束变更'
+  return buildCreateTable(props.dialect, props.ctx, tableName.value, spec)
+})
 const target = [props.ctx.database, props.ctx.schema].filter(Boolean).join(' / ')
+
+/** 改表模式：载入现有列结构作为初始值，并留存原始快照用于 diff。 */
+async function loadExisting(): Promise<void> {
+  if (!isAlter.value || !props.node) return
+  loading.value = true
+  error.value = null
+  try {
+    const cols: MetadataNode[] = await window.api.connections.metadata(props.connId, {
+      parentKind: MetaNodeKind.Group,
+      path: [...props.node.path],
+      group: 'columns',
+    })
+    const mapped: ColumnDef[] = cols.map((c) => {
+      const pt = parseType(c.detail?.dataType ?? '')
+      const def = c.detail?.defaultValue
+      return {
+        name: c.name,
+        type: pt.type,
+        length: pt.length,
+        scale: pt.scale,
+        nullable: c.detail?.nullable ?? true,
+        primaryKey: c.detail?.primaryKey ?? false,
+        defaultValue: def == null ? '' : String(def),
+        comment: c.detail?.comment ?? '',
+        originalName: c.name,
+      }
+    })
+    spec.columns = mapped.length ? mapped : [emptyColumn()]
+    spec.indexes = []
+    spec.foreignKeys = []
+    spec.uniques = []
+    spec.checks = []
+    original.value = mapped.map((c) => ({ ...c }))
+    tableName.value = props.node.name
+    selected.value = 0
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
+  }
+}
+onMounted(loadExisting)
 
 // ── 字段工具栏操作 ──
 function gotoFields(): void {
@@ -84,21 +153,11 @@ function resetTable(): void {
   error.value = null
 }
 
-async function save(): Promise<void> {
-  if (!tableName.value.trim()) {
-    error.value = '请输入表名'
-    gotoFields()
-    return
-  }
-  if (!spec.columns.some((c) => c.name.trim() && c.type.trim())) {
-    error.value = '至少需要一个有效字段'
-    gotoFields()
-    return
-  }
+async function run(stmts: string[]): Promise<void> {
   busy.value = true
   error.value = null
   try {
-    for (const stmt of splitStatements(ddl.value)) {
+    for (const stmt of stmts) {
       await window.api.connections.execute(props.connId, stmt, [], {
         database: props.ctx.database,
         schema: props.ctx.schema,
@@ -113,21 +172,44 @@ async function save(): Promise<void> {
   }
 }
 
+async function save(): Promise<void> {
+  if (isAlter.value) {
+    if (!alterStmts.value.length) {
+      error.value = '没有可应用的变更'
+      inner.value = 'sql'
+      return
+    }
+    await run(alterStmts.value)
+    return
+  }
+  if (!tableName.value.trim()) {
+    error.value = '请输入表名'
+    gotoFields()
+    return
+  }
+  if (!spec.columns.some((c) => c.name.trim() && c.type.trim())) {
+    error.value = '至少需要一个有效字段'
+    gotoFields()
+    return
+  }
+  await run(splitStatements(buildCreateTable(props.dialect, props.ctx, tableName.value, spec)))
+}
+
+// 另存为：用当前结构 CREATE 一张新表（改表模式下相当于「复制结构为新表」）。
 function saveAs(): void {
   const n = window.prompt('另存为（新表名）', tableName.value)
-  if (n && n.trim()) {
-    tableName.value = n.trim()
-    void save()
-  }
+  if (!n || !n.trim()) return
+  void run(splitStatements(buildCreateTable(props.dialect, props.ctx, n.trim(), spec)))
 }
 </script>
 
 <template>
   <div class="designer">
     <div class="toolbar">
-      <button @click="resetTable">新建</button>
-      <button class="primary" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
-      <button @click="saveAs">另存为</button>
+      <span v-if="isAlter" class="mode-badge">修改表</span>
+      <button v-if="!isAlter" @click="resetTable">新建</button>
+      <button class="primary" :disabled="busy || loading" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+      <button :disabled="busy || loading" @click="saveAs">另存为</button>
       <span class="sep" />
       <button @click="addField">添加字段</button>
       <button @click="insertField">插入字段</button>
@@ -137,9 +219,10 @@ function saveAs(): void {
       <button @click="move(1)">下移</button>
       <span class="name-box">
         <label>表名</label>
-        <input v-model="tableName" placeholder="新表名" />
+        <input v-model="tableName" :readonly="isAlter" placeholder="新表名" />
       </span>
-      <span v-if="target" class="target">{{ target }}</span>
+      <span v-if="loading" class="target">加载结构中…</span>
+      <span v-else-if="target" class="target">{{ target }}</span>
     </div>
 
     <div class="inner-tabs">
@@ -350,6 +433,17 @@ function saveAs(): void {
   margin-left: auto;
   font-size: 12px;
   color: var(--muted);
+}
+.mode-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(124, 108, 255, 0.18);
+  color: var(--accent);
+}
+.name-box input[readonly] {
+  opacity: 0.7;
+  cursor: default;
 }
 .inner-tabs {
   display: flex;

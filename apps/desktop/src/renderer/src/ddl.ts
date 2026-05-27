@@ -339,3 +339,100 @@ export function buildCreateTable(
 
   return statements.join('\n')
 }
+
+/**
+ * 由「原始列快照 + 当前表规格」diff 出 ALTER 语句（MySQL / PostgreSQL 系）。
+ * - 列：按 originalName 配对 → 识别 新增 / 删除 / 改名 / 改类型·空否·默认·注释。
+ * - 约束/索引：改表模式下设计器约束页从空白开始，凡填写者均视为「新增」→ ALTER ADD / CREATE INDEX。
+ * - 主键变更、删除既有约束本版不处理（请用 SQL 编辑器）。
+ * 返回不带分号的语句数组；调用方拼接预览或逐条执行（executeBatch 事务）。
+ */
+export function buildAlterTable(
+  dialect: DbDialect,
+  tableRef: string,
+  original: ColumnDef[],
+  spec: TableSpec,
+): string[] {
+  const q = (id: string) => quoteId(dialect, id)
+  const fam = familyOf(dialect)
+  const stmts: string[] = []
+  const current = spec.columns.filter((c) => c.name.trim() && c.type.trim())
+  const kept = new Set(current.filter((c) => c.originalName).map((c) => c.originalName as string))
+
+  // 删除：原有列在当前已不存在
+  for (const o of original) {
+    if (!kept.has(o.name)) stmts.push(`ALTER TABLE ${tableRef} DROP COLUMN ${q(o.name)}`)
+  }
+
+  const origByName = new Map(original.map((o) => [o.name, o]))
+  for (const c of current) {
+    const t = colType(c)
+    if (!c.originalName) {
+      // 新增列
+      if (fam === 'mysql') {
+        let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}${c.nullable ? ' NULL' : ' NOT NULL'}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+        if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
+        stmts.push(s)
+      } else {
+        let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}${c.nullable ? '' : ' NOT NULL'}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+        stmts.push(s)
+        if (c.comment.trim()) stmts.push(`COMMENT ON COLUMN ${tableRef}.${q(c.name)} IS '${esc(c.comment.trim())}'`)
+      }
+      continue
+    }
+    // 既有列：比对原始快照
+    const o = origByName.get(c.originalName)
+    if (!o) continue
+    const renamed = c.name !== c.originalName
+    const typeChanged = colType(o) !== t
+    const nullChanged = o.nullable !== c.nullable
+    const defChanged = o.defaultValue.trim() !== c.defaultValue.trim()
+    const commentChanged = o.comment.trim() !== c.comment.trim()
+    if (fam === 'mysql') {
+      // CHANGE 一步完成改名 + 重定义
+      if (renamed || typeChanged || nullChanged || defChanged || commentChanged) {
+        let s = `ALTER TABLE ${tableRef} CHANGE ${q(c.originalName)} ${q(c.name)} ${t}${c.nullable ? ' NULL' : ' NOT NULL'}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+        if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
+        stmts.push(s)
+      }
+    } else {
+      if (renamed) stmts.push(`ALTER TABLE ${tableRef} RENAME COLUMN ${q(c.originalName)} TO ${q(c.name)}`)
+      const col = q(c.name)
+      if (typeChanged) stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} TYPE ${t}`)
+      if (nullChanged) stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.nullable ? 'DROP NOT NULL' : 'SET NOT NULL'}`)
+      if (defChanged)
+        stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.defaultValue.trim() ? `SET DEFAULT ${c.defaultValue.trim()}` : 'DROP DEFAULT'}`)
+      if (commentChanged) stmts.push(`COMMENT ON COLUMN ${tableRef}.${col} IS '${esc(c.comment.trim())}'`)
+    }
+  }
+
+  // 新增约束 / 索引（改表模式约束页从空白开始 → 视为新增）
+  for (const u of spec.uniques) {
+    const cols = splitCols(u.columns)
+    if (!cols.length) continue
+    stmts.push(`ALTER TABLE ${tableRef} ADD ${u.name.trim() ? `CONSTRAINT ${q(u.name.trim())} ` : ''}UNIQUE (${cols.map(q).join(', ')})`)
+  }
+  for (const ck of spec.checks) {
+    if (!ck.expression.trim()) continue
+    stmts.push(`ALTER TABLE ${tableRef} ADD ${ck.name.trim() ? `CONSTRAINT ${q(ck.name.trim())} ` : ''}CHECK (${ck.expression.trim()})`)
+  }
+  for (const fk of spec.foreignKeys) {
+    const lc = splitCols(fk.columns)
+    const rc = splitCols(fk.refColumns)
+    if (!lc.length || !fk.refTable.trim() || !rc.length) continue
+    let s = `ALTER TABLE ${tableRef} ADD ${fk.name.trim() ? `CONSTRAINT ${q(fk.name.trim())} ` : ''}FOREIGN KEY (${lc.map(q).join(', ')}) REFERENCES ${q(fk.refTable.trim())} (${rc.map(q).join(', ')})`
+    if (fk.onDelete) s += ` ON DELETE ${fk.onDelete}`
+    if (fk.onUpdate) s += ` ON UPDATE ${fk.onUpdate}`
+    stmts.push(s)
+  }
+  for (const idx of spec.indexes) {
+    const cols = splitCols(idx.columns)
+    if (!cols.length) continue
+    stmts.push(`CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${cols.join('_')}`)} ON ${tableRef} (${cols.map(q).join(', ')})`)
+  }
+
+  return stmts
+}

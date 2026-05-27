@@ -92,6 +92,13 @@ async function onViewStructure(connId: string, node: TreeNode): Promise<void> {
   tabsRef.value?.openStructure(conn, node)
 }
 
+// 设计表（修改现有表）→ 开设计器 Tab（alter 模式，载入现有结构）
+async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  tabsRef.value?.editTable(conn, ctx, node)
+}
+
 // 删除对象 → 弹二次确认
 async function onDropObject(connId: string, node: TreeNode): Promise<void> {
   const conn = await window.api.connections.get(connId)
@@ -157,6 +164,7 @@ function onCancel(): void {
     @new-object="onNewObject"
     @drop-object="onDropObject"
     @view-structure="onViewStructure"
+    @design-table="onDesignTable"
   />
 
   <main class="main">
