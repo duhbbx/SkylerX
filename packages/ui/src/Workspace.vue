@@ -8,6 +8,7 @@ import ExportOptionsDialog from './components/ExportOptionsDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
+import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
@@ -427,6 +428,13 @@ function onCancel(): void {
 // ── 设置中心 ──
 const settingsOpen = ref(false)
 const schemaDiffOpen = ref(false)
+const objectSearchOpen = ref(false)
+
+// 全局对象搜索命中 → 在该连接「查询前 200 行」
+async function onSearchPreview(connId: string, qualified: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  tabsRef.value?.runSql(conn, previewSql(conn.dialect, qualified, 200))
+}
 
 // 结构对比生成的迁移 SQL → 在目标连接开一个草稿查询页
 async function onDiffOpenSql(connId: string, sql: string): Promise<void> {
@@ -440,6 +448,7 @@ const paletteConns = ref<ConnectionConfig[]>([])
 
 const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:new-conn', label: '新建连接', group: '操作' },
+  { id: 'act:object-search', label: '全局对象搜索（表/视图/列）', group: '操作' },
   { id: 'act:schema-diff', label: '结构对比 / 同步', group: '操作' },
   { id: 'act:settings', label: '设置', group: '操作' },
   { id: 'act:export-conns', label: '导出连接配置', group: '操作' },
@@ -461,6 +470,7 @@ async function openPalette(): Promise<void> {
 async function onPaletteSelect(item: PaletteItem): Promise<void> {
   paletteOpen.value = false
   if (item.id === 'act:new-conn') onNew()
+  else if (item.id === 'act:object-search') objectSearchOpen.value = true
   else if (item.id === 'act:schema-diff') schemaDiffOpen.value = true
   else if (item.id === 'act:settings') settingsOpen.value = true
   else if (item.id === 'act:export-conns') await exportConns()
@@ -504,6 +514,10 @@ function onKeydown(e: KeyboardEvent): void {
     e.preventDefault()
     if (paletteOpen.value) paletteOpen.value = false
     else void openPalette()
+  } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
+    // ⌘/Ctrl+Shift+O：全局对象搜索
+    e.preventDefault()
+    objectSearchOpen.value = true
   }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
@@ -647,6 +661,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     v-if="schemaDiffOpen"
     @open-sql="onDiffOpenSql"
     @close="schemaDiffOpen = false"
+  />
+
+  <ObjectSearchDialog
+    v-if="objectSearchOpen"
+    @preview="onSearchPreview"
+    @close="objectSearchOpen = false"
   />
 </template>
 
