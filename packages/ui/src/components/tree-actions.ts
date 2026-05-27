@@ -120,6 +120,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.tableStats(node, connId),
   },
   {
+    id: 'mock-data',
+    label: '生成测试数据',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.generateMockData(node, connId),
+  },
+  {
     id: 'import-data',
     label: '导入数据（CSV）',
     kinds: [MetaNodeKind.Table],

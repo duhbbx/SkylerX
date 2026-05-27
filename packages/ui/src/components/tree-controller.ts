@@ -43,6 +43,8 @@ export interface TreeController {
   designTable(node: TreeNode, connId: string): void
   /** 查看表统计信息（行数 / 数据 / 索引占用） */
   tableStats(node: TreeNode, connId: string): void
+  /** 生成测试数据：按列类型造多行 INSERT 填入查询页 */
+  generateMockData(node: TreeNode, connId: string): void
   /** 编辑视图/函数/存储过程：载入定义后以 DDL 编辑器打开 */
   editObject(node: TreeNode, connId: string): void
   /** 查看触发器/序列定义：取定义填入查询页（可改后手动执行） */

@@ -16,6 +16,7 @@ import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { buildTableDump } from './dump'
+import { buildMockInserts } from './mockgen'
 import {
   type ObjectKind,
   type SqlTemplateKind,
@@ -157,6 +158,31 @@ async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   tabsRef.value?.editTable(conn, ctx, node)
+}
+
+// 生成测试数据 → 取列信息，按类型造多行 INSERT 填入查询页（不执行）
+async function onMockData(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const countStr = window.prompt(`为 ${node.name} 生成多少行测试数据？`, '20')
+  const count = Number(countStr)
+  if (!Number.isFinite(count) || count < 1) return
+  const colNodes = await client.connections.metadata(connId, {
+    parentKind: MetaNodeKind.Group,
+    path: [...node.path],
+    group: 'columns',
+  })
+  const cols = colNodes.map((c) => ({
+    name: c.name,
+    type: c.detail?.dataType ?? '',
+    pk: !!c.detail?.primaryKey,
+  }))
+  if (!cols.length) {
+    window.alert('未取到列信息')
+    return
+  }
+  const ref = node.sqlName ?? node.name
+  const sql = buildMockInserts(conn.dialect, ref, cols, Math.floor(count))
+  tabsRef.value?.openDraft(conn, sql, `${node.name} · 测试数据`)
 }
 
 // 表统计信息 → 弹窗展示行数 / 数据 / 索引占用
@@ -582,6 +608,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @preview-table="onPreviewTable"
     @design-table="onDesignTable"
     @table-stats="onTableStats"
+    @mock-data="onMockData"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"
