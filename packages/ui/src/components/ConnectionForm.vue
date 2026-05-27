@@ -2,7 +2,8 @@
 import { type ConnectionConfig, type ConnectionEnv, DbDialect, type TestResult } from '@db-tool/shared-types'
 import { reactive, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
-import { ENV_META, ENV_OPTIONS, connEnv } from '../connEnv'
+import { ENV_OPTIONS, connEnv } from '../connEnv'
+import { t } from '../i18n'
 
 const client = useDataClient()
 
@@ -134,103 +135,103 @@ async function remove(): Promise<void> {
 <template>
   <div class="form-pane">
     <div v-if="initialError && !testResult" class="banner err">
-      ✗ 连接失败：{{ initialError }}
+      {{ t('conn.failed', { msg: initialError }) }}
     </div>
     <div class="sec-tabs">
-      <button :class="{ active: section === 'general' }" @click="section = 'general'">常规</button>
+      <button :class="{ active: section === 'general' }" @click="section = 'general'">{{ t('conn.tab.general') }}</button>
       <button :class="{ active: section === 'ssl' }" @click="section = 'ssl'">
         SSL<span v-if="form.ssl?.enabled" class="dot">●</span>
       </button>
       <button :class="{ active: section === 'ssh' }" @click="section = 'ssh'">
-        SSH 隧道<span v-if="form.ssh?.enabled" class="dot">●</span>
+        {{ t('conn.tab.ssh') }}<span v-if="form.ssh?.enabled" class="dot">●</span>
       </button>
     </div>
 
     <div v-show="section === 'general'" class="form-grid">
-      <label>名称</label>
-      <input v-model="form.name" placeholder="本地 MySQL" />
+      <label>{{ t('conn.name') }}</label>
+      <input v-model="form.name" :placeholder="t('conn.name.ph')" />
 
-      <label>数据库类型</label>
+      <label>{{ t('conn.dialect') }}</label>
       <select v-model="form.dialect" @change="onDialectChange">
         <option v-for="d in dialectOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
       </select>
 
-      <label>主机</label>
+      <label>{{ t('conn.host') }}</label>
       <input v-model="form.host" />
 
-      <label>端口</label>
+      <label>{{ t('conn.port') }}</label>
       <input v-model.number="form.port" type="number" />
 
-      <label>用户名</label>
+      <label>{{ t('conn.user') }}</label>
       <input v-model="form.user" />
 
-      <label>密码</label>
+      <label>{{ t('conn.password') }}</label>
       <input v-model="form.password" type="password" placeholder="" />
 
-      <label>默认库</label>
-      <input v-model="form.database" placeholder="可选" />
+      <label>{{ t('conn.database') }}</label>
+      <input v-model="form.database" :placeholder="t('conn.optional')" />
 
-      <label>分组</label>
-      <input v-model="form.group" list="conn-groups" placeholder="可选，如 生产 / 测试" />
+      <label>{{ t('conn.group') }}</label>
+      <input v-model="form.group" list="conn-groups" :placeholder="t('conn.group.ph')" />
       <datalist id="conn-groups">
         <option v-for="g in groups" :key="g" :value="g" />
       </datalist>
 
-      <label>环境</label>
+      <label>{{ t('conn.env') }}</label>
       <select v-model="env">
-        <option value="">未标记</option>
-        <option v-for="e in ENV_OPTIONS" :key="e" :value="e">{{ ENV_META[e].label }}（{{ e }}）</option>
+        <option value="">{{ t('conn.env.none') }}</option>
+        <option v-for="e in ENV_OPTIONS" :key="e" :value="e">{{ t('env.' + e) }}（{{ e }}）</option>
       </select>
     </div>
 
     <div v-show="section === 'ssl'" class="form-grid">
       <template v-if="form.ssl">
-        <label>启用 SSL</label>
+        <label>{{ t('conn.ssl.enable') }}</label>
         <input v-model="form.ssl.enabled" type="checkbox" class="chk" />
         <template v-if="form.ssl.enabled">
-          <label>校验服务端证书</label>
+          <label>{{ t('conn.ssl.verify') }}</label>
           <input v-model="form.ssl.rejectUnauthorized" type="checkbox" class="chk" />
-          <label>CA 证书</label>
-          <textarea v-model="form.ssl.ca" rows="3" placeholder="CA 证书 PEM 内容（可选）" />
-          <label>客户端证书</label>
-          <textarea v-model="form.ssl.cert" rows="3" placeholder="客户端证书 PEM（可选）" />
-          <label>客户端私钥</label>
-          <textarea v-model="form.ssl.key" rows="3" placeholder="客户端私钥 PEM（可选）" />
+          <label>{{ t('conn.ssl.ca') }}</label>
+          <textarea v-model="form.ssl.ca" rows="3" :placeholder="t('conn.ssl.caPh')" />
+          <label>{{ t('conn.ssl.cert') }}</label>
+          <textarea v-model="form.ssl.cert" rows="3" :placeholder="t('conn.ssl.certPh')" />
+          <label>{{ t('conn.ssl.key') }}</label>
+          <textarea v-model="form.ssl.key" rows="3" :placeholder="t('conn.ssl.keyPh')" />
         </template>
       </template>
     </div>
 
     <div v-show="section === 'ssh'" class="form-grid">
       <template v-if="form.ssh">
-        <label>启用 SSH 隧道</label>
+        <label>{{ t('conn.ssh.enable') }}</label>
         <input v-model="form.ssh.enabled" type="checkbox" class="chk" />
         <template v-if="form.ssh.enabled">
-          <label>跳板机主机</label>
+          <label>{{ t('conn.ssh.host') }}</label>
           <input v-model="form.ssh.host" placeholder="jump.example.com" />
-          <label>跳板机端口</label>
+          <label>{{ t('conn.ssh.port') }}</label>
           <input v-model.number="form.ssh.port" type="number" />
-          <label>SSH 用户名</label>
+          <label>{{ t('conn.ssh.user') }}</label>
           <input v-model="form.ssh.user" />
-          <label>SSH 密码</label>
-          <input v-model="form.ssh.password" type="password" placeholder="密码或私钥二选一" />
-          <label>私钥</label>
-          <textarea v-model="form.ssh.privateKey" rows="3" placeholder="私钥 PEM 内容（可选）" />
-          <label>私钥口令</label>
-          <input v-model="form.ssh.passphrase" type="password" placeholder="可选" />
+          <label>{{ t('conn.ssh.password') }}</label>
+          <input v-model="form.ssh.password" type="password" :placeholder="t('conn.ssh.passwordPh')" />
+          <label>{{ t('conn.ssh.key') }}</label>
+          <textarea v-model="form.ssh.privateKey" rows="3" :placeholder="t('conn.ssh.keyPh')" />
+          <label>{{ t('conn.ssh.passphrase') }}</label>
+          <input v-model="form.ssh.passphrase" type="password" :placeholder="t('conn.optional')" />
         </template>
       </template>
     </div>
 
     <div class="actions">
-      <button :disabled="busy" @click="save">{{ connId ? '保存' : '创建' }}</button>
-      <button class="ghost" :disabled="busy" @click="testConnection">测试连接</button>
-      <button v-if="connId" class="danger" :disabled="busy" @click="remove">删除</button>
-      <button class="ghost" @click="emit('cancel')">取消</button>
+      <button :disabled="busy" @click="save">{{ connId ? t('conn.save') : t('conn.create') }}</button>
+      <button class="ghost" :disabled="busy" @click="testConnection">{{ t('conn.test') }}</button>
+      <button v-if="connId" class="danger" :disabled="busy" @click="remove">{{ t('common.delete') }}</button>
+      <button class="ghost" @click="emit('cancel')">{{ t('common.cancel') }}</button>
     </div>
 
     <div v-if="testResult" class="banner" :class="testResult.ok ? 'ok' : 'err'">
       <template v-if="testResult.ok">
-        ✓ 连接成功
+        {{ t('conn.ok') }}
         <span v-if="testResult.serverVersion">（{{ testResult.serverVersion }}）</span>
         <span v-if="testResult.latencyMs != null">· {{ testResult.latencyMs }} ms</span>
       </template>

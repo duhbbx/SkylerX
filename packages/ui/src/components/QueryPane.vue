@@ -664,8 +664,8 @@ onMounted(() => {
         v-if="env"
         class="env-badge"
         :style="{ background: ENV_META[env].color }"
-        :title="t('env.dangerTitle', { label: ENV_META[env].label })"
-      >{{ ENV_META[env].label }}</span>
+        :title="t('env.dangerTitle', { label: t('env.' + env) })"
+      >{{ t('env.' + env) }}</span>
       <span class="conn-tag">{{ conn.name || t('common.untitled') }} · {{ conn.dialect }}</span>
     </div>
 

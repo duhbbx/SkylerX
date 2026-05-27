@@ -65,7 +65,7 @@ function onContext(e: MouseEvent): void {
         v-if="node.kind === 'connection' && env"
         class="env-dot"
         :style="{ background: ENV_META[env].color }"
-        :title="`环境：${ENV_META[env].label}`"
+        :title="t('env.dotTitle', { label: t('env.' + env) })"
       />
       <span class="label">{{ node.name }}</span>
       <span v-if="node.count != null" class="count">({{ node.count }})</span>
