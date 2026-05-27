@@ -3,7 +3,7 @@ import type { DbDialect, QueryResult } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { quoteId } from '../ddl'
 import type { EditChanges } from '../editable'
-import { type ExportFormat, exportRows } from '../io'
+import { type ExportFormat, exportRows, toCSV, toJSON } from '../io'
 import Modal from './Modal.vue'
 
 type Row = Record<string, unknown>
@@ -43,16 +43,49 @@ const sortCol = ref<string | null>(null)
 const sortDir = ref<'asc' | 'desc'>('asc')
 // ── 单元格 / 行 查看器 ──（col 为 null = 看整行）
 const viewer = ref<{ row: number; col: string | null } | null>(null)
+// ── 筛选 / 列显隐 / 复制（均只读态）──
+const filterText = ref('')
+const hiddenCols = ref<Set<string>>(new Set())
+const showColsMenu = ref(false)
+const showCopyMenu = ref(false)
 
 const columnNames = computed(() => props.result?.columns.map((c) => c.name) ?? [])
+/** 渲染用的可见列（剔除隐藏列）；整行查看器仍展示全部列。 */
+const visibleColumns = computed(() =>
+  (props.result?.columns ?? []).filter((c) => !hiddenCols.value.has(c.name)),
+)
+
+function toggleCol(name: string): void {
+  const s = new Set(hiddenCols.value)
+  if (s.has(name)) s.delete(name)
+  else s.add(name)
+  hiddenCols.value = s
+}
+
+/** 复制选中行（无选中则全部当前视图行）为 CSV / JSON。 */
+function copyRows(format: 'csv' | 'json'): void {
+  showCopyMenu.value = false
+  const cols = columnNames.value
+  const idx = [...selected.value].filter((k) => k[0] === 'r').map((k) => Number(k.slice(1)))
+  const rows = (idx.length ? idx.sort((a, b) => a - b).map((i) => viewRows.value[i]) : viewRows.value).filter(
+    Boolean,
+  ) as Row[]
+  copyText(format === 'csv' ? toCSV(cols, rows) : toJSON(rows))
+}
 
 /** 实际渲染的行：编辑态用 localRows（保持索引对齐）；只读态可按列排序。 */
 const viewRows = computed<Row[]>(() => {
   const base = (props.editable ? localRows.value : (props.result?.rows ?? [])) as Row[]
-  if (props.editable || !sortCol.value) return base
-  const col = sortCol.value
-  const dir = sortDir.value === 'asc' ? 1 : -1
-  return [...base].sort((a, b) => cmp(a[col], b[col]) * dir)
+  if (props.editable) return base // 编辑态不筛选/排序，保持行索引对齐
+  let rows = base
+  const f = filterText.value.trim().toLowerCase()
+  if (f) rows = rows.filter((r) => columnNames.value.some((c) => fmt(r[c]).toLowerCase().includes(f)))
+  if (sortCol.value) {
+    const col = sortCol.value
+    const dir = sortDir.value === 'asc' ? 1 : -1
+    rows = [...rows].sort((a, b) => cmp(a[col], b[col]) * dir)
+  }
+  return rows
 })
 
 function cmp(a: unknown, b: unknown): number {
@@ -108,6 +141,10 @@ function resetEdits(): void {
   lastClick.value = null
   sortCol.value = null
   viewer.value = null
+  filterText.value = ''
+  hiddenCols.value = new Set()
+  showColsMenu.value = false
+  showCopyMenu.value = false
 }
 watch(() => props.result, resetEdits, { immediate: true })
 
@@ -135,7 +172,6 @@ function isSel(area: 'r' | 'n', index: number): boolean {
   return selected.value.has(area + index)
 }
 function onRowClick(area: 'r' | 'n', index: number, e: MouseEvent): void {
-  if (!props.editable) return
   const key = area + index
   if (e.metaKey || e.ctrlKey) {
     const s = new Set(selected.value)
@@ -262,13 +298,46 @@ function copyText(text: string): void {
         <span class="hint">双击单元格编辑 · 单击选行（⌘/Shift 多选）</span>
       </div>
 
+      <div v-if="!editable && result.columns.length" class="view-tools">
+        <input v-model="filterText" class="filter" placeholder="🔍 筛选当前页…" />
+        <span v-if="selected.size" class="chg muted">已选 {{ selected.size }} 行</span>
+        <span class="grow" />
+        <div class="menu-box">
+          <button @click.stop="showCopyMenu = !showCopyMenu">复制 ▾</button>
+          <template v-if="showCopyMenu">
+            <div class="exp-overlay" @click="showCopyMenu = false" />
+            <div class="exp-menu" @click.stop>
+              <button @click="copyRows('csv')">{{ selected.size ? '选中行' : '全部' }} → CSV</button>
+              <button @click="copyRows('json')">{{ selected.size ? '选中行' : '全部' }} → JSON</button>
+            </div>
+          </template>
+        </div>
+        <div class="menu-box">
+          <button @click.stop="showColsMenu = !showColsMenu">列 ▾</button>
+          <template v-if="showColsMenu">
+            <div class="exp-overlay" @click="showColsMenu = false" />
+            <div class="exp-menu cols-menu" @click.stop>
+              <label v-for="c in result.columns" :key="c.name" class="col-item">
+                <input
+                  type="checkbox"
+                  :checked="!hiddenCols.has(c.name)"
+                  @change="toggleCol(c.name)"
+                />
+                {{ c.name }}
+              </label>
+            </div>
+          </template>
+        </div>
+        <span class="hint">点列头排序 · 双击单元格查看 · 点行号看整行</span>
+      </div>
+
       <div v-if="result.columns.length" class="grid-scroll">
         <table>
           <thead>
             <tr>
               <th class="rownum">#</th>
               <th
-                v-for="c in result.columns"
+                v-for="c in visibleColumns"
                 :key="c.name"
                 :class="{ sortable: !editable }"
                 @click="toggleSort(c.name)"
@@ -287,7 +356,7 @@ function copyText(text: string): void {
             >
               <td class="rownum" title="查看整行" @click.stop="openRow(i)">{{ i + 1 }}</td>
               <td
-                v-for="c in result.columns"
+                v-for="c in visibleColumns"
                 :key="c.name"
                 :class="{
                   nullcell: isNull(row[c.name]),
@@ -316,7 +385,7 @@ function copyText(text: string): void {
             >
               <td class="rownum">+</td>
               <td
-                v-for="c in result.columns"
+                v-for="c in visibleColumns"
                 :key="c.name"
                 :class="{ editing: isEditing('n', k, c.name) }"
                 @dblclick="startEdit('n', k, c.name)"
@@ -707,5 +776,65 @@ td.rownum:hover {
 .viewer-actions button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.view-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.view-tools .filter {
+  width: 200px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+.view-tools .grow {
+  flex: 1;
+}
+.view-tools .hint {
+  color: var(--muted);
+  flex-basis: 100%;
+}
+.menu-box {
+  position: relative;
+}
+.menu-box .exp-menu {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.menu-box > button {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.cols-menu {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.col-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.col-item:hover {
+  background: var(--bg);
 }
 </style>
