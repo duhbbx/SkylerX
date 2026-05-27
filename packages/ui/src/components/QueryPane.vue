@@ -15,8 +15,10 @@ import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
 import { splitStatements } from '../sqlSplit'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
+import { type PlanNode, parsePgPlan, planQuery } from '../plan'
 import HistoryPanel from './HistoryPanel.vue'
 import Modal from './Modal.vue'
+import PlanPanel from './PlanPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SnippetsPanel from './SnippetsPanel.vue'
 import SqlEditor from './SqlEditor.vue'
@@ -56,6 +58,8 @@ const tabs = ref<ResultTab[]>([])
 const activeTab = ref(0)
 const showHistory = ref(false)
 const showSnippets = ref(false)
+const showPlan = ref(false)
+const planData = ref<{ tree: PlanNode | null; text: string | null } | null>(null)
 const history = ref<QueryHistoryEntry[]>([])
 const running = ref(false)
 const pageSize = ref(settings.pageSize) // 新查询的默认每页行数（取自设置）
@@ -382,40 +386,51 @@ async function execSql(text: string): Promise<void> {
   }
 }
 
-/** 解释执行计划：对首条语句跑方言 EXPLAIN，结果以普通结果集呈现（不分页/不可编辑）。 */
+/** 解释执行计划：PG→JSON 节点树、MySQL→TREE 文本，渲染在「计划」面板；其余回退表格 EXPLAIN。 */
 async function explain(): Promise<void> {
   const statements = splitStatements(sql.value)
   if (!statements.length) return
-  const ex = explainSql(props.conn.dialect, statements[0])
-  if (!ex) {
-    window.alert('当前数据库方言暂不支持「解释」（目前支持 MySQL / PostgreSQL 系）')
-    return
-  }
-  const token = ++runToken
+  const stmt = statements[0]
+  const pq = planQuery(props.conn.dialect, stmt)
   running.value = true
-  showHistory.value = false
-  const tab: ResultTab = {
-    id: ++tabSeq,
-    sql: ex,
-    result: null,
-    error: null,
-    pageable: false,
-    page: 0,
-    pageSize: pageSize.value,
-    loading: false,
-    editTable: null,
-  }
   try {
-    tab.result = await client.connections.execute(props.conn.id, ex, [], execOptions())
+    if (pq) {
+      const r = await client.connections.execute(props.conn.id, pq.sql, [], execOptions())
+      const val = String(Object.values(r.rows[0] ?? {})[0] ?? '')
+      planData.value =
+        pq.format === 'pg-json'
+          ? { tree: parsePgPlan(val), text: null }
+          : { tree: null, text: val }
+      showHistory.value = false
+      showSnippets.value = false
+      showPlan.value = true
+      return
+    }
+    // 回退：其余方言用普通 EXPLAIN，结果进结果页
+    const ex = explainSql(props.conn.dialect, stmt)
+    if (!ex) {
+      window.alert('当前数据库方言暂不支持「解释」')
+      return
+    }
+    const tab: ResultTab = {
+      id: ++tabSeq,
+      sql: ex,
+      result: await client.connections.execute(props.conn.id, ex, [], execOptions()),
+      error: null,
+      pageable: false,
+      page: 0,
+      pageSize: pageSize.value,
+      loading: false,
+      editTable: null,
+    }
+    tabs.value = [tab]
+    activeTab.value = 0
+    showPlan.value = false
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    tab.error = msg
-    if (isConnectionError(msg)) emit('connError', props.conn.id, msg)
+    window.alert(`解释失败：${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    running.value = false
   }
-  if (token !== runToken) return
-  tabs.value = [tab]
-  activeTab.value = 0
-  running.value = false
 }
 
 /** 取消：服务端取消正在执行的查询（MySQL KILL QUERY / PG pg_cancel_backend）+ 渲染端放弃在途结果。 */
@@ -501,6 +516,7 @@ async function onCommit(changes: EditChanges): Promise<void> {
 async function openHistory(): Promise<void> {
   await loadHistory()
   showSnippets.value = false
+  showPlan.value = false
   showHistory.value = true
 }
 
@@ -517,7 +533,13 @@ async function onClearHistory(): Promise<void> {
 // ── SQL 片段 ──
 function openSnippets(): void {
   showHistory.value = false
+  showPlan.value = false
   showSnippets.value = true
+}
+function openPlan(): void {
+  showHistory.value = false
+  showSnippets.value = false
+  showPlan.value = true
 }
 function onPickSnippet(picked: string): void {
   sql.value = picked
@@ -534,6 +556,7 @@ function saveSnippet(sqlText: string): void {
 function selectTab(i: number): void {
   showHistory.value = false
   showSnippets.value = false
+  showPlan.value = false
   activeTab.value = i
 }
 
@@ -597,11 +620,12 @@ onMounted(() => {
         v-for="(t, i) in tabs"
         :key="t.id"
         class="rtab"
-        :class="{ active: !showHistory && !showSnippets && activeTab === i }"
+        :class="{ active: !showHistory && !showSnippets && !showPlan && activeTab === i }"
         @click="selectTab(i)"
       >
         结果 {{ i + 1 }}<span v-if="t.error" class="err-dot">!</span>
       </button>
+      <button v-if="planData" class="rtab" :class="{ active: showPlan }" @click="openPlan">计划</button>
       <button class="rtab" :class="{ active: showHistory }" @click="openHistory">历史</button>
       <button class="rtab" :class="{ active: showSnippets }" @click="openSnippets">片段</button>
     </div>
@@ -615,6 +639,7 @@ onMounted(() => {
         @save-snippet="saveSnippet"
       />
       <SnippetsPanel v-else-if="showSnippets" @pick="onPickSnippet" />
+      <PlanPanel v-else-if="showPlan" :tree="planData?.tree ?? null" :text="planData?.text ?? null" />
       <ResultGrid
         v-else
         :result="cur?.result ?? null"
