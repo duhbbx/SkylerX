@@ -210,6 +210,39 @@ export function explainSql(dialect: DbDialect, sql: string): string | null {
   }
 }
 
+export type SqlTemplateKind = 'select' | 'insert' | 'update' | 'delete'
+
+export const SQL_TEMPLATE_LABEL: Record<SqlTemplateKind, string> = {
+  select: '生成 SELECT',
+  insert: '生成 INSERT',
+  update: '生成 UPDATE',
+  delete: '生成 DELETE',
+}
+
+/** 由列信息生成 SELECT/INSERT/UPDATE/DELETE 模板（WHERE 优先用主键，否则取首列占位）。 */
+export function buildSqlTemplate(
+  dialect: DbDialect,
+  kind: SqlTemplateKind,
+  tableRef: string,
+  cols: { name: string; pk: boolean }[],
+): string {
+  const q = (s: string) => quoteId(dialect, s)
+  const names = cols.map((c) => q(c.name))
+  const keyCols = cols.filter((c) => c.pk)
+  const whereSrc = keyCols.length ? keyCols : cols.slice(0, 1)
+  const where = whereSrc.map((c) => `${q(c.name)} = NULL`).join(' AND ') || '1 = 1'
+  switch (kind) {
+    case 'select':
+      return `SELECT ${names.join(', ')}\nFROM ${tableRef};`
+    case 'insert':
+      return `INSERT INTO ${tableRef}\n  (${names.join(', ')})\nVALUES\n  (${cols.map(() => 'NULL').join(', ')});`
+    case 'update':
+      return `UPDATE ${tableRef} SET\n${cols.map((c) => `  ${q(c.name)} = NULL`).join(',\n')}\nWHERE ${where};`
+    case 'delete':
+      return `DELETE FROM ${tableRef}\nWHERE ${where};`
+  }
+}
+
 /** 「查询前 N 行」的方言正确写法（SQL Server 无 LIMIT；Oracle/达梦用 FETCH FIRST）。 */
 export function previewSql(dialect: DbDialect, tableRef: string, n = 200): string {
   switch (familyOf(dialect)) {

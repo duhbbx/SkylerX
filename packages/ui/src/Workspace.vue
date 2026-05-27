@@ -15,8 +15,10 @@ import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/sh
 import { buildTableDump } from './dump'
 import {
   type ObjectKind,
+  type SqlTemplateKind,
   type TableContext,
   buildDrop,
+  buildSqlTemplate,
   definitionQuery,
   deriveContext,
   dropSupportsCascade,
@@ -173,6 +175,27 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
     tabsRef.value?.openDraft(conn, extractDefinition(conn.dialect, node, f.mode, row), `${node.name} · 定义`)
   } catch (e) {
     window.alert(`查看定义失败：${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+// 生成 SQL 模板（SELECT/INSERT/UPDATE/DELETE）→ 取列后填入查询页草稿
+async function onGenerateSql(
+  kind: SqlTemplateKind,
+  connId: string,
+  node: TreeNode,
+): Promise<void> {
+  const conn = await client.connections.get(connId)
+  try {
+    const cols = await client.connections.metadata(connId, {
+      parentKind: MetaNodeKind.Group,
+      path: [...node.path],
+      group: 'columns',
+    })
+    const colInfo = cols.map((c) => ({ name: c.name, pk: !!c.detail?.primaryKey }))
+    const sql = buildSqlTemplate(conn.dialect, kind, node.sqlName ?? node.name, colInfo)
+    tabsRef.value?.openDraft(conn, sql, `${node.name} · ${kind.toUpperCase()}`)
+  } catch (e) {
+    window.alert(`生成 SQL 失败：${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
@@ -400,6 +423,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @design-table="onDesignTable"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
+    @generate-sql="onGenerateSql"
     @open-erd="onOpenErd"
     @import-data="onImportData"
     @export-sql="onExportSql"

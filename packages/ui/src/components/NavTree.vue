@@ -5,7 +5,7 @@ import { useDataClient } from '../data-client'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
 import { isConnectionError } from '../connError'
-import type { ObjectKind } from '../ddl'
+import type { ObjectKind, SqlTemplateKind } from '../ddl'
 import { type TreeAction, actionsFor } from './tree-actions'
 import { type TreeController, TreeControllerKey } from './tree-controller'
 import { type TreeNode, fromMetadata, rootNode } from './treeNode'
@@ -27,6 +27,7 @@ const emit = defineEmits<{
   designTable: [string, TreeNode]
   editObject: [string, TreeNode]
   viewDefinition: [string, TreeNode]
+  generateSql: [SqlTemplateKind, string, TreeNode]
   importData: [string, TreeNode]
   exportSql: [string, TreeNode]
   exportSchemaSql: [string, TreeNode]
@@ -138,6 +139,7 @@ const controller: TreeController = {
   designTable: (node, connId) => emit('designTable', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
   viewDefinition: (node, connId) => emit('viewDefinition', connId, node),
+  generateSql: (kind, node, connId) => emit('generateSql', kind, connId, node),
   openErd: (node, connId) => emit('openErd', connId, node),
   importData: (node, connId) => emit('importData', connId, node),
   exportSql: (node, connId) => emit('exportSql', connId, node),

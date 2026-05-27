@@ -1,5 +1,5 @@
 import type { InjectionKey } from 'vue'
-import type { ObjectKind } from '../ddl'
+import type { ObjectKind, SqlTemplateKind } from '../ddl'
 import type { TreeNode } from './treeNode'
 
 /**
@@ -39,6 +39,8 @@ export interface TreeController {
   editObject(node: TreeNode, connId: string): void
   /** 查看触发器/序列定义：取定义填入查询页（可改后手动执行） */
   viewDefinition(node: TreeNode, connId: string): void
+  /** 生成 SQL 模板（SELECT/INSERT/UPDATE/DELETE）填入查询页 */
+  generateSql(kind: SqlTemplateKind, node: TreeNode, connId: string): void
   /** 打开该库/schema 的 ER 图 */
   openErd(node: TreeNode, connId: string): void
   /** 导入数据：打开 CSV 导入对话框（导入到该表） */
