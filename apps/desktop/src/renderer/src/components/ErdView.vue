@@ -331,7 +331,17 @@ async function applyChanges(): Promise<void> {
     <div v-else-if="error" class="msg err">✗ {{ error }}</div>
     <div v-else-if="data && !data.supported" class="msg">当前方言暂不支持 ER 图（目前支持 MySQL / PostgreSQL 系）</div>
 
-    <div v-else-if="data" ref="canvasEl" class="erd-canvas" @wheel.prevent="onWheel" @mousedown="panStart">
+    <div
+      v-else-if="data"
+      ref="canvasEl"
+      class="erd-canvas"
+      :style="{
+        backgroundSize: `${24 * zoom}px ${24 * zoom}px, ${24 * zoom}px ${24 * zoom}px`,
+        backgroundPosition: `${pan.x}px ${pan.y}px, ${pan.x}px ${pan.y}px`,
+      }"
+      @wheel.prevent="onWheel"
+      @mousedown="panStart"
+    >
       <div
         class="canvas-inner"
         :style="{
@@ -455,6 +465,10 @@ async function applyChanges(): Promise<void> {
   flex: 1;
   overflow: hidden;
   background-color: var(--bg);
+  /* 无限网格：铺满视口，位置/尺寸随 pan/zoom 由内联样式驱动 */
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
   cursor: grab;
 }
 .erd-canvas:active {
@@ -462,9 +476,6 @@ async function applyChanges(): Promise<void> {
 }
 .canvas-inner {
   position: relative;
-  background:
-    linear-gradient(var(--border) 1px, transparent 1px) 0 0 / 24px 24px,
-    linear-gradient(90deg, var(--border) 1px, transparent 1px) 0 0 / 24px 24px;
 }
 .edges {
   position: absolute;
