@@ -48,6 +48,23 @@ const filterText = ref('')
 const hiddenCols = ref<Set<string>>(new Set())
 const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
+// 列宽（px，按列名）
+const colWidths = ref<Record<string, number>>({})
+
+function startResize(col: string, e: MouseEvent): void {
+  const th = (e.target as HTMLElement).closest('th') as HTMLElement | null
+  const startX = e.clientX
+  const startW = th?.offsetWidth ?? 120
+  const onMove = (ev: MouseEvent): void => {
+    colWidths.value = { ...colWidths.value, [col]: Math.max(48, startW + (ev.clientX - startX)) }
+  }
+  const onUp = (): void => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
 
 const columnNames = computed(() => props.result?.columns.map((c) => c.name) ?? [])
 /** 渲染用的可见列（剔除隐藏列）；整行查看器仍展示全部列。 */
@@ -145,6 +162,7 @@ function resetEdits(): void {
   hiddenCols.value = new Set()
   showColsMenu.value = false
   showCopyMenu.value = false
+  colWidths.value = {}
 }
 watch(() => props.result, resetEdits, { immediate: true })
 
@@ -340,10 +358,17 @@ function copyText(text: string): void {
                 v-for="c in visibleColumns"
                 :key="c.name"
                 :class="{ sortable: !editable }"
+                :style="colWidths[c.name] ? { width: `${colWidths[c.name]}px` } : undefined"
                 @click="toggleSort(c.name)"
               >
                 {{ c.name }}<span class="th-type">{{ c.dataType }}</span>
                 <span v-if="sortCol === c.name" class="sort-ind">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                <span
+                  class="col-resize"
+                  title="拖拽调整列宽"
+                  @mousedown.stop.prevent="startResize(c.name, $event)"
+                  @click.stop
+                />
               </th>
             </tr>
           </thead>
@@ -714,6 +739,19 @@ th.sortable:hover {
   margin-left: 4px;
   font-size: 9px;
   color: var(--accent);
+}
+.col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+}
+.col-resize:hover {
+  background: var(--accent);
+  opacity: 0.5;
 }
 td.rownum {
   cursor: pointer;
