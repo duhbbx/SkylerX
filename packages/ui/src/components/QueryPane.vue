@@ -16,6 +16,7 @@ import { addSnippet, snippets } from '../snippets'
 import { splitStatements } from '../sqlSplit'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import HistoryPanel from './HistoryPanel.vue'
+import Modal from './Modal.vue'
 import ResultGrid from './ResultGrid.vue'
 import SnippetsPanel from './SnippetsPanel.vue'
 import SqlEditor from './SqlEditor.vue'
@@ -280,8 +281,40 @@ function dangerOf(sql: string): string | null {
   return null
 }
 
-async function run(): Promise<void> {
-  const statements = splitStatements(sql.value)
+// ── 查询参数化（:name 占位）──
+const pendingParams = ref<{ names: string[]; values: Record<string, string> } | null>(null)
+function paramNames(text: string): string[] {
+  return [...new Set([...text.matchAll(/(?<![:\w]):(\w+)/g)].map((m) => m[1]))]
+}
+function paramLiteral(v: string): string {
+  const t = v.trim()
+  if (t === '') return 'NULL'
+  if (/^-?\d+(\.\d+)?$/.test(t)) return t // 数字原样
+  if (/^(NULL|TRUE|FALSE)$/i.test(t)) return t.toUpperCase()
+  return `'${t.replace(/'/g, "''")}'`
+}
+function substituteParams(text: string, values: Record<string, string>): string {
+  return text.replace(/(?<![:\w]):(\w+)/g, (m, n: string) => (n in values ? paramLiteral(values[n]) : m))
+}
+function submitParams(): void {
+  const p = pendingParams.value
+  if (!p) return
+  const resolved = substituteParams(sql.value, p.values)
+  pendingParams.value = null
+  void execSql(resolved)
+}
+
+function run(): void {
+  const names = paramNames(sql.value)
+  if (names.length) {
+    pendingParams.value = { names, values: Object.fromEntries(names.map((n) => [n, ''])) }
+    return
+  }
+  void execSql(sql.value)
+}
+
+async function execSql(text: string): Promise<void> {
+  const statements = splitStatements(text)
   if (!statements.length) return
   const dangers = statements.map(dangerOf).filter(Boolean) as string[]
   if (dangers.length && !window.confirm(`⚠️ 检测到高危操作：\n\n${dangers.join('\n')}\n\n确定执行？`)) return
@@ -579,10 +612,59 @@ onMounted(() => {
         @filter="(w) => applyServerFilter(cur, w)"
       />
     </div>
+
+    <Modal v-if="pendingParams" title="填写查询参数" @close="pendingParams = null">
+      <div class="params">
+        <label v-for="n in pendingParams.names" :key="n" class="prow">
+          <span class="pname">:{{ n }}</span>
+          <input
+            v-model="pendingParams.values[n]"
+            placeholder="数字原样 · 文本自动加引号 · 留空=NULL"
+            @keyup.enter="submitParams"
+          />
+        </label>
+        <div class="pactions">
+          <button class="ghost" @click="pendingParams = null">取消</button>
+          <button class="primary" @click="submitParams">执行</button>
+        </div>
+      </div>
+    </Modal>
   </div>
 </template>
 
 <style scoped>
+.params {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.prow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.prow .pname {
+  width: 120px;
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+}
+.prow input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+.pactions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+.pactions button {
+  padding: 6px 16px;
+}
 .pane {
   display: flex;
   flex-direction: column;
