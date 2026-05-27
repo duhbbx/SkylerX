@@ -4,7 +4,15 @@
   "private": true,
   "description": "数据库管理工具 - 桌面端 (Electron + Vue3)",
   "main": "./out/main/index.js",
-  "author": "db-tool",
+  "author": {
+    "name": "duhbbx",
+    "email": "duhbbx@gmail.com"
+  },
+  "homepage": "https://github.com/duhbbx/SkylerX",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/duhbbx/SkylerX.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm typecheck && electron-vite build",

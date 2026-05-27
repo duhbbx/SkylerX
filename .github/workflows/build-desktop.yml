@@ -48,8 +48,6 @@ jobs:
 
       - name: Package installers
         run: pnpm --filter @db-tool/desktop exec electron-builder --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 手动/分支触发：产物存为 Actions artifact，可在 run 页面下载
       - uses: actions/upload-artifact@v4
