@@ -73,6 +73,15 @@ watch(
   (fs) => editor?.updateOptions({ fontSize: fs }),
 )
 
+/** 当前选中的文本（无选区时返回空串）。供「存为片段」等取选区用。 */
+function getSelectedText(): string {
+  const sel = editor?.getSelection()
+  if (!editor || !sel) return ''
+  return editor.getModel()?.getValueInRange(sel) ?? ''
+}
+
+defineExpose({ getSelectedText })
+
 onBeforeUnmount(() => {
   if (model) clearCompletionSource(model)
   editor?.dispose()

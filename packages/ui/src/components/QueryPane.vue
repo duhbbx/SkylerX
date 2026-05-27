@@ -54,6 +54,7 @@ const props = defineProps<{
 const emit = defineEmits<{ connError: [string, string] }>()
 
 const sql = ref('SELECT 1;')
+const editorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const tabs = ref<ResultTab[]>([])
 const activeTab = ref(0)
 const showHistory = ref(false)
@@ -552,6 +553,11 @@ function saveSnippet(sqlText: string): void {
   if (name === null) return
   addSnippet(name, text)
 }
+// 工具栏「存为片段」：有选区则存选中语句，否则存整个编辑器内容
+function saveCurrentSnippet(): void {
+  const selected = editorRef.value?.getSelectedText()?.trim()
+  saveSnippet(selected || sql.value)
+}
 
 function selectTab(i: number): void {
   showHistory.value = false
@@ -590,7 +596,9 @@ onMounted(() => {
       <button title="格式化 SQL" @click="formatSql">格式化</button>
       <button :disabled="!running" @click="cancel">■ 停止</button>
       <button class="ghost" @click="clearEditor">清空</button>
-      <button class="ghost" title="把当前 SQL 存为片段" @click="saveSnippet(sql)">存为片段</button>
+      <button class="ghost" title="把选中语句（无选区则全部）存为片段" @click="saveCurrentSnippet">
+        存为片段
+      </button>
 
       <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
         <option value="">（默认库）</option>
@@ -610,7 +618,7 @@ onMounted(() => {
     </div>
 
     <div class="editor" :style="{ height: editorHeight + 'px' }">
-      <SqlEditor v-model="sql" :completion="completion" @run="run" @format="formatSql" />
+      <SqlEditor ref="editorRef" v-model="sql" :completion="completion" @run="run" @format="formatSql" />
     </div>
 
     <div class="splitter" title="拖拽调整高度" @pointerdown="onSplitDown"></div>
