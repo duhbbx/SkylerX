@@ -11,7 +11,7 @@
     "start": "electron-vite preview",
     "pack": "pnpm build && electron-builder --dir",
     "dist": "pnpm build && electron-builder",
-    "postinstall": "electron-builder install-app-deps",
+    "rebuild:native": "electron-builder install-app-deps",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web"
@@ -29,7 +29,7 @@
     "@types/node": "^22.10.7",
     "@types/pg": "^8.11.10",
     "@vitejs/plugin-vue": "^5.2.1",
-    "electron": "^34.2.0",
+    "electron": "34.2.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^3.1.0",
     "monaco-editor": "^0.52.2",

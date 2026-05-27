@@ -37,7 +37,8 @@ apps/
 ## 开发
 
 ```bash
-pnpm install          # 安装依赖（首次会下载 Electron + 重建原生模块）
+pnpm install          # 安装依赖（首次会下载 Electron）
+pnpm --filter @db-tool/desktop rebuild:native   # 首次按 Electron ABI 重建原生模块（better-sqlite3 等），仅需一次
 pnpm dev:desktop      # 启动桌面端（electron-vite dev，热更新）
 pnpm typecheck        # 全量类型检查
 pnpm build:desktop    # 构建桌面端

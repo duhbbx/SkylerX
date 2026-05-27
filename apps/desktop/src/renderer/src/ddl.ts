@@ -12,6 +12,16 @@ export interface ColumnDef {
   primaryKey: boolean
   defaultValue: string
   comment: string
+  /** 改表模式：该列加载时的原始名（用于识别改名/删除/修改）；新增列为 undefined */
+  originalName?: string
+}
+
+/** 解析数据库返回的类型串为 type/length/scale（如 "varchar(255)" / "decimal(10,2)"）。 */
+export function parseType(full: string): { type: string; length: string; scale: string } {
+  const m = /^(.+?)\(([^)]+)\)\s*$/.exec((full ?? '').trim())
+  if (!m) return { type: (full ?? '').trim(), length: '', scale: '' }
+  const inner = m[2].split(',').map((s) => s.trim())
+  return { type: m[1].trim(), length: inner[0] ?? '', scale: inner[1] ?? '' }
 }
 
 export function emptyColumn(): ColumnDef {
