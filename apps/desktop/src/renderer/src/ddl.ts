@@ -104,6 +104,50 @@ function familyOf(dialect: DbDialect): Family {
   }
 }
 
+/** 对象（视图/函数/过程）的限定引用：优先 node.sqlName，否则按方言由 path 构造。 */
+export function objectRef(dialect: DbDialect, node: TreeNode): string {
+  if (node.sqlName) return node.sqlName
+  const q = (s: string) => quoteId(dialect, s)
+  const p = node.path
+  const name = p[p.length - 1]
+  switch (familyOf(dialect)) {
+    case 'mysql':
+      return q(name) // 靠执行上下文 USE db
+    case 'pg':
+    case 'sqlserver':
+    case 'oracle':
+      return `${q(p[p.length - 2])}.${q(name)}` // schema.name
+  }
+}
+
+/** 取对象定义 DDL 的查询 + 结果解析方式（支持 MySQL / PG 的 视图/函数/过程）。 */
+export interface ObjectDdlFetch {
+  sql: string
+  mode: 'showCreate' | 'viewdef' | 'funcdef'
+  /** viewdef 模式：拼到 pg_get_viewdef 结果前的前缀 */
+  prefix?: string
+}
+
+export function objectDdlQuery(
+  dialect: DbDialect,
+  kind: ObjectKind,
+  ref: string,
+): ObjectDdlFetch | null {
+  const fam = familyOf(dialect)
+  if (fam === 'mysql') {
+    const kw = kind === 'view' ? 'VIEW' : kind === 'function' ? 'FUNCTION' : kind === 'procedure' ? 'PROCEDURE' : null
+    return kw ? { sql: `SHOW CREATE ${kw} ${ref}`, mode: 'showCreate' } : null
+  }
+  if (fam === 'pg') {
+    if (kind === 'view')
+      return { sql: `SELECT pg_get_viewdef('${ref}'::regclass, true) AS ddl`, mode: 'viewdef', prefix: `CREATE OR REPLACE VIEW ${ref} AS\n` }
+    if (kind === 'function' || kind === 'procedure')
+      return { sql: `SELECT pg_get_functiondef('${ref}'::regproc) AS ddl`, mode: 'funcdef' }
+    return null
+  }
+  return null
+}
+
 /** 生成「解释执行计划」SQL（目前支持 MySQL / PostgreSQL 系；其余返回 null）。 */
 export function explainSql(dialect: DbDialect, sql: string): string | null {
   const s = sql.trim().replace(/;\s*$/, '')

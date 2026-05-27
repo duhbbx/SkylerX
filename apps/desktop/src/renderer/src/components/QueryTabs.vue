@@ -17,7 +17,7 @@ interface Tab {
   ctx?: TableContext // designer
   refreshTarget?: TreeNode // designer：成功后刷新的树节点
   node?: TreeNode // structure：要查看的表/视图节点；table designer：改表时载入用
-  mode?: 'create' | 'alter' // table designer：新建 / 改表
+  mode?: 'create' | 'alter' | 'edit' // table designer：新建/改表；DDL 编辑器：新建/编辑
 }
 
 const emit = defineEmits<{ connError: [string, string]; refresh: [TreeNode, string] }>()
@@ -74,6 +74,20 @@ function openStructure(conn: ConnectionConfig, node: TreeNode): void {
   push({ kind: 'structure', conn, title: `${node.name} · 结构`, pending: null, node })
 }
 
+/** 打开「编辑视图/函数/过程」页（DDL 编辑器 edit 模式）。 */
+function editObject(conn: ConnectionConfig, kind: ObjectKind, ctx: TableContext, node: TreeNode): void {
+  push({
+    kind,
+    mode: 'edit',
+    conn,
+    title: `${node.name} · 编辑`,
+    pending: null,
+    ctx,
+    node,
+    refreshTarget: node.parent ?? node,
+  })
+}
+
 /** 打开「设计表 / 改表」页（alter 模式，已有则聚焦）。 */
 function editTable(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): void {
   const key = node.sqlName ?? node.name
@@ -113,7 +127,7 @@ function onCreated(tab: Tab): void {
   close(tab.id)
 }
 
-defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, closeConnTabs })
+defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, closeConnTabs })
 </script>
 
 <template>
@@ -148,7 +162,7 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             :conn-id="t.conn.id"
             :dialect="t.conn.dialect"
             :ctx="t.ctx!"
-            :mode="t.mode ?? 'create'"
+            :mode="t.mode === 'alter' ? 'alter' : 'create'"
             :node="t.node"
             @created="onCreated(t)"
             @cancel="close(t.id)"
@@ -164,6 +178,8 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             :dialect="t.conn.dialect"
             :object-kind="t.kind"
             :ctx="t.ctx!"
+            :mode="t.mode === 'edit' ? 'edit' : 'create'"
+            :node="t.node"
             @created="onCreated(t)"
             @cancel="close(t.id)"
           />

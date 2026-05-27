@@ -1,22 +1,63 @@
 <script setup lang="ts">
 import type { DbDialect } from '@db-tool/shared-types'
-import { ref } from 'vue'
-import { type ObjectKind, type TableContext, objectTemplate } from '../ddl'
+import { onMounted, ref } from 'vue'
+import { type ObjectKind, type TableContext, objectDdlQuery, objectRef, objectTemplate } from '../ddl'
+import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
 
-const props = defineProps<{
-  connId: string
-  dialect: DbDialect
-  objectKind: ObjectKind
-  ctx: TableContext
-}>()
+const props = withDefaults(
+  defineProps<{
+    connId: string
+    dialect: DbDialect
+    objectKind: ObjectKind
+    ctx: TableContext
+    /** 'create' 新建（默认）；'edit' 载入现有定义编辑 */
+    mode?: 'create' | 'edit'
+    node?: TreeNode
+  }>(),
+  { mode: 'create', node: undefined },
+)
 const emit = defineEmits<{ created: []; cancel: [] }>()
 
-const code = ref(objectTemplate(props.dialect, props.objectKind, props.ctx))
+const isEdit = props.mode === 'edit'
+const code = ref(isEdit ? '' : objectTemplate(props.dialect, props.objectKind, props.ctx))
 const busy = ref(false)
+const loading = ref(false)
 const error = ref<string | null>(null)
 
 const target = [props.ctx.database, props.ctx.schema].filter(Boolean).join(' / ')
+
+/** 编辑模式：拉取现有对象定义为可执行 DDL。 */
+async function loadDefinition(): Promise<void> {
+  if (!isEdit || !props.node) return
+  const q = objectDdlQuery(props.dialect, props.objectKind, objectRef(props.dialect, props.node))
+  if (!q) {
+    error.value = '当前方言暂不支持载入该对象定义（目前支持 MySQL / PostgreSQL 的 视图/函数/过程）'
+    return
+  }
+  loading.value = true
+  try {
+    const r = await window.api.connections.execute(props.connId, q.sql, [], {
+      database: props.ctx.database,
+      schema: props.ctx.schema,
+    })
+    const row = r.rows[0] as Record<string, unknown> | undefined
+    if (!row) throw new Error('未取到对象定义')
+    if (q.mode === 'showCreate') {
+      const key = Object.keys(row).find((k) => /^create/i.test(k))
+      code.value = String(row[key ?? ''] ?? '')
+    } else if (q.mode === 'viewdef') {
+      code.value = (q.prefix ?? '') + String(row.ddl ?? '')
+    } else {
+      code.value = String(row.ddl ?? '')
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
+  }
+}
+onMounted(loadDefinition)
 
 async function create(): Promise<void> {
   busy.value = true
@@ -39,9 +80,12 @@ async function create(): Promise<void> {
 <template>
   <div class="ddl">
     <div class="toolbar">
-      <button class="primary" :disabled="busy" @click="create">{{ busy ? '创建中…' : '创建' }}</button>
+      <button class="primary" :disabled="busy || loading" @click="create">
+        {{ busy ? '执行中…' : isEdit ? '保存（执行）' : '创建' }}
+      </button>
       <button class="ghost" @click="emit('cancel')">取消</button>
-      <span v-if="target" class="target">位置：{{ target }}</span>
+      <span v-if="loading" class="target">载入定义中…</span>
+      <span v-else-if="target" class="target">位置：{{ target }}</span>
     </div>
     <div class="editor">
       <SqlEditor v-model="code" @run="create" />

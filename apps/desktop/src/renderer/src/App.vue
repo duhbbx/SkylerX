@@ -119,6 +119,13 @@ async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
   tabsRef.value?.editTable(conn, ctx, node)
 }
 
+// 编辑视图/函数/存储过程 → 载入定义后开 DDL 编辑器 Tab
+async function onEditObject(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  tabsRef.value?.editObject(conn, node.kind as ObjectKind, ctx, node)
+}
+
 // 导入数据（CSV → 表）→ 弹导入对话框
 async function onImportData(connId: string, node: TreeNode): Promise<void> {
   const conn = await window.api.connections.get(connId)
@@ -201,6 +208,7 @@ function onCancel(): void {
     @view-structure="onViewStructure"
     @preview-table="onPreviewTable"
     @design-table="onDesignTable"
+    @edit-object="onEditObject"
     @import-data="onImportData"
   />
 

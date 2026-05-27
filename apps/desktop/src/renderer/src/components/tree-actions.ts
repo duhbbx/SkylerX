@@ -45,6 +45,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.viewStructure(node, connId),
   },
   {
+    id: 'edit-object',
+    label: '编辑定义',
+    kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure],
+    run: ({ node, connId, ctrl }) => ctrl.editObject(node, connId),
+  },
+  {
     id: 'design-table',
     label: '设计表',
     kinds: [MetaNodeKind.Table],
