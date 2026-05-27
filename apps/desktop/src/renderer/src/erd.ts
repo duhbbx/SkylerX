@@ -1,4 +1,4 @@
-import type { DbDialect } from '@db-tool/shared-types'
+import type { DataClient, DbDialect } from '@db-tool/shared-types'
 
 export interface ErdColumn {
   name: string
@@ -58,12 +58,13 @@ function buildErd(colRows: Row[], fkRows: Row[], pkFromKey: boolean): ErdData {
  * 目前支持 MySQL / PostgreSQL 系；其余返回 supported:false。
  */
 export async function loadErd(
+  client: DataClient,
   connId: string,
   dialect: DbDialect,
   ctx: { database?: string; schema?: string },
 ): Promise<ErdData> {
   const exec = (sql: string) =>
-    window.api.connections.execute(connId, sql, [], { database: ctx.database, schema: ctx.schema })
+    client.connections.execute(connId, sql, [], { database: ctx.database, schema: ctx.schema })
   const f = family(dialect)
 
   if (f === 'mysql') {

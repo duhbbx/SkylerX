@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref, useTemplateRef } from 'vue'
+import type { DataClient } from '@db-tool/shared-types'
+import { DataClientKey } from './data-client'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
@@ -27,6 +29,9 @@ import {
 
 const navRef = useTemplateRef('navRef')
 const tabsRef = useTemplateRef('tabsRef')
+
+// 桌面端：把 IPC 客户端(window.api) 作为 DataClient 注入，供共享组件使用
+provide(DataClientKey, window.api as unknown as DataClient)
 
 // editing 非空 → 弹出连接表单弹窗；error 为连接失败信息（自动弹窗时带上）
 const editing = ref<{ connId: string | null; error?: string } | null>(null)

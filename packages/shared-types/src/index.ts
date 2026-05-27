@@ -248,3 +248,40 @@ export interface MetadataNode {
     comment?: string
   }
 }
+
+/**
+ * 数据访问客户端契约 —— 渲染层组件统一经此访问数据，不直接依赖 Electron IPC。
+ * 桌面端注入包装 IPC 的实现（即 window.api）；Web 端注入包装 REST(fetch) 的实现。
+ * 形状与桌面 preload 暴露的 api 一致，便于桌面端零成本复用。
+ */
+export interface DataClient {
+  connections: {
+    list(): Promise<ConnectionConfig[]>
+    get(id: string): Promise<ConnectionConfig>
+    create(config: ConnectionConfig): Promise<ConnectionConfig>
+    update(config: ConnectionConfig): Promise<ConnectionConfig>
+    remove(id: string): Promise<void>
+    test(config: ConnectionConfig): Promise<TestResult>
+    execute(
+      connId: string,
+      sql: string,
+      params?: unknown[],
+      options?: ExecuteOptions,
+    ): Promise<QueryResult>
+    metadata(connId: string, scope: MetaScope): Promise<MetadataNode[]>
+    executeBatch(connId: string, statements: string[], options?: ExecuteOptions): Promise<void>
+    cancel(connId: string): Promise<void>
+    history(connId: string, limit?: number): Promise<QueryHistoryEntry[]>
+    historyClear(connId: string): Promise<void>
+  }
+  files: {
+    saveText(req: {
+      defaultName: string
+      content: string
+      filters?: { name: string; extensions: string[] }[]
+    }): Promise<string | null>
+    openText(
+      filters?: { name: string; extensions: string[] }[],
+    ): Promise<{ name: string; content: string } | null>
+  }
+}

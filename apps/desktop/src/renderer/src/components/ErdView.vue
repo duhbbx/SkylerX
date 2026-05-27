@@ -2,9 +2,11 @@
 import type { DbDialect } from '@db-tool/shared-types'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { type TableContext, quoteId } from '../ddl'
+import { useDataClient } from '../data-client'
 import { type ErdData, loadErd } from '../erd'
 
 const props = defineProps<{ connId: string; dialect: DbDialect; ctx: TableContext }>()
+const client = useDataClient()
 
 const BOX_W = 220
 
@@ -68,7 +70,7 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const d = await loadErd(props.connId, props.dialect, props.ctx)
+    const d = await loadErd(client, props.connId, props.dialect, props.ctx)
     data.value = d
     newTables.value = []
     newFks.value = []
@@ -266,12 +268,12 @@ function buildDdl(onlyNew: boolean): string {
 }
 
 async function generateDdl(): Promise<void> {
-  if (!window.api.files) {
+  if (!client.files) {
     window.alert('文件接口未就绪：请完整重启应用（preload 更新需重启，非热更新）。')
     return
   }
   try {
-    await window.api.files.saveText({
+    await client.files.saveText({
       defaultName: `${props.ctx.schema || props.ctx.database || 'schema'}.sql`,
       content: buildDdl(false),
       filters: [{ name: 'SQL', extensions: ['sql'] }],
@@ -292,7 +294,7 @@ async function applyChanges(): Promise<void> {
   applying.value = true
   try {
     const stmts = ddl.split(';\n').map((s) => s.trim()).filter(Boolean)
-    await window.api.connections.executeBatch(props.connId, stmts, {
+    await client.connections.executeBatch(props.connId, stmts, {
       database: props.ctx.database,
       schema: props.ctx.schema,
     })
