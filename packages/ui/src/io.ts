@@ -125,6 +125,32 @@ export function parseCSV(text: string): string[][] {
   return rows.filter((r) => !(r.length === 1 && r[0] === ''))
 }
 
+/** 单元格值统一转字符串：null/undefined→''(视为 NULL)，对象/数组→JSON，其余→String。 */
+function jsonCell(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
+/**
+ * 解析 JSON 为 string[][]（首行表头），复用 CSV 同一导入管线。
+ * 支持「对象数组」(键并集为表头) 与「数组的数组」(原样)；单对象按一行处理。
+ */
+export function parseJSON(text: string): string[][] {
+  const data = JSON.parse(text) as unknown
+  const arr = (Array.isArray(data) ? data : [data]) as unknown[]
+  if (!arr.length) return []
+  if (Array.isArray(arr[0])) return arr.map((r) => (r as unknown[]).map(jsonCell))
+  const keys: string[] = []
+  for (const o of arr) {
+    if (o && typeof o === 'object') {
+      for (const k of Object.keys(o)) if (!keys.includes(k)) keys.push(k)
+    }
+  }
+  const rows = arr.map((o) => keys.map((k) => jsonCell((o as Record<string, unknown>)?.[k])))
+  return [keys, ...rows]
+}
+
 /**
  * CSV 数据行 → 批量 INSERT（按 chunk 合并多值；空串视为 NULL）。
  * columns 为目标列名（已与数据列按位置对齐），dataRows 不含表头。

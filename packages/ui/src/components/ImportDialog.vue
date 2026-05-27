@@ -3,7 +3,7 @@ import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import type { TableContext } from '../ddl'
-import { buildInsertStatements, parseCSV } from '../io'
+import { buildInsertStatements, parseCSV, parseJSON } from '../io'
 import Modal from './Modal.vue'
 import type { TreeNode } from './treeNode'
 
@@ -58,12 +58,21 @@ function autoMap(): void {
 async function pickFile(): Promise<void> {
   error.value = null
   const f = await client.files.openText([
-    { name: 'CSV', extensions: ['csv', 'txt'] },
+    { name: '数据文件', extensions: ['csv', 'txt', 'json'] },
     { name: '所有文件', extensions: ['*'] },
   ])
   if (!f) return
   fileName.value = f.name
-  csvRows.value = parseCSV(f.content)
+  const trimmed = f.content.trimStart()
+  const isJson = /\.json$/i.test(f.name) || trimmed.startsWith('[') || trimmed.startsWith('{')
+  try {
+    csvRows.value = isJson ? parseJSON(f.content) : parseCSV(f.content)
+    if (isJson) hasHeader.value = true // JSON 首行即键名
+  } catch (e) {
+    error.value = `解析失败：${e instanceof Error ? e.message : String(e)}`
+    csvRows.value = []
+    return
+  }
   autoMap()
 }
 
@@ -99,7 +108,7 @@ async function runImport(): Promise<void> {
   <Modal :title="`导入数据 → ${node.name}`" wide @close="emit('close')">
     <div class="imp">
       <div class="row">
-        <button class="primary" @click="pickFile">选择 CSV 文件…</button>
+        <button class="primary" @click="pickFile">选择文件（CSV / JSON）…</button>
         <span v-if="fileName" class="fname">{{ fileName }}</span>
         <label v-if="csvRows.length" class="chk">
           <input v-model="hasHeader" type="checkbox" @change="autoMap" /> 首行为表头
@@ -109,7 +118,7 @@ async function runImport(): Promise<void> {
 
       <template v-if="csvRows.length">
         <div class="map">
-          <div class="map-head">列映射（目标列 ← CSV 列）</div>
+          <div class="map-head">列映射（目标列 ← 源列）</div>
           <div v-for="col in tableCols" :key="col" class="map-row">
             <span class="tcol">{{ col }}</span>
             <span class="arrow">←</span>
