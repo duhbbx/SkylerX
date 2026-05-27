@@ -22,6 +22,7 @@ const emit = defineEmits<{
   dropObject: [string, TreeNode]
   viewStructure: [string, TreeNode]
   designTable: [string, TreeNode]
+  importData: [string, TreeNode]
 }>()
 
 interface ConnRoot {
@@ -101,6 +102,7 @@ const controller: TreeController = {
   dropObject: (node, connId) => emit('dropObject', connId, node),
   viewStructure: (node, connId) => emit('viewStructure', connId, node),
   designTable: (node, connId) => emit('designTable', connId, node),
+  importData: (node, connId) => emit('importData', connId, node),
   editConnection: (connId) => emit('editConn', connId),
   newConnection: () => emit('newConn'),
   deleteConnection: (connId) => emit('deleteConn', connId),

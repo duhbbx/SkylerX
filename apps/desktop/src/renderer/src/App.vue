@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, useTemplateRef } from 'vue'
 import ConnectionForm from './components/ConnectionForm.vue'
+import ImportDialog from './components/ImportDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect } from '@db-tool/shared-types'
-import { type ObjectKind, buildDrop, deriveContext, dropSupportsCascade, objectKindLabel } from './ddl'
+import {
+  type ObjectKind,
+  type TableContext,
+  buildDrop,
+  deriveContext,
+  dropSupportsCascade,
+  objectKindLabel,
+} from './ddl'
 
 const navRef = useTemplateRef('navRef')
 const tabsRef = useTemplateRef('tabsRef')
@@ -24,6 +32,11 @@ const dropConfirm = ref<{
   busy: boolean
   error: string | null
 } | null>(null)
+
+// CSV 导入对话框
+const importing = ref<{ connId: string; node: TreeNode; dialect: DbDialect; ctx: TableContext } | null>(
+  null,
+)
 
 const dropResult = computed(() =>
   dropConfirm.value
@@ -99,6 +112,21 @@ async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
   tabsRef.value?.editTable(conn, ctx, node)
 }
 
+// 导入数据（CSV → 表）→ 弹导入对话框
+async function onImportData(connId: string, node: TreeNode): Promise<void> {
+  const conn = await window.api.connections.get(connId)
+  importing.value = { connId, node, dialect: conn.dialect, ctx: deriveContext(conn.dialect, node) }
+}
+
+function onImportDone(count: number): void {
+  const imp = importing.value
+  importing.value = null
+  if (imp) {
+    navRef.value?.refreshNode(imp.node, imp.connId)
+    window.alert(`已导入 ${count} 行到 ${imp.node.name}`)
+  }
+}
+
 // 删除对象 → 弹二次确认
 async function onDropObject(connId: string, node: TreeNode): Promise<void> {
   const conn = await window.api.connections.get(connId)
@@ -165,6 +193,7 @@ function onCancel(): void {
     @drop-object="onDropObject"
     @view-structure="onViewStructure"
     @design-table="onDesignTable"
+    @import-data="onImportData"
   />
 
   <main class="main">
@@ -204,6 +233,16 @@ function onCancel(): void {
       </div>
     </div>
   </Modal>
+
+  <ImportDialog
+    v-if="importing"
+    :conn-id="importing.connId"
+    :dialect="importing.dialect"
+    :ctx="importing.ctx"
+    :node="importing.node"
+    @done="onImportDone"
+    @close="importing = null"
+  />
 </template>
 
 <style scoped>

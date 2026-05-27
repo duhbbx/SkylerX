@@ -38,6 +38,19 @@ const api = {
     historyClear: (connId: string): Promise<void> =>
       ipcRenderer.invoke('connections:historyClear', connId),
   },
+  files: {
+    /** 弹保存对话框写入文本；返回路径，取消返回 null */
+    saveText: (req: {
+      defaultName: string
+      content: string
+      filters?: { name: string; extensions: string[] }[]
+    }): Promise<string | null> => ipcRenderer.invoke('files:saveText', req),
+    /** 弹打开对话框读取文本；返回 { name, content }，取消返回 null */
+    openText: (
+      filters?: { name: string; extensions: string[] }[],
+    ): Promise<{ name: string; content: string } | null> =>
+      ipcRenderer.invoke('files:openText', filters),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { BrowserWindow, app, shell } from 'electron'
 import { closeDb } from './db/sqlite.js'
 import { registerConnectionIpc } from './ipc/connections.js'
+import { registerFileIpc } from './ipc/files.js'
 import { setupMenu } from './menu.js'
 import { disposeTransport } from './transport.js'
 
@@ -50,6 +51,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   setupMenu()
   registerConnectionIpc()
+  registerFileIpc()
   createWindow()
 
   app.on('activate', () => {

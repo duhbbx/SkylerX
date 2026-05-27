@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import type { QueryResult } from '@db-tool/shared-types'
+import type { DbDialect, QueryResult } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
+import { quoteId } from '../ddl'
 import type { EditChanges } from '../editable'
+import { type ExportFormat, exportRows } from '../io'
 
 type Row = Record<string, unknown>
 
@@ -14,6 +16,8 @@ const props = defineProps<{
   pageSize?: number
   hasMore?: boolean
   editable?: boolean
+  /** 用于 SQL 导出时的标识符引用 */
+  dialect?: DbDialect
 }>()
 const emit = defineEmits<{
   changePage: [number]
@@ -34,6 +38,28 @@ const selected = ref<Set<string>>(new Set())
 const lastClick = ref<{ area: 'r' | 'n'; index: number } | null>(null)
 
 const columnNames = computed(() => props.result?.columns.map((c) => c.name) ?? [])
+
+// ── 导出 ──
+const showExport = ref(false)
+async function doExport(format: ExportFormat): Promise<void> {
+  showExport.value = false
+  const cols = columnNames.value
+  if (!cols.length) return
+  const rows = ((props.editable ? localRows.value : props.result?.rows) ?? []) as Row[]
+  let tableRef = 'table_name'
+  if (format === 'sql') {
+    const n = window.prompt('SQL 导出：目标表名', 'table_name')
+    if (!n || !n.trim()) return
+    tableRef = props.dialect != null ? quoteId(props.dialect, n.trim()) : n.trim()
+  }
+  const content = exportRows(format, cols, rows, { dialect: props.dialect, tableRef })
+  const ext = format
+  await window.api.files.saveText({
+    defaultName: `export.${ext}`,
+    content,
+    filters: [{ name: format.toUpperCase(), extensions: [ext] }],
+  })
+}
 
 function resetEdits(): void {
   const rows = props.result?.rows ?? []
@@ -258,6 +284,18 @@ function fmt(v: unknown): string {
           · {{ result.executionTimeMs }} ms
           <span v-if="result.truncated" class="trunc">（已截断）</span>
         </span>
+
+        <div v-if="result.columns.length" class="export-box">
+          <button class="exp-btn" title="导出结果" @click.stop="showExport = !showExport">导出 ▾</button>
+          <template v-if="showExport">
+            <div class="exp-overlay" @click="showExport = false" />
+            <div class="exp-menu" @click.stop>
+              <button @click="doExport('csv')">CSV</button>
+              <button @click="doExport('json')">JSON</button>
+              <button @click="doExport('sql')">SQL INSERT</button>
+            </div>
+          </template>
+        </div>
       </div>
     </template>
   </div>
@@ -456,5 +494,37 @@ td input {
 }
 .statusbar .meta .trunc {
   color: #e0a020;
+}
+.export-box {
+  position: relative;
+}
+.exp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+.exp-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.exp-menu button {
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  padding: 7px 12px;
+}
+.exp-menu button:hover {
+  background: var(--accent);
+  color: #fff;
 }
 </style>

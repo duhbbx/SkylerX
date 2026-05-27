@@ -33,6 +33,8 @@ export interface TreeController {
   viewStructure(node: TreeNode, connId: string): void
   /** 设计表：在表设计器中以「修改表」(alter) 模式打开 */
   designTable(node: TreeNode, connId: string): void
+  /** 导入数据：打开 CSV 导入对话框（导入到该表） */
+  importData(node: TreeNode, connId: string): void
   editConnection(connId: string): void
   newConnection(): void
   deleteConnection(connId: string): void

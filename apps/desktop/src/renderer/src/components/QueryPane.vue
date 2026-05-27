@@ -431,6 +431,7 @@ onMounted(() => {
         :page-size="cur?.pageSize ?? 200"
         :has-more="(cur?.result?.rowCount ?? 0) === (cur?.pageSize ?? 200)"
         :editable="!!cur?.editTable"
+        :dialect="conn.dialect"
         @change-page="(p) => gotoPage(cur, p)"
         @change-page-size="(s) => changePageSize(cur, s)"
         @commit="onCommit"

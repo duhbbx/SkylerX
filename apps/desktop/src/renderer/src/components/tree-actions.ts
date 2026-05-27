@@ -52,6 +52,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.designTable(node, connId),
   },
   {
+    id: 'import-data',
+    label: '导入数据（CSV）',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.importData(node, connId),
+  },
+  {
     id: 'new-table',
     label: '新建表',
     kinds: [MetaNodeKind.Group, MetaNodeKind.Table, MetaNodeKind.View],
