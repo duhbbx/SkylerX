@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { quoteId } from '../ddl'
 import type { EditChanges } from '../editable'
 import { type ExportFormat, exportRows } from '../io'
+import Modal from './Modal.vue'
 
 type Row = Record<string, unknown>
 
@@ -37,7 +38,42 @@ const editing = ref<{ area: 'r' | 'n'; index: number; col: string } | null>(null
 const selected = ref<Set<string>>(new Set())
 const lastClick = ref<{ area: 'r' | 'n'; index: number } | null>(null)
 
+// ── 客户端排序（仅只读浏览时；编辑态依赖行索引对齐，故禁用）──
+const sortCol = ref<string | null>(null)
+const sortDir = ref<'asc' | 'desc'>('asc')
+// ── 单元格 / 行 查看器 ──（col 为 null = 看整行）
+const viewer = ref<{ row: number; col: string | null } | null>(null)
+
 const columnNames = computed(() => props.result?.columns.map((c) => c.name) ?? [])
+
+/** 实际渲染的行：编辑态用 localRows（保持索引对齐）；只读态可按列排序。 */
+const viewRows = computed<Row[]>(() => {
+  const base = (props.editable ? localRows.value : (props.result?.rows ?? [])) as Row[]
+  if (props.editable || !sortCol.value) return base
+  const col = sortCol.value
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  return [...base].sort((a, b) => cmp(a[col], b[col]) * dir)
+})
+
+function cmp(a: unknown, b: unknown): number {
+  if (a === b) return 0
+  if (a === null || a === undefined) return 1
+  if (b === null || b === undefined) return -1
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  return String(a).localeCompare(String(b))
+}
+
+function toggleSort(col: string): void {
+  if (props.editable) return // 编辑态不排序
+  if (sortCol.value !== col) {
+    sortCol.value = col
+    sortDir.value = 'asc'
+  } else if (sortDir.value === 'asc') {
+    sortDir.value = 'desc'
+  } else {
+    sortCol.value = null
+  }
+}
 
 // ── 导出 ──
 const showExport = ref(false)
@@ -70,6 +106,8 @@ function resetEdits(): void {
   editing.value = null
   selected.value = new Set()
   lastClick.value = null
+  sortCol.value = null
+  viewer.value = null
 }
 watch(() => props.result, resetEdits, { immediate: true })
 
@@ -171,6 +209,41 @@ function fmt(v: unknown): string {
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)
 }
+
+// ── 查看器 ──
+// 只读态双击单元格 → 看单元格；编辑态双击 → 进入编辑
+function onCellDblClick(area: 'r' | 'n', index: number, col: string): void {
+  if (props.editable) startEdit(area, index, col)
+  else viewer.value = { row: index, col }
+}
+function openRow(index: number): void {
+  viewer.value = { row: index, col: null }
+}
+function moveViewer(delta: number): void {
+  if (!viewer.value) return
+  const n = viewer.value.row + delta
+  if (n >= 0 && n < viewRows.value.length) viewer.value = { ...viewer.value, row: n }
+}
+/** 大文本/JSON 美化显示。 */
+function pretty(v: unknown): string {
+  if (v === null || v === undefined) return 'NULL'
+  if (typeof v === 'object') return JSON.stringify(v, null, 2)
+  const s = String(v)
+  if (/^\s*[[{]/.test(s)) {
+    try {
+      return JSON.stringify(JSON.parse(s), null, 2)
+    } catch {
+      /* 非 JSON，原样 */
+    }
+  }
+  return s
+}
+const viewerRow = computed<Row | null>(() =>
+  viewer.value ? (viewRows.value[viewer.value.row] ?? null) : null,
+)
+function copyText(text: string): void {
+  void navigator.clipboard?.writeText(text)
+}
 </script>
 
 <template>
@@ -194,19 +267,25 @@ function fmt(v: unknown): string {
           <thead>
             <tr>
               <th class="rownum">#</th>
-              <th v-for="c in result.columns" :key="c.name">
+              <th
+                v-for="c in result.columns"
+                :key="c.name"
+                :class="{ sortable: !editable }"
+                @click="toggleSort(c.name)"
+              >
                 {{ c.name }}<span class="th-type">{{ c.dataType }}</span>
+                <span v-if="sortCol === c.name" class="sort-ind">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
               </th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="(row, i) in (editable ? localRows : result.rows)"
+              v-for="(row, i) in viewRows"
               :key="'r' + i"
               :class="{ selected: isSel('r', i), deleted: editable && deleted[i] }"
               @click="onRowClick('r', i, $event)"
             >
-              <td class="rownum">{{ i + 1 }}</td>
+              <td class="rownum" title="查看整行" @click.stop="openRow(i)">{{ i + 1 }}</td>
               <td
                 v-for="c in result.columns"
                 :key="c.name"
@@ -215,7 +294,7 @@ function fmt(v: unknown): string {
                   modified: isModified(i, c.name),
                   editing: isEditing('r', i, c.name),
                 }"
-                @dblclick="startEdit('r', i, c.name)"
+                @dblclick="onCellDblClick('r', i, c.name)"
               >
                 <input
                   v-if="editable && isEditing('r', i, c.name)"
@@ -297,6 +376,34 @@ function fmt(v: unknown): string {
           </template>
         </div>
       </div>
+
+      <Modal
+        v-if="viewer"
+        :title="viewer.col ? `单元格 · ${viewer.col}` : `第 ${viewer.row + 1} 行`"
+        @close="viewer = null"
+      >
+        <template v-if="viewer.col">
+          <pre class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
+          <div class="viewer-actions">
+            <button @click="copyText(pretty(viewerRow?.[viewer.col]))">复制</button>
+          </div>
+        </template>
+        <template v-else-if="viewerRow">
+          <table class="row-detail">
+            <tbody>
+              <tr v-for="c in result.columns" :key="c.name">
+                <th>{{ c.name }}</th>
+                <td :class="{ nullcell: isNull(viewerRow[c.name]) }">{{ fmt(viewerRow[c.name]) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="viewer-actions">
+            <button :disabled="viewer.row <= 0" @click="moveViewer(-1)">‹ 上一行</button>
+            <button :disabled="viewer.row >= viewRows.length - 1" @click="moveViewer(1)">下一行 ›</button>
+            <button @click="copyText(JSON.stringify(viewerRow, null, 2))">复制为 JSON</button>
+          </div>
+        </template>
+      </Modal>
     </template>
   </div>
 </template>
@@ -526,5 +633,79 @@ td input {
 .exp-menu button:hover {
   background: var(--accent);
   color: #fff;
+}
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+th.sortable:hover {
+  color: var(--text);
+}
+.sort-ind {
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--accent);
+}
+td.rownum {
+  cursor: pointer;
+}
+td.rownum:hover {
+  color: var(--accent);
+}
+.cell-view {
+  margin: 0;
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+.row-detail {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.row-detail th {
+  text-align: right;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 4px 10px;
+  white-space: nowrap;
+  vertical-align: top;
+  width: 1%;
+  border-bottom: 1px solid var(--border);
+}
+.row-detail td {
+  padding: 4px 10px;
+  word-break: break-word;
+  border-bottom: 1px solid var(--border);
+}
+.row-detail td.nullcell {
+  color: var(--muted);
+  font-style: italic;
+}
+.viewer-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+.viewer-actions button {
+  padding: 5px 14px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.viewer-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>
