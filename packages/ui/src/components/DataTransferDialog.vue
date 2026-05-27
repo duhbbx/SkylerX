@@ -3,6 +3,7 @@ import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/sh
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
+import { t } from '../i18n'
 import { rowInserts } from '../io'
 import Modal from './Modal.vue'
 import type { TreeNode } from './treeNode'
@@ -48,18 +49,18 @@ onMounted(async () => {
 
 function targetRef(dialect: DbDialect): string {
   const q = (s: string) => quoteId(dialect, s)
-  const t = targetTable.value.trim()
-  return targetSchema.value.trim() ? `${q(targetSchema.value.trim())}.${q(t)}` : q(t)
+  const tbl = targetTable.value.trim()
+  return targetSchema.value.trim() ? `${q(targetSchema.value.trim())}.${q(tbl)}` : q(tbl)
 }
 
 async function run(): Promise<void> {
   const tc = targetConn.value
   if (!tc) {
-    error.value = '请选择目标连接'
+    error.value = t('transfer.needTarget')
     return
   }
   if (!targetTable.value.trim()) {
-    error.value = '请填写目标表名'
+    error.value = t('transfer.needTable')
     return
   }
   busy.value = true
@@ -97,44 +98,44 @@ async function run(): Promise<void> {
 </script>
 
 <template>
-  <Modal :title="`数据传输 · ${node.name}`" wide @close="emit('close')">
+  <Modal :title="t('transfer.title', { name: node.name })" wide @close="emit('close')">
     <div class="dt">
-      <div class="src">源：<b>{{ node.sqlName ?? node.name }}</b>（{{ cols.length }} 列）</div>
+      <div class="src">{{ t('transfer.sourceLabel') }}<b>{{ node.sqlName ?? node.name }}</b>{{ t('transfer.colsCount', { n: cols.length }) }}</div>
 
       <div class="grid">
-        <label>目标连接</label>
+        <label>{{ t('transfer.targetConn') }}</label>
         <select v-model="targetConnId">
           <option v-for="c in conns" :key="c.id" :value="c.id">
-            {{ c.name || c.dialect }}{{ c.id === connId ? '（当前）' : '' }}
+            {{ c.name || c.dialect }}{{ c.id === connId ? t('transfer.current') : '' }}
           </option>
         </select>
 
-        <label>目标库</label>
+        <label>{{ t('transfer.targetDb') }}</label>
         <input v-model="targetDb" placeholder="database" />
 
-        <label>目标 schema</label>
-        <input v-model="targetSchema" placeholder="（PG/SQLServer 需要）" />
+        <label>{{ t('transfer.targetSchema') }}</label>
+        <input v-model="targetSchema" :placeholder="t('transfer.schemaPh')" />
 
-        <label>目标表</label>
-        <input v-model="targetTable" placeholder="表名（需已存在且列匹配）" />
+        <label>{{ t('transfer.targetTable') }}</label>
+        <input v-model="targetTable" :placeholder="t('transfer.tablePh')" />
 
-        <label>每批行数</label>
+        <label>{{ t('transfer.batchRows') }}</label>
         <input v-model.number="chunkSize" type="number" min="1" class="w-sm" />
 
-        <label>先清空目标</label>
+        <label>{{ t('transfer.truncateFirst') }}</label>
         <input v-model="truncateFirst" type="checkbox" class="chk" />
       </div>
 
-      <div v-if="busy || done" class="progress">已传输 {{ done }} 行{{ busy ? '…' : ' ✓' }}</div>
+      <div v-if="busy || done" class="progress">{{ t('transfer.progress', { n: done }) }}{{ busy ? '…' : ' ✓' }}</div>
       <div v-if="error" class="banner err">✗ {{ error }}</div>
       <p class="note">
-        按主键/列名对齐插入，要求目标表已存在且列兼容；跨方言时类型/布尔/日期为尽力转换。大表分批读写。
+        {{ t('transfer.note') }}
       </p>
 
       <div class="actions">
-        <button class="ghost" :disabled="busy" @click="emit('close')">取消</button>
+        <button class="ghost" :disabled="busy" @click="emit('close')">{{ t('common.cancel') }}</button>
         <button class="primary" :disabled="busy || !cols.length" @click="run">
-          {{ busy ? '传输中…' : '开始传输' }}
+          {{ busy ? t('transfer.transferring') : t('transfer.start') }}
         </button>
       </div>
     </div>

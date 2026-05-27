@@ -4,6 +4,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { type TableContext, quoteId } from '../ddl'
 import { useDataClient } from '../data-client'
 import { type ErdData, loadErd } from '../erd'
+import { t } from '../i18n'
 
 const props = defineProps<{ connId: string; dialect: DbDialect; ctx: TableContext }>()
 const client = useDataClient()
@@ -269,7 +270,7 @@ function buildDdl(onlyNew: boolean): string {
 
 async function generateDdl(): Promise<void> {
   if (!client.files) {
-    window.alert('文件接口未就绪：请完整重启应用（preload 更新需重启，非热更新）。')
+    window.alert(t('erd.fileNotReady'))
     return
   }
   try {
@@ -279,18 +280,18 @@ async function generateDdl(): Promise<void> {
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    window.alert(`生成 DDL 失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('erd.ddlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
 const applying = ref(false)
 async function applyChanges(): Promise<void> {
   if (!newTables.value.length && !newFks.value.length) {
-    window.alert('没有新增的表或外键')
+    window.alert(t('erd.noNew'))
     return
   }
   const ddl = buildDdl(true)
-  if (!window.confirm(`将对数据库执行以下 DDL：\n\n${ddl}`)) return
+  if (!window.confirm(t('erd.applyConfirm', { ddl }))) return
   applying.value = true
   try {
     const stmts = ddl.split(';\n').map((s) => s.trim()).filter(Boolean)
@@ -301,7 +302,7 @@ async function applyChanges(): Promise<void> {
     await load()
     editMode.value = false
   } catch (e) {
-    window.alert(`应用失败：${e instanceof Error ? e.message : String(e)}`)
+    window.alert(t('erd.applyFail', { msg: e instanceof Error ? e.message : String(e) }))
   } finally {
     applying.value = false
   }
@@ -311,27 +312,27 @@ async function applyChanges(): Promise<void> {
 <template>
   <div class="erd">
     <div class="erd-head">
-      <span class="title">ER 图 · {{ ctx.schema || ctx.database }}</span>
-      <span v-if="data" class="sub">{{ boxes.length }} 表 · {{ edges.length }} 外键</span>
-      <button class="ghost sm" title="缩小" @click="zoomBy(0.9)">－</button>
+      <span class="title">{{ t('erd.title', { name: ctx.schema || ctx.database || '' }) }}</span>
+      <span v-if="data" class="sub">{{ t('erd.stats', { tables: boxes.length, edges: edges.length }) }}</span>
+      <button class="ghost sm" :title="t('erd.zoomOut')" @click="zoomBy(0.9)">－</button>
       <span class="zoom-pct">{{ Math.round(zoom * 100) }}%</span>
-      <button class="ghost sm" title="放大" @click="zoomBy(1.1)">＋</button>
-      <button class="ghost sm" title="重置视图" @click="resetView">1:1</button>
-      <button class="ghost sm" title="刷新" @click="load">⟳</button>
+      <button class="ghost sm" :title="t('erd.zoomIn')" @click="zoomBy(1.1)">＋</button>
+      <button class="ghost sm" :title="t('erd.reset')" @click="resetView">1:1</button>
+      <button class="ghost sm" :title="t('common.refresh')" @click="load">⟳</button>
       <button class="ghost sm" :class="{ on: editMode }" @click="editMode = !editMode">
-        {{ editMode ? '✓ 编辑中' : '编辑' }}
+        {{ editMode ? t('erd.editing') : t('erd.edit') }}
       </button>
       <template v-if="editMode">
-        <button class="ghost sm" @click="addTable">+ 表</button>
-        <button class="ghost sm" :disabled="applying" @click="applyChanges">应用到库</button>
+        <button class="ghost sm" @click="addTable">{{ t('erd.addTable') }}</button>
+        <button class="ghost sm" :disabled="applying" @click="applyChanges">{{ t('erd.applyToDb') }}</button>
       </template>
-      <button v-if="data?.tables.length || newTables.length" class="ghost sm" @click="generateDdl">生成 DDL</button>
-      <span class="hint">{{ editMode ? '拖列圆点到目标列建外键 · 拖表框移动' : '滚轮缩放 · 拖表框移动 · 拖空白平移' }}</span>
+      <button v-if="data?.tables.length || newTables.length" class="ghost sm" @click="generateDdl">{{ t('erd.genDdl') }}</button>
+      <span class="hint">{{ editMode ? t('erd.hintEdit') : t('erd.hintView') }}</span>
     </div>
 
-    <div v-if="loading" class="msg">加载中…</div>
+    <div v-if="loading" class="msg">{{ t('common.loading') }}</div>
     <div v-else-if="error" class="msg err">✗ {{ error }}</div>
-    <div v-else-if="data && !data.supported" class="msg">当前方言暂不支持 ER 图（目前支持 MySQL / PostgreSQL 系）</div>
+    <div v-else-if="data && !data.supported" class="msg">{{ t('erd.unsupported') }}</div>
 
     <div
       v-else-if="data"
@@ -380,7 +381,7 @@ async function applyChanges(): Promise<void> {
                 class="tname-input"
                 @mousedown.stop
               />
-              <button class="tx" title="删除表" @mousedown.stop @click="removeTable(b.id)">×</button>
+              <button class="tx" :title="t('erd.delTable')" @mousedown.stop @click="removeTable(b.id)">×</button>
             </template>
             <span v-else>{{ b.name }}</span>
           </div>
@@ -389,8 +390,8 @@ async function applyChanges(): Promise<void> {
               <template v-if="b.editable && editMode">
                 <input v-model="c.name" class="ci ci-n" @mousedown.stop />
                 <input v-model="c.type" class="ci ci-t" @mousedown.stop />
-                <input v-model="c.pk" type="checkbox" title="主键" @mousedown.stop />
-                <button class="tx" title="删除列" @mousedown.stop @click="removeColumn(newTables[newTables.findIndex((t) => t.id === b.id)], ci)">×</button>
+                <input v-model="c.pk" type="checkbox" :title="t('designer.pk')" @mousedown.stop />
+                <button class="tx" :title="t('erd.delCol')" @mousedown.stop @click="removeColumn(newTables[newTables.findIndex((t) => t.id === b.id)], ci)">×</button>
               </template>
               <template v-else>
                 <span class="cn" :class="{ pk: c.pk }">{{ c.pk ? '🔑 ' : '' }}{{ c.name }}</span>
@@ -399,12 +400,12 @@ async function applyChanges(): Promise<void> {
               <span
                 v-if="editMode"
                 class="port"
-                title="拖到目标列建外键"
+                :title="t('erd.fkDrag')"
                 @mousedown.stop.prevent="portDown(b.id, c.name, $event)"
               />
             </div>
             <div v-if="b.editable && editMode" class="add-col" @mousedown.stop @click="addColumn(newTables[newTables.findIndex((t) => t.id === b.id)])">
-              + 列
+              {{ t('erd.addCol') }}
             </div>
           </div>
         </div>
