@@ -53,15 +53,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 手动/分支触发：产物存为 Actions artifact，可在 run 页面下载
       - uses: actions/upload-artifact@v4
         with:
-          name: dbtool-${{ matrix.os }}
+          name: skylerx-${{ matrix.os }}
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.exe
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
           if-no-files-found: ignore
+
+      # tag v* 触发：把安装包挂到对应 GitHub Release（三平台各自追加）
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 # 备注：若 hoisted 布局仍报 “must be under appDir”，改用 `pnpm --filter @db-tool/desktop deploy`
 # 生成自包含目录后在其中 electron-builder。Oracle/达梦 原生驱动二期再纳入打包矩阵。
