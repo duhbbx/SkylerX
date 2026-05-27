@@ -270,9 +270,21 @@ async function loadHistory(): Promise<void> {
   history.value = await client.connections.history(props.conn.id)
 }
 
+/** 高危语句检测：DROP/TRUNCATE、以及无 WHERE 的 DELETE/UPDATE。返回提示文案。 */
+function dangerOf(sql: string): string | null {
+  const s = sql.trim()
+  if (/^drop\s+(table|database|schema|view)/i.test(s)) return `DROP：${s.slice(0, 60)}`
+  if (/^truncate\b/i.test(s)) return `TRUNCATE：${s.slice(0, 60)}`
+  if (/^delete\s+from\b/i.test(s) && !/\bwhere\b/i.test(s)) return `DELETE 无 WHERE：${s.slice(0, 60)}`
+  if (/^update\b/i.test(s) && !/\bwhere\b/i.test(s)) return `UPDATE 无 WHERE：${s.slice(0, 60)}`
+  return null
+}
+
 async function run(): Promise<void> {
   const statements = splitStatements(sql.value)
   if (!statements.length) return
+  const dangers = statements.map(dangerOf).filter(Boolean) as string[]
+  if (dangers.length && !window.confirm(`⚠️ 检测到高危操作：\n\n${dangers.join('\n')}\n\n确定执行？`)) return
   const token = ++runToken
   running.value = true
   showHistory.value = false
