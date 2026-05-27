@@ -308,7 +308,9 @@ function dangerOf(sql: string): string | null {
 }
 
 // ── 查询参数化（:name 占位）──
-const pendingParams = ref<{ names: string[]; values: Record<string, string> } | null>(null)
+const pendingParams = ref<{ names: string[]; values: Record<string, string>; source: string } | null>(
+  null,
+)
 function paramNames(text: string): string[] {
   return [...new Set([...text.matchAll(/(?<![:\w]):(\w+)/g)].map((m) => m[1]))]
 }
@@ -325,18 +327,24 @@ function substituteParams(text: string, values: Record<string, string>): string 
 function submitParams(): void {
   const p = pendingParams.value
   if (!p) return
-  const resolved = substituteParams(sql.value, p.values)
+  const resolved = substituteParams(p.source, p.values)
   pendingParams.value = null
   void execSql(resolved)
 }
 
+// 用户触发的执行：有选区则只跑选中语句，否则跑整个编辑器内容
 function run(): void {
-  const names = paramNames(sql.value)
+  const selected = editorRef.value?.getSelectedText()?.trim()
+  runText(selected || sql.value)
+}
+
+function runText(text: string): void {
+  const names = paramNames(text)
   if (names.length) {
-    pendingParams.value = { names, values: Object.fromEntries(names.map((n) => [n, ''])) }
+    pendingParams.value = { names, values: Object.fromEntries(names.map((n) => [n, ''])), source: text }
     return
   }
-  void execSql(sql.value)
+  void execSql(text)
 }
 
 async function execSql(text: string): Promise<void> {
@@ -389,7 +397,8 @@ async function execSql(text: string): Promise<void> {
 
 /** 解释执行计划：PG→JSON 节点树、MySQL→TREE 文本，渲染在「计划」面板；其余回退表格 EXPLAIN。 */
 async function explain(): Promise<void> {
-  const statements = splitStatements(sql.value)
+  const selected = editorRef.value?.getSelectedText()?.trim()
+  const statements = splitStatements(selected || sql.value)
   if (!statements.length) return
   const stmt = statements[0]
   const pq = planQuery(props.conn.dialect, stmt)
@@ -591,7 +600,9 @@ onMounted(() => {
 <template>
   <div ref="paneEl" class="pane">
     <div class="toolbar">
-      <button class="primary" :disabled="running" @click="run">▶ 执行</button>
+      <button class="primary" :disabled="running" title="执行（选中则只跑选区） ⌘/Ctrl+Enter" @click="run">
+        ▶ 执行
+      </button>
       <button :disabled="running" title="解释执行计划 (EXPLAIN)" @click="explain">解释</button>
       <button title="格式化 SQL" @click="formatSql">格式化</button>
       <button :disabled="!running" @click="cancel">■ 停止</button>
@@ -613,7 +624,7 @@ onMounted(() => {
         <option v-for="s in schemaOptions" :key="s" :value="s">{{ s }}</option>
       </select>
 
-      <span class="hint">⌘/Ctrl+Enter 执行</span>
+      <span class="hint">⌘/Ctrl+Enter 执行（选中则只跑选区）</span>
       <span class="conn-tag">{{ conn.name || '(未命名)' }} · {{ conn.dialect }}</span>
     </div>
 
