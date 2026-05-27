@@ -76,6 +76,29 @@ async function pickFile(): Promise<void> {
   autoMap()
 }
 
+// Excel 走渲染端二进制读取（不经文本通道），按需动态加载 SheetJS
+const xlsxInput = ref<HTMLInputElement>()
+async function onXlsxPicked(e: Event): Promise<void> {
+  error.value = null
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  try {
+    const buf = await file.arrayBuffer()
+    const XLSX = await import('xlsx')
+    const wb = XLSX.read(buf, { type: 'array' })
+    const sheet = wb.Sheets[wb.SheetNames[0]]
+    csvRows.value = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '' })
+    fileName.value = file.name
+    hasHeader.value = true // Excel 首行作表头
+    autoMap()
+  } catch (err) {
+    error.value = `解析 Excel 失败：${err instanceof Error ? err.message : String(err)}`
+    csvRows.value = []
+  } finally {
+    if (xlsxInput.value) xlsxInput.value.value = '' // 允许重选同一文件
+  }
+}
+
 async function runImport(): Promise<void> {
   if (!mappedCols.value.length) {
     error.value = '请至少映射一列'
@@ -109,6 +132,14 @@ async function runImport(): Promise<void> {
     <div class="imp">
       <div class="row">
         <button class="primary" @click="pickFile">选择文件（CSV / JSON）…</button>
+        <button @click="xlsxInput?.click()">Excel…</button>
+        <input
+          ref="xlsxInput"
+          type="file"
+          accept=".xlsx,.xls"
+          style="display: none"
+          @change="onXlsxPicked"
+        />
         <span v-if="fileName" class="fname">{{ fileName }}</span>
         <label v-if="csvRows.length" class="chk">
           <input v-model="hasHeader" type="checkbox" @change="autoMap" /> 首行为表头
