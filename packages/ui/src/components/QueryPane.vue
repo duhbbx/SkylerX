@@ -8,7 +8,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
-import { ENV_META, connEnv } from '../connEnv'
+import { ENV_META, connEnv, connReadOnly, isReadOnlyStatement } from '../connEnv'
 import { type TableContext, explainSql } from '../ddl'
 import { t } from '../i18n'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
@@ -74,6 +74,7 @@ let runToken = 0 // 软取消令牌：停止后丢弃在途结果
 const cur = computed<ResultTab | undefined>(() => tabs.value[activeTab.value])
 const paginatable = PAGINATABLE.includes(props.conn.dialect)
 const env = connEnv(props.conn) // 环境标记（生产库高危操作加强确认 + 工具栏标识）
+const readOnly = connReadOnly(props.conn) // 只读连接：整连接禁写
 
 // ── 编辑器 / 结果区 高度可拖拽 ──
 const paneEl = ref<HTMLElement>()
@@ -406,6 +407,13 @@ function runText(text: string): void {
 async function execSql(text: string): Promise<void> {
   const statements = splitStatements(text)
   if (!statements.length) return
+  if (readOnly) {
+    const writes = statements.filter((s) => !isReadOnlyStatement(s))
+    if (writes.length) {
+      window.alert(t('query.readOnlyBlocked', { sql: writes[0].slice(0, 60) }))
+      return
+    }
+  }
   const dangers = statements.map(dangerOf).filter(Boolean) as string[]
   if (dangers.length) {
     if (env === 'prod') {
@@ -426,7 +434,7 @@ async function execSql(text: string): Promise<void> {
     for (const stmt of statements) {
       const pageable = paginatable && isSelect(stmt)
       const editTable =
-        paginatable && isSelect(stmt) ? parseEditableTable(stmt) : null
+        !readOnly && paginatable && isSelect(stmt) ? parseEditableTable(stmt) : null
       const tab: ResultTab = {
         id: ++tabSeq,
         sql: stmt,
@@ -710,6 +718,7 @@ onMounted(() => {
         :style="{ background: ENV_META[env].color }"
         :title="t('env.dangerTitle', { label: t('env.' + env) })"
       >{{ t('env.' + env) }}</span>
+      <span v-if="readOnly" class="env-badge ro" :title="t('conn.readOnlyTitle')">{{ t('conn.readOnly') }}</span>
       <span class="conn-tag">{{ conn.name || t('common.untitled') }} · {{ conn.dialect }}</span>
     </div>
 
@@ -865,6 +874,10 @@ onMounted(() => {
   color: #fff;
   padding: 1px 7px;
   border-radius: 4px;
+}
+.toolbar .env-badge.ro {
+  margin-left: 4px;
+  background: #607d8b;
 }
 .toolbar .conn-tag {
   margin-left: auto;
