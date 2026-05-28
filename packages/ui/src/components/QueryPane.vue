@@ -574,14 +574,23 @@ function changePageSize(tab: ResultTab | undefined, size: number): void {
 }
 
 // 提交编辑（事务批执行 → 刷新当前页）
-async function onCommit(changes: EditChanges): Promise<void> {
+// 提交前先把生成的 DML 列出来供复核（保护提交），确认后再执行
+const editPreview = ref<{ stmts: string[] } | null>(null)
+function onCommit(changes: EditChanges): void {
   const tab = cur.value
   if (!tab || !tab.editTable || !tab.result) return
   const columns = tab.result.columns.map((c) => c.name)
   const stmts = buildEditDml(props.conn.dialect, tab.editTable, columns, changes)
   if (!stmts.length) return
+  editPreview.value = { stmts }
+}
+async function doCommit(): Promise<void> {
+  const p = editPreview.value
+  const tab = cur.value
+  if (!p || !tab) return
+  editPreview.value = null
   try {
-    await client.connections.executeBatch(props.conn.id, stmts, execOptions())
+    await client.connections.executeBatch(props.conn.id, p.stmts, execOptions())
     await gotoPage(tab, tab.page) // 刷新当前页（结果变更会重置网格编辑态）
     await loadHistory()
   } catch (e) {
@@ -770,10 +779,34 @@ onMounted(() => {
         </div>
       </div>
     </Modal>
+
+    <Modal
+      v-if="editPreview"
+      :title="t('query.commitPreviewTitle', { n: editPreview.stmts.length })"
+      @close="editPreview = null"
+    >
+      <pre class="commit-sql">{{ editPreview.stmts.join(';\n') }};</pre>
+      <div class="pactions">
+        <button class="ghost" @click="editPreview = null">{{ t('common.cancel') }}</button>
+        <button class="primary" @click="doCommit">{{ t('query.commitConfirm') }}</button>
+      </div>
+    </Modal>
   </div>
 </template>
 
 <style scoped>
+.commit-sql {
+  max-height: 320px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  margin: 0 0 12px;
+}
 .params {
   display: flex;
   flex-direction: column;

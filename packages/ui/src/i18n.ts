@@ -111,6 +111,8 @@ const DICT: Record<string, [string, string]> = {
   'query.explainUnsupported': ['当前数据库方言暂不支持「解释」', 'EXPLAIN is not supported for this dialect'],
   'query.explainFailed': ['解释失败：{msg}', 'Explain failed: {msg}'],
   'query.commitFailed': ['提交失败：{msg}', 'Commit failed: {msg}'],
+  'query.commitPreviewTitle': ['提交前预览（{n} 条语句）', 'Preview before commit ({n} statements)'],
+  'query.commitConfirm': ['确认执行', 'Execute'],
   'query.snippetNamePrompt': ['片段名称', 'Snippet name'],
   'query.snippetTagsPrompt': ['标签（逗号分隔，可留空）', 'Tags (comma-separated, optional)'],
   'query.dangerDeleteNoWhere': ['DELETE 无 WHERE：{sql}', 'DELETE without WHERE: {sql}'],
