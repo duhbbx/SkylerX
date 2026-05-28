@@ -648,6 +648,7 @@ const favoritesOpen = ref(false)
 const opLogOpen = ref(false)
 const monitorOpen = ref(false)
 const aiState = ref<{ mode: AiMode; sql?: string; connId?: string; error?: string } | null>(null)
+const aboutOpen = ref(false)
 // 快捷键参考表
 const SHORTCUTS: { k: string; label: string }[] = [
   { k: '⌘/Ctrl + K', label: t('pal.objectSearch') },
@@ -716,6 +717,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:oplog', label: t('pal.oplog'), group: t('pal.groupActions') },
   { id: 'act:monitor', label: t('pal.monitor'), group: t('pal.groupActions') },
   { id: 'act:ai', label: t('pal.ai'), group: t('pal.groupActions') },
+  { id: 'act:about', label: t('pal.about'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
@@ -745,6 +747,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:oplog') opLogOpen.value = true
   else if (item.id === 'act:monitor') monitorOpen.value = true
   else if (item.id === 'act:ai') aiState.value = { mode: 'nl2sql' }
+  else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
 }
@@ -1035,6 +1038,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   <ServerMonitorDialog v-if="monitorOpen" @close="monitorOpen = false" />
 
+  <Modal v-if="aboutOpen" :title="t('about.title')" @close="aboutOpen = false">
+    <div class="about">
+      <div class="about-brand">SkylerX</div>
+      <div class="about-tag">{{ t('about.tag') }}</div>
+      <div class="about-rows">
+        <div class="about-row"><span>{{ t('about.version') }}</span><b>0.1.0</b></div>
+        <div class="about-row"><span>{{ t('about.license') }}</span><b>Apache-2.0</b></div>
+        <div class="about-row">
+          <span>{{ t('about.repo') }}</span>
+          <a href="https://github.com/duhbbx/SkylerX" target="_blank" rel="noopener">github.com/duhbbx/SkylerX</a>
+        </div>
+        <div class="about-row">
+          <span>{{ t('about.issues') }}</span>
+          <a href="https://github.com/duhbbx/SkylerX/issues" target="_blank" rel="noopener">{{ t('about.fileIssue') }}</a>
+        </div>
+      </div>
+    </div>
+  </Modal>
+
   <AiAssistantDialog
     v-if="aiState"
     :initial-mode="aiState.mode"
@@ -1174,6 +1196,50 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 .fav-del:hover {
   color: var(--err);
+}
+.about {
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  padding: 4px 6px 8px;
+}
+.about-brand {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.about-tag {
+  font-size: 13px;
+  color: var(--muted);
+}
+.about-rows {
+  width: 100%;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.about-row:last-child {
+  border-bottom: none;
+}
+.about-row span {
+  color: var(--muted);
+}
+.about a {
+  color: var(--accent, #7c6cff);
+  text-decoration: none;
+}
+.about a:hover {
+  text-decoration: underline;
 }
 .dep-sec {
   font-size: 12px;

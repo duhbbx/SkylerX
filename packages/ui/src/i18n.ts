@@ -385,6 +385,15 @@ const DICT: Record<string, [string, string]> = {
   'monitor.cacheHit': ['缓存命中率', 'Cache hit ratio'],
   'monitor.foot': ['每 2 秒刷新 · QPS/TPS 由计数器增量估算', 'Refreshes every 2s · QPS/TPS estimated from counter deltas'],
 
+  // ── 关于 ──
+  'about.title': ['关于', 'About'],
+  'about.tag': ['现代数据库管理工具 · 桌面端 + Web 端', 'Modern database management · Desktop + Web'],
+  'about.version': ['版本', 'Version'],
+  'about.license': ['许可', 'License'],
+  'about.repo': ['仓库', 'Repository'],
+  'about.issues': ['反馈', 'Feedback'],
+  'about.fileIssue': ['提交 Issue', 'File an issue'],
+
   // ── AI 助手 AiAssistantDialog ──
   'ai.title': ['AI 助手', 'AI Assistant'],
   'ai.modeNl2sql': ['自然语言 → SQL', 'NL → SQL'],
@@ -696,6 +705,7 @@ const DICT: Record<string, [string, string]> = {
   'pal.oplog': ['操作日志', 'Operation log'],
   'pal.monitor': ['服务器监控', 'Server monitor'],
   'pal.ai': ['AI 助手', 'AI Assistant'],
+  'pal.about': ['关于 SkylerX', 'About SkylerX'],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
   'ws.favoritesEmpty': ['暂无收藏。右键表/视图 →「收藏 / 取消收藏」。', 'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".'],
