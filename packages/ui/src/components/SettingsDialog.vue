@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
+import { addFact, clearFacts, clearVectorMemory, removeFact } from '../memory'
 import { AI_PROVIDER_LABEL, AI_PROVIDER_ORDER, type AiProvider, resetSettings, settings, zoomIn, zoomOut, zoomReset } from '../settings'
 import Modal from './Modal.vue'
 
@@ -25,6 +26,28 @@ const aiTab = ref<AiProvider>(settings.aiProvider)
 function onPickProvider(p: AiProvider): void {
   aiTab.value = p
   settings.aiProvider = p
+}
+
+// ── 记忆与画像 ──
+const newFact = ref('')
+function onAddFact(): void {
+  const v = newFact.value.trim()
+  if (!v) return
+  addFact(v)
+  newFact.value = ''
+}
+function onRemoveFact(id: string): void {
+  removeFact(id)
+}
+function onClearFacts(): void {
+  if (!settings.aiFacts.length) return
+  if (!window.confirm(t('settings.mem.bClearConfirm'))) return
+  clearFacts()
+}
+function onClearVectors(): void {
+  if (!settings.aiVectorMemories.length) return
+  if (!window.confirm(t('settings.mem.cClearConfirm'))) return
+  clearVectorMemory()
 }
 
 // 水印实时预览（同 Watermark 组件使用的 SVG data URL 生成方式）
@@ -201,6 +224,77 @@ function watermarkPreviewSvg(): string {
             </label>
           </div>
           <p class="note">{{ t('settings.aiNote') }}</p>
+
+          <!-- ── 记忆与画像（A/B/C 三档）── -->
+          <h3 class="sub">{{ t('settings.mem.title') }}</h3>
+          <p class="note">{{ t('settings.mem.note') }}</p>
+
+          <!-- A 档：自由文本画像 -->
+          <label class="row top">
+            <span class="lbl">{{ t('settings.mem.aTitle') }}</span>
+            <textarea
+              v-model="settings.aiCustomInstructions"
+              class="grow"
+              rows="4"
+              :placeholder="t('settings.mem.aPh')"
+            />
+          </label>
+
+          <!-- B 档：结构化事实清单 -->
+          <div class="mem-section">
+            <div class="mem-head">
+              <span class="lbl">{{ t('settings.mem.bTitle') }}</span>
+              <label class="schk">
+                <input v-model="settings.aiAutoExtractFacts" type="checkbox" />
+                <span>{{ t('settings.mem.bAuto') }}</span>
+              </label>
+              <button class="ghost sm" :disabled="!settings.aiFacts.length" @click="onClearFacts">
+                {{ t('settings.mem.bClear', { n: settings.aiFacts.length }) }}
+              </button>
+            </div>
+            <div class="fact-add">
+              <input v-model="newFact" type="text" :placeholder="t('settings.mem.bAddPh')" @keyup.enter="onAddFact" />
+              <button @click="onAddFact" :disabled="!newFact.trim()">{{ t('settings.mem.bAdd') }}</button>
+            </div>
+            <ul class="fact-list">
+              <li v-if="!settings.aiFacts.length" class="muted">{{ t('settings.mem.bEmpty') }}</li>
+              <li v-for="f in settings.aiFacts" :key="f.id">
+                <span>{{ f.text }}</span>
+                <button class="fact-del" @click="onRemoveFact(f.id)" :title="t('common.remove')">✕</button>
+              </li>
+            </ul>
+          </div>
+
+          <!-- C 档：向量记忆 -->
+          <div class="mem-section">
+            <label class="row">
+              <span class="lbl">{{ t('settings.mem.cToggle') }}</span>
+              <input v-model="settings.aiVectorMemory" type="checkbox" />
+              <span class="muted">{{ t('settings.mem.cToggleHint', { n: settings.aiVectorMemories.length }) }}</span>
+            </label>
+            <template v-if="settings.aiVectorMemory">
+              <label class="row">
+                <span class="lbl">{{ t('settings.mem.cBaseUrl') }}</span>
+                <input v-model="settings.aiEmbeddingBaseUrl" class="grow" type="text" />
+              </label>
+              <label class="row">
+                <span class="lbl">{{ t('settings.mem.cApiKey') }}</span>
+                <input v-model="settings.aiEmbeddingApiKey" class="grow" type="password" :placeholder="t('settings.mem.cApiKeyPh')" />
+              </label>
+              <label class="row">
+                <span class="lbl">{{ t('settings.mem.cModel') }}</span>
+                <input v-model="settings.aiEmbeddingModel" class="grow" type="text" />
+              </label>
+              <label class="row">
+                <span class="lbl">{{ t('settings.mem.cTopK') }}</span>
+                <input v-model.number="settings.aiVectorTopK" type="number" min="1" max="20" />
+                <button class="ghost sm" :disabled="!settings.aiVectorMemories.length" @click="onClearVectors">
+                  {{ t('settings.mem.cClear', { n: settings.aiVectorMemories.length }) }}
+                </button>
+              </label>
+              <p class="note">{{ t('settings.mem.cNote') }}</p>
+            </template>
+          </div>
         </template>
       </section>
     </div>
@@ -360,6 +454,140 @@ function watermarkPreviewSvg(): string {
   flex-direction: column;
   gap: 10px;
   padding: 10px 2px;
+}
+h3.sub {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.row.top {
+  align-items: flex-start;
+}
+.row.top .lbl {
+  padding-top: 6px;
+}
+.row textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.mem-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+.mem-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.mem-head .lbl {
+  flex: none;
+  width: 130px;
+  color: var(--muted);
+}
+.mem-head .schk {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-left: auto;
+}
+.fact-add {
+  display: flex;
+  gap: 6px;
+}
+.fact-add input {
+  flex: 1;
+  padding: 5px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+.fact-add button {
+  padding: 5px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+.fact-add button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.fact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.fact-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.fact-list li.muted {
+  color: var(--muted);
+  border: none;
+  font-style: italic;
+  padding: 4px 0;
+}
+.fact-list li span {
+  flex: 1;
+  word-break: break-word;
+}
+.fact-del {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.fact-del:hover {
+  color: var(--err);
+}
+.ghost.sm {
+  font-size: 11px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ghost.sm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.muted {
+  color: var(--muted);
+  font-size: 12px;
 }
 .active-banner {
   display: flex;

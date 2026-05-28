@@ -96,6 +96,38 @@ const DICT: Record<string, [string, string]> = {
   'settings.cat.watermark': ['生产水印', 'Production watermark'],
   'settings.cat.ai': ['AI 助手', 'AI Assistant'],
   'settings.ai.active': ['激活的 Provider', 'Active provider'],
+  // ── AI 记忆 ──
+  'settings.mem.title': ['记忆与画像（A/B/C 三档）', 'Memory & profile (A/B/C tiers)'],
+  'settings.mem.note': [
+    '三档会按顺序拼到 system prompt 最前面：A（画像，自由文本，总注入）→ B（事实清单，全量）→ C（向量记忆，相关 top-K）。',
+    'All three are prepended to the system prompt: A (free-form profile, always) → B (full facts list) → C (top-K relevant vector memories).',
+  ],
+  'settings.mem.aTitle': ['A · 我的画像', 'A · Profile'],
+  'settings.mem.aPh': [
+    '比如：「我常用 MySQL 8（utf8mb4）；主要在 orders / users / products 三张表上工作；写 SQL 偏好表别名单字母 + 列名 snake_case；不要解释基础概念，直接给 SQL」',
+    'e.g.: "I use MySQL 8 (utf8mb4); work mainly on orders/users/products; prefer single-letter table aliases + snake_case columns; skip basic explanations, just give SQL."',
+  ],
+  'settings.mem.bTitle': ['B · 事实清单', 'B · Facts'],
+  'settings.mem.bAuto': ['每轮自动抽取', 'Auto-extract each turn'],
+  'settings.mem.bAdd': ['添加', 'Add'],
+  'settings.mem.bAddPh': ['一条短事实（如：用户名约束至少 6 位）', 'One short fact (e.g., "username must be ≥6 chars")'],
+  'settings.mem.bEmpty': ['（暂无事实；可以手动添加或开启「每轮自动抽取」）', '(no facts yet; add manually or enable auto-extract)'],
+  'settings.mem.bClear': ['清空（{n}）', 'Clear ({n})'],
+  'settings.mem.bClearConfirm': ['确定清空所有事实？此操作不可撤销。', 'Clear all facts? This cannot be undone.'],
+  'settings.mem.cToggle': ['C · 向量记忆', 'C · Vector memory'],
+  'settings.mem.cToggleHint': ['当前已存 {n} 条', '{n} memories stored'],
+  'settings.mem.cBaseUrl': ['Embedding Base URL', 'Embedding base URL'],
+  'settings.mem.cApiKey': ['Embedding API Key', 'Embedding API key'],
+  'settings.mem.cApiKeyPh': ['sk-…（与上面 AI provider 可不同；推荐 OpenAI 兼容端点）', 'sk-… (can differ from AI provider; OpenAI-compatible endpoint)'],
+  'settings.mem.cModel': ['模型', 'Model'],
+  'settings.mem.cTopK': ['检索 top-K', 'Top-K recall'],
+  'settings.mem.cClear': ['清空（{n}）', 'Clear ({n})'],
+  'settings.mem.cClearConfirm': ['确定清空所有向量记忆？此操作不可撤销。', 'Clear all vector memories? This cannot be undone.'],
+  'settings.mem.cNote': [
+    'Anthropic 没有 embeddings 端点；推荐填 OpenAI / DeepSeek 兼容地址。embedding 调用走主进程绕过 CORS。',
+    'Anthropic has no embeddings endpoint; use OpenAI / DeepSeek-compatible URL. Calls go through the main process to bypass CORS.',
+  ],
+
   'settings.ai.tabsHint': [
     '点击 provider 标签 = 同时切换为「当前激活」并编辑该 provider 的配置。',
     'Clicking a provider tab activates it and lets you edit its config.',

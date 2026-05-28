@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { type ChatMessage, askAiChat, extractAllSql } from '../ai'
 import { useDataClient } from '../data-client'
 import { t } from '../i18n'
+import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
 import { settings } from '../settings'
 
 /**
@@ -253,15 +254,21 @@ async function send(): Promise<void> {
   running.value = true
   controller = new AbortController()
   try {
+    // 注入 A/B/C 三档记忆段（A：自定义画像；B：事实清单；C：相关向量记忆 top-K）
+    const memorySection = await buildMemorySection(text)
     const reply = await askAiChat({
       messages: messages.value,
       dialect: connOf(connId.value)?.dialect,
       schema: useSchema.value ? schemaText.value || undefined : undefined,
+      memorySection,
       signal: controller.signal,
     })
     messages.value.push({ role: 'assistant', content: reply })
     saveToStorage()
     scrollToBottom()
+    // 后台任务：把这轮对话喂给 B 档（事实抽取）与 C 档（向量记忆），失败静默
+    void autoExtractFacts({ user: text, assistant: reply })
+    void rememberVector(`Q: ${text}\nA: ${reply}`)
   } catch (e) {
     if ((e as Error).name === 'AbortError') return
     const msg = e instanceof Error ? e.message : String(e)

@@ -59,6 +59,24 @@ export interface Settings {
   watermarkAngle: number
   watermarkSize: number
   watermarkColor: string
+
+  // ── AI 记忆三档（拼到 system prompt 前置；A/B 全量、C 检索 top-K） ──
+  /** A: 自定义画像/写作偏好；自由文本；总是注入 */
+  aiCustomInstructions: string
+  /** B: 结构化事实清单（手动维护 + 可选 AI 自动抽取）；总是全量注入 */
+  aiFacts: { id: string; text: string; createdAt: number }[]
+  /** B: 每轮对话结束后让 LLM 抽取 1-3 条事实（多一次小请求；可关） */
+  aiAutoExtractFacts: boolean
+  /** C: 把每轮对话向量化存本地；查询前按相似度取 top-K 注入 */
+  aiVectorMemory: boolean
+  /** C: 本地向量记忆条目（小规模直接 localStorage；超过 1000 条会截断旧的） */
+  aiVectorMemories: { id: string; text: string; vec: number[]; createdAt: number }[]
+  /** C: embedding API（一般 OpenAI 兼容端点；Anthropic 没 embeddings） */
+  aiEmbeddingBaseUrl: string
+  aiEmbeddingApiKey: string
+  aiEmbeddingModel: string
+  /** C: 检索 top-K（小一点防 token 爆炸） */
+  aiVectorTopK: number
 }
 
 const KEY = 'skylerx.settings'
@@ -86,6 +104,15 @@ const DEFAULTS: Settings = {
   watermarkAngle: -28,
   watermarkSize: 56,
   watermarkColor: '#ff5566',
+  aiCustomInstructions: '',
+  aiFacts: [],
+  aiAutoExtractFacts: false,
+  aiVectorMemory: false,
+  aiVectorMemories: [],
+  aiEmbeddingBaseUrl: 'https://api.openai.com',
+  aiEmbeddingApiKey: '',
+  aiEmbeddingModel: 'text-embedding-3-small',
+  aiVectorTopK: 5,
 }
 
 interface LegacySettings {

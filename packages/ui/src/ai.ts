@@ -201,6 +201,8 @@ export interface ChatOptions {
   schema?: string
   /** 用户额外的系统提示词（追加在内置系统提示词之后） */
   extraSystem?: string
+  /** A/B/C 三档记忆汇总段（由 memory.ts/buildMemorySection 生成）；优先注入到 system 前面 */
+  memorySection?: string
   signal?: AbortSignal
 }
 
@@ -212,6 +214,8 @@ const CHAT_SYSTEM =
 
 function buildSystem(o: ChatOptions): string {
   const parts = [CHAT_SYSTEM, langPrompt()]
+  // 记忆段先放，让 A/B/C 永远在最显眼的位置（模型对前置 context 更敏感）
+  if (o.memorySection?.trim()) parts.push(o.memorySection.trim())
   if (o.dialect) parts.push(`SQL dialect: ${o.dialect}`)
   if (o.schema) parts.push(`Database schema (read-only context):\n${o.schema}`)
   if (o.extraSystem) parts.push(o.extraSystem)
