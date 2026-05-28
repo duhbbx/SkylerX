@@ -728,12 +728,14 @@ function favoriteCurrentQuery(): void {
   if (!text) return
   const name = window.prompt(t('query.favName'), text.slice(0, 40))
   if (name == null) return
+  const tag = window.prompt(t('query.favTag'), '') ?? ''
   addQueryFavorite({
     connId: props.conn.id,
     connName: props.conn.name || t('common.untitled'),
     dialect: props.conn.dialect,
     name,
     sql: text,
+    tags: tag ? [tag] : undefined,
   })
 }
 

@@ -441,6 +441,7 @@ const DICT: Record<string, [string, string]> = {
   'query.favorite': ['收藏', 'Favorite'],
   'query.favoriteTitle': ['把当前选区/全部 SQL 加入收藏夹', 'Add current selection / SQL to favorites'],
   'query.favName': ['给这条查询起个名字：', 'Name this query:'],
+  'query.favTag': ['分组标签（可留空）：', 'Group tag (optional):'],
 
   // ── 结构对比 SchemaDiffDialog ──
   'sdiff.status.added': ['新增表', 'New table'],
@@ -733,6 +734,8 @@ const DICT: Record<string, [string, string]> = {
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
   'ws.favoritesEmpty': ['暂无收藏。右键表/视图 →「收藏 / 取消收藏」。', 'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".'],
+  'ws.favoritesUntagged': ['未分组', 'Untagged'],
+  'ws.favoritesEditTag': ['编辑分组', 'Edit group tag'],
   'ws.scAction': ['操作', 'Action'],
   'ws.scKey': ['快捷键', 'Shortcut'],
   'pal.groupActions': ['操作', 'Actions'],

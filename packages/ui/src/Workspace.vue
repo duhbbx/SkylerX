@@ -22,7 +22,7 @@ import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { buildCreateFromColumns, buildDataDictHtml, buildDataDictMarkdown, buildTableDump } from './dump'
-import { type Favorite, favorites, removeFavorite, toggleFavorite } from './favorites'
+import { type Favorite, favorites, removeFavorite, setFavoriteTag, toggleFavorite } from './favorites'
 import { zoomIn, zoomOut, zoomReset } from './settings'
 import { buildMockInserts } from './mockgen'
 import {
@@ -687,6 +687,30 @@ const dataDiffOpen = ref(false)
 const objectSearchOpen = ref(false)
 const shortcutsOpen = ref(false)
 const favoritesOpen = ref(false)
+const collapsedFavGroups = ref(new Set<string>())
+const favoriteGroups = computed(() => {
+  const map = new Map<string, Favorite[]>()
+  for (const f of favorites) {
+    const tag = f.tags?.[0] ?? ''
+    if (!map.has(tag)) map.set(tag, [])
+    map.get(tag)?.push(f)
+  }
+  // 未分组的放最后；其余按标签字典序
+  const tagged = [...map.keys()].filter((k) => k).sort()
+  const ordered = [...tagged, ...(map.has('') ? [''] : [])]
+  return ordered.map((tag) => ({ tag, items: map.get(tag) ?? [] }))
+})
+function toggleFavGroup(tag: string): void {
+  const next = new Set(collapsedFavGroups.value)
+  if (next.has(tag)) next.delete(tag)
+  else next.add(tag)
+  collapsedFavGroups.value = next
+}
+function editFavTag(f: Favorite): void {
+  const next = window.prompt(t('ws.favoritesEditTag'), f.tags?.[0] ?? '')
+  if (next == null) return
+  setFavoriteTag(f.id, next)
+}
 const opLogOpen = ref(false)
 const monitorOpen = ref(false)
 const aiState = ref<{ mode: AiMode; sql?: string; connId?: string; error?: string } | null>(null)
@@ -1039,12 +1063,22 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   <Modal v-if="favoritesOpen" :title="t('ws.favoritesTitle')" @close="favoritesOpen = false">
     <div class="fav-list">
       <div v-if="!favorites.length" class="fav-empty">{{ t('ws.favoritesEmpty') }}</div>
-      <div v-for="f in favorites" :key="f.id" class="fav-row" @click="onFavoriteOpen(f)">
-        <span class="fav-icon">{{ f.kind === 'view' ? '👁' : f.kind === 'query' ? '★' : '▦' }}</span>
-        <span class="fav-name">{{ f.name }}</span>
-        <span class="fav-meta">{{ f.connName }}<template v-if="f.schema"> · {{ f.schema }}</template></span>
-        <button class="fav-del" :title="t('common.remove')" @click.stop="removeFavorite(f.id)">✕</button>
-      </div>
+      <template v-for="g in favoriteGroups" :key="g.tag">
+        <div class="fav-group" @click="toggleFavGroup(g.tag)">
+          <span class="fav-caret">{{ collapsedFavGroups.has(g.tag) ? '▸' : '▾' }}</span>
+          <span class="fav-gname">{{ g.tag || t('ws.favoritesUntagged') }}</span>
+          <span class="fav-gcount">{{ g.items.length }}</span>
+        </div>
+        <template v-if="!collapsedFavGroups.has(g.tag)">
+          <div v-for="f in g.items" :key="f.id" class="fav-row" @click="onFavoriteOpen(f)">
+            <span class="fav-icon">{{ f.kind === 'view' ? '👁' : f.kind === 'query' ? '★' : '▦' }}</span>
+            <span class="fav-name">{{ f.name }}</span>
+            <span class="fav-meta">{{ f.connName }}<template v-if="f.schema"> · {{ f.schema }}</template></span>
+            <button class="fav-del" :title="t('ws.favoritesEditTag')" @click.stop="editFavTag(f)">✎</button>
+            <button class="fav-del" :title="t('common.remove')" @click.stop="removeFavorite(f.id)">✕</button>
+          </div>
+        </template>
+      </template>
     </div>
   </Modal>
 
@@ -1275,6 +1309,29 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 .fav-del:hover {
   color: var(--err);
+}
+.fav-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.fav-group:hover {
+  color: var(--text);
+}
+.fav-caret {
+  width: 10px;
+}
+.fav-gname {
+  flex: 1;
+}
+.fav-gcount {
+  opacity: 0.7;
 }
 .about {
   min-width: 360px;

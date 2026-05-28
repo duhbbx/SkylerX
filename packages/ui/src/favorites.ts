@@ -16,6 +16,8 @@ export interface Favorite {
   sqlName: string
   /** 'table' | 'view' | 'query' */
   kind: string
+  /** 可选分组标签（一条收藏只取首个；用于在收藏面板按组折叠） */
+  tags?: string[]
   createdAt: number
 }
 
@@ -78,8 +80,10 @@ export function addQueryFavorite(args: {
   dialect: DbDialect
   name: string
   sql: string
+  tags?: string[]
 }): void {
   const at = Date.now()
+  const tags = (args.tags ?? []).map((s) => s.trim()).filter(Boolean)
   favorites.unshift({
     id: `q|${args.connId}|${at}|${Math.random().toString(36).slice(2, 6)}`,
     connId: args.connId,
@@ -89,6 +93,15 @@ export function addQueryFavorite(args: {
     name: args.name.trim() || `query ${new Date(at).toLocaleString()}`,
     sqlName: args.sql,
     kind: 'query',
+    tags: tags.length ? tags : undefined,
     createdAt: at,
   })
+}
+
+/** 设置 / 清除一条收藏的分组标签（用于收藏面板按组折叠）。 */
+export function setFavoriteTag(id: string, tag: string): void {
+  const f = favorites.find((x) => x.id === id)
+  if (!f) return
+  const trimmed = tag.trim()
+  f.tags = trimmed ? [trimmed] : undefined
 }
