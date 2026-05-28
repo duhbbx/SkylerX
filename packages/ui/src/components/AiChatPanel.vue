@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { type ChatMessage, askAiChat, extractAllSql } from '../ai'
+import { onChatSqlExecuted } from '../chat-bus'
 import { useDataClient } from '../data-client'
+import { confirm as appConfirm, toast } from '../dialog'
 import { t } from '../i18n'
+import { renderMarkdown } from '../markdown'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
 import { monaco } from '../monaco-setup'
 import { AI_PROVIDER_LABEL, AI_PROVIDER_ORDER, type AiProvider, settings } from '../settings'
@@ -44,6 +47,79 @@ async function highlightSql(code: string): Promise<void> {
   }
 }
 
+// ── SQL 执行标记（按 SQL 原文为 key 持久化）──
+// 用户点了「运行」之后，对应的 SQL 块上会出现一个小徽章：
+//   pending：派发了，等结果；ok：成功（绿）；error：失败（红，hover 看错误）
+const RUN_MARKS_KEY = 'skylerx.aiChat.runMarks'
+interface RunMark {
+  at: number
+  state: 'pending' | 'ok' | 'error'
+  error?: string
+}
+const runMarks = ref<Record<string, RunMark>>({})
+function loadRunMarks(): void {
+  try {
+    const raw = localStorage.getItem(RUN_MARKS_KEY)
+    if (raw) runMarks.value = JSON.parse(raw) as Record<string, RunMark>
+  } catch {
+    /* ignore */
+  }
+}
+function saveRunMarks(): void {
+  try {
+    // 防止持续增长：最多保留 200 条最近记录
+    const entries = Object.entries(runMarks.value)
+      .sort((a, b) => b[1].at - a[1].at)
+      .slice(0, 200)
+    localStorage.setItem(RUN_MARKS_KEY, JSON.stringify(Object.fromEntries(entries)))
+  } catch {
+    /* ignore */
+  }
+}
+/** 给 Workspace 回调：执行完后告知本面板成功/失败，更新徽章。 */
+function notifyExecuted(sql: string, ok: boolean, error?: string): void {
+  runMarks.value[sql] = { at: Date.now(), state: ok ? 'ok' : 'error', error }
+  saveRunMarks()
+}
+/**
+ * 外部调用：把「SQL 执行报错」整合成一条用户消息直接发起新一轮提问。
+ * 流程：1) 中断当前对话 2) 切到出错的连接 3) 强制启用 schema 上下文 4) 等 schema 拉好后发送
+ */
+async function askAboutError(p: {
+  connId: string
+  connName?: string
+  sql: string
+  error: string
+}): Promise<void> {
+  controller?.abort() // 1) 打断正在进行的 chat
+  // 等当前 send() 的 finally 跑完把 running 复位，避免下面 send() 被早早判否
+  for (let i = 0; i < 30 && running.value; i++) {
+    await new Promise<void>((r) => setTimeout(r, 50))
+  }
+  const switching = connId.value !== p.connId
+  connId.value = p.connId // 2) 切到出错的连接（会触发 watch → loadDbList）
+  useSchema.value = true // 3) 把库结构带上，AI 才能定位是哪张表/字段错
+  saveToStorage()
+  // 拼出问题：连接 / SQL / 报错 三部分清楚分块，再加一句通用引导
+  const msg = `${t('aichat.askAiPrompt')}\n\n**${t('aichat.conn')}**: ${p.connName || p.connId}\n\n**SQL**\n\`\`\`sql\n${p.sql}\n\`\`\`\n\n**Error**\n\`\`\`\n${p.error}\n\`\`\``
+  input.value = msg
+  toast.info(t('aichat.askingAi'))
+  // 4) 切连接时 dbList/schemaText 会异步刷新；等一帧 + 主动触发 schema 加载
+  if (switching) await new Promise<void>((r) => setTimeout(r, 200))
+  if (!schemaText.value) await loadSchema().catch(() => {})
+  await send()
+}
+defineExpose({ notifyExecuted, askAboutError })
+
+function runMarkLabel(m: RunMark): string {
+  const dt = new Date(m.at)
+  const hh = String(dt.getHours()).padStart(2, '0')
+  const mm = String(dt.getMinutes()).padStart(2, '0')
+  if (m.state === 'pending') return t('aichat.runPending', { time: `${hh}:${mm}` })
+  if (m.state === 'ok') return t('aichat.runOk', { time: `${hh}:${mm}` })
+  return t('aichat.runErr', { time: `${hh}:${mm}` })
+}
+
 const client = useDataClient()
 
 const conns = ref<ConnectionConfig[]>([])
@@ -58,7 +134,9 @@ function loadWidth(): number {
   try {
     const saved = Number(localStorage.getItem(WIDTH_KEY))
     if (Number.isFinite(saved) && saved >= MIN_W) return Math.min(MAX_W, saved)
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return DEFAULT_W
 }
 const panelWidth = ref<number>(loadWidth())
@@ -136,12 +214,27 @@ function scrollToBottom(): void {
   })
 }
 
+let unsubExec: (() => void) | null = null
 onMounted(async () => {
   loadFromStorage()
+  loadRunMarks()
+  // QueryPane 执行完聊天派发的 SQL 后会广播；这里把状态打回到对应代码块上。
+  unsubExec = onChatSqlExecuted((e) => {
+    if (!(e.sql in runMarks.value)) return // 这次执行不是从聊天里派发的
+    runMarks.value[e.sql] = {
+      at: Date.now(),
+      state: e.ok ? 'ok' : 'error',
+      error: e.error ?? undefined,
+    }
+    saveRunMarks()
+  })
   conns.value = await client.connections.list()
   if (!connId.value) connId.value = props.activeConnId ?? conns.value[0]?.id ?? ''
   await loadDbList()
   scrollToBottom()
+})
+onBeforeUnmount(() => {
+  unsubExec?.()
 })
 
 watch(
@@ -314,7 +407,8 @@ async function send(): Promise<void> {
     if (err.name === 'AbortError' || (err.aiAborted && controller?.signal.aborted)) return
     const msg = err.message || String(e)
     if (msg === 'NO_API_KEY') error.value = t('ai.noKey')
-    else if (/abort|timeout/i.test(msg)) error.value = t('aichat.timeoutHint', { secs: elapsed.value })
+    else if (/abort|timeout/i.test(msg))
+      error.value = t('aichat.timeoutHint', { secs: elapsed.value })
     else error.value = msg
   } finally {
     if (elapsedTimer) {
@@ -330,9 +424,9 @@ function stop(): void {
   controller?.abort()
 }
 
-function clearAll(): void {
+async function clearAll(): Promise<void> {
   if (!messages.value.length) return
-  if (!window.confirm(t('aichat.clearConfirm'))) return
+  if (!(await appConfirm({ message: t('aichat.clearConfirm'), variant: 'warn' }))) return
   messages.value = []
   error.value = null
   saveToStorage()
@@ -368,9 +462,12 @@ function emitInsert(sql: string): void {
   if (!connId.value) return
   emit('insertSql', sql, connId.value)
 }
-function emitRun(sql: string): void {
+async function emitRun(sql: string): Promise<void> {
   if (!connId.value) return
-  if (!window.confirm(t('aichat.runConfirm'))) return
+  if (!(await appConfirm({ message: t('aichat.runConfirm'), variant: 'warn' }))) return
+  // 立即写入「已派发」标记；执行完后 Workspace 会回调更新 ok/error
+  runMarks.value[sql] = { at: Date.now(), state: 'pending' }
+  saveRunMarks()
   emit('runSql', sql, connId.value)
 }
 
@@ -441,12 +538,27 @@ function onKeydown(e: KeyboardEvent): void {
         </template>
         <template v-else>
           <template v-for="(p, pi) in splitParts(msg.content)" :key="pi">
-            <pre v-if="p.type === 'text'" class="part-text">{{ p.content }}</pre>
+            <!-- 文本部分：用 marked 渲染 markdown（粗体 / 引用 / 列表 / 行内代码） -->
+            <div v-if="p.type === 'text'" class="md" v-html="renderMarkdown(p.content)"></div>
             <div v-else class="part-sql">
               <!-- 若 Monaco colorize 完成则用高亮 HTML；否则降级到 plain pre 等异步完成 -->
               <pre v-if="sqlHtml[p.content]" class="hl" v-html="sqlHtml[p.content]"></pre>
               <pre v-else>{{ p.content }}</pre>
               <div class="part-actions">
+                <!-- 执行徽章：pending / ok / error，error 状态 hover 显示错误信息 -->
+                <span
+                  v-if="runMarks[p.content]"
+                  class="run-mark"
+                  :class="'rm-' + runMarks[p.content].state"
+                  :title="runMarks[p.content].error || runMarkLabel(runMarks[p.content])"
+                >
+                  {{
+                    runMarks[p.content].state === 'pending' ? '⌛'
+                    : runMarks[p.content].state === 'ok' ? '✓'
+                    : '✗'
+                  }}
+                  {{ runMarkLabel(runMarks[p.content]) }}
+                </span>
                 <button @click="copyText(p.content)">{{ t('common.copy') }}</button>
                 <button @click="emitInsert(p.content)">{{ t('aichat.insertDraft') }}</button>
                 <button class="run" @click="emitRun(p.content)">▶ {{ t('aichat.run') }}</button>
@@ -660,6 +772,75 @@ function onKeydown(e: KeyboardEvent): void {
   font-family: inherit;
   font-size: 13px;
 }
+/* ── Markdown 渲染：紧凑排版，跟我们的暗色主题协调 ── */
+.md {
+  background: var(--bg);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px 8px 8px 0;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+/* marked 输出的标签都是无 scope 的（v-html）→ 用 :deep 才能命中 */
+.md :deep(p) { margin: 0 0 6px; }
+.md :deep(p:last-child) { margin-bottom: 0; }
+.md :deep(strong) { color: var(--text); font-weight: 600; }
+.md :deep(em) { color: var(--text); }
+.md :deep(ul), .md :deep(ol) { margin: 4px 0 6px; padding-left: 22px; }
+.md :deep(li) { margin: 2px 0; }
+.md :deep(blockquote) {
+  margin: 4px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--accent, #7c6cff);
+  background: rgba(124, 108, 255, 0.08);
+  color: var(--muted);
+  border-radius: 0 4px 4px 0;
+}
+.md :deep(blockquote p) { margin: 0; }
+.md :deep(code) {
+  background: rgba(124, 108, 255, 0.14);
+  color: var(--text);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.md :deep(pre) {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  overflow-x: auto;
+}
+.md :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+}
+.md :deep(a) { color: var(--accent, #7c6cff); text-decoration: none; }
+.md :deep(a:hover) { text-decoration: underline; }
+.md :deep(h1), .md :deep(h2), .md :deep(h3), .md :deep(h4) {
+  margin: 8px 0 4px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.md :deep(table) {
+  border-collapse: collapse;
+  margin: 4px 0;
+  font-size: 12px;
+}
+.md :deep(th), .md :deep(td) {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.md :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
 .part-sql {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -705,6 +886,21 @@ function onKeydown(e: KeyboardEvent): void {
   color: var(--accent, #7c6cff);
   border-color: var(--accent, #7c6cff);
 }
+/* SQL 执行徽章：占左边空间，按钮自然挤到右侧 */
+.run-mark {
+  margin-right: auto;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+.run-mark.rm-pending { color: var(--muted); background: rgba(180, 180, 180, 0.12); }
+.run-mark.rm-ok { color: #4caf50; background: rgba(76, 175, 80, 0.14); }
+.run-mark.rm-error { color: var(--err, #e04050); background: rgba(224, 64, 80, 0.14); cursor: help; }
 .thinking {
   color: var(--muted);
   font-size: 12px;

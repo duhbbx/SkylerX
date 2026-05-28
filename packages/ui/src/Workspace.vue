@@ -1,31 +1,27 @@
 <script setup lang="ts">
+import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
-import { useDataClient } from './data-client'
-import { t } from './i18n'
+import type { AiMode } from './ai'
+import AiAssistantDialog from './components/AiAssistantDialog.vue'
+import AiChatPanel from './components/AiChatPanel.vue'
+import AppDialogs from './components/AppDialogs.vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
+import DataDiffDialog from './components/DataDiffDialog.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
 import ExportOptionsDialog from './components/ExportOptionsDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import Modal from './components/Modal.vue'
-import DataDiffDialog from './components/DataDiffDialog.vue'
 import NavTree from './components/NavTree.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
-import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
-import AiAssistantDialog from './components/AiAssistantDialog.vue'
-import AiChatPanel from './components/AiChatPanel.vue'
-import type { AiMode } from './ai'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
-import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
-import SettingsDialog from './components/SettingsDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
+import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 import type { TreeNode } from './components/treeNode'
-import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
-import { buildCreateFromColumns, buildDataDictHtml, buildDataDictMarkdown, buildTableDump } from './dump'
-import { type Favorite, favorites, removeFavorite, setFavoriteTag, toggleFavorite } from './favorites'
-import { zoomIn, zoomOut, zoomReset } from './settings'
-import { buildMockInserts } from './mockgen'
+import { useDataClient } from './data-client'
 import {
   type ObjectKind,
   type SqlTemplateKind,
@@ -36,22 +32,40 @@ import {
   contextOfNode,
   definitionQuery,
   deriveContext,
-  existingForeignKeysQuery,
-  formatBytes,
-  incomingForeignKeysQuery,
-  parseTableStats,
-  tableStatsQuery,
   dropSupportsCascade,
   erdContext,
+  existingForeignKeysQuery,
   extractDefinition,
+  formatBytes,
+  incomingForeignKeysQuery,
   objectDdlQuery,
   objectRef,
+  parseTableStats,
   previewSql,
   quoteId,
+  tableStatsQuery,
 } from './ddl'
+import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from './dialog'
+import {
+  buildCreateFromColumns,
+  buildDataDictHtml,
+  buildDataDictMarkdown,
+  buildTableDump,
+} from './dump'
+import {
+  type Favorite,
+  favorites,
+  removeFavorite,
+  setFavoriteTag,
+  toggleFavorite,
+} from './favorites'
+import { t } from './i18n'
+import { buildMockInserts } from './mockgen'
+import { zoomIn, zoomOut, zoomReset } from './settings'
 
 const navRef = useTemplateRef('navRef')
 const tabsRef = useTemplateRef('tabsRef')
+const aiChatRef = useTemplateRef('aiChatRef')
 
 // 数据客户端由外层应用壳注入（桌面=IPC，Web=REST）
 const client = useDataClient()
@@ -80,9 +94,12 @@ const bulkDropState = ref<{
 } | null>(null)
 
 // CSV 导入对话框
-const importing = ref<{ connId: string; node: TreeNode; dialect: DbDialect; ctx: TableContext } | null>(
-  null,
-)
+const importing = ref<{
+  connId: string
+  node: TreeNode
+  dialect: DbDialect
+  ctx: TableContext
+} | null>(null)
 // 数据传输对话框
 const transferring = ref<{
   connId: string
@@ -128,7 +145,7 @@ async function onRunSql(connId: string, sql: string): Promise<void> {
 }
 
 async function onDeleteConn(id: string): Promise<void> {
-  if (!window.confirm(t('conn.removeConfirm'))) return
+  if (!(await appConfirm({ message: t('conn.removeConfirm'), variant: 'danger' }))) return
   await client.connections.remove(id)
   await navRef.value?.reload()
   tabsRef.value?.closeConnTabs(id)
@@ -176,7 +193,10 @@ async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
 // 生成测试数据 → 取列信息，按类型造多行 INSERT 填入查询页（不执行）
 async function onMockData(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
-  const countStr = window.prompt(t('ws.mockPrompt', { name: node.name }), '20')
+  const countStr = await appPrompt({
+    message: t('ws.mockPrompt', { name: node.name }),
+    defaultValue: '20',
+  })
   const count = Number(countStr)
   if (!Number.isFinite(count) || count < 1) return
   const colNodes = await client.connections.metadata(connId, {
@@ -190,7 +210,7 @@ async function onMockData(connId: string, node: TreeNode): Promise<void> {
     pk: !!c.detail?.primaryKey,
   }))
   if (!cols.length) {
-    window.alert(t('ws.noCols'))
+    await appAlert({ message: t('ws.noCols'), variant: 'warn' })
     return
   }
   const ref = node.sqlName ?? node.name
@@ -278,10 +298,15 @@ async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
   try {
     let ddl = ''
     if (['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)) {
-      const r = await client.connections.execute(connId, `SHOW CREATE TABLE ${node.sqlName ?? node.name}`, [], {
-        database: ctx.database,
-        schema: ctx.schema,
-      })
+      const r = await client.connections.execute(
+        connId,
+        `SHOW CREATE TABLE ${node.sqlName ?? node.name}`,
+        [],
+        {
+          database: ctx.database,
+          schema: ctx.schema,
+        },
+      )
       const row = (r.rows as Record<string, unknown>[])[0] ?? {}
       ddl = String(row['Create Table'] ?? row['Create View'] ?? Object.values(row)[1] ?? '')
     } else {
@@ -293,13 +318,13 @@ async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
       ddl = buildCreateFromColumns(conn.dialect, node.sqlName ?? node.name, cols)
     }
     if (!ddl) {
-      window.alert(t('ws.noDef'))
+      await appAlert({ message: t('ws.noDef'), variant: 'warn' })
       return
     }
     await navigator.clipboard?.writeText(ddl)
-    window.alert(t('ws.ddlCopied'))
+    toast.success(t('ws.ddlCopied'))
   } catch (e) {
-    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -341,7 +366,7 @@ async function genDataDict(connId: string, node: TreeNode, format: 'md' | 'html'
       group: 'tables',
     })
     if (!tables.length) {
-      window.alert(t('ws.noTables'))
+      await appAlert({ message: t('ws.noTables'), variant: 'warn' })
       return
     }
     const withCols: { name: string; columns: typeof tables }[] = []
@@ -361,7 +386,7 @@ async function genDataDict(connId: string, node: TreeNode, format: 'md' | 'html'
       filters: [{ name: isHtml ? 'HTML' : 'Markdown', extensions: [format] }],
     })
   } catch (e) {
-    window.alert(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 const onDataDict = (connId: string, node: TreeNode) => genDataDict(connId, node, 'md')
@@ -388,7 +413,7 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
   const kind = node.kind as ObjectKind
   const q = objectDdlQuery(conn.dialect, kind, objectRef(conn.dialect, node))
   if (!q) {
-    window.alert(t('ws.noDef'))
+    await appAlert({ message: t('ws.noDef'), variant: 'warn' })
     return
   }
   try {
@@ -407,13 +432,13 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
       ddl = String(row.ddl ?? '')
     }
     if (!ddl) {
-      window.alert(t('ws.noDef'))
+      await appAlert({ message: t('ws.noDef'), variant: 'warn' })
       return
     }
     await navigator.clipboard?.writeText(ddl)
-    window.alert(t('ws.ddlCopied'))
+    toast.success(t('ws.ddlCopied'))
   } catch (e) {
-    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -422,37 +447,60 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
 /** 清空表：DELETE FROM x；事务安全，可回滚，触发 ON DELETE 触发器（高危，二次确认）。 */
 async function onEmptyTable(connId: string, node: TreeNode): Promise<void> {
   const ref = node.sqlName ?? node.name
-  if (!window.confirm(t('ws.confirmEmptyTable', { ref }))) return
+  if (
+    !(await appConfirm({
+      title: t('ws.emptyTableTitle'),
+      message: t('ws.confirmEmptyTable', { ref }),
+      variant: 'danger',
+    }))
+  )
+    return
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   try {
-    await client.connections.execute(connId, `DELETE FROM ${ref}`, [], { database: ctx.database, schema: ctx.schema })
-    window.alert(t('ws.emptyTableDone', { ref }))
+    await client.connections.execute(connId, `DELETE FROM ${ref}`, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
+    toast.success(t('ws.emptyTableDone', { ref }))
     if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
   } catch (e) {
-    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
 /** 截断表：TRUNCATE TABLE x；极快、重置自增、不进 binlog 行模式、DDL 不可回滚。 */
 async function onTruncateTable(connId: string, node: TreeNode): Promise<void> {
   const ref = node.sqlName ?? node.name
-  if (!window.confirm(t('ws.confirmTruncateTable', { ref }))) return
+  if (
+    !(await appConfirm({
+      title: t('ws.truncateTableTitle'),
+      message: t('ws.confirmTruncateTable', { ref }),
+      variant: 'danger',
+    }))
+  )
+    return
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   try {
-    await client.connections.execute(connId, `TRUNCATE TABLE ${ref}`, [], { database: ctx.database, schema: ctx.schema })
-    window.alert(t('ws.truncateTableDone', { ref }))
+    await client.connections.execute(connId, `TRUNCATE TABLE ${ref}`, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
+    toast.success(t('ws.truncateTableDone', { ref }))
     if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
   } catch (e) {
-    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
 /** 重命名表：弹窗输入新名 → 方言对应 RENAME（MySQL: RENAME TABLE old TO new；PG/MSSQL: ALTER TABLE old RENAME TO new；Oracle: ALTER TABLE old RENAME TO new）。 */
 async function onRenameTable(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
-  const newName = window.prompt(t('ws.renamePrompt', { name: node.name }), node.name)
+  const newName = await appPrompt({
+    message: t('ws.renamePrompt', { name: node.name }),
+    defaultValue: node.name,
+  })
   if (!newName || !newName.trim() || newName.trim() === node.name) return
   const ctx = deriveContext(conn.dialect, node)
   const ref = node.sqlName ?? node.name
@@ -461,17 +509,23 @@ async function onRenameTable(connId: string, node: TreeNode): Promise<void> {
     ? `RENAME TABLE ${ref} TO ${newQuoted}`
     : `ALTER TABLE ${ref} RENAME TO ${newQuoted}`
   try {
-    await client.connections.execute(connId, sql, [], { database: ctx.database, schema: ctx.schema })
+    await client.connections.execute(connId, sql, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
     if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
   } catch (e) {
-    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
 /** 复制表：仅结构 / 结构+数据。生成的 SQL 在草稿查询页打开（让用户检查/调整后再执行）。 */
 async function onCopyTable(connId: string, node: TreeNode, withData: boolean): Promise<void> {
   const conn = await client.connections.get(connId)
-  const newName = window.prompt(t('ws.copyTablePrompt', { name: node.name }), `${node.name}_copy`)
+  const newName = await appPrompt({
+    message: t('ws.copyTablePrompt', { name: node.name }),
+    defaultValue: `${node.name}_copy`,
+  })
   if (!newName || !newName.trim()) return
   const ref = node.sqlName ?? node.name
   const newQuoted = quoteId(conn.dialect, newName.trim())
@@ -491,14 +545,22 @@ async function onCopyTable(connId: string, node: TreeNode, withData: boolean): P
     // 其它方言：用 SELECT ... INTO 之类近似（不同方言差异大，统一走 CREATE TABLE AS）
     lines.push(`CREATE TABLE ${newQuoted} AS SELECT * FROM ${ref}${withData ? '' : ' WHERE 1=0'};`)
   }
-  tabsRef.value?.openDraft(conn, lines.join('\n'), t('ws.copyTableTabTitle', { name: newName.trim() }))
+  tabsRef.value?.openDraft(
+    conn,
+    lines.join('\n'),
+    t('ws.copyTableTabTitle', { name: newName.trim() }),
+  )
 }
 
 /**
  * 在草稿查询页用模板打开「新建序列 / 事件」SQL（PG sequence / MySQL event）。
  * 不走结构化设计器：这两类对象的字段太少且方言相关性高，让用户在 SQL 编辑器里直接调更灵活。
  */
-async function onCreateTemplateDraft(kind: 'sequence' | 'event', connId: string, node: TreeNode): Promise<void> {
+async function onCreateTemplateDraft(
+  kind: 'sequence' | 'event',
+  connId: string,
+  node: TreeNode,
+): Promise<void> {
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   const fam = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
@@ -528,7 +590,7 @@ BEGIN
 END;`
     title = t('ws.tabNewEvent')
   } else {
-    window.alert(t('ws.defUnsupported'))
+    await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
     return
   }
   tabsRef.value?.openDraft(conn, sql, title)
@@ -538,8 +600,7 @@ END;`
 async function onToggleProdMark(connId: string): Promise<void> {
   const cfg = await client.connections.get(connId)
   const { env: _drop, ...restExtra } = (cfg.extra ?? {}) as Record<string, unknown>
-  const extra =
-    _drop === 'prod' ? restExtra : { ...restExtra, env: 'prod' as const }
+  const extra = _drop === 'prod' ? restExtra : { ...restExtra, env: 'prod' as const }
   await client.connections.update({ ...cfg, extra: Object.keys(extra).length ? extra : undefined })
   await navRef.value?.reload()
 }
@@ -555,7 +616,7 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const f = definitionQuery(conn.dialect, node)
   if (!f) {
-    window.alert(t('ws.defUnsupported'))
+    await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
     return
   }
   const ctx = deriveContext(conn.dialect, node)
@@ -566,21 +627,21 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
     })
     const row = r.rows[0] as Record<string, unknown> | undefined
     if (!row) {
-      window.alert(t('ws.noDef'))
+      await appAlert({ message: t('ws.noDef'), variant: 'warn' })
       return
     }
-    tabsRef.value?.openDraft(conn, extractDefinition(conn.dialect, node, f.mode, row), t('ws.tabDef', { name: node.name }))
+    tabsRef.value?.openDraft(
+      conn,
+      extractDefinition(conn.dialect, node, f.mode, row),
+      t('ws.tabDef', { name: node.name }),
+    )
   } catch (e) {
-    window.alert(t('ws.viewDefFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.viewDefFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
 // 生成 SQL 模板（SELECT/INSERT/UPDATE/DELETE）→ 取列后填入查询页草稿
-async function onGenerateSql(
-  kind: SqlTemplateKind,
-  connId: string,
-  node: TreeNode,
-): Promise<void> {
+async function onGenerateSql(kind: SqlTemplateKind, connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   try {
     const cols = await client.connections.metadata(connId, {
@@ -592,7 +653,7 @@ async function onGenerateSql(
     const sql = buildSqlTemplate(conn.dialect, kind, node.sqlName ?? node.name, colInfo)
     tabsRef.value?.openDraft(conn, sql, `${node.name} · ${kind.toUpperCase()}`)
   } catch (e) {
-    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -615,7 +676,7 @@ async function onExportPick(withData: boolean): Promise<void> {
   exportReq.value = null
   if (!req) return
   if (!client.files) {
-    window.alert(t('erd.fileNotReady'))
+    await appAlert({ message: t('erd.fileNotReady'), variant: 'warn' })
     return
   }
   if (req.scope === 'table') await doTableExport(req.connId, req.node, withData)
@@ -633,10 +694,12 @@ async function doTableExport(connId: string, node: TreeNode, withData: boolean):
       group: 'columns',
     })
     const rows = withData
-      ? (await client.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
-          database: ctx.database,
-          schema: ctx.schema,
-        })).rows
+      ? (
+          await client.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
+            database: ctx.database,
+            schema: ctx.schema,
+          })
+        ).rows
       : []
     const sql = buildTableDump(conn.dialect, ref, cols, rows, withData)
     await client.files.saveText({
@@ -645,7 +708,7 @@ async function doTableExport(connId: string, node: TreeNode, withData: boolean):
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    window.alert(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -660,7 +723,7 @@ async function doSchemaExport(connId: string, node: TreeNode, withData: boolean)
       group: 'tables',
     })
     if (!tables.length) {
-      window.alert(t('ws.noTables'))
+      await appAlert({ message: t('ws.noTables'), variant: 'warn' })
       return
     }
     const parts: string[] = []
@@ -672,10 +735,12 @@ async function doSchemaExport(connId: string, node: TreeNode, withData: boolean)
       })
       const ref = tbl.sqlName ?? tbl.name
       const rows = withData
-        ? (await client.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
-            database: ctx.database,
-            schema: ctx.schema,
-          })).rows
+        ? (
+            await client.connections.execute(connId, `SELECT * FROM ${ref}`, [], {
+              database: ctx.database,
+              schema: ctx.schema,
+            })
+          ).rows
         : []
       parts.push(buildTableDump(conn.dialect, ref, cols, rows, withData))
     }
@@ -686,18 +751,23 @@ async function doSchemaExport(connId: string, node: TreeNode, withData: boolean)
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    window.alert(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
 // 数据传输 → 弹对话框
 async function onTransferData(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
-  transferring.value = { connId, node, dialect: conn.dialect, ctx: deriveContext(conn.dialect, node) }
+  transferring.value = {
+    connId,
+    node,
+    dialect: conn.dialect,
+    ctx: deriveContext(conn.dialect, node),
+  }
 }
 function onTransferDone(count: number): void {
   transferring.value = null
-  window.alert(t('ws.transferDone', { count }))
+  toast.success(t('ws.transferDone', { count }))
 }
 
 function onImportDone(count: number): void {
@@ -705,7 +775,7 @@ function onImportDone(count: number): void {
   importing.value = null
   if (imp) {
     navRef.value?.refreshNode(imp.node, imp.connId)
-    window.alert(t('ws.importDone', { count, name: imp.node.name }))
+    toast.success(t('ws.importDone', { count, name: imp.node.name }))
   }
 }
 
@@ -810,13 +880,13 @@ const connFormRef = useTemplateRef<{ isDirty: () => boolean } | null>('connFormR
  * Modal beforeClose 钩子：脏表单关闭前先 confirm；
  * 返回 false 阻止关闭，true 才允许 Modal 发 close。
  */
-function confirmDiscardConnForm(): boolean {
+async function confirmDiscardConnForm(): Promise<boolean> {
   if (!connFormRef.value?.isDirty()) return true
-  return window.confirm(t('common.unsavedConfirm'))
+  return appConfirm({ message: t('common.unsavedConfirm'), variant: 'warn' })
 }
 /** Cancel 按钮也走同一道关：取消则不关；同意才置空 editing。 */
-function onCancelConn(): void {
-  if (confirmDiscardConnForm()) editing.value = null
+async function onCancelConn(): Promise<void> {
+  if (await confirmDiscardConnForm()) editing.value = null
 }
 
 // ── 设置中心 ──
@@ -851,8 +921,11 @@ function toggleFavGroup(tag: string): void {
   else next.add(tag)
   collapsedFavGroups.value = next
 }
-function editFavTag(f: Favorite): void {
-  const next = window.prompt(t('ws.favoritesEditTag'), f.tags?.[0] ?? '')
+async function editFavTag(f: Favorite): Promise<void> {
+  const next = await appPrompt({
+    message: t('ws.favoritesEditTag'),
+    defaultValue: f.tags?.[0] ?? '',
+  })
   if (next == null) return
   setFavoriteTag(f.id, next)
 }
@@ -948,6 +1021,21 @@ function onAiFromPane(sql: string, connId: string, errMsg: string): void {
   }
 }
 
+// ResultGrid 错误卡片里点「问 AI」：打开右侧聊天面板 + 把错误上下文塞过去发问
+interface AskAiErrorPayload {
+  connId: string
+  connName?: string
+  sql: string
+  error: string
+}
+async function onAskAiAboutError(p: AskAiErrorPayload): Promise<void> {
+  aiChatOpen.value = true
+  // 等下一帧让 AiChatPanel 挂载完成，再调用 exposed 方法
+  await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  const ref = aiChatRef.value as { askAboutError?: (p: AskAiErrorPayload) => void } | null
+  ref?.askAboutError?.(p)
+}
+
 // ── ⌘K 命令面板 ──
 const paletteOpen = ref(false)
 const paletteConns = ref<ConnectionConfig[]>([])
@@ -1027,9 +1115,9 @@ async function importConns(): Promise<void> {
       }
     }
     await navRef.value?.reload()
-    window.alert(t('ws.importConnsResult', { n }))
+    toast.success(t('ws.importConnsResult', { n }))
   } catch (e) {
-    window.alert(t('ws.importConnsFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('ws.importConnsFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -1107,18 +1195,28 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   />
 
   <main class="main">
-    <QueryTabs ref="tabsRef" @conn-error="onConnError" @refresh="onTreeRefresh" @ai="onAiFromPane" />
+    <QueryTabs
+      ref="tabsRef"
+      @conn-error="onConnError"
+      @refresh="onTreeRefresh"
+      @ai="onAiFromPane"
+      @ask-ai-about-error="onAskAiAboutError"
+    />
   </main>
 
   <!-- 右侧 AI 聊天侧边栏（类 Cursor）；点导航树 ✨ / ⌘⇧L / ⌘K → AI 聊天 唤起 -->
   <AiChatPanel
     v-if="aiChatOpen"
+    ref="aiChatRef"
     :active-conn-id="activeChatConnId"
     @close="aiChatOpen = false"
     @insert-sql="onAiChatInsert"
     @run-sql="onAiChatRun"
     @open-settings="openSettingsAtAi"
   />
+
+  <!-- 全局主题对话框 + Toast 通知（替代 window.confirm/alert/prompt） -->
+  <AppDialogs />
 
   <!-- 右侧常驻竖栏（类 VS Code 活动栏）：始终可见，点 ✨ 开关 AI 聊天 -->
   <aside class="right-rail">

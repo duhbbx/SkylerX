@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
+import { type DbDialect, MetaNodeKind, type MetadataNode } from '@db-tool/shared-types'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import {
@@ -16,10 +16,11 @@ import {
   parseType,
   typeOptions,
 } from '../ddl'
+import { prompt as appPrompt } from '../dialog'
 import { t } from '../i18n'
 import { splitStatements } from '../sqlSplit'
-import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
+import type { TreeNode } from './treeNode'
 
 const client = useDataClient()
 
@@ -106,7 +107,13 @@ const ddl = computed(() => {
 })
 const target = [props.ctx.database, props.ctx.schema].filter(Boolean).join(' / ')
 const previewText = ref('')
-watch(ddl, (v) => { previewText.value = v }, { immediate: true })
+watch(
+  ddl,
+  (v) => {
+    previewText.value = v
+  },
+  { immediate: true },
+)
 async function copyDdl(): Promise<void> {
   await navigator.clipboard?.writeText(previewText.value)
 }
@@ -300,8 +307,8 @@ async function save(): Promise<void> {
 }
 
 // 另存为：用当前结构 CREATE 一张新表（改表模式下相当于「复制结构为新表」）。
-function saveAs(): void {
-  const n = window.prompt(t('designer.saveAsPrompt'), tableName.value)
+async function saveAs(): Promise<void> {
+  const n = await appPrompt({ message: t('designer.saveAsPrompt'), defaultValue: tableName.value })
   if (!n || !n.trim()) return
   void run(splitStatements(buildCreateTable(props.dialect, props.ctx, n.trim(), spec)))
 }

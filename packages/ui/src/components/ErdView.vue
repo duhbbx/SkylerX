@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { DbDialect } from '@db-tool/shared-types'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { type TableContext, quoteId } from '../ddl'
 import { useDataClient } from '../data-client'
+import { type TableContext, quoteId } from '../ddl'
+import { alert as appAlert, confirm as appConfirm, toast } from '../dialog'
 import { type ErdData, loadErd } from '../erd'
 import { t } from '../i18n'
 
@@ -96,8 +97,8 @@ onMounted(load)
 function toModel(clientX: number, clientY: number): { x: number; y: number } {
   const r = canvasEl.value?.getBoundingClientRect()
   return {
-    x: ((clientX - (r?.left ?? 0)) - pan.x) / zoom.value,
-    y: ((clientY - (r?.top ?? 0)) - pan.y) / zoom.value,
+    x: (clientX - (r?.left ?? 0) - pan.x) / zoom.value,
+    y: (clientY - (r?.top ?? 0) - pan.y) / zoom.value,
   }
 }
 
@@ -192,7 +193,11 @@ const canvasSize = computed(() => {
 // ── 编辑：新建表 / 列 ──
 function addTable(): void {
   const id = `new:${++seq}`
-  newTables.value.push({ id, name: `new_table_${seq}`, columns: [{ name: 'id', type: 'int', pk: true }] })
+  newTables.value.push({
+    id,
+    name: `new_table_${seq}`,
+    columns: [{ name: 'id', type: 'int', pk: true }],
+  })
   const c = toModel((canvasEl.value?.clientWidth ?? 400) / 2, 80)
   pos[id] = { x: c.x, y: c.y }
 }
@@ -251,7 +256,10 @@ function buildDdl(onlyNew: boolean): string {
   const parts: string[] = []
   const tables = onlyNew
     ? newTables.value.map((t) => ({ name: t.name, columns: t.columns }))
-    : [...(data.value?.tables ?? []), ...newTables.value.map((t) => ({ name: t.name, columns: t.columns }))]
+    : [
+        ...(data.value?.tables ?? []),
+        ...newTables.value.map((t) => ({ name: t.name, columns: t.columns })),
+      ]
   for (const t of tables) {
     const lines = t.columns.map((c) => `  ${q(c.name)} ${c.type}`)
     const pks = t.columns.filter((c) => c.pk).map((c) => q(c.name))
@@ -259,20 +267,37 @@ function buildDdl(onlyNew: boolean): string {
     parts.push(`CREATE TABLE ${q(t.name)} (\n${lines.join(',\n')}\n);`)
   }
   const fks = onlyNew
-    ? newFks.value.map((f) => ({ ft: nameOf(f.fromId), fc: f.fromCol, tt: nameOf(f.toId), tc: f.toCol }))
+    ? newFks.value.map((f) => ({
+        ft: nameOf(f.fromId),
+        fc: f.fromCol,
+        tt: nameOf(f.toId),
+        tc: f.toCol,
+      }))
     : [
-        ...(data.value?.fks ?? []).map((f) => ({ ft: f.fromTable, fc: f.fromCol, tt: f.toTable, tc: f.toCol })),
-        ...newFks.value.map((f) => ({ ft: nameOf(f.fromId), fc: f.fromCol, tt: nameOf(f.toId), tc: f.toCol })),
+        ...(data.value?.fks ?? []).map((f) => ({
+          ft: f.fromTable,
+          fc: f.fromCol,
+          tt: f.toTable,
+          tc: f.toCol,
+        })),
+        ...newFks.value.map((f) => ({
+          ft: nameOf(f.fromId),
+          fc: f.fromCol,
+          tt: nameOf(f.toId),
+          tc: f.toCol,
+        })),
       ]
   for (const f of fks) {
-    parts.push(`ALTER TABLE ${q(f.ft)} ADD FOREIGN KEY (${q(f.fc)}) REFERENCES ${q(f.tt)} (${q(f.tc)});`)
+    parts.push(
+      `ALTER TABLE ${q(f.ft)} ADD FOREIGN KEY (${q(f.fc)}) REFERENCES ${q(f.tt)} (${q(f.tc)});`,
+    )
   }
   return `${parts.join('\n\n')}\n`
 }
 
 async function generateDdl(): Promise<void> {
   if (!client.files) {
-    window.alert(t('erd.fileNotReady'))
+    await appAlert({ message: t('erd.fileNotReady'), variant: 'warn' })
     return
   }
   try {
@@ -282,21 +307,31 @@ async function generateDdl(): Promise<void> {
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    window.alert(t('erd.ddlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('erd.ddlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
 const applying = ref(false)
 async function applyChanges(): Promise<void> {
   if (!newTables.value.length && !newFks.value.length) {
-    window.alert(t('erd.noNew'))
+    await appAlert({ message: t('erd.noNew'), variant: 'info' })
     return
   }
   const ddl = buildDdl(true)
-  if (!window.confirm(t('erd.applyConfirm', { ddl }))) return
+  if (
+    !(await appConfirm({
+      title: t('erd.applyTitle'),
+      message: t('erd.applyConfirm', { ddl }),
+      variant: 'warn',
+    }))
+  )
+    return
   applying.value = true
   try {
-    const stmts = ddl.split(';\n').map((s) => s.trim()).filter(Boolean)
+    const stmts = ddl
+      .split(';\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
     await client.connections.executeBatch(props.connId, stmts, {
       database: props.ctx.database,
       schema: props.ctx.schema,
@@ -304,7 +339,11 @@ async function applyChanges(): Promise<void> {
     await load()
     editMode.value = false
   } catch (e) {
-    window.alert(t('erd.applyFail', { msg: e instanceof Error ? e.message : String(e) }))
+    await appAlert({
+      title: t('erd.applyFailTitle'),
+      message: t('erd.applyFail', { msg: e instanceof Error ? e.message : String(e) }),
+      variant: 'danger',
+    })
   } finally {
     applying.value = false
   }

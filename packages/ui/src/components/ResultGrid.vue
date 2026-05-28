@@ -3,8 +3,9 @@ import type { DbDialect, QueryResult } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
-import { t } from '../i18n'
+import { prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, SQL_DEFAULT, isSqlSentinel } from '../editable'
+import { t } from '../i18n'
 import { type ExportFormat, exportRows, toCSV, toJSON } from '../io'
 import { settings } from '../settings'
 import Modal from './Modal.vue'
@@ -30,6 +31,11 @@ const props = defineProps<{
   foreignKeys?: { columns: string[]; refTable: string; refColumns: string[] }[]
   /** 反向外键（其它表引用本表），用于「← 被以下表引用」 */
   incomingForeignKeys?: { columns: string[]; refTable: string; refColumns: string[] }[]
+  /** 出错时把 SQL 一起带上，用于「问 AI」时给 AI 完整上下文（连接 + SQL + 错误） */
+  sql?: string
+  /** 出错时所在连接 id，用于「问 AI」时定位 schema */
+  connId?: string
+  connName?: string
 }>()
 const emit = defineEmits<{
   changePage: [number]
@@ -37,6 +43,8 @@ const emit = defineEmits<{
   commit: [EditChanges]
   filter: [string]
   navigateFk: [{ refTable: string; refColumns: string[]; values: unknown[] }]
+  /** 用户点了「问 AI」：父层负责打开聊天面板 + 填入 SQL/错误上下文 */
+  askAi: [payload: { connId: string; connName?: string; sql: string; error: string }]
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -93,7 +101,9 @@ const dragCol = ref<string | null>(null)
 const visibleColumns = computed(() => {
   const cols = props.result?.columns ?? []
   const byName = new Map(cols.map((c) => [c.name, c]))
-  const ordered = colOrder.value.map((n) => byName.get(n)).filter((c): c is (typeof cols)[number] => !!c)
+  const ordered = colOrder.value
+    .map((n) => byName.get(n))
+    .filter((c): c is (typeof cols)[number] => !!c)
   for (const c of cols) if (!colOrder.value.includes(c.name)) ordered.push(c)
   return ordered.filter((c) => !hiddenCols.value.has(c.name))
 })
@@ -122,9 +132,9 @@ function copyRows(format: 'csv' | 'json'): void {
   showCopyMenu.value = false
   const cols = columnNames.value
   const idx = [...selected.value].filter((k) => k[0] === 'r').map((k) => Number(k.slice(1)))
-  const rows = (idx.length ? idx.sort((a, b) => a - b).map((i) => viewRows.value[i]) : viewRows.value).filter(
-    Boolean,
-  ) as Row[]
+  const rows = (
+    idx.length ? idx.sort((a, b) => a - b).map((i) => viewRows.value[i]) : viewRows.value
+  ).filter(Boolean) as Row[]
   copyText(format === 'csv' ? toCSV(cols, rows) : toJSON(rows))
 }
 
@@ -134,7 +144,8 @@ const viewRows = computed<Row[]>(() => {
   if (props.editable) return base // 编辑态不筛选/排序，保持行索引对齐
   let rows = base
   const f = filterText.value.trim().toLowerCase()
-  if (f) rows = rows.filter((r) => columnNames.value.some((c) => fmt(r[c]).toLowerCase().includes(f)))
+  if (f)
+    rows = rows.filter((r) => columnNames.value.some((c) => fmt(r[c]).toLowerCase().includes(f)))
   if (sortCol.value) {
     const col = sortCol.value
     const dir = sortDir.value === 'asc' ? 1 : -1
@@ -237,7 +248,7 @@ async function doExport(format: ExportFormat): Promise<void> {
   const rows = ((props.editable ? localRows.value : props.result?.rows) ?? []) as Row[]
   let tableRef = 'table_name'
   if (format === 'sql') {
-    const n = window.prompt(t('grid.exportPrompt'), 'table_name')
+    const n = await appPrompt({ message: t('grid.exportPrompt'), defaultValue: 'table_name' })
     if (!n || !n.trim()) return
     tableRef = props.dialect != null ? quoteId(props.dialect, n.trim()) : n.trim()
   }
@@ -278,7 +289,9 @@ function isModified(i: number, col: string): boolean {
 const dirty = computed(() => {
   if (!props.editable) return false
   if (inserts.value.length || deleted.value.some(Boolean)) return true
-  return localRows.value.some((r, i) => columnNames.value.some((c) => r[c] !== original.value[i]?.[c]))
+  return localRows.value.some((r, i) =>
+    columnNames.value.some((c) => r[c] !== original.value[i]?.[c]),
+  )
 })
 
 const changeCount = computed(() => {
@@ -405,13 +418,29 @@ function copyText(text: string): void {
   void navigator.clipboard?.writeText(text)
 }
 
+// 错误卡片操作：复制错误 + 问 AI
+function copyErrorMsg(): void {
+  if (!props.error) return
+  void navigator.clipboard?.writeText(props.error)
+  toast.success(t('aichat.copied'))
+}
+function askAiAboutError(): void {
+  if (!props.connId || !props.sql || !props.error) return
+  emit('askAi', {
+    connId: props.connId,
+    connName: props.connName,
+    sql: props.sql,
+    error: props.error,
+  })
+}
+
 // ── 服务端列筛选（生成 WHERE，由 QueryPane 重查）──
-function filterCol(col: string): void {
+async function filterCol(col: string): Promise<void> {
   const cur = colFilters.value[col] ?? ''
-  const input = window.prompt(
-    t('grid.filterPrompt', { col }),
-    cur,
-  )
+  const input = await appPrompt({
+    message: t('grid.filterPrompt', { col }),
+    defaultValue: cur,
+  })
   if (input === null) return
   const next = { ...colFilters.value }
   if (input.trim()) next[col] = input.trim()
@@ -457,7 +486,8 @@ function navigateFk(): void {
 
 // 反向外键：哪些「源表的某条复合外键」其 refColumn 命中当前查看的列。
 const cellRevFks = computed(() => {
-  if (!viewer.value?.col || !props.incomingForeignKeys?.length) return [] as { refTable: string; refColumns: string[]; values: unknown[] }[]
+  if (!viewer.value?.col || !props.incomingForeignKeys?.length)
+    return [] as { refTable: string; refColumns: string[]; values: unknown[] }[]
   const col = viewer.value.col
   const row = viewerRow.value
   if (!row) return []
@@ -480,7 +510,8 @@ function navigateRevFk(rev: { refTable: string; refColumns: string[]; values: un
 // 驱动可能把二进制返回为 Uint8Array / Buffer-shaped {type:'Buffer',data:[]} / 普通 number[]
 function asBytes(v: unknown): Uint8Array | null {
   if (v instanceof Uint8Array) return v
-  if (Array.isArray(v) && v.every((b) => typeof b === 'number' && b >= 0 && b <= 255)) return Uint8Array.from(v as number[])
+  if (Array.isArray(v) && v.every((b) => typeof b === 'number' && b >= 0 && b <= 255))
+    return Uint8Array.from(v as number[])
   if (v && typeof v === 'object' && (v as { type?: string }).type === 'Buffer') {
     const d = (v as { data?: number[] }).data
     if (Array.isArray(d)) return Uint8Array.from(d)
@@ -496,8 +527,13 @@ function hexDump(bytes: Uint8Array, maxBytes = 4096): string {
   const n = Math.min(bytes.length, maxBytes)
   for (let i = 0; i < n; i += 16) {
     const chunk = bytes.slice(i, i + 16)
-    const hex = Array.from(chunk).map((b) => b.toString(16).padStart(2, '0')).join(' ').padEnd(48, ' ')
-    const asc = Array.from(chunk).map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '.')).join('')
+    const hex = Array.from(chunk)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join(' ')
+      .padEnd(48, ' ')
+    const asc = Array.from(chunk)
+      .map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '.'))
+      .join('')
     lines.push(`${i.toString(16).padStart(8, '0')}  ${hex}  ${asc}`)
   }
   if (bytes.length > n) lines.push(`… (${bytes.length - n} more bytes truncated)`)
@@ -556,7 +592,24 @@ const summaryRow = computed<Record<string, string>>(() => {
 <template>
   <div class="grid-wrap">
     <div v-if="running" class="grid-msg">{{ t('grid.running') }}</div>
-    <div v-else-if="error" class="grid-err">✗ {{ error }}</div>
+    <div v-else-if="error" class="grid-err-card">
+      <div class="grid-err-head">
+        <span class="grid-err-ico">✗</span>
+        <span class="grid-err-title">{{ t('grid.errorTitle') }}</span>
+        <span class="grid-err-spacer" />
+        <button class="grid-err-btn" :title="t('aichat.copyError')" @click="copyErrorMsg">{{ t('aichat.copyError') }}</button>
+        <button class="grid-err-btn primary" :disabled="!connId || !sql" :title="t('aichat.askAi')" @click="askAiAboutError">✨ {{ t('aichat.askAi') }}</button>
+      </div>
+      <pre class="grid-err-msg">{{ error }}</pre>
+      <div v-if="sql" class="grid-err-block">
+        <div class="grid-err-block-lbl">SQL</div>
+        <pre class="grid-err-sql">{{ sql }}</pre>
+      </div>
+      <div v-if="connName" class="grid-err-block">
+        <div class="grid-err-block-lbl">{{ t('aichat.conn') }}</div>
+        <pre class="grid-err-conn">{{ connName }}</pre>
+      </div>
+    </div>
     <div v-else-if="!result" class="grid-msg">{{ t('grid.empty') }}</div>
     <template v-else>
       <div v-if="editable && result.columns.length" class="edit-tools">
@@ -875,6 +928,93 @@ const summaryRow = computed<Record<string, string>>(() => {
   white-space: pre-wrap;
   font-family: ui-monospace, monospace;
   font-size: 13px;
+}
+/* ── 错误卡片：错误消息 + SQL + 连接分块展示，附 复制 / 问 AI 按钮 ── */
+.grid-err-card {
+  margin: 12px;
+  border: 1px solid var(--err, #e04050);
+  border-radius: 8px;
+  background: rgba(224, 64, 80, 0.06);
+  overflow: hidden;
+}
+.grid-err-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(224, 64, 80, 0.3);
+  background: rgba(224, 64, 80, 0.10);
+}
+.grid-err-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--err, #e04050);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.grid-err-title {
+  font-weight: 600;
+  color: var(--err, #e04050);
+  font-size: 13px;
+}
+.grid-err-spacer { flex: 1; }
+.grid-err-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.grid-err-btn:hover:not(:disabled) {
+  background: rgba(124, 108, 255, 0.14);
+}
+.grid-err-btn.primary {
+  border-color: var(--accent, #7c6cff);
+  color: var(--accent, #7c6cff);
+}
+.grid-err-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.grid-err-msg {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--err, #e04050);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.grid-err-block {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 6px 12px 8px;
+}
+.grid-err-block-lbl {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.grid-err-sql,
+.grid-err-conn {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  max-height: 200px;
+  overflow-y: auto;
 }
 .grid-meta {
   padding: 6px 12px;

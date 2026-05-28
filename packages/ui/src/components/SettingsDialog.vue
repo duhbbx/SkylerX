@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { confirm as appConfirm } from '../dialog'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
 import { addFact, clearFacts, clearVectorMemory, removeFact } from '../memory'
-import { AI_PROVIDER_LABEL, AI_PROVIDER_ORDER, type AiProvider, resetSettings, settings, zoomIn, zoomOut, zoomReset } from '../settings'
+import {
+  AI_PROVIDER_LABEL,
+  AI_PROVIDER_ORDER,
+  type AiProvider,
+  resetSettings,
+  settings,
+  zoomIn,
+  zoomOut,
+  zoomReset,
+} from '../settings'
 import Modal from './Modal.vue'
 
 const emit = defineEmits<{ close: [] }>()
@@ -39,14 +49,14 @@ function onAddFact(): void {
 function onRemoveFact(id: string): void {
   removeFact(id)
 }
-function onClearFacts(): void {
+async function onClearFacts(): Promise<void> {
   if (!settings.aiFacts.length) return
-  if (!window.confirm(t('settings.mem.bClearConfirm'))) return
+  if (!(await appConfirm({ message: t('settings.mem.bClearConfirm'), variant: 'warn' }))) return
   clearFacts()
 }
-function onClearVectors(): void {
+async function onClearVectors(): Promise<void> {
   if (!settings.aiVectorMemories.length) return
-  if (!window.confirm(t('settings.mem.cClearConfirm'))) return
+  if (!(await appConfirm({ message: t('settings.mem.cClearConfirm'), variant: 'warn' }))) return
   clearVectorMemory()
 }
 

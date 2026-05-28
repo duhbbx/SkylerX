@@ -3,6 +3,7 @@ import type { ConnectionConfig } from '@db-tool/shared-types'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
+import { confirm as appConfirm } from '../dialog'
 import { t as tr } from '../i18n'
 import DdlEditor from './DdlEditor.vue'
 import ErdView from './ErdView.vue'
@@ -29,6 +30,7 @@ const emit = defineEmits<{
   connError: [string, string]
   refresh: [TreeNode, string]
   ai: [string, string, string]
+  askAiAboutError: [payload: { connId: string; connName?: string; sql: string; error: string }]
 }>()
 
 const tabs = ref<Tab[]>([])
@@ -59,15 +61,33 @@ function push(tab: Omit<Tab, 'id'>): void {
 function openConnection(conn: ConnectionConfig): void {
   const existing = tabs.value.find((t) => t.kind === 'query' && t.conn.id === conn.id)
   if (existing) activeId.value = existing.id
-  else push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: null })
+  else
+    push({
+      kind: 'query',
+      conn,
+      title: `${conn.name || conn.dialect} #${tabSeq + 1}`,
+      pending: null,
+    })
 }
 function newQuery(conn: ConnectionConfig, ctx?: TableContext): void {
-  push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: null, ctx })
+  push({
+    kind: 'query',
+    conn,
+    title: `${conn.name || conn.dialect} #${tabSeq + 1}`,
+    pending: null,
+    ctx,
+  })
 }
 function runSql(conn: ConnectionConfig, sql: string): void {
   const cur = active.value
   if (cur && cur.kind === 'query' && cur.conn.id === conn.id) cur.pending = { sql, seq: ++pendSeq }
-  else push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: { sql, seq: ++pendSeq } })
+  else
+    push({
+      kind: 'query',
+      conn,
+      title: `${conn.name || conn.dialect} #${tabSeq + 1}`,
+      pending: { sql, seq: ++pendSeq },
+    })
 }
 function newForCurrent(): void {
   if (active.value) newQuery(active.value.conn)
@@ -85,18 +105,33 @@ function newObject(
   ctx: TableContext,
   refreshTarget: TreeNode,
 ): void {
-  push({ kind, conn, title: `${OBJECT_LABEL[kind]} @ ${conn.name || conn.dialect}`, pending: null, ctx, refreshTarget })
+  push({
+    kind,
+    conn,
+    title: `${OBJECT_LABEL[kind]} @ ${conn.name || conn.dialect}`,
+    pending: null,
+    ctx,
+    refreshTarget,
+  })
 }
 
 /** 打开表/视图结构查看页（已有则聚焦）。 */
 function openStructure(conn: ConnectionConfig, node: TreeNode): void {
   const key = node.sqlName ?? node.name
-  const existing = tabs.value.find((t) => t.kind === 'structure' && (t.node?.sqlName ?? t.node?.name) === key)
+  const existing = tabs.value.find(
+    (t) => t.kind === 'structure' && (t.node?.sqlName ?? t.node?.name) === key,
+  )
   if (existing) {
     activeId.value = existing.id
     return
   }
-  push({ kind: 'structure', conn, title: tr('tabs.titleStructure', { name: node.name }), pending: null, node })
+  push({
+    kind: 'structure',
+    conn,
+    title: tr('tabs.titleStructure', { name: node.name }),
+    pending: null,
+    node,
+  })
 }
 
 /** 打开 ER 图页（按库/schema）。 */
@@ -111,7 +146,12 @@ function openErd(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): voi
 }
 
 /** 打开「编辑视图/函数/过程」页（DDL 编辑器 edit 模式）。 */
-function editObject(conn: ConnectionConfig, kind: ObjectKind, ctx: TableContext, node: TreeNode): void {
+function editObject(
+  conn: ConnectionConfig,
+  kind: ObjectKind,
+  ctx: TableContext,
+  node: TreeNode,
+): void {
   push({
     kind,
     mode: 'edit',
@@ -158,13 +198,18 @@ function setDirtyRef(id: number, el: unknown): void {
     dirtyRefs.delete(id)
   }
 }
-function close(id: number): void {
+async function close(id: number): Promise<void> {
   const tab = tabs.value.find((t) => t.id === id)
   if (!tab) return
   // 仅设计器 / DDL 编辑器需要检查；查询页/结构页/ER 图 无未保存概念，直接关
-  const checkable = tab.kind === 'table' || tab.kind === 'view' || tab.kind === 'function' || tab.kind === 'procedure' || tab.kind === 'trigger'
+  const checkable =
+    tab.kind === 'table' ||
+    tab.kind === 'view' ||
+    tab.kind === 'function' ||
+    tab.kind === 'procedure' ||
+    tab.kind === 'trigger'
   if (checkable && dirtyRefs.get(id)?.isDirty?.()) {
-    if (!window.confirm(tr('common.unsavedConfirm'))) return
+    if (!(await appConfirm({ message: tr('common.unsavedConfirm'), variant: 'warn' }))) return
   }
   const i = tabs.value.findIndex((t) => t.id === id)
   if (i < 0) return
@@ -186,11 +231,27 @@ function onCreated(tab: Tab): void {
 /** 暴露给父组件用：当前激活 tab 的连接 id（用于右侧 AI 聊天默认连接跟随）；computed 自带响应式 */
 const activeConnId = computed(() => active.value?.conn.id ?? '')
 
-defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, openErd, openDraft, closeConnTabs, activeConnId })
+defineExpose({
+  openConnection,
+  newQuery,
+  runSql,
+  newForCurrent,
+  newObject,
+  openStructure,
+  editTable,
+  editObject,
+  openErd,
+  openDraft,
+  closeConnTabs,
+  activeConnId,
+})
 
 // ── 布局持久化：仅记录查询页（connId + pinned），下次启动自动重开 ──
 const LAYOUT_KEY = 'skylerx.workspace.tabs'
-interface SavedTab { connId: string; pinned?: boolean }
+interface SavedTab {
+  connId: string
+  pinned?: boolean
+}
 const client = useDataClient()
 let restored = false
 
@@ -214,7 +275,13 @@ async function restoreLayout(): Promise<void> {
     for (const it of items) {
       try {
         const conn = await client.connections.get(it.connId)
-        push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: null, pinned: it.pinned })
+        push({
+          kind: 'query',
+          conn,
+          title: `${conn.name || conn.dialect} #${tabSeq + 1}`,
+          pending: null,
+          pinned: it.pinned,
+        })
       } catch {
         /* 连接已删除 → 跳过 */
       }
@@ -268,6 +335,7 @@ watch(tabs, saveLayout, { deep: true })
             @conn-error="(id, msg) => emit('connError', id, msg)"
             @ai="(sql, cid, errMsg) => emit('ai', sql, cid, errMsg)"
             @new-draft="(sql, title) => openDraft(t.conn, sql, title)"
+            @ask-ai-about-error="(p) => emit('askAiAboutError', p)"
           />
           <TableDesigner
             v-else-if="t.kind === 'table'"

@@ -38,13 +38,14 @@ export function setLocale(l: Locale): void {
   // 已渲染编辑器的内置菜单 label 由 Monaco 在模块加载期已缓存，需要刷新窗口才能完整跟随。
   if (prev !== l) {
     void import('./monaco-nls').then((m) => m.applyMonacoLocale(l))
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      // 后续微任务里弹确认框，避免阻塞同步流程
-      queueMicrotask(() => {
-        const tip = l === 'zh'
-          ? '语言已切换到中文。要立即刷新窗口以让 SQL 编辑器内置菜单（剪切/查找等）完整切换吗？'
-          : 'Language switched to English. Reload the window now to fully apply the editor built-in menus?'
-        if (window.confirm(tip)) window.location.reload()
+    if (typeof window !== 'undefined') {
+      // 异步弹应用主题的确认框，避免阻塞同步流程；Monaco 缓存的菜单文案要刷新窗口才能完整切换
+      void import('./dialog').then(async ({ confirm: appConfirm }) => {
+        const tip =
+          l === 'zh'
+            ? '语言已切换到中文。要立即刷新窗口以让 SQL 编辑器内置菜单（剪切/查找等）完整切换吗？'
+            : 'Language switched to English. Reload the window now to fully apply the editor built-in menus?'
+        if (await appConfirm({ message: tip, variant: 'info' })) window.location.reload()
       })
     }
   }
@@ -110,19 +111,34 @@ const DICT: Record<string, [string, string]> = {
   'settings.mem.bTitle': ['B · 事实清单', 'B · Facts'],
   'settings.mem.bAuto': ['每轮自动抽取', 'Auto-extract each turn'],
   'settings.mem.bAdd': ['添加', 'Add'],
-  'settings.mem.bAddPh': ['一条短事实（如：用户名约束至少 6 位）', 'One short fact (e.g., "username must be ≥6 chars")'],
-  'settings.mem.bEmpty': ['（暂无事实；可以手动添加或开启「每轮自动抽取」）', '(no facts yet; add manually or enable auto-extract)'],
+  'settings.mem.bAddPh': [
+    '一条短事实（如：用户名约束至少 6 位）',
+    'One short fact (e.g., "username must be ≥6 chars")',
+  ],
+  'settings.mem.bEmpty': [
+    '（暂无事实；可以手动添加或开启「每轮自动抽取」）',
+    '(no facts yet; add manually or enable auto-extract)',
+  ],
   'settings.mem.bClear': ['清空（{n}）', 'Clear ({n})'],
-  'settings.mem.bClearConfirm': ['确定清空所有事实？此操作不可撤销。', 'Clear all facts? This cannot be undone.'],
+  'settings.mem.bClearConfirm': [
+    '确定清空所有事实？此操作不可撤销。',
+    'Clear all facts? This cannot be undone.',
+  ],
   'settings.mem.cToggle': ['C · 向量记忆', 'C · Vector memory'],
   'settings.mem.cToggleHint': ['当前已存 {n} 条', '{n} memories stored'],
   'settings.mem.cBaseUrl': ['Embedding Base URL', 'Embedding base URL'],
   'settings.mem.cApiKey': ['Embedding API Key', 'Embedding API key'],
-  'settings.mem.cApiKeyPh': ['sk-…（与上面 AI provider 可不同；推荐 OpenAI 兼容端点）', 'sk-… (can differ from AI provider; OpenAI-compatible endpoint)'],
+  'settings.mem.cApiKeyPh': [
+    'sk-…（与上面 AI provider 可不同；推荐 OpenAI 兼容端点）',
+    'sk-… (can differ from AI provider; OpenAI-compatible endpoint)',
+  ],
   'settings.mem.cModel': ['模型', 'Model'],
   'settings.mem.cTopK': ['检索 top-K', 'Top-K recall'],
   'settings.mem.cClear': ['清空（{n}）', 'Clear ({n})'],
-  'settings.mem.cClearConfirm': ['确定清空所有向量记忆？此操作不可撤销。', 'Clear all vector memories? This cannot be undone.'],
+  'settings.mem.cClearConfirm': [
+    '确定清空所有向量记忆？此操作不可撤销。',
+    'Clear all vector memories? This cannot be undone.',
+  ],
   'settings.mem.cNote': [
     'Anthropic 没有 embeddings 端点；推荐填 OpenAI / DeepSeek 兼容地址。embedding 调用走主进程绕过 CORS。',
     'Anthropic has no embeddings endpoint; use OpenAI / DeepSeek-compatible URL. Calls go through the main process to bypass CORS.',
@@ -132,8 +148,14 @@ const DICT: Record<string, [string, string]> = {
     '点击 provider 标签 = 同时切换为「当前激活」并编辑该 provider 的配置。',
     'Clicking a provider tab activates it and lets you edit its config.',
   ],
-  'settings.ai.activeNote': ['{name} 已是当前激活的 provider', '{name} is the currently active provider'],
-  'settings.ai.notActive': ['你在编辑 {name} 的配置，但当前激活的不是它。', 'You are editing {name} but it is not the active provider.'],
+  'settings.ai.activeNote': [
+    '{name} 已是当前激活的 provider',
+    '{name} is the currently active provider',
+  ],
+  'settings.ai.notActive': [
+    '你在编辑 {name} 的配置，但当前激活的不是它。',
+    'You are editing {name} but it is not the active provider.',
+  ],
   'settings.ai.setActive': ['设为当前激活', 'Set as active'],
   'settings.watermark.note': [
     '为标记为「生产环境」的连接，在所有查询页平铺斜向水印（仅 UI，不影响 SQL）。',
@@ -149,7 +171,10 @@ const DICT: Record<string, [string, string]> = {
   'settings.aiApiKeyPh': ['sk-ant-…（仅本地保存）', 'sk-ant-… (stored locally only)'],
   'settings.aiModel': ['模型', 'Model'],
   'settings.aiBaseUrl': ['Base URL', 'Base URL'],
-  'settings.aiNote': ['API Key 仅保存在本机 localStorage；请求直连 Anthropic（或自定义代理）。', 'API key is stored only in localStorage on this device; requests go directly to Anthropic (or your proxy).'],
+  'settings.aiNote': [
+    'API Key 仅保存在本机 localStorage；请求直连 Anthropic（或自定义代理）。',
+    'API key is stored only in localStorage on this device; requests go directly to Anthropic (or your proxy).',
+  ],
   'settings.keywordCase': ['SQL 格式化关键字', 'SQL keyword case'],
   'settings.keywordCase.upper': ['大写 UPPER', 'UPPER'],
   'settings.keywordCase.lower': ['小写 lower', 'lower'],
@@ -161,7 +186,10 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 查询页 QueryPane ──
   'query.run': ['执行', 'Run'],
-  'query.run.title': ['执行（选中则只跑选区） ⌘/Ctrl+Enter', 'Run (selection only, if any) ⌘/Ctrl+Enter'],
+  'query.run.title': [
+    '执行（选中则只跑选区） ⌘/Ctrl+Enter',
+    'Run (selection only, if any) ⌘/Ctrl+Enter',
+  ],
   'query.runToCursor': ['运行到此', 'Run to cursor'],
   'query.runToCursor.title': ['只执行光标之前的 SQL', 'Run only the SQL before the cursor'],
   'query.compress': ['压缩', 'Compress'],
@@ -179,7 +207,10 @@ const DICT: Record<string, [string, string]> = {
     '把选中语句（无选区则全部）存为片段',
     'Save selected statement (or all) as a snippet',
   ],
-  'query.hint': ['⌘/Ctrl+Enter 执行（选中则只跑选区）', '⌘/Ctrl+Enter to run (selection only, if any)'],
+  'query.hint': [
+    '⌘/Ctrl+Enter 执行（选中则只跑选区）',
+    '⌘/Ctrl+Enter to run (selection only, if any)',
+  ],
   'query.defaultDb': ['（默认库）', '(default database)'],
   'query.defaultSchema': ['（默认 schema）', '(default schema)'],
   'query.splitterTitle': ['拖拽调整高度', 'Drag to resize'],
@@ -192,10 +223,17 @@ const DICT: Record<string, [string, string]> = {
     '数字原样 · 文本自动加引号 · 留空=NULL',
     'Numbers as-is · text auto-quoted · empty = NULL',
   ],
-  'query.explainUnsupported': ['当前数据库方言暂不支持「解释」', 'EXPLAIN is not supported for this dialect'],
+  'query.explainUnsupported': [
+    '当前数据库方言暂不支持「解释」',
+    'EXPLAIN is not supported for this dialect',
+  ],
   'query.explainFailed': ['解释失败：{msg}', 'Explain failed: {msg}'],
   'query.commitFailed': ['提交失败：{msg}', 'Commit failed: {msg}'],
-  'query.commitPreviewTitle': ['提交前预览（{n} 条语句）', 'Preview before commit ({n} statements)'],
+  'query.commitFailedTitle': ['提交失败', 'Commit failed'],
+  'query.commitPreviewTitle': [
+    '提交前预览（{n} 条语句）',
+    'Preview before commit ({n} statements)',
+  ],
   'query.commitConfirm': ['确认执行', 'Execute'],
   'query.snippetNamePrompt': ['片段名称', 'Snippet name'],
   'query.snippetTagsPrompt': ['标签（逗号分隔，可留空）', 'Tags (comma-separated, optional)'],
@@ -209,6 +247,7 @@ const DICT: Record<string, [string, string]> = {
     '⚠️ 检测到高危操作：\n\n{dangers}\n\n确定执行？',
     '⚠️ Dangerous operation detected:\n\n{dangers}\n\nProceed?',
   ],
+  'query.dangerTitle': ['高危操作确认', 'Dangerous operation'],
   'query.readOnlyBlocked': [
     '🔒 该连接为只读模式，已拦截写操作：\n\n{sql}',
     '🔒 This connection is read-only; write blocked:\n\n{sql}',
@@ -223,7 +262,11 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 结果网格 ResultGrid ──
   'grid.running': ['执行中…', 'Running…'],
-  'grid.empty': ['在上方输入 SQL，⌘/Ctrl+Enter 或点「运行」执行', 'Type SQL above, then ⌘/Ctrl+Enter or Run'],
+  'grid.empty': [
+    '在上方输入 SQL，⌘/Ctrl+Enter 或点「运行」执行',
+    'Type SQL above, then ⌘/Ctrl+Enter or Run',
+  ],
+  'grid.errorTitle': ['执行报错', 'Execution failed'],
   'grid.execOk': ['执行成功', 'Executed successfully'],
   'grid.addRow': ['新增行', 'Add row'],
   'grid.delRow': ['删除选中行', 'Delete selected rows'],
@@ -246,7 +289,10 @@ const DICT: Record<string, [string, string]> = {
   'grid.viewForm': ['表单', 'Form'],
   'grid.freeze': ['冻结首列', 'Freeze 1st column'],
   'grid.summary': ['汇总', 'Summary'],
-  'grid.summaryTitle': ['显示汇总行（数值列求和/均值，其余计非空数）', 'Show summary row (SUM/AVG for numeric, COUNT otherwise)'],
+  'grid.summaryTitle': [
+    '显示汇总行（数值列求和/均值，其余计非空数）',
+    'Show summary row (SUM/AVG for numeric, COUNT otherwise)',
+  ],
   'grid.sortHint': [
     '点列头排序 · 双击单元格查看 · 点行号看整行',
     'Click header to sort · double-click cell to view · click row number for full row',
@@ -272,7 +318,10 @@ const DICT: Record<string, [string, string]> = {
   'grid.setNull': ['设为 NULL', 'Set NULL'],
   'grid.setDefault': ['设为 DEFAULT', 'Set DEFAULT'],
   'grid.fkJump': ['→ {tbl}', '→ {tbl}'],
-  'grid.fkJumpTitle': ['打开新查询页：{tbl}.{col} = 当前值', 'Open new query: {tbl}.{col} = current value'],
+  'grid.fkJumpTitle': [
+    '打开新查询页：{tbl}.{col} = 当前值',
+    'Open new query: {tbl}.{col} = current value',
+  ],
   'grid.revFkTitle': ['被以下 {n} 张表引用：', 'Referenced by {n} table(s):'],
   'grid.copyHex': ['复制 Hex', 'Copy hex'],
   'grid.copyAsSql': ['复制为 SQL', 'Copy as SQL'],
@@ -282,7 +331,7 @@ const DICT: Record<string, [string, string]> = {
   'grid.exportPrompt': ['SQL 导出：目标表名', 'SQL export: target table name'],
   'grid.filterPrompt': [
     "筛选「{col}」——输入条件（如  = 5  /  > 10  /  LIKE '%a%'  /  IS NULL），留空清除",
-    "Filter \"{col}\" — condition (e.g. = 5 / > 10 / LIKE '%a%' / IS NULL); empty to clear",
+    'Filter "{col}" — condition (e.g. = 5 / > 10 / LIKE \'%a%\' / IS NULL); empty to clear',
   ],
 
   // ── 环境标记 ──
@@ -309,7 +358,10 @@ const DICT: Record<string, [string, string]> = {
   'conn.env': ['环境', 'Environment'],
   'conn.env.none': ['未标记', 'Unset'],
   'conn.readOnly': ['只读', 'Read-only'],
-  'conn.readOnlyTitle': ['只读连接：拦截一切写操作（仅放行 SELECT/SHOW/EXPLAIN 等）', 'Read-only connection: blocks all writes (allows SELECT/SHOW/EXPLAIN only)'],
+  'conn.readOnlyTitle': [
+    '只读连接：拦截一切写操作（仅放行 SELECT/SHOW/EXPLAIN 等）',
+    'Read-only connection: blocks all writes (allows SELECT/SHOW/EXPLAIN only)',
+  ],
   'conn.ssl.enable': ['启用 SSL', 'Enable SSL'],
   'conn.ssl.verify': ['校验服务端证书', 'Verify server certificate'],
   'conn.ssl.ca': ['CA 证书', 'CA certificate'],
@@ -409,17 +461,29 @@ const DICT: Record<string, [string, string]> = {
   'designer.copyDdl': ['复制 DDL', 'Copy DDL'],
   'designer.compressDdl': ['压缩为单行', 'Compress to one line'],
   'designer.idxColsPh': ['col1, col2(10) DESC', 'col1, col2(10) DESC'],
-  'designer.idxColsTitle': ['多列逗号分隔；可加前缀长度 col(10)（MySQL）与排序 ASC/DESC', 'Comma-separated; supports col(10) prefix (MySQL) and ASC/DESC'],
+  'designer.idxColsTitle': [
+    '多列逗号分隔；可加前缀长度 col(10)（MySQL）与排序 ASC/DESC',
+    'Comma-separated; supports col(10) prefix (MySQL) and ASC/DESC',
+  ],
   'designer.zerofill': ['ZEROFILL', 'ZEROFILL'],
   'designer.wherePh': ['status = 1', 'status = 1'],
-  'designer.concurrentTitle': ['CONCURRENTLY：在线建索引（PG，不锁表）', 'CONCURRENTLY: build the index without locking the table (PG)'],
+  'designer.concurrentTitle': [
+    'CONCURRENTLY：在线建索引（PG，不锁表）',
+    'CONCURRENTLY: build the index without locking the table (PG)',
+  ],
   'designer.inheritsPh': ['parent_table', 'parent_table'],
   'designer.generated': ['生成列表达式', 'Generated expression'],
-  'designer.generatedPh': ['如 price * qty（留空=普通列）', 'e.g. price * qty (empty = normal column)'],
+  'designer.generatedPh': [
+    '如 price * qty（留空=普通列）',
+    'e.g. price * qty (empty = normal column)',
+  ],
 
   // ── 通用补充 ──
   'common.close': ['关闭', 'Close'],
-  'common.resizeHint': ['拖动右下角调整大小（会自动记住）', 'Drag the bottom-right corner to resize (auto-saved)'],
+  'common.resizeHint': [
+    '拖动右下角调整大小（会自动记住）',
+    'Drag the bottom-right corner to resize (auto-saved)',
+  ],
   'common.unsavedConfirm': [
     '当前表单有未保存的修改，确认丢弃并关闭吗？',
     'You have unsaved changes. Discard and close?',
@@ -435,7 +499,10 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 全局对象搜索 ObjectSearchDialog ──
   'osearch.title': ['全局对象搜索', 'Global object search'],
-  'osearch.ph': ['搜表 / 视图 / 列名（≥2 字，回车）', 'Search tables / views / columns (≥2 chars, Enter)'],
+  'osearch.ph': [
+    '搜表 / 视图 / 列名（≥2 字，回车）',
+    'Search tables / views / columns (≥2 chars, Enter)',
+  ],
   'osearch.unsupported': [
     '该连接方言暂不支持搜索（仅 MySQL / PostgreSQL 系）',
     'Search not supported for this dialect (MySQL / PostgreSQL only)',
@@ -462,11 +529,17 @@ const DICT: Record<string, [string, string]> = {
   'oplog.allConns': ['全部连接', 'All connections'],
   'oplog.exportCsv': ['导出 CSV', 'Export CSV'],
   'oplog.empty': ['无匹配的执行记录', 'No matching execution records'],
-  'oplog.foot': ['共 {n} 条 · 点击任一行可在对应连接打开该 SQL', '{n} records · click a row to open the SQL on its connection'],
+  'oplog.foot': [
+    '共 {n} 条 · 点击任一行可在对应连接打开该 SQL',
+    '{n} records · click a row to open the SQL on its connection',
+  ],
 
   // ── 服务器监控 ServerMonitorDialog ──
   'monitor.title': ['服务器监控', 'Server monitor'],
-  'monitor.unsupported': ['服务器监控目前支持 MySQL / PostgreSQL 系连接', 'Server monitoring currently supports MySQL / PostgreSQL connections'],
+  'monitor.unsupported': [
+    '服务器监控目前支持 MySQL / PostgreSQL 系连接',
+    'Server monitoring currently supports MySQL / PostgreSQL connections',
+  ],
   'monitor.uptime': ['运行时长', 'Uptime'],
   'monitor.qps': ['每秒查询(QPS)', 'Queries/s (QPS)'],
   'monitor.tps': ['每秒事务(TPS)', 'Txns/s (TPS)'],
@@ -476,11 +549,17 @@ const DICT: Record<string, [string, string]> = {
   'monitor.slow': ['慢查询累计', 'Slow queries (total)'],
   'monitor.aborted': ['失败连接累计', 'Aborted connects (total)'],
   'monitor.cacheHit': ['缓存命中率', 'Cache hit ratio'],
-  'monitor.foot': ['每 2 秒刷新 · QPS/TPS 由计数器增量估算', 'Refreshes every 2s · QPS/TPS estimated from counter deltas'],
+  'monitor.foot': [
+    '每 2 秒刷新 · QPS/TPS 由计数器增量估算',
+    'Refreshes every 2s · QPS/TPS estimated from counter deltas',
+  ],
 
   // ── 关于 ──
   'about.title': ['关于', 'About'],
-  'about.tag': ['现代数据库管理工具 · 桌面端 + Web 端', 'Modern database management · Desktop + Web'],
+  'about.tag': [
+    '现代数据库管理工具 · 桌面端 + Web 端',
+    'Modern database management · Desktop + Web',
+  ],
   'about.version': ['版本', 'Version'],
   'about.license': ['许可', 'License'],
   'about.repo': ['仓库', 'Repository'],
@@ -499,22 +578,40 @@ const DICT: Record<string, [string, string]> = {
   'ai.modeOptimize': ['优化建议', 'Optimize'],
   'ai.modeDiagnose': ['错误诊断', 'Diagnose error'],
   'ai.useSchema': ['附带库结构', 'Include schema'],
-  'ai.phNl': ['用一句话描述你想做的事，例如：找出最近 7 天注册的用户', 'Describe what you want, e.g.: find users registered in the last 7 days'],
+  'ai.phNl': [
+    '用一句话描述你想做的事，例如：找出最近 7 天注册的用户',
+    'Describe what you want, e.g.: find users registered in the last 7 days',
+  ],
   'ai.phSql': ['粘贴 SQL 语句…', 'Paste SQL here…'],
   'ai.phError': ['数据库返回的错误信息…', 'Database error message…'],
   'ai.ask': ['询问', 'Ask'],
   'ai.stop': ['停止', 'Stop'],
   'ai.insert': ['插入到查询页', 'Open as draft'],
   'ai.configure': ['配置 API Key', 'Configure API key'],
-  'ai.noKey': ['未配置 API Key — 请打开「设置 → AI 助手」填入', 'No API key configured — open "Settings → AI Assistant"'],
-  'ai.schemaUnsupported': ['库结构上下文仅支持 MySQL/PG 系连接', 'Schema context only supports MySQL/PG connections'],
-  'ai.schemaEmpty': ['未拉取到库结构（请确认连接默认库已设置）', 'No schema fetched (check connection default database)'],
+  'ai.noKey': [
+    '未配置 API Key — 请打开「设置 → AI 助手」填入',
+    'No API key configured — open "Settings → AI Assistant"',
+  ],
+  'ai.schemaUnsupported': [
+    '库结构上下文仅支持 MySQL/PG 系连接',
+    'Schema context only supports MySQL/PG connections',
+  ],
+  'ai.schemaEmpty': [
+    '未拉取到库结构（请确认连接默认库已设置）',
+    'No schema fetched (check connection default database)',
+  ],
   'ai.tabTitle': ['AI 草稿', 'AI draft'],
-  'ai.foot': ['请求按「设置 → AI 助手」里激活的 provider 直发；模型回答仅供参考，执行前请人工核查。', 'Requests go directly to the active provider configured in Settings → AI Assistant; always review SQL before running.'],
+  'ai.foot': [
+    '请求按「设置 → AI 助手」里激活的 provider 直发；模型回答仅供参考，执行前请人工核查。',
+    'Requests go directly to the active provider configured in Settings → AI Assistant; always review SQL before running.',
+  ],
 
   // ── 查询页 AI 按钮 ──
   'query.ai': ['AI', 'AI'],
-  'query.ai.title': ['用 AI 解释 / 诊断 / 优化当前 SQL（有错误自动切到诊断）', 'Explain / diagnose / optimize current SQL with AI (diagnose mode if error present)'],
+  'query.ai.title': [
+    '用 AI 解释 / 诊断 / 优化当前 SQL（有错误自动切到诊断）',
+    'Explain / diagnose / optimize current SQL with AI (diagnose mode if error present)',
+  ],
   'query.more': ['更多操作', 'More actions'],
 
   // ── Monaco 右键自定义动作（addAction 标签；按 locale 实时重注册） ──
@@ -528,7 +625,10 @@ const DICT: Record<string, [string, string]> = {
   'editor.action.aiExplain': ['✨ AI 解释 / 优化', '✨ AI explain / optimize'],
   'query.fkTabTitle': ['→ {tbl} (FK)', '→ {tbl} (FK)'],
   'query.favorite': ['收藏', 'Favorite'],
-  'query.favoriteTitle': ['把当前选区/全部 SQL 加入收藏夹', 'Add current selection / SQL to favorites'],
+  'query.favoriteTitle': [
+    '把当前选区/全部 SQL 加入收藏夹',
+    'Add current selection / SQL to favorites',
+  ],
   'query.favName': ['给这条查询起个名字：', 'Name this query:'],
   'query.favTag': ['分组标签（可留空）：', 'Group tag (optional):'],
 
@@ -554,7 +654,10 @@ const DICT: Record<string, [string, string]> = {
   'ddiff.consistent': ['-- 数据一致，无需同步', '-- data is identical, nothing to sync'],
   'ddiff.title': ['数据对比 / 同步（源 → 目标）', 'Data diff / sync (source → target)'],
   'ddiff.srcConn': ['源连接 / 库 / 表', 'Source connection / db / table'],
-  'ddiff.tgtConn': ['目标连接 / 库 / 表（将被同步）', 'Target connection / db / table (will be synced)'],
+  'ddiff.tgtConn': [
+    '目标连接 / 库 / 表（将被同步）',
+    'Target connection / db / table (will be synced)',
+  ],
   'ddiff.tablePh': ['表名', 'Table name'],
   'ddiff.keyCols': ['配对列', 'Pairing cols'],
   'ddiff.keyColsPh': ['留空=自动取主键', 'empty = use PK'],
@@ -575,7 +678,10 @@ const DICT: Record<string, [string, string]> = {
   'priv.usersRoles': ['用户 / 角色（{n}）', 'Users / roles ({n})'],
   'priv.existingGrants': ['已有授权', 'Existing grants'],
   'priv.grantTitle': ['授予权限（GRANT）', 'Grant privileges'],
-  'priv.targetPh': ['目标，如 `db`.* / schema.table / *.*', 'Target, e.g. `db`.* / schema.table / *.*'],
+  'priv.targetPh': [
+    '目标，如 `db`.* / schema.table / *.*',
+    'Target, e.g. `db`.* / schema.table / *.*',
+  ],
   'priv.openQuery': ['在查询页打开', 'Open in query page'],
   'priv.pickUser': [
     '选择左侧用户查看授权并生成 GRANT',
@@ -703,6 +809,8 @@ const DICT: Record<string, [string, string]> = {
     'The following DDL will run against the database:\n\n{ddl}',
   ],
   'erd.applyFail': ['应用失败：{msg}', 'Apply failed: {msg}'],
+  'erd.applyTitle': ['应用 DDL 变更', 'Apply DDL changes'],
+  'erd.applyFailTitle': ['应用失败', 'Apply failed'],
   'erd.title': ['ER 图 · {name}', 'ER diagram · {name}'],
   'erd.stats': ['{tables} 表 · {edges} 外键', '{tables} tables · {edges} FKs'],
   'erd.zoomOut': ['缩小', 'Zoom out'],
@@ -822,7 +930,10 @@ const DICT: Record<string, [string, string]> = {
     '该方言暂不支持依赖分析（仅 MySQL / PostgreSQL 系）',
     'Dependency analysis not supported for this dialect (MySQL / PostgreSQL only)',
   ],
-  'ws.defUnsupported': ['该对象暂不支持查看定义', 'Viewing definition not supported for this object'],
+  'ws.defUnsupported': [
+    '该对象暂不支持查看定义',
+    'Viewing definition not supported for this object',
+  ],
   'ws.noDef': ['未取到定义', 'Definition not found'],
   'ws.ddlCopied': ['已复制建表语句', 'CREATE statement copied'],
   'ws.confirmEmptyTable': [
@@ -833,6 +944,8 @@ const DICT: Record<string, [string, string]> = {
     '即将对 {ref} 执行 TRUNCATE TABLE（极快、重置自增、DDL 不可回滚！）。\n继续？',
     'About to run TRUNCATE TABLE {ref} (fast, resets AUTO_INCREMENT, NOT rollback-able!).\nContinue?',
   ],
+  'ws.emptyTableTitle': ['清空表', 'Empty table'],
+  'ws.truncateTableTitle': ['截断表', 'Truncate table'],
   'ws.emptyTableDone': ['{ref} 已清空', '{ref} emptied'],
   'ws.truncateTableDone': ['{ref} 已截断', '{ref} truncated'],
   'ws.renamePrompt': ['把 {name} 重命名为：', 'Rename {name} to:'],
@@ -845,7 +958,10 @@ const DICT: Record<string, [string, string]> = {
   'ws.genSqlFail': ['生成 SQL 失败：{msg}', 'Failed to generate SQL: {msg}'],
   'ws.exportFail': ['导出失败：{msg}', 'Export failed: {msg}'],
   'ws.noTables': ['该库/schema 下没有表', 'No tables in this database/schema'],
-  'ws.dumpHeader': ['-- SkylerX 库导出：{label}（{n} 表）', '-- SkylerX schema export: {label} ({n} tables)'],
+  'ws.dumpHeader': [
+    '-- SkylerX 库导出：{label}（{n} 表）',
+    '-- SkylerX schema export: {label} ({n} tables)',
+  ],
   'ws.transferDone': ['数据传输完成：{count} 行', 'Data transfer done: {count} rows'],
   'ws.importDone': ['已导入 {count} 行到 {name}', 'Imported {count} rows into {name}'],
   'ws.tabMigration': ['结构迁移', 'Schema migration'],
@@ -857,16 +973,28 @@ const DICT: Record<string, [string, string]> = {
   'ws.titleEditConn': ['编辑连接', 'Edit connection'],
   'ws.titleNewConn': ['新建连接', 'New connection'],
   'ws.dropTitle': ['删除确认', 'Confirm delete'],
-  'ws.dropMsg': ['确定删除{label} {name} 吗？此操作不可撤销。', 'Delete {label} {name}? This cannot be undone.'],
-  'ws.cascade': ['级联删除（CASCADE，连同依赖对象一并删除）', 'Cascade (CASCADE, drop dependent objects too)'],
+  'ws.dropMsg': [
+    '确定删除{label} {name} 吗？此操作不可撤销。',
+    'Delete {label} {name}? This cannot be undone.',
+  ],
+  'ws.cascade': [
+    '级联删除（CASCADE，连同依赖对象一并删除）',
+    'Cascade (CASCADE, drop dependent objects too)',
+  ],
   'ws.deleting': ['删除中…', 'Deleting…'],
   'ws.bulkDropTitle': ['批量删除确认', 'Confirm bulk delete'],
-  'ws.bulkDropMsg': ['确定删除以下 {n} 个对象吗？此操作不可撤销。', 'Delete these {n} objects? This cannot be undone.'],
+  'ws.bulkDropMsg': [
+    '确定删除以下 {n} 个对象吗？此操作不可撤销。',
+    'Delete these {n} objects? This cannot be undone.',
+  ],
   'ws.cascadeBulk': [
     '级联删除（CASCADE，对支持的对象连同依赖一并删除）',
     'Cascade (CASCADE, drop dependents where supported)',
   ],
-  'ws.bulkErr': ['✗ 已删除 {done}/{total}，中断于：{msg}', '✗ Deleted {done}/{total}, stopped at: {msg}'],
+  'ws.bulkErr': [
+    '✗ 已删除 {done}/{total}，中断于：{msg}',
+    '✗ Deleted {done}/{total}, stopped at: {msg}',
+  ],
   'ws.bulkDeleting': ['删除中… {done}/{total}', 'Deleting… {done}/{total}'],
   'ws.bulkContinue': ['继续删除', 'Continue'],
   'ws.bulkDeleteN': ['删除 {n} 项', 'Delete {n}'],
@@ -903,15 +1031,33 @@ const DICT: Record<string, [string, string]> = {
   'aichat.title': ['AI 聊天', 'AI Chat'],
   'aichat.resizeHint': ['拖动调整面板宽度（自动记住）', 'Drag to resize panel (auto-saved)'],
   'aichat.conn': ['连接', 'Conn'],
-  'aichat.connFor': ['关联的连接（决定生成 SQL 的方言 + 可拉取库结构）', 'Linked connection (decides SQL dialect + schema source)'],
+  'aichat.connFor': [
+    '关联的连接（决定生成 SQL 的方言 + 可拉取库结构）',
+    'Linked connection (decides SQL dialect + schema source)',
+  ],
   'aichat.db': ['库', 'DB'],
-  'aichat.dbTitle': ['要扫的 database（MySQL）或 schema（PG）；只有这一个范围的表/列会作为 AI 上下文', 'Database (MySQL) or schema (PG) to scan; only its tables/columns are sent as context'],
+  'aichat.dbTitle': [
+    '要扫的 database（MySQL）或 schema（PG）；只有这一个范围的表/列会作为 AI 上下文',
+    'Database (MySQL) or schema (PG) to scan; only its tables/columns are sent as context',
+  ],
   'aichat.dbNone': ['（无）', '(none)'],
-  'aichat.schemaUnsupported': ['当前方言暂不支持库结构上下文（仅 MySQL/PG）', 'Schema context unsupported for this dialect (MySQL/PG only)'],
-  'aichat.schemaNoTarget': ['请先在「库」下拉里选择要扫的 database 或 schema', 'Pick a database or schema in the "DB" dropdown first'],
-  'aichat.schemaEmpty': ['{name} 下未取到任何表/列；可能是空库或权限不足', 'No tables/columns under {name}; possibly empty schema or insufficient privileges'],
+  'aichat.schemaUnsupported': [
+    '当前方言暂不支持库结构上下文（仅 MySQL/PG）',
+    'Schema context unsupported for this dialect (MySQL/PG only)',
+  ],
+  'aichat.schemaNoTarget': [
+    '请先在「库」下拉里选择要扫的 database 或 schema',
+    'Pick a database or schema in the "DB" dropdown first',
+  ],
+  'aichat.schemaEmpty': [
+    '{name} 下未取到任何表/列；可能是空库或权限不足',
+    'No tables/columns under {name}; possibly empty schema or insufficient privileges',
+  ],
   'aichat.useSchema': ['附带库结构', 'Include schema'],
-  'aichat.useSchemaTitle': ['勾选后会把当前连接 information_schema 里的表/列汇总发给 AI 作为上下文（压缩后最多 6KB）', 'When checked, sends a compact list of tables/columns from the current connection as context (capped at ~6KB)'],
+  'aichat.useSchemaTitle': [
+    '勾选后会把当前连接 information_schema 里的表/列汇总发给 AI 作为上下文（压缩后最多 6KB）',
+    'When checked, sends a compact list of tables/columns from the current connection as context (capped at ~6KB)',
+  ],
   'aichat.clear': ['清空对话', 'Clear chat'],
   'aichat.clearConfirm': ['确定清空当前对话历史吗？', 'Clear the chat history?'],
   'aichat.welcomeTitle': ['你的 SQL 副驾', 'Your SQL copilot'],
@@ -919,26 +1065,55 @@ const DICT: Record<string, [string, string]> = {
     '可以问我：「最近 7 天新增用户怎么查」「这条 SQL 为啥慢」「帮我加个索引」…\n勾上「附带库结构」我就知道你的表名和字段了。',
     'Ask me: "how to find users created in the last 7 days", "why is this SQL slow", "add an index for me"…\nCheck "Include schema" so I can see your tables and columns.',
   ],
-  'aichat.inputPh': ['问点什么…（Enter 发送，Shift+Enter 换行）', 'Ask anything… (Enter to send, Shift+Enter for newline)'],
+  'aichat.inputPh': [
+    '问点什么…（Enter 发送，Shift+Enter 换行）',
+    'Ask anything… (Enter to send, Shift+Enter for newline)',
+  ],
   'aichat.send': ['发送', 'Send'],
   'aichat.stop': ['停止', 'Stop'],
   'aichat.thinking': ['思考中…', 'Thinking…'],
-  'aichat.maybeStuck': ['（卡住了？点停止试试，或换个 provider）', '(stuck? click stop or try another provider)'],
+  'aichat.maybeStuck': [
+    '（卡住了？点停止试试，或换个 provider）',
+    '(stuck? click stop or try another provider)',
+  ],
   'aichat.timeoutHint': [
     '请求 {secs} 秒未返回。可能：① provider 限流 / 不可达 ② 本机代理（Privoxy 等）拦了出口 ③ Base URL 错。试试切到「设置 → AI 助手」其它 provider，或检查网络。',
     'No response for {secs}s. Likely: 1) provider throttled / unreachable, 2) local proxy (Privoxy) blocking egress, 3) wrong Base URL. Try another provider in Settings or check your network.',
   ],
   'aichat.insertDraft': ['插入查询页', 'Insert as draft'],
   'aichat.run': ['运行', 'Run'],
-  'aichat.runConfirm': ['确定在所选连接上执行这条 SQL 吗？', 'Run this SQL on the selected connection?'],
-  'aichat.lastSqlHint': ['本轮有 {n} 段 SQL 可一键操作', '{n} SQL block(s) ready for one-click action'],
+  'aichat.runConfirm': [
+    '确定在所选连接上执行这条 SQL 吗？',
+    'Run this SQL on the selected connection?',
+  ],
+  'aichat.lastSqlHint': [
+    '本轮有 {n} 段 SQL 可一键操作',
+    '{n} SQL block(s) ready for one-click action',
+  ],
   'aichat.draftTitle': ['AI 草稿', 'AI draft'],
-  'aichat.switchProvider': ['切换 AI 提供商（仅显示已配置 API Key 的）', 'Switch AI provider (only ones with API key configured shown)'],
+  'aichat.switchProvider': [
+    '切换 AI 提供商（仅显示已配置 API Key 的）',
+    'Switch AI provider (only ones with API key configured shown)',
+  ],
   'aichat.openSettings': ['打开 AI 设置', 'Open AI settings'],
   'aichat.noneConfigured': ['未配置任何 AI provider →', 'No AI provider configured →'],
+  'aichat.runPending': ['{time} 派发中', '{time} dispatched'],
+  'aichat.runOk': ['{time} 已执行', '{time} executed'],
+  'aichat.runErr': ['{time} 执行失败', '{time} failed'],
+  'aichat.askAi': ['问 AI', 'Ask AI'],
+  'aichat.copyError': ['复制错误', 'Copy error'],
+  'aichat.copied': ['已复制', 'Copied'],
+  'aichat.askingAi': ['正在把错误发给 AI…', 'Sending error to AI…'],
+  'aichat.askAiPrompt': [
+    '帮我分析下这条 SQL 为什么报错，并给出修复方案。',
+    'Help me analyze why this SQL errored and how to fix it.',
+  ],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
-  'ws.favoritesEmpty': ['暂无收藏。右键表/视图 →「收藏 / 取消收藏」。', 'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".'],
+  'ws.favoritesEmpty': [
+    '暂无收藏。右键表/视图 →「收藏 / 取消收藏」。',
+    'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".',
+  ],
   'ws.favoritesUntagged': ['未分组', 'Untagged'],
   'ws.favoritesEditTag': ['编辑分组', 'Edit group tag'],
   'ws.scAction': ['操作', 'Action'],

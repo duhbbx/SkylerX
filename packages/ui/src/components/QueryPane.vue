@@ -5,21 +5,30 @@ import {
   type QueryHistoryEntry,
   type QueryResult,
 } from '@db-tool/shared-types'
+import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useDataClient } from '../data-client'
-import { isConnectionError } from '../connError'
+import { emitChatSqlExecuted } from '../chat-bus'
 import { ENV_META, connEnv, connReadOnly, isReadOnlyStatement } from '../connEnv'
-import { type TableContext, existingForeignKeysQuery, explainSql, familyOf, incomingForeignKeysQuery, quoteId } from '../ddl'
-import { t } from '../i18n'
+import { isConnectionError } from '../connError'
+import { useDataClient } from '../data-client'
+import {
+  type TableContext,
+  existingForeignKeysQuery,
+  explainSql,
+  familyOf,
+  incomingForeignKeysQuery,
+  quoteId,
+} from '../ddl'
+import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
+import { addQueryFavorite } from '../favorites'
+import { t } from '../i18n'
 import type { Suggestion } from '../monaco-setup'
+import { type PlanNode, parsePgPlan, planQuery } from '../plan'
+import { pluginBuiltinSnippets } from '../plugins'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
-import { addQueryFavorite } from '../favorites'
-import { pluginBuiltinSnippets } from '../plugins'
 import { splitStatements } from '../sqlSplit'
-import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
-import { type PlanNode, parsePgPlan, planQuery } from '../plan'
 import HistoryPanel from './HistoryPanel.vue'
 import Modal from './Modal.vue'
 import PlanPanel from './PlanPanel.vue'
@@ -62,6 +71,8 @@ const emit = defineEmits<{
   connError: [string, string]
   ai: [string, string, string]
   newDraft: [string, string]
+  /** 结果网格里点「问 AI」：把这条 SQL + 错误 + 当前连接发给 AI 聊天面板 */
+  askAiAboutError: [payload: { connId: string; connName?: string; sql: string; error: string }]
 }>()
 
 const sql = ref('SELECT 1;')
@@ -117,7 +128,11 @@ const paginatable = PAGINATABLE.includes(props.conn.dialect)
  * - currentIncomingFks：子表 → 本表，反向导航 cellRevFks「← 被以下表引用」。
  * 都支持复合外键（columns/refColumns 同长度对齐）。
  */
-interface FkPair { columns: string[]; refTable: string; refColumns: string[] }
+interface FkPair {
+  columns: string[]
+  refTable: string
+  refColumns: string[]
+}
 const currentFks = ref<FkPair[]>([])
 const currentIncomingFks = ref<FkPair[]>([])
 const fkCache = new Map<string, { out: FkPair[]; rev: FkPair[] }>()
@@ -131,8 +146,14 @@ function parseTableRef(ref: string): { schema?: string; table: string } {
 function parseFkRows(rows: Record<string, unknown>[], srcKey: 'reftab' | 'srctab'): FkPair[] {
   const out: FkPair[] = []
   for (const r of rows) {
-    const cols = String(r.cols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-    const refcols = String(r.refcols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const cols = String(r.cols ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const refcols = String(r.refcols ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
     const tab = String(r[srcKey] ?? '')
     if (!cols.length || !refcols.length || cols.length !== refcols.length || !tab) continue
     out.push({ columns: cols, refTable: tab, refColumns: refcols })
@@ -153,15 +174,29 @@ async function loadFks(editTable: string): Promise<void> {
   if (fam !== 'mysql' && fam !== 'pg') return
   const ref = parseTableRef(editTable)
   const ctx: TableContext =
-    fam === 'mysql' ? { database: ref.schema ?? props.conn.database } : { schema: ref.schema ?? 'public' }
+    fam === 'mysql'
+      ? { database: ref.schema ?? props.conn.database }
+      : { schema: ref.schema ?? 'public' }
   const fwdSql = existingForeignKeysQuery(props.conn.dialect, ctx, ref.table)
   const revSql = incomingForeignKeysQuery(props.conn.dialect, ctx, ref.table)
   try {
     const out = fwdSql
-      ? parseFkRows((await client.connections.execute(props.conn.id, fwdSql, [], ctx)).rows as Record<string, unknown>[], 'reftab')
+      ? parseFkRows(
+          (await client.connections.execute(props.conn.id, fwdSql, [], ctx)).rows as Record<
+            string,
+            unknown
+          >[],
+          'reftab',
+        )
       : []
     const rev = revSql
-      ? parseFkRows((await client.connections.execute(props.conn.id, revSql, [], ctx)).rows as Record<string, unknown>[], 'srctab')
+      ? parseFkRows(
+          (await client.connections.execute(props.conn.id, revSql, [], ctx)).rows as Record<
+            string,
+            unknown
+          >[],
+          'srctab',
+        )
       : []
     fkCache.set(editTable, { out, rev })
     currentFks.value = out
@@ -191,13 +226,18 @@ function whereForFk(refColumns: string[], values: unknown[]): string {
       const v = values[i]
       if (v == null) return `${q} IS NULL`
       if (typeof v === 'number') return `${q} = ${v}`
-      if (typeof v === 'boolean') return `${q} = ${fam === 'pg' ? (v ? 'TRUE' : 'FALSE') : v ? '1' : '0'}`
+      if (typeof v === 'boolean')
+        return `${q} = ${fam === 'pg' ? (v ? 'TRUE' : 'FALSE') : v ? '1' : '0'}`
       return `${q} = '${String(v).replace(/'/g, "''")}'`
     })
     .join(' AND ')
 }
 
-interface FkNavigate { refTable: string; refColumns: string[]; values: unknown[] }
+interface FkNavigate {
+  refTable: string
+  refColumns: string[]
+  values: unknown[]
+}
 function onFkNavigate(fk: FkNavigate): void {
   const fam = familyOf(props.conn.dialect)
   const tbl = quoteId(props.conn.dialect, fk.refTable)
@@ -300,11 +340,51 @@ function execOptions(): { database?: string; schema?: string } {
 
 // ── SQL 自动补全（关键字 + 表名 + FROM/JOIN 引用表的列）──
 const KEYWORDS = [
-  'SELECT', 'FROM', 'WHERE', 'INSERT INTO', 'UPDATE', 'DELETE FROM', 'JOIN', 'LEFT JOIN',
-  'INNER JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET',
-  'HAVING', 'AS', 'ON', 'USING', 'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL', 'IN', 'EXISTS',
-  'LIKE', 'BETWEEN', 'DISTINCT', 'UNION', 'UNION ALL', 'ASC', 'DESC', 'VALUES', 'SET',
-  'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+  'SELECT',
+  'FROM',
+  'WHERE',
+  'INSERT INTO',
+  'UPDATE',
+  'DELETE FROM',
+  'JOIN',
+  'LEFT JOIN',
+  'INNER JOIN',
+  'RIGHT JOIN',
+  'FULL JOIN',
+  'CROSS JOIN',
+  'GROUP BY',
+  'ORDER BY',
+  'LIMIT',
+  'OFFSET',
+  'HAVING',
+  'AS',
+  'ON',
+  'USING',
+  'AND',
+  'OR',
+  'NOT',
+  'NULL',
+  'IS NULL',
+  'IS NOT NULL',
+  'IN',
+  'EXISTS',
+  'LIKE',
+  'BETWEEN',
+  'DISTINCT',
+  'UNION',
+  'UNION ALL',
+  'ASC',
+  'DESC',
+  'VALUES',
+  'SET',
+  'CREATE TABLE',
+  'ALTER TABLE',
+  'DROP TABLE',
+  'CASE',
+  'WHEN',
+  'THEN',
+  'ELSE',
+  'END',
 ]
 // 内置片段触发词（输入 sel / ins… 选中即展开模板）
 const BUILTIN_SNIPPETS = [
@@ -321,14 +401,56 @@ const PG_FAM = ['postgresql', 'kingbase']
 const ORA_FAM = ['oracle', 'dm']
 
 const COMMON_FUNCS = [
-  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'COALESCE', 'NULLIF', 'CAST', 'UPPER', 'LOWER',
-  'TRIM', 'LENGTH', 'SUBSTRING', 'REPLACE', 'ROUND', 'ABS',
+  'COUNT',
+  'SUM',
+  'AVG',
+  'MIN',
+  'MAX',
+  'COALESCE',
+  'NULLIF',
+  'CAST',
+  'UPPER',
+  'LOWER',
+  'TRIM',
+  'LENGTH',
+  'SUBSTRING',
+  'REPLACE',
+  'ROUND',
+  'ABS',
 ]
 const FAM_FUNCS: Record<string, string[]> = {
-  mysql: ['CONCAT', 'IFNULL', 'IF', 'DATE_FORMAT', 'NOW', 'CURDATE', 'GROUP_CONCAT', 'UNIX_TIMESTAMP', 'JSON_EXTRACT'],
-  pg: ['STRING_AGG', 'ARRAY_AGG', 'TO_CHAR', 'TO_DATE', 'NOW', 'DATE_TRUNC', 'GENERATE_SERIES', 'JSONB_BUILD_OBJECT'],
+  mysql: [
+    'CONCAT',
+    'IFNULL',
+    'IF',
+    'DATE_FORMAT',
+    'NOW',
+    'CURDATE',
+    'GROUP_CONCAT',
+    'UNIX_TIMESTAMP',
+    'JSON_EXTRACT',
+  ],
+  pg: [
+    'STRING_AGG',
+    'ARRAY_AGG',
+    'TO_CHAR',
+    'TO_DATE',
+    'NOW',
+    'DATE_TRUNC',
+    'GENERATE_SERIES',
+    'JSONB_BUILD_OBJECT',
+  ],
   oracle: ['NVL', 'NVL2', 'DECODE', 'TO_CHAR', 'TO_DATE', 'SYSDATE', 'SUBSTR', 'INSTR', 'LISTAGG'],
-  sqlserver: ['ISNULL', 'GETDATE', 'CONVERT', 'DATEADD', 'DATEDIFF', 'LEN', 'CHARINDEX', 'STRING_AGG'],
+  sqlserver: [
+    'ISNULL',
+    'GETDATE',
+    'CONVERT',
+    'DATEADD',
+    'DATEDIFF',
+    'LEN',
+    'CHARINDEX',
+    'STRING_AGG',
+  ],
 }
 function dialectFuncs(): string[] {
   const d = props.conn.dialect
@@ -445,18 +567,38 @@ async function completion(ctx: {
   const dot = /([\w$]+)\s*\.\s*\w*$/.exec(ctx.before)
   if (dot) {
     const table = resolveAlias(ctx.text, dot[1]) ?? dot[1]
-    return (await loadColumns(table)).map((c) => ({ label: c, kind: 'column' as const, detail: table }))
+    return (await loadColumns(table)).map((c) => ({
+      label: c,
+      kind: 'column' as const,
+      detail: table,
+    }))
   }
   const out: Suggestion[] = KEYWORDS.map((k) => ({ label: k, kind: 'keyword' as const }))
   for (const fn of dialectFuncs())
-    out.push({ label: fn, insertText: `${fn}()`, kind: 'function', detail: t('completion.function') })
+    out.push({
+      label: fn,
+      insertText: `${fn}()`,
+      kind: 'function',
+      detail: t('completion.function'),
+    })
   for (const bs of BUILTIN_SNIPPETS)
-    out.push({ label: bs.label, insertText: bs.insertText, kind: 'snippet', detail: t('completion.snippet') })
+    out.push({
+      label: bs.label,
+      insertText: bs.insertText,
+      kind: 'snippet',
+      detail: t('completion.snippet'),
+    })
   for (const ps of pluginBuiltinSnippets())
-    out.push({ label: ps.name, insertText: ps.sql, kind: 'snippet', detail: t('completion.snippet') })
+    out.push({
+      label: ps.name,
+      insertText: ps.sql,
+      kind: 'snippet',
+      detail: t('completion.snippet'),
+    })
   for (const s of snippets)
     out.push({ label: s.name, insertText: s.sql, kind: 'snippet', detail: t('completion.snippet') })
-  for (const tbl of await loadTables()) out.push({ label: tbl, kind: 'table', detail: t('completion.table') })
+  for (const tbl of await loadTables())
+    out.push({ label: tbl, kind: 'table', detail: t('completion.table') })
   for (const t of parseFromTables(ctx.text)) {
     for (const c of await loadColumns(t)) out.push({ label: c, kind: 'column', detail: t })
   }
@@ -480,9 +622,11 @@ function dangerOf(sql: string): string | null {
 }
 
 // ── 查询参数化（:name 占位）──
-const pendingParams = ref<{ names: string[]; values: Record<string, string>; source: string } | null>(
-  null,
-)
+const pendingParams = ref<{
+  names: string[]
+  values: Record<string, string>
+  source: string
+} | null>(null)
 function paramNames(text: string): string[] {
   return [...new Set([...text.matchAll(/(?<![:\w]):(\w+)/g)].map((m) => m[1]))]
 }
@@ -494,7 +638,9 @@ function paramLiteral(v: string): string {
   return `'${t.replace(/'/g, "''")}'`
 }
 function substituteParams(text: string, values: Record<string, string>): string {
-  return text.replace(/(?<![:\w]):(\w+)/g, (m, n: string) => (n in values ? paramLiteral(values[n]) : m))
+  return text.replace(/(?<![:\w]):(\w+)/g, (m, n: string) =>
+    n in values ? paramLiteral(values[n]) : m,
+  )
 }
 function submitParams(): void {
   const p = pendingParams.value
@@ -539,7 +685,11 @@ function removeComments(): void {
 function runText(text: string): void {
   const names = paramNames(text)
   if (names.length) {
-    pendingParams.value = { names, values: Object.fromEntries(names.map((n) => [n, ''])), source: text }
+    pendingParams.value = {
+      names,
+      values: Object.fromEntries(names.map((n) => [n, ''])),
+      source: text,
+    }
     return
   }
   void execSql(text)
@@ -551,7 +701,10 @@ async function execSql(text: string): Promise<void> {
   if (readOnly) {
     const writes = statements.filter((s) => !isReadOnlyStatement(s))
     if (writes.length) {
-      window.alert(t('query.readOnlyBlocked', { sql: writes[0].slice(0, 60) }))
+      await appAlert({
+        message: t('query.readOnlyBlocked', { sql: writes[0].slice(0, 60) }),
+        variant: 'warn',
+      })
       return
     }
   }
@@ -559,11 +712,19 @@ async function execSql(text: string): Promise<void> {
   if (dangers.length) {
     if (env === 'prod') {
       // 生产库高危操作：要求键入连接名二次确认，防误操作
-      const typed = window.prompt(
-        t('query.prodDanger', { dangers: dangers.join('\n'), name: props.conn.name }),
-      )
+      const typed = await appPrompt({
+        title: t('query.dangerTitle'),
+        message: t('query.prodDanger', { dangers: dangers.join('\n'), name: props.conn.name }),
+        placeholder: props.conn.name,
+      })
       if (typed?.trim() !== props.conn.name) return
-    } else if (!window.confirm(t('query.dangerConfirm', { dangers: dangers.join('\n') }))) {
+    } else if (
+      !(await appConfirm({
+        title: t('query.dangerTitle'),
+        message: t('query.dangerConfirm', { dangers: dangers.join('\n') }),
+        variant: 'danger',
+      }))
+    ) {
       return
     }
   }
@@ -574,8 +735,7 @@ async function execSql(text: string): Promise<void> {
   try {
     for (const stmt of statements) {
       const pageable = paginatable && isSelect(stmt)
-      const editTable =
-        !readOnly && paginatable && isSelect(stmt) ? parseEditableTable(stmt) : null
+      const editTable = !readOnly && paginatable && isSelect(stmt) ? parseEditableTable(stmt) : null
       const tab: ResultTab = {
         id: ++tabSeq,
         sql: stmt,
@@ -588,9 +748,7 @@ async function execSql(text: string): Promise<void> {
         editTable,
       }
       try {
-        const opts = pageable
-          ? { ...execOptions(), limit: tab.pageSize, offset: 0 }
-          : execOptions()
+        const opts = pageable ? { ...execOptions(), limit: tab.pageSize, offset: 0 } : execOptions()
         tab.result = await client.connections.execute(props.conn.id, stmt, [], opts)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -602,6 +760,9 @@ async function execSql(text: string): Promise<void> {
     }
     tabs.value = next
     activeTab.value = 0
+    // AI 聊天面板：以原文 SQL 为 key 广播执行结果，更新代码块旁的执行徽章
+    const firstErr = next.find((t) => t.error)?.error ?? null
+    emitChatSqlExecuted({ sql: text, ok: !firstErr, error: firstErr })
   } finally {
     if (token === runToken) {
       running.value = false
@@ -623,9 +784,7 @@ async function explain(): Promise<void> {
       const r = await client.connections.execute(props.conn.id, pq.sql, [], execOptions())
       const val = String(Object.values(r.rows[0] ?? {})[0] ?? '')
       planData.value =
-        pq.format === 'pg-json'
-          ? { tree: parsePgPlan(val), text: null }
-          : { tree: null, text: val }
+        pq.format === 'pg-json' ? { tree: parsePgPlan(val), text: null } : { tree: null, text: val }
       showHistory.value = false
       showSnippets.value = false
       showPlan.value = true
@@ -634,7 +793,7 @@ async function explain(): Promise<void> {
     // 回退：其余方言用普通 EXPLAIN，结果进结果页
     const ex = explainSql(props.conn.dialect, stmt)
     if (!ex) {
-      window.alert(t('query.explainUnsupported'))
+      await appAlert({ message: t('query.explainUnsupported'), variant: 'warn' })
       return
     }
     const tab: ResultTab = {
@@ -652,7 +811,7 @@ async function explain(): Promise<void> {
     activeTab.value = 0
     showPlan.value = false
   } catch (e) {
-    window.alert(t('query.explainFailed', { msg: e instanceof Error ? e.message : String(e) }))
+    toast.error(t('query.explainFailed', { msg: e instanceof Error ? e.message : String(e) }))
   } finally {
     running.value = false
   }
@@ -711,7 +870,9 @@ async function gotoPage(tab: ResultTab | undefined, page: number): Promise<void>
 // 列筛选 → 重建单表查询并从第 0 页重查
 function applyServerFilter(tab: ResultTab | undefined, where: string): void {
   if (!tab?.editTable) return
-  tab.sql = where ? `SELECT * FROM ${tab.editTable} WHERE ${where}` : `SELECT * FROM ${tab.editTable}`
+  tab.sql = where
+    ? `SELECT * FROM ${tab.editTable} WHERE ${where}`
+    : `SELECT * FROM ${tab.editTable}`
   void gotoPage(tab, 0)
 }
 
@@ -743,7 +904,11 @@ async function doCommit(): Promise<void> {
     await gotoPage(tab, tab.page) // 刷新当前页（结果变更会重置网格编辑态）
     await loadHistory()
   } catch (e) {
-    window.alert(t('query.commitFailed', { msg: e instanceof Error ? e.message : String(e) }))
+    await appAlert({
+      title: t('query.commitFailedTitle'),
+      message: t('query.commitFailed', { msg: e instanceof Error ? e.message : String(e) }),
+      variant: 'danger',
+    })
   }
 }
 
@@ -779,27 +944,30 @@ function onPickSnippet(picked: string): void {
   sql.value = picked
   showSnippets.value = false
 }
-function saveSnippet(sqlText: string): void {
+async function saveSnippet(sqlText: string): Promise<void> {
   const text = sqlText.trim()
   if (!text) return
-  const name = window.prompt(t('query.snippetNamePrompt'), text.slice(0, 40))
+  const name = await appPrompt({
+    message: t('query.snippetNamePrompt'),
+    defaultValue: text.slice(0, 40),
+  })
   if (name === null) return
-  const tags = window.prompt(t('query.snippetTagsPrompt'), '') ?? ''
+  const tags = (await appPrompt({ message: t('query.snippetTagsPrompt'), defaultValue: '' })) ?? ''
   addSnippet(name, text, tags.split(','))
 }
 // 工具栏「存为片段」：有选区则存选中语句，否则存整个编辑器内容
 function saveCurrentSnippet(): void {
   const selected = editorRef.value?.getSelectedText()?.trim()
-  saveSnippet(selected || sql.value)
+  void saveSnippet(selected || sql.value)
 }
 // 工具栏「收藏此查询」：把选区或整段 SQL 存入收藏夹（kind = 'query'）
-function favoriteCurrentQuery(): void {
+async function favoriteCurrentQuery(): Promise<void> {
   const selected = editorRef.value?.getSelectedText()?.trim()
   const text = (selected || sql.value).trim()
   if (!text) return
-  const name = window.prompt(t('query.favName'), text.slice(0, 40))
+  const name = await appPrompt({ message: t('query.favName'), defaultValue: text.slice(0, 40) })
   if (name == null) return
-  const tag = window.prompt(t('query.favTag'), '') ?? ''
+  const tag = (await appPrompt({ message: t('query.favTag'), defaultValue: '' })) ?? ''
   addQueryFavorite({
     connId: props.conn.id,
     connName: props.conn.name || t('common.untitled'),
@@ -958,11 +1126,15 @@ onBeforeUnmount(() => window.removeEventListener('mousedown', onWinClickForMore)
         :filterable="!!cur?.editTable"
         :foreign-keys="currentFks"
         :incoming-foreign-keys="currentIncomingFks"
+        :sql="cur?.sql"
+        :conn-id="conn.id"
+        :conn-name="conn.name"
         @change-page="(p) => gotoPage(cur, p)"
         @change-page-size="(s) => changePageSize(cur, s)"
         @commit="onCommit"
         @filter="(w) => applyServerFilter(cur, w)"
         @navigate-fk="onFkNavigate"
+        @ask-ai="(p) => emit('askAiAboutError', p)"
       />
     </div>
 
