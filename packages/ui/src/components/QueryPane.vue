@@ -15,6 +15,7 @@ import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import type { Suggestion } from '../monaco-setup'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
+import { pluginBuiltinSnippets } from '../plugins'
 import { splitStatements } from '../sqlSplit'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { type PlanNode, parsePgPlan, planQuery } from '../plan'
@@ -379,6 +380,8 @@ async function completion(ctx: {
     out.push({ label: fn, insertText: `${fn}()`, kind: 'function', detail: t('completion.function') })
   for (const bs of BUILTIN_SNIPPETS)
     out.push({ label: bs.label, insertText: bs.insertText, kind: 'snippet', detail: t('completion.snippet') })
+  for (const ps of pluginBuiltinSnippets())
+    out.push({ label: ps.name, insertText: ps.sql, kind: 'snippet', detail: t('completion.snippet') })
   for (const s of snippets)
     out.push({ label: s.name, insertText: s.sql, kind: 'snippet', detail: t('completion.snippet') })
   for (const tbl of await loadTables()) out.push({ label: tbl, kind: 'table', detail: t('completion.table') })

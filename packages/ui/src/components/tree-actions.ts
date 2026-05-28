@@ -1,4 +1,5 @@
 import { MetaNodeKind } from '@db-tool/shared-types'
+import { pluginTreeActions } from '../plugins'
 import type { TreeController } from './tree-controller'
 import type { TreeNode } from './treeNode'
 
@@ -285,7 +286,8 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
 ]
 
-/** 取某节点适用的动作列表。 */
+/** 取某节点适用的动作列表（合入插件注册的动作；插件动作排在内置之后）。 */
 export function actionsFor(node: TreeNode): TreeAction[] {
-  return TREE_ACTIONS.filter((a) => a.kinds.includes(node.kind) && (!a.enabled || a.enabled(node)))
+  const all = [...TREE_ACTIONS, ...pluginTreeActions()]
+  return all.filter((a) => a.kinds.includes(node.kind) && (!a.enabled || a.enabled(node)))
 }
