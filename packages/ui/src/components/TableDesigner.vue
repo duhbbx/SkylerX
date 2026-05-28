@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import {
   type ColumnDef,
@@ -89,6 +89,18 @@ const ddl = computed(() => {
   return buildCreateTable(props.dialect, props.ctx, tableName.value, spec)
 })
 const target = [props.ctx.database, props.ctx.schema].filter(Boolean).join(' / ')
+const previewText = ref('')
+watch(ddl, (v) => { previewText.value = v }, { immediate: true })
+async function copyDdl(): Promise<void> {
+  await navigator.clipboard?.writeText(previewText.value)
+}
+function compressDdl(): void {
+  previewText.value = previewText.value
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--[^\n]*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 /** 改表模式：载入现有列结构作为初始值，并留存原始快照用于 diff。 */
 async function loadExisting(): Promise<void> {
@@ -363,7 +375,7 @@ function saveAs(): void {
           <tbody>
             <tr v-for="(ix, i) in spec.indexes" :key="i">
               <td><input v-model="ix.name" /></td>
-              <td><input v-model="ix.columns" /></td>
+              <td><input v-model="ix.columns" :placeholder="t('designer.idxColsPh')" :title="t('designer.idxColsTitle')" /></td>
               <td>
                 <select v-model="ix.type">
                   <option value="">—</option>
@@ -481,7 +493,11 @@ function saveAs(): void {
 
       <!-- SQL 预览（只读 Monaco，带语法高亮） -->
       <div v-else class="preview-wrap">
-        <SqlEditor :model-value="ddl" readonly />
+        <div class="preview-bar">
+          <button class="ghost" :title="t('designer.copyDdl')" @click="copyDdl">{{ t('designer.copyDdl') }}</button>
+          <button class="ghost" :title="t('designer.compressDdl')" @click="compressDdl">{{ t('designer.compressDdl') }}</button>
+        </div>
+        <SqlEditor :model-value="previewText" readonly />
       </div>
 
       <!-- 字段类型自动补全（始终存在，不参与上面的 v-if 链） -->
@@ -714,6 +730,18 @@ function saveAs(): void {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.preview-bar {
+  display: flex;
+  gap: 6px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.preview-bar button {
+  font-size: 11px;
+  padding: 2px 10px;
 }
 .banner.err {
   margin: 0;

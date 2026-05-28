@@ -144,6 +144,28 @@ describe('MySQL charset / collation', () => {
   })
 })
 
+describe('index column syntax (prefix / order)', () => {
+  const baseCol = { ...emptyColumn(), name: 'id', type: 'int', nullable: false }
+  it('MySQL inline index emits prefix length + DESC', () => {
+    const spec = {
+      ...emptyTableSpec(),
+      columns: [{ ...baseCol }],
+      indexes: [{ name: 'idx_ab', columns: 'a(10) DESC, b', unique: false }],
+    }
+    const out = buildCreateTable(DbDialect.MySQL, { database: 'd' }, 't', spec)
+    expect(out).toContain('INDEX `idx_ab` (`a`(10) DESC, `b`)')
+  })
+  it('PG CREATE INDEX preserves DESC (no prefix length)', () => {
+    const spec = {
+      ...emptyTableSpec(),
+      columns: [{ ...baseCol }],
+      indexes: [{ name: 'idx_a', columns: 'a desc', unique: false }],
+    }
+    const out = buildCreateTable(DbDialect.PostgreSQL, { database: 'd', schema: 'public' }, 't', spec)
+    expect(out).toContain('CREATE INDEX "idx_a" ON "t" ("a" DESC);')
+  })
+})
+
 describe('formatBytes', () => {
   it('renders human-readable sizes', () => {
     expect(formatBytes(0)).toBe('0 B')

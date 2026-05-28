@@ -490,6 +490,22 @@ export function objectTemplate(dialect: DbDialect, kind: ObjectKind, _ctx: Table
 const esc = (s: string) => s.replace(/'/g, "''")
 const splitCols = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
 
+/**
+ * 解析索引列项：支持 `name`、`name(10)`（MySQL 前缀长度）、`name DESC`、`name(10) DESC` 等组合。
+ * 返回 { name, suffix }，suffix 已含 `(N)` 与 ` ASC/DESC` 顺序。
+ */
+function parseIdxCol(raw: string): { name: string; suffix: string } {
+  const m = /^([^\s(]+)(\s*\([^)]*\))?\s*(asc|desc)?\s*$/i.exec(raw.trim())
+  if (!m) return { name: raw.trim(), suffix: '' }
+  const len = (m[2] ?? '').replace(/\s+/g, '')
+  const ord = m[3] ? ` ${m[3].toUpperCase()}` : ''
+  return { name: m[1], suffix: `${len}${ord}` }
+}
+function quoteIdxCol(dialect: DbDialect, raw: string): string {
+  const p = parseIdxCol(raw)
+  return `${quoteId(dialect, p.name)}${p.suffix}`
+}
+
 function colType(c: ColumnDef): string {
   const len = c.length.trim()
   const scale = c.scale.trim()
@@ -629,7 +645,9 @@ export function buildCreateTable(
       const prefix = ty === 'FULLTEXT' || ty === 'SPATIAL' ? `${ty} ` : ''
       const using = ty === 'BTREE' || ty === 'HASH' ? ` USING ${ty}` : ''
       const uniq = idx.unique && !prefix ? 'UNIQUE ' : ''
-      lines.push(`  ${uniq}${prefix}INDEX ${q(idx.name.trim() || `idx_${c.join('_')}`)} (${c.map(q).join(', ')})${using}`)
+      const colExpr = c.map((r) => quoteIdxCol(dialect, r)).join(', ')
+      const idxName = q(idx.name.trim() || `idx_${c.map((r) => parseIdxCol(r).name).join('_')}`)
+      lines.push(`  ${uniq}${prefix}INDEX ${idxName} (${colExpr})${using}`)
     }
   }
 
@@ -654,8 +672,10 @@ export function buildCreateTable(
       const c = splitCols(idx.columns)
       if (!c.length) continue
       const using = idx.type?.trim() ? ` USING ${idx.type.trim()}` : ''
+      const baseNames = c.map((r) => parseIdxCol(r).name)
+      const colExpr = c.map((r) => quoteIdxCol(dialect, r)).join(', ')
       statements.push(
-        `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${tbl}_${c.join('_')}`)} ON ${name}${using} (${c.map(q).join(', ')});`,
+        `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${tbl}_${baseNames.join('_')}`)} ON ${name}${using} (${colExpr});`,
       )
     }
   }
@@ -802,8 +822,10 @@ export function buildAlterTable(
     const o = idx.name.trim() ? origIdxByName.get(idx.name.trim()) : undefined
     if (o && idxSig(o) === idxSig(idx)) continue // 未变化，跳过
     const using = idx.type?.trim() ? ` USING ${idx.type.trim()}` : ''
+    const baseNames = cols.map((r) => parseIdxCol(r).name)
+    const colExpr = cols.map((r) => quoteIdxCol(dialect, r)).join(', ')
     stmts.push(
-      `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${cols.join('_')}`)} ON ${tableRef}${using} (${cols.map(q).join(', ')})`,
+      `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${baseNames.join('_')}`)} ON ${tableRef}${using} (${colExpr})`,
     )
   }
 

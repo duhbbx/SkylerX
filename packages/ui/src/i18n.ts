@@ -326,6 +326,10 @@ const DICT: Record<string, [string, string]> = {
   'designer.colCharsetPh': ['utf8mb4', 'utf8mb4'],
   'designer.colCollation': ['排序规则', 'Collation'],
   'designer.colCollationPh': ['utf8mb4_unicode_ci', 'utf8mb4_unicode_ci'],
+  'designer.copyDdl': ['复制 DDL', 'Copy DDL'],
+  'designer.compressDdl': ['压缩为单行', 'Compress to one line'],
+  'designer.idxColsPh': ['col1, col2(10) DESC', 'col1, col2(10) DESC'],
+  'designer.idxColsTitle': ['多列逗号分隔；可加前缀长度 col(10)（MySQL）与排序 ASC/DESC', 'Comma-separated; supports col(10) prefix (MySQL) and ASC/DESC'],
   'designer.generated': ['生成列表达式', 'Generated expression'],
   'designer.generatedPh': ['如 price * qty（留空=普通列）', 'e.g. price * qty (empty = normal column)'],
 
