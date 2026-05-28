@@ -437,6 +437,9 @@ const DICT: Record<string, [string, string]> = {
   'query.ai': ['AI', 'AI'],
   'query.ai.title': ['用 AI 解释 / 诊断 / 优化当前 SQL（有错误自动切到诊断）', 'Explain / diagnose / optimize current SQL with AI (diagnose mode if error present)'],
   'query.fkTabTitle': ['→ {tbl} (FK)', '→ {tbl} (FK)'],
+  'query.favorite': ['收藏', 'Favorite'],
+  'query.favoriteTitle': ['把当前选区/全部 SQL 加入收藏夹', 'Add current selection / SQL to favorites'],
+  'query.favName': ['给这条查询起个名字：', 'Name this query:'],
 
   // ── 结构对比 SchemaDiffDialog ──
   'sdiff.status.added': ['新增表', 'New table'],

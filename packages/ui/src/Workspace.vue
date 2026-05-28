@@ -315,12 +315,16 @@ async function onToggleFavorite(connId: string, node: TreeNode): Promise<void> {
   })
 }
 
-// 收藏夹点击：定位到对象 + 查询前 200 行
+// 收藏夹点击：对象 → 定位 + 查询前 200 行；查询 → 在该连接以草稿打开 SQL
 async function onFavoriteOpen(fav: Favorite): Promise<void> {
   shortcutsOpen.value = false
   favoritesOpen.value = false
-  await navRef.value?.revealObject(fav.connId, fav.schema, fav.name)
   const conn = await client.connections.get(fav.connId)
+  if (fav.kind === 'query') {
+    tabsRef.value?.openDraft(conn, fav.sqlName, fav.name)
+    return
+  }
+  await navRef.value?.revealObject(fav.connId, fav.schema, fav.name)
   tabsRef.value?.runSql(conn, previewSql(conn.dialect, fav.sqlName, 200))
 }
 
@@ -1036,9 +1040,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     <div class="fav-list">
       <div v-if="!favorites.length" class="fav-empty">{{ t('ws.favoritesEmpty') }}</div>
       <div v-for="f in favorites" :key="f.id" class="fav-row" @click="onFavoriteOpen(f)">
-        <span class="fav-icon">{{ f.kind === 'view' ? '👁' : '▦' }}</span>
+        <span class="fav-icon">{{ f.kind === 'view' ? '👁' : f.kind === 'query' ? '★' : '▦' }}</span>
         <span class="fav-name">{{ f.name }}</span>
-        <span class="fav-meta">{{ f.connName }} · {{ f.schema }}</span>
+        <span class="fav-meta">{{ f.connName }}<template v-if="f.schema"> · {{ f.schema }}</template></span>
         <button class="fav-del" :title="t('common.remove')" @click.stop="removeFavorite(f.id)">✕</button>
       </div>
     </div>

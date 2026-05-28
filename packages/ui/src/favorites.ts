@@ -1,20 +1,20 @@
 import type { DbDialect } from '@db-tool/shared-types'
 import { reactive, watch } from 'vue'
 
-/** 一条收藏：指向某连接下的一个对象（表/视图），用于快速跳转/预览。 */
+/** 一条收藏：对象（表/视图，跳转预览）或查询（保存的 SQL，打开为草稿）。 */
 export interface Favorite {
-  /** 稳定主键：`${connId}|${sqlName}` */
+  /** 稳定主键：对象=`${connId}|${sqlName}`；查询=`q|${connId}|${createdAt}` */
   id: string
   connId: string
   connName: string
   dialect: DbDialect
-  /** 所在库/schema（reveal 时定位用） */
+  /** 所在库/schema（reveal 时定位用；查询收藏可空） */
   schema: string
-  /** 对象名 */
+  /** 对象名 / 查询标题 */
   name: string
-  /** 限定名（preview 时直接用） */
+  /** 限定名（preview 时直接用；查询收藏存原始 SQL） */
   sqlName: string
-  /** 'table' | 'view' */
+  /** 'table' | 'view' | 'query' */
   kind: string
   createdAt: number
 }
@@ -69,4 +69,26 @@ export function toggleFavorite(fav: Omit<Favorite, 'id' | 'createdAt'>): boolean
 export function removeFavorite(id: string): void {
   const i = favorites.findIndex((f) => f.id === id)
   if (i >= 0) favorites.splice(i, 1)
+}
+
+/** 收藏一段查询 SQL：在收藏夹以 query 类型展示，点击打开为草稿。 */
+export function addQueryFavorite(args: {
+  connId: string
+  connName: string
+  dialect: DbDialect
+  name: string
+  sql: string
+}): void {
+  const at = Date.now()
+  favorites.unshift({
+    id: `q|${args.connId}|${at}|${Math.random().toString(36).slice(2, 6)}`,
+    connId: args.connId,
+    connName: args.connName,
+    dialect: args.dialect,
+    schema: '',
+    name: args.name.trim() || `query ${new Date(at).toLocaleString()}`,
+    sqlName: args.sql,
+    kind: 'query',
+    createdAt: at,
+  })
 }

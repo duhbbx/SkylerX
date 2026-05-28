@@ -15,6 +15,7 @@ import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import type { Suggestion } from '../monaco-setup'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
+import { addQueryFavorite } from '../favorites'
 import { pluginBuiltinSnippets } from '../plugins'
 import { splitStatements } from '../sqlSplit'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
@@ -720,6 +721,21 @@ function saveCurrentSnippet(): void {
   const selected = editorRef.value?.getSelectedText()?.trim()
   saveSnippet(selected || sql.value)
 }
+// 工具栏「收藏此查询」：把选区或整段 SQL 存入收藏夹（kind = 'query'）
+function favoriteCurrentQuery(): void {
+  const selected = editorRef.value?.getSelectedText()?.trim()
+  const text = (selected || sql.value).trim()
+  if (!text) return
+  const name = window.prompt(t('query.favName'), text.slice(0, 40))
+  if (name == null) return
+  addQueryFavorite({
+    connId: props.conn.id,
+    connName: props.conn.name || t('common.untitled'),
+    dialect: props.conn.dialect,
+    name,
+    sql: text,
+  })
+}
 
 function selectTab(i: number): void {
   showHistory.value = false
@@ -766,6 +782,7 @@ onMounted(() => {
       <button class="ghost" :title="t('query.saveSnippet.title')" @click="saveCurrentSnippet">
         {{ t('query.saveSnippet') }}
       </button>
+      <button class="ghost" :title="t('query.favoriteTitle')" @click="favoriteCurrentQuery">★ {{ t('query.favorite') }}</button>
       <button class="ghost" :title="t('query.ai.title')" @click="askAi">✨ {{ t('query.ai') }}</button>
 
       <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
