@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { t } from '../i18n'
 
 type Width = 'normal' | 'medium' | 'wide' | 'xl'
@@ -8,17 +8,76 @@ const props = defineProps<{
   title?: string
   /** 'normal' 600 / 'medium' 720 / 'wide' 880 / 'xl' 1100；缺省 = normal */
   width?: Width
-  /** 高度固定：弹窗整体保持 min(640px, 86vh)，内容超出时 body 内部上下滚动；防止切 tab/分区导致高度跳变 */
+  /**
+   * 高度固定：弹窗保持稳定的初始宽高，切 tab/分区时窗体不跳；
+   * 同时启用 CSS resize: both 让用户可拖右下角自由调整宽高。
+   * 配合 storageKey 时尺寸自动持久化（localStorage `skylerx.modal.<key>`）。
+   */
   fixedHeight?: boolean
+  /**
+   * 尺寸持久化键：传该 key 后，本次拖出的宽高会写入 localStorage，下次打开同 key 弹窗恢复。
+   * 不同 key 互不干扰。仅在 fixedHeight 模式下生效。
+   */
+  storageKey?: string
 }>()
 const emit = defineEmits<{ close: [] }>()
 
 const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
+const modalEl = ref<HTMLDivElement>()
+
+/** 持久化的尺寸（仅 fixedHeight + storageKey 时启用）。 */
+function loadSize(): { width?: number; height?: number } {
+  if (!props.storageKey) return {}
+  try {
+    const raw = localStorage.getItem(`skylerx.modal.${props.storageKey}`)
+    if (!raw) return {}
+    return JSON.parse(raw) as { width?: number; height?: number }
+  } catch {
+    return {}
+  }
+}
+function saveSize(width: number, height: number): void {
+  if (!props.storageKey) return
+  try {
+    localStorage.setItem(`skylerx.modal.${props.storageKey}`, JSON.stringify({ width, height }))
+  } catch {
+    /* 忽略 */
+  }
+}
+
+let ro: ResizeObserver | null = null
+
+onMounted(() => {
+  if (!props.fixedHeight || !modalEl.value) return
+  // 恢复上次保存的尺寸（覆盖默认 CSS 宽高）
+  const saved = loadSize()
+  if (saved.width) modalEl.value.style.width = `${saved.width}px`
+  if (saved.height) modalEl.value.style.height = `${saved.height}px`
+  // 监听拖拽变化 → 持久化
+  if (props.storageKey && 'ResizeObserver' in window) {
+    let raf = 0
+    ro = new ResizeObserver((entries) => {
+      const e = entries[0]
+      if (!e) return
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const { width, height } = e.contentRect
+        saveSize(Math.round(width), Math.round(height))
+      })
+    })
+    ro.observe(modalEl.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  ro = null
+})
 </script>
 
 <template>
   <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal" :class="[widthClass, { fixed: fixedHeight }]">
+    <div ref="modalEl" class="modal" :class="[widthClass, { fixed: fixedHeight }]">
       <div class="modal-head">
         <span>{{ title }}</span>
         <button class="x" :title="t('common.close')" @click="emit('close')">×</button>
@@ -26,6 +85,7 @@ const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
       <div class="modal-body">
         <slot />
       </div>
+      <span v-if="fixedHeight" class="resize-grip" :title="t('common.resizeHint')" />
     </div>
   </div>
 </template>
@@ -50,6 +110,7 @@ const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
   border-radius: 10px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
   overflow: hidden; /* 强制截断横向溢出，避免子内容把弹窗撑出横向滚动条 */
+  position: relative;
 }
 .modal.w-normal {
   width: 600px;
@@ -64,8 +125,8 @@ const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
   width: 1100px;
 }
 /*
- * fixedHeight：弹窗本身有稳定的初始宽高，切 tab/分区时窗体不跳；同时允许用户拖右下角自由调整宽高
- * （CSS resize: both）。最小尺寸保证可用，最大尺寸 = 视口减边距。
+ * fixedHeight：弹窗有稳定的初始宽高（切 tab 不跳），同时允许用户拖右下角自由调整宽高。
+ * 最小 480 × 360 保证可用；最大 = 视口减边距；恢复保存尺寸由脚本写 inline style。
  */
 .modal.fixed {
   height: min(640px, 86vh);
@@ -73,21 +134,27 @@ const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
   min-width: 480px;
   min-height: 360px;
 }
-/* 让右下角的浏览器原生 resize 把手更显眼一点 */
-.modal.fixed::after {
-  content: '';
+/* 视觉化 resize 把手：右下角双线小三角，鼠标悬停时显示 nwse-resize 光标 */
+.resize-grip {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 12px;
-  height: 12px;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  pointer-events: none; /* 不抢点击；浏览器原生 resize 区域仍在 .modal.fixed 角 */
   background:
-    linear-gradient(135deg, transparent 0 6px, var(--muted) 6px 7px, transparent 7px 9px, var(--muted) 9px 10px, transparent 10px);
-  pointer-events: none;
-  opacity: 0.6;
-}
-.modal.fixed {
-  position: relative;
+    linear-gradient(
+      135deg,
+      transparent 0 8px,
+      var(--muted) 8px 9px,
+      transparent 9px 11px,
+      var(--muted) 11px 12px,
+      transparent 12px 14px,
+      var(--muted) 14px 15px,
+      transparent 15px
+    );
+  opacity: 0.7;
 }
 .modal-head {
   display: flex;
@@ -127,5 +194,4 @@ const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
   overflow: hidden;
   padding: 14px 18px;
 }
-
 </style>

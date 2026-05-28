@@ -362,6 +362,7 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 通用补充 ──
   'common.close': ['关闭', 'Close'],
+  'common.resizeHint': ['拖动右下角调整大小（会自动记住）', 'Drag the bottom-right corner to resize (auto-saved)'],
   'common.none': ['（无）', '(none)'],
   'diff.onlyMyPg': ['暂仅支持 MySQL / PostgreSQL 系方言', 'MySQL / PostgreSQL dialects only'],
   'diff.onlyMyPgShort': ['暂仅支持 MySQL / PostgreSQL 系', 'MySQL / PostgreSQL only'],

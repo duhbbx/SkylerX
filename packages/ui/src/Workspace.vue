@@ -1028,6 +1028,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     :title="editing.connId ? t('ws.titleEditConn') : t('ws.titleNewConn')"
     width="medium"
     fixed-height
+    storage-key="connection"
     @close="onCancel"
   >
     <ConnectionForm

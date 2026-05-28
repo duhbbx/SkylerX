@@ -34,7 +34,7 @@ function watermarkPreviewSvg(): string {
 </script>
 
 <template>
-  <Modal :title="t('settings.title')" width="medium" fixed-height @close="emit('close')">
+  <Modal :title="t('settings.title')" width="medium" fixed-height storage-key="settings" @close="emit('close')">
     <div class="cfg">
       <nav class="cfg-nav">
         <button
