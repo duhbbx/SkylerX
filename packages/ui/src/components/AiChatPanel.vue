@@ -31,6 +31,14 @@ const connId = ref<string>(props.activeConnId ?? '')
 const useSchema = ref(false)
 const schemaText = ref('')
 const schemaLoading = ref(false)
+/**
+ * 当前要扫的容器名（MySQL = database 名；PG = schema 名）。
+ * 缺省时按连接的默认库/schema（MySQL: conn.database / PG: 'public'）。
+ * 用户也可以在面板里手动切。
+ */
+const dbList = ref<string[]>([])
+const selectedDb = ref<string>('')
+const dbLoading = ref(false)
 
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
@@ -73,6 +81,7 @@ onMounted(async () => {
   loadFromStorage()
   conns.value = await client.connections.list()
   if (!connId.value) connId.value = props.activeConnId ?? conns.value[0]?.id ?? ''
+  await loadDbList()
   scrollToBottom()
 })
 
@@ -82,6 +91,18 @@ watch(
     if (v) connId.value = v
   },
 )
+// 切连接 → 重新拉 database/schema 列表 + 重置 schema 缓存
+watch(connId, async () => {
+  schemaText.value = ''
+  selectedDb.value = ''
+  await loadDbList()
+  if (useSchema.value) void loadSchema()
+})
+// 切库 → 旧 schema 文本作废
+watch(selectedDb, () => {
+  schemaText.value = ''
+  if (useSchema.value) void loadSchema()
+})
 
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
   if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
@@ -90,30 +111,72 @@ function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
 }
 const connOf = (id: string): ConnectionConfig | undefined => conns.value.find((c) => c.id === id)
 
+/** 拉「当前连接的所有 database / schema 列表」用于下拉。系统库过滤掉。 */
+async function loadDbList(): Promise<void> {
+  const c = connOf(connId.value)
+  dbList.value = []
+  if (!c) return
+  const f = fam(c.dialect)
+  if (f === 'other') return
+  dbLoading.value = true
+  try {
+    const sql =
+      f === 'mysql'
+        ? `SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA
+           WHERE SCHEMA_NAME NOT IN ('mysql','information_schema','performance_schema','sys')
+           ORDER BY SCHEMA_NAME`
+        : `SELECT nspname AS name FROM pg_namespace
+           WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'
+           ORDER BY nspname`
+    const res = (await client.connections.execute(c.id, sql, [])) as QueryResult
+    dbList.value = (res.rows as { name: string }[]).map((r) => r.name)
+    // 默认选项：连接的 database（mysql）/ public（pg）/ 列表第一个
+    const def = f === 'mysql' ? c.database || dbList.value[0] : 'public'
+    if (!selectedDb.value && def && dbList.value.includes(def)) selectedDb.value = def
+    if (!selectedDb.value) selectedDb.value = dbList.value[0] ?? ''
+  } catch {
+    /* 拉不到就允许用户手动输入 / 留空走默认库 */
+  } finally {
+    dbLoading.value = false
+  }
+}
+
 async function loadSchema(): Promise<void> {
   const c = connOf(connId.value)
   if (!c) return
   const f = fam(c.dialect)
   if (f === 'other') {
     schemaText.value = ''
+    error.value = t('aichat.schemaUnsupported')
     return
   }
   schemaLoading.value = true
+  error.value = null
   try {
+    // 用户选的容器名优先；没选时回退到连接默认（mysql=database / pg=public）
+    const target = selectedDb.value || (f === 'mysql' ? c.database || '' : 'public')
+    if (!target) {
+      schemaText.value = ''
+      error.value = t('aichat.schemaNoTarget')
+      return
+    }
     const sql =
       f === 'mysql'
         ? `SELECT TABLE_NAME tbl, COLUMN_NAME col, COLUMN_TYPE ty FROM information_schema.COLUMNS
-           WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION LIMIT 2000`
+           WHERE TABLE_SCHEMA = '${target.replace(/'/g, "''")}' ORDER BY TABLE_NAME, ORDINAL_POSITION LIMIT 2000`
         : `SELECT table_name tbl, column_name col, data_type ty FROM information_schema.columns
-           WHERE table_schema = 'public' ORDER BY table_name, ordinal_position LIMIT 2000`
-    const res = (await client.connections.execute(c.id, sql, [], { database: c.database })) as QueryResult
+           WHERE table_schema = '${target.replace(/'/g, "''")}' ORDER BY table_name, ordinal_position LIMIT 2000`
+    const res = (await client.connections.execute(c.id, sql, [], {
+      database: f === 'mysql' ? target : c.database,
+      schema: f === 'pg' ? target : undefined,
+    })) as QueryResult
     const byTable = new Map<string, string[]>()
     for (const r of res.rows as Record<string, unknown>[]) {
       const tbl = String(r.tbl)
       if (!byTable.has(tbl)) byTable.set(tbl, [])
       byTable.get(tbl)?.push(`${String(r.col)} ${String(r.ty)}`)
     }
-    const lines: string[] = []
+    const lines: string[] = [`-- ${target}`]
     for (const [tbl, cols] of byTable) {
       lines.push(`${tbl}(${cols.join(', ')})`)
       if (lines.join('\n').length > 6000) {
@@ -121,7 +184,8 @@ async function loadSchema(): Promise<void> {
         break
       }
     }
-    schemaText.value = lines.join('\n')
+    schemaText.value = byTable.size ? lines.join('\n') : ''
+    if (!byTable.size) error.value = t('aichat.schemaEmpty', { name: target })
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -241,17 +305,30 @@ function onKeydown(e: KeyboardEvent): void {
       <button class="x" :title="t('common.close')" @click="emit('close')">×</button>
     </header>
 
+    <!-- 上下文选择栏：紧凑两行布局，文字 white-space:nowrap 不再 wrap -->
     <div class="bar">
-      <select v-model="connId" class="sel" :title="t('aichat.connFor')">
-        <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name || c.id }}</option>
-      </select>
-      <label class="schk" :title="t('aichat.useSchemaTitle')">
-        <input type="checkbox" :checked="useSchema" @change="toggleSchema" />
-        <span class="schk-lbl">{{ t('aichat.useSchema') }}</span>
-        <span v-if="schemaLoading" class="mini">…</span>
-        <span v-else-if="useSchema && schemaText" class="mini" :title="schemaText">✓</span>
-      </label>
-      <button class="ghost sm" :disabled="!messages.length" @click="clearAll">{{ t('aichat.clear') }}</button>
+      <div class="bar-row">
+        <span class="bar-lbl">{{ t('aichat.conn') }}</span>
+        <select v-model="connId" class="sel" :title="t('aichat.connFor')">
+          <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name || c.id }} · {{ c.dialect }}</option>
+        </select>
+      </div>
+      <div class="bar-row">
+        <span class="bar-lbl">{{ t('aichat.db') }}</span>
+        <select v-model="selectedDb" class="sel" :disabled="dbLoading || !dbList.length" :title="t('aichat.dbTitle')">
+          <option v-if="!dbList.length" value="">{{ dbLoading ? '…' : t('aichat.dbNone') }}</option>
+          <option v-for="d in dbList" :key="d" :value="d">{{ d }}</option>
+        </select>
+      </div>
+      <div class="bar-row">
+        <label class="schk" :title="t('aichat.useSchemaTitle')">
+          <input type="checkbox" :checked="useSchema" @change="toggleSchema" />
+          <span class="schk-lbl">{{ t('aichat.useSchema') }}</span>
+          <span v-if="schemaLoading" class="mini">…</span>
+          <span v-else-if="useSchema && schemaText" class="mini" :title="schemaText">✓</span>
+        </label>
+        <button class="ghost sm clear-btn" :disabled="!messages.length" @click="clearAll">{{ t('aichat.clear') }}</button>
+      </div>
     </div>
 
     <div ref="listEl" class="list">
@@ -333,11 +410,24 @@ function onKeydown(e: KeyboardEvent): void {
 }
 .bar {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   flex: none;
+}
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.bar-lbl {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  width: 44px;
 }
 .sel {
   flex: 1;
@@ -349,6 +439,10 @@ function onKeydown(e: KeyboardEvent): void {
   color: var(--text);
   font-size: 12px;
 }
+.sel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .schk {
   display: flex;
   align-items: center;
@@ -356,9 +450,15 @@ function onKeydown(e: KeyboardEvent): void {
   font-size: 12px;
   color: var(--muted);
   cursor: pointer;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 .schk-lbl {
   white-space: nowrap;
+}
+.clear-btn {
+  flex: none;
 }
 .mini {
   color: var(--accent);

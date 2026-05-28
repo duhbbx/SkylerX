@@ -868,7 +868,14 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 右侧 AI 聊天侧边栏 AiChatPanel ──
   'aichat.title': ['AI 聊天', 'AI Chat'],
+  'aichat.conn': ['连接', 'Conn'],
   'aichat.connFor': ['关联的连接（决定生成 SQL 的方言 + 可拉取库结构）', 'Linked connection (decides SQL dialect + schema source)'],
+  'aichat.db': ['库', 'DB'],
+  'aichat.dbTitle': ['要扫的 database（MySQL）或 schema（PG）；只有这一个范围的表/列会作为 AI 上下文', 'Database (MySQL) or schema (PG) to scan; only its tables/columns are sent as context'],
+  'aichat.dbNone': ['（无）', '(none)'],
+  'aichat.schemaUnsupported': ['当前方言暂不支持库结构上下文（仅 MySQL/PG）', 'Schema context unsupported for this dialect (MySQL/PG only)'],
+  'aichat.schemaNoTarget': ['请先在「库」下拉里选择要扫的 database 或 schema', 'Pick a database or schema in the "DB" dropdown first'],
+  'aichat.schemaEmpty': ['{name} 下未取到任何表/列；可能是空库或权限不足', 'No tables/columns under {name}; possibly empty schema or insufficient privileges'],
   'aichat.useSchema': ['附带库结构', 'Include schema'],
   'aichat.useSchemaTitle': ['勾选后会把当前连接 information_schema 里的表/列汇总发给 AI 作为上下文（压缩后最多 6KB）', 'When checked, sends a compact list of tables/columns from the current connection as context (capped at ~6KB)'],
   'aichat.clear': ['清空对话', 'Clear chat'],
