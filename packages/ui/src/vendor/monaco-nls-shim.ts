@@ -19,6 +19,11 @@ import { ZH_CN_FALLBACK_MAP } from './monaco-nls-zh-cn-fallback-map'
 
 export { getNLSLanguage, getNLSMessages }
 
+if (typeof console !== 'undefined') {
+  // biome-ignore lint/suspicious/noConsole: 启动诊断 —— 验证 alias 真的把 nls.js 换成了我们的 shim
+  console.log('[skylerx monaco-nls-shim] loaded; lang =', getNLSLanguage(), 'msgs =', getNLSMessages()?.length ?? 0)
+}
+
 function format(message: string, args: unknown[]): string {
   if (!args.length) return message
   return message.replace(/\{(\d+)\}/g, (m, n) => {
