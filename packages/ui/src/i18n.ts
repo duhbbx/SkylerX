@@ -460,6 +460,17 @@ const DICT: Record<string, [string, string]> = {
   // ── 查询页 AI 按钮 ──
   'query.ai': ['AI', 'AI'],
   'query.ai.title': ['用 AI 解释 / 诊断 / 优化当前 SQL（有错误自动切到诊断）', 'Explain / diagnose / optimize current SQL with AI (diagnose mode if error present)'],
+  'query.more': ['更多操作', 'More actions'],
+
+  // ── Monaco 右键自定义动作（addAction 标签；按 locale 实时重注册） ──
+  'editor.action.run': ['▶ 运行 SQL', '▶ Run SQL'],
+  'editor.action.runSelection': ['▶ 运行选中', '▶ Run selection'],
+  'editor.action.formatAll': ['格式化', 'Format'],
+  'editor.action.compress': ['压缩为单行', 'Compress to single line'],
+  'editor.action.stripComments': ['去除注释', 'Strip comments'],
+  'editor.action.saveSnippet': ['存为片段…', 'Save as snippet…'],
+  'editor.action.favorite': ['★ 收藏为查询', '★ Favorite as query'],
+  'editor.action.aiExplain': ['✨ AI 解释 / 优化', '✨ AI explain / optimize'],
   'query.fkTabTitle': ['→ {tbl} (FK)', '→ {tbl} (FK)'],
   'query.favorite': ['收藏', 'Favorite'],
   'query.favoriteTitle': ['把当前选区/全部 SQL 加入收藏夹', 'Add current selection / SQL to favorites'],

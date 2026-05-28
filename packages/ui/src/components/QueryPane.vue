@@ -68,6 +68,7 @@ const sql = ref('SELECT 1;')
 const editorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const tabs = ref<ResultTab[]>([])
 const activeTab = ref(0)
+const moreOpen = ref(false) // 工具栏「⋯ 更多」下拉
 const showHistory = ref(false)
 const showSnippets = ref(false)
 const showPlan = ref(false)
@@ -812,22 +813,34 @@ onMounted(() => {
 <template>
   <div ref="paneEl" class="pane">
     <Watermark v-if="env === 'prod'" />
+    <!--
+      工具栏分组：高频「执行 / 停止 / 运行到此 / EXPLAIN / 格式化 / AI」常驻；
+      低频「压缩单行 / 去注释 / 清空 / 存为片段 / 收藏」收进右上「⋯ 更多」下拉，
+      防止窗体收窄时按钮文字换行。Tab 标题已带连接名，去掉冗余的 conn-tag。
+    -->
     <div class="toolbar">
       <button class="primary" :disabled="running" :title="t('query.run.title')" @click="run">
         ▶ {{ t('query.run') }}
       </button>
-      <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭ {{ t('query.runToCursor') }}</button>
+      <button :disabled="!running" :title="t('query.stop')" @click="cancel">■</button>
+      <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭</button>
       <button :disabled="running" :title="t('query.explain.title')" @click="explain">{{ t('query.explain') }}</button>
-      <button :title="t('query.format.title')" @click="formatSql">{{ t('query.format') }}</button>
-      <button :title="t('query.compress.title')" @click="compressSql">{{ t('query.compress') }}</button>
-      <button :title="t('query.stripComments.title')" @click="removeComments">{{ t('query.stripComments') }}</button>
-      <button :disabled="!running" @click="cancel">■ {{ t('query.stop') }}</button>
-      <button class="ghost" @click="clearEditor">{{ t('query.clear') }}</button>
-      <button class="ghost" :title="t('query.saveSnippet.title')" @click="saveCurrentSnippet">
-        {{ t('query.saveSnippet') }}
-      </button>
-      <button class="ghost" :title="t('query.favoriteTitle')" @click="favoriteCurrentQuery">★ {{ t('query.favorite') }}</button>
-      <button class="ghost" :title="t('query.ai.title')" @click="askAi">✨ {{ t('query.ai') }}</button>
+      <span class="tb-sep" />
+      <button :title="t('query.format.title')" @click="formatSql">fx {{ t('query.format') }}</button>
+      <button class="ghost" :title="t('query.ai.title')" @click="askAi">✨ AI</button>
+      <span class="tb-sep" />
+      <!-- 更多操作下拉 -->
+      <div class="more-wrap" @mouseleave="moreOpen = false">
+        <button class="ghost" :title="t('query.more')" @click="moreOpen = !moreOpen">⋯</button>
+        <div v-if="moreOpen" class="more-menu" @click="moreOpen = false">
+          <button @click="compressSql">{{ t('query.compress') }}</button>
+          <button @click="removeComments">{{ t('query.stripComments') }}</button>
+          <button @click="saveCurrentSnippet">{{ t('query.saveSnippet') }}</button>
+          <button @click="favoriteCurrentQuery">★ {{ t('query.favorite') }}</button>
+          <hr />
+          <button class="danger" @click="clearEditor">{{ t('query.clear') }}</button>
+        </div>
+      </div>
 
       <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
         <option value="">{{ t('query.defaultDb') }}</option>
@@ -842,7 +855,6 @@ onMounted(() => {
         <option v-for="s in schemaOptions" :key="s" :value="s">{{ s }}</option>
       </select>
 
-      <span class="hint">{{ t('query.hint') }}</span>
       <span
         v-if="env"
         class="env-badge"
@@ -850,11 +862,21 @@ onMounted(() => {
         :title="t('env.dangerTitle', { label: t('env.' + env) })"
       >{{ t('env.' + env) }}</span>
       <span v-if="readOnly" class="env-badge ro" :title="t('conn.readOnlyTitle')">{{ t('conn.readOnly') }}</span>
-      <span class="conn-tag">{{ conn.name || t('common.untitled') }} · {{ conn.dialect }}</span>
     </div>
 
     <div class="editor" :style="{ height: editorHeight + 'px' }">
-      <SqlEditor ref="editorRef" v-model="sql" :completion="completion" @run="run" @format="formatSql" />
+      <SqlEditor
+        ref="editorRef"
+        v-model="sql"
+        :completion="completion"
+        @run="run"
+        @format="formatSql"
+        @save-snippet="saveCurrentSnippet"
+        @favorite="favoriteCurrentQuery"
+        @ai-explain="askAi"
+        @compress="compressSql"
+        @strip-comments="removeComments"
+      />
     </div>
 
     <div class="splitter" :title="t('query.splitterTitle')" @pointerdown="onSplitDown"></div>
@@ -993,14 +1015,23 @@ onMounted(() => {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: 6px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  /* 收窄时让多余按钮可横向滚动而不是 wrap，避免按钮内文字断行 */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: visible;
+  min-width: 0;
+}
+.toolbar::-webkit-scrollbar {
+  height: 6px;
 }
 .toolbar .hint {
   font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
 }
 .toolbar .env-badge {
   margin-left: auto;
@@ -1009,19 +1040,68 @@ onMounted(() => {
   color: #fff;
   padding: 1px 7px;
   border-radius: 4px;
+  white-space: nowrap;
+  flex: none;
 }
 .toolbar .env-badge.ro {
   margin-left: 4px;
   background: #607d8b;
 }
-.toolbar .conn-tag {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--muted);
-}
 .toolbar button {
   padding: 4px 12px;
   font-size: 13px;
+  white-space: nowrap;
+  flex: none;
+}
+/* 工具栏分组分隔线 */
+.toolbar .tb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  flex: none;
+  margin: 0 2px;
+}
+/* 「⋯ 更多」下拉 */
+.more-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.more-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 30;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.more-menu button {
+  text-align: left;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+.more-menu button:hover {
+  background: rgba(124, 108, 255, 0.18);
+}
+.more-menu button.danger {
+  color: var(--err);
+}
+.more-menu hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 6px;
 }
 .toolbar .ctx {
   width: auto;
