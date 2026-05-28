@@ -194,6 +194,7 @@ const DICT: Record<string, [string, string]> = {
   'grid.rowTitle': ['第 {n} 行', 'Row {n}'],
   'grid.apply': ['应用', 'Apply'],
   'grid.setNull': ['设为 NULL', 'Set NULL'],
+  'grid.setDefault': ['设为 DEFAULT', 'Set DEFAULT'],
   'grid.copyAsSql': ['复制为 SQL', 'Copy as SQL'],
   'grid.prevRow': ['‹ 上一行', '‹ Prev row'],
   'grid.nextRow': ['下一行 ›', 'Next row ›'],

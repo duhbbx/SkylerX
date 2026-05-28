@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { t } from '../i18n'
-import type { EditChanges } from '../editable'
+import { type EditChanges, SQL_DEFAULT, isSqlSentinel } from '../editable'
 import { type ExportFormat, exportRows, toCSV, toJSON } from '../io'
 import Modal from './Modal.vue'
 
@@ -358,6 +358,7 @@ function isNull(v: unknown): boolean {
 }
 function fmt(v: unknown): string {
   if (v === null || v === undefined) return 'NULL'
+  if (isSqlSentinel(v)) return v.__sql
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)
 }
@@ -437,6 +438,14 @@ function setCellNull(): void {
   if (!viewer.value?.col) return
   const r = localRows.value[viewer.value.row]
   if (r) r[viewer.value.col] = null
+  editing.value = null
+  viewer.value = null
+}
+// 把当前查看的单元格设为 DEFAULT（提交时写 DEFAULT 关键字，由 DB 用列定义的默认值）
+function setCellDefault(): void {
+  if (!viewer.value?.col) return
+  const r = localRows.value[viewer.value.row]
+  if (r) r[viewer.value.col] = { ...SQL_DEFAULT }
   editing.value = null
   viewer.value = null
 }
@@ -708,6 +717,7 @@ const summaryRow = computed<Record<string, string>>(() => {
           <div class="viewer-actions">
             <button v-if="editable" class="primary" @click="applyCellEdit">{{ t('grid.apply') }}</button>
             <button v-if="editable" @click="setCellNull">{{ t('grid.setNull') }}</button>
+            <button v-if="editable" @click="setCellDefault">{{ t('grid.setDefault') }}</button>
             <button @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
             <button @click="copyCellAsSql">{{ t('grid.copyAsSql') }}</button>
           </div>

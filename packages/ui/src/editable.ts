@@ -35,8 +35,15 @@ export function parseEditableTable(sql: string): string | null {
   return m[1]
 }
 
+/** SQL 原样表达式哨兵：用于「设为 DEFAULT / CURRENT_TIMESTAMP」等不是字面量的赋值。 */
+export const SQL_DEFAULT = { __sql: 'DEFAULT' } as const
+export function isSqlSentinel(v: unknown): v is { __sql: string } {
+  return !!v && typeof v === 'object' && typeof (v as { __sql?: unknown }).__sql === 'string'
+}
+
 function lit(v: unknown, dialect: DbDialect): string {
   if (v === null || v === undefined) return 'NULL'
+  if (isSqlSentinel(v)) return v.__sql
   if (typeof v === 'number') return String(v)
   // MySQL 系与 SQL Server(bit) 用 1/0；PG 系用 TRUE/FALSE
   if (typeof v === 'boolean') {
