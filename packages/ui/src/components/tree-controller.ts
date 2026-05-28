@@ -51,6 +51,8 @@ export interface TreeController {
   copyDdl(node: TreeNode, connId: string): void
   /** 收藏 / 取消收藏该表/视图（全局收藏夹） */
   toggleFavorite(node: TreeNode, connId: string): void
+  /** 复制视图/函数/存储过程/触发器的 DDL 到剪贴板 */
+  copyObjectDdl(node: TreeNode, connId: string): void
   /** 生成库/schema 的数据字典（Markdown 文件） */
   dataDict(node: TreeNode, connId: string): void
   /** 生成库/schema 的数据字典（HTML 文件，可打印 PDF） */

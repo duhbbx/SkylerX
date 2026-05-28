@@ -100,6 +100,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.editObject(node, connId),
   },
   {
+    id: 'copy-object-ddl',
+    label: '复制 DDL',
+    kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure, MetaNodeKind.Trigger],
+    run: ({ node, connId, ctrl }) => ctrl.copyObjectDdl(node, connId),
+  },
+  {
     id: 'view-definition',
     label: '查看定义',
     kinds: [MetaNodeKind.Trigger, MetaNodeKind.Sequence],

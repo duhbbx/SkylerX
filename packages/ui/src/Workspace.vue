@@ -43,6 +43,8 @@ import {
   dropSupportsCascade,
   erdContext,
   extractDefinition,
+  objectDdlQuery,
+  objectRef,
   previewSql,
 } from './ddl'
 
@@ -371,6 +373,42 @@ async function onEditObject(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   tabsRef.value?.editObject(conn, node.kind as ObjectKind, ctx, node)
+}
+
+// 复制视图/函数/存储过程/触发器的 DDL 到剪贴板（统一入口；走 objectDdlQuery 同样的拉取路径）
+async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  const kind = node.kind as ObjectKind
+  const q = objectDdlQuery(conn.dialect, kind, objectRef(conn.dialect, node))
+  if (!q) {
+    window.alert(t('ws.noDef'))
+    return
+  }
+  try {
+    const r = await client.connections.execute(connId, q.sql, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
+    const row = (r.rows[0] as Record<string, unknown> | undefined) ?? {}
+    let ddl = ''
+    if (q.mode === 'showCreate') {
+      const key = Object.keys(row).find((k) => /^create/i.test(k))
+      ddl = String(row[key ?? ''] ?? '')
+    } else if (q.mode === 'viewdef') {
+      ddl = (q.prefix ?? '') + String(row.ddl ?? '')
+    } else {
+      ddl = String(row.ddl ?? '')
+    }
+    if (!ddl) {
+      window.alert(t('ws.noDef'))
+      return
+    }
+    await navigator.clipboard?.writeText(ddl)
+    window.alert(t('ws.ddlCopied'))
+  } catch (e) {
+    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
 }
 
 // ER 图 → 开 ER 图 Tab（按库/schema 节点推断目标）
@@ -848,6 +886,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @data-dict="onDataDict"
     @data-dict-html="onDataDictHtml"
     @edit-object="onEditObject"
+    @copy-object-ddl="onCopyObjectDdl"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"
     @open-erd="onOpenErd"

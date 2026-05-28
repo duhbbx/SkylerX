@@ -32,6 +32,7 @@ const emit = defineEmits<{
   deps: [string, TreeNode]
   copyDdl: [string, TreeNode]
   toggleFavorite: [string, TreeNode]
+  copyObjectDdl: [string, TreeNode]
   dataDict: [string, TreeNode]
   dataDictHtml: [string, TreeNode]
   editObject: [string, TreeNode]
@@ -178,6 +179,7 @@ const controller: TreeController = {
   viewDependencies: (node, connId) => emit('deps', connId, node),
   copyDdl: (node, connId) => emit('copyDdl', connId, node),
   toggleFavorite: (node, connId) => emit('toggleFavorite', connId, node),
+  copyObjectDdl: (node, connId) => emit('copyObjectDdl', connId, node),
   dataDict: (node, connId) => emit('dataDict', connId, node),
   dataDictHtml: (node, connId) => emit('dataDictHtml', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
