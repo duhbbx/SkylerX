@@ -215,6 +215,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.dataDict(node, connId),
   },
   {
+    id: 'data-dict-html',
+    label: '生成数据字典（HTML）',
+    kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    run: ({ node, connId, ctrl }) => ctrl.dataDictHtml(node, connId),
+  },
+  {
     id: 'refresh',
     label: '刷新',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema, MetaNodeKind.Group],

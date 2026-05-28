@@ -33,6 +33,7 @@ const emit = defineEmits<{
   copyDdl: [string, TreeNode]
   toggleFavorite: [string, TreeNode]
   dataDict: [string, TreeNode]
+  dataDictHtml: [string, TreeNode]
   editObject: [string, TreeNode]
   viewDefinition: [string, TreeNode]
   generateSql: [SqlTemplateKind, string, TreeNode]
@@ -178,6 +179,7 @@ const controller: TreeController = {
   copyDdl: (node, connId) => emit('copyDdl', connId, node),
   toggleFavorite: (node, connId) => emit('toggleFavorite', connId, node),
   dataDict: (node, connId) => emit('dataDict', connId, node),
+  dataDictHtml: (node, connId) => emit('dataDictHtml', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
   viewDefinition: (node, connId) => emit('viewDefinition', connId, node),
   generateSql: (kind, node, connId) => emit('generateSql', kind, connId, node),

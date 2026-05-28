@@ -21,7 +21,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
-import { buildCreateFromColumns, buildDataDictMarkdown, buildTableDump } from './dump'
+import { buildCreateFromColumns, buildDataDictHtml, buildDataDictMarkdown, buildTableDump } from './dump'
 import { type Favorite, favorites, removeFavorite, toggleFavorite } from './favorites'
 import { zoomIn, zoomOut, zoomReset } from './settings'
 import { buildMockInserts } from './mockgen'
@@ -323,7 +323,7 @@ async function onFavoriteOpen(fav: Favorite): Promise<void> {
 }
 
 // 生成数据字典（Markdown）：迭代库/schema 下所有表的列信息
-async function onDataDict(connId: string, node: TreeNode): Promise<void> {
+async function genDataDict(connId: string, node: TreeNode, format: 'md' | 'html'): Promise<void> {
   const conn = await client.connections.get(connId)
   const ctx = erdContext(conn.dialect, node)
   try {
@@ -346,15 +346,18 @@ async function onDataDict(connId: string, node: TreeNode): Promise<void> {
       withCols.push({ name: tbl.name, columns: cols })
     }
     const label = ctx.schema || ctx.database || 'schema'
+    const isHtml = format === 'html'
     await client.files.saveText({
-      defaultName: `${label}-data-dict.md`,
-      content: buildDataDictMarkdown(label, withCols),
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      defaultName: `${label}-data-dict.${format}`,
+      content: isHtml ? buildDataDictHtml(label, withCols) : buildDataDictMarkdown(label, withCols),
+      filters: [{ name: isHtml ? 'HTML' : 'Markdown', extensions: [format] }],
     })
   } catch (e) {
     window.alert(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
+const onDataDict = (connId: string, node: TreeNode) => genDataDict(connId, node, 'md')
+const onDataDictHtml = (connId: string, node: TreeNode) => genDataDict(connId, node, 'html')
 
 function onDepReveal(table: string): void {
   const d = deps.value
@@ -824,6 +827,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @copy-ddl="onCopyDdl"
     @toggle-favorite="onToggleFavorite"
     @data-dict="onDataDict"
+    @data-dict-html="onDataDictHtml"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"
