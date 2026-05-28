@@ -70,10 +70,80 @@ function buildClientOptions(config: ConnectionConfig): Record<string, unknown> {
   return opts
 }
 
+const HEX24 = /^[a-fA-F0-9]{24}$/
+
+/**
+ * 递归遍历 value，把任何键名 === '_id' 且值为 24-hex 字符串的字段
+ * 自动 wrap 成 ObjectId。同时处理：
+ *  - 顶层 _id
+ *  - $in / $nin / $eq 等操作符内的 _id（其 value 可能是数组或标量）
+ *  - $or / $and / $nor 数组里嵌套的 _id
+ *  - 嵌套对象里出现的 _id 字段
+ *
+ * 不动其它字段：用户显式传 ObjectId(...) 的不会走这里（它在 IPC 端就不是 string，
+ * 会以 BSON / 已是对象的形式抵达）。
+ *
+ * 已知 trade-off：若用户故意把恰好 24-hex 的字符串当普通 _id 字面值使用，
+ * 这里会被误转。这是为修复"updateOne 永远 0 命中"问题的合理代价。
+ */
+function normalizeIds(value: unknown, ObjectId: any): unknown {
+  if (Array.isArray(value)) {
+    return value.map((v) => normalizeIds(v, ObjectId))
+  }
+  if (value !== null && typeof value === 'object') {
+    // ObjectId 本身或其它 BSON 包装类型：保持原样，不要递归打散其内部结构
+    if (ObjectId && value instanceof ObjectId) return value
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === '_id') {
+        if (typeof v === 'string' && HEX24.test(v)) {
+          out[k] = new ObjectId(v)
+        } else if (v !== null && typeof v === 'object') {
+          // _id 是操作符对象，例如 { $in: [...], $eq: '...' }：递归内部把 hex 串转掉
+          out[k] = normalizeIdOperator(v, ObjectId)
+        } else {
+          out[k] = v
+        }
+      } else {
+        out[k] = normalizeIds(v, ObjectId)
+      }
+    }
+    return out
+  }
+  return value
+}
+
+/**
+ * 处理 _id 下挂的操作符对象（{ $in: [...], $eq: '...' } 之类）：
+ * 把里面的 24-hex 字符串值全部 wrap 成 ObjectId，数组逐个处理；
+ * 其它非字符串值原样保留（例如 $exists: true、$type: 'objectId'）。
+ */
+function normalizeIdOperator(value: object, ObjectId: any): unknown {
+  if (Array.isArray(value)) {
+    return value.map((v) =>
+      typeof v === 'string' && HEX24.test(v) ? new ObjectId(v) : v,
+    )
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (Array.isArray(v)) {
+      out[k] = v.map((it) =>
+        typeof it === 'string' && HEX24.test(it) ? new ObjectId(it) : it,
+      )
+    } else if (typeof v === 'string' && HEX24.test(v)) {
+      out[k] = new ObjectId(v)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
 class MongoConnection implements DriverConnection {
   constructor(
     private readonly client: any,
     private readonly defaultDb: string | undefined,
+    private readonly ObjectId: any,
   ) {}
 
   /** SQL 通道在 Mongo 上不可用。 */
@@ -157,7 +227,10 @@ class MongoConnection implements DriverConnection {
       // ── 读类（游标）─────────────────────────────────────────
       case 'find': {
         const c = needCol()
-        const filter = (args.filter as Record<string, unknown>) ?? {}
+        const filter = normalizeIds(
+          (args.filter as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         let cursor = c.find(filter, options)
         if (typeof maxRows === 'number') cursor = cursor.limit(maxRows + 1)
@@ -168,14 +241,20 @@ class MongoConnection implements DriverConnection {
       }
       case 'findOne': {
         const c = needCol()
-        const filter = (args.filter as Record<string, unknown>) ?? {}
+        const filter = normalizeIds(
+          (args.filter as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         const data = await c.findOne(filter, options)
         return { data, executionTimeMs: Date.now() - start }
       }
       case 'aggregate': {
         const c = needCol()
-        const pipeline = (args.pipeline as unknown[]) ?? []
+        const pipeline = normalizeIds(
+          (args.pipeline as unknown[]) ?? [],
+          this.ObjectId,
+        ) as unknown[]
         const options = (args.options as Record<string, unknown>) ?? {}
         let cursor = c.aggregate(pipeline, options)
         if (typeof maxRows === 'number') cursor = cursor.limit(maxRows + 1)
@@ -186,7 +265,10 @@ class MongoConnection implements DriverConnection {
       }
       case 'countDocuments': {
         const c = needCol()
-        const filter = (args.filter as Record<string, unknown>) ?? {}
+        const filter = normalizeIds(
+          (args.filter as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         const data = await c.countDocuments(filter, options)
         return { data, executionTimeMs: Date.now() - start }
@@ -194,7 +276,10 @@ class MongoConnection implements DriverConnection {
       case 'distinct': {
         const c = needCol()
         const field = String(args.field ?? '')
-        const filter = (args.filter as Record<string, unknown>) ?? {}
+        const filter = normalizeIds(
+          (args.filter as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         const data = await c.distinct(field, filter, options)
         return { data, executionTimeMs: Date.now() - start }
@@ -203,14 +288,20 @@ class MongoConnection implements DriverConnection {
       // ── 写类 ────────────────────────────────────────────────
       case 'insertOne': {
         const c = needCol()
-        const doc = (args.document as Record<string, unknown>) ?? {}
+        const doc = normalizeIds(
+          (args.document as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         const r = await c.insertOne(doc, options)
         return { data: r, affected: r?.acknowledged ? 1 : 0, executionTimeMs: Date.now() - start }
       }
       case 'insertMany': {
         const c = needCol()
-        const docs = (args.documents as unknown[]) ?? []
+        const docs = normalizeIds(
+          (args.documents as unknown[]) ?? [],
+          this.ObjectId,
+        ) as unknown[]
         const options = (args.options as Record<string, unknown>) ?? {}
         const r = await c.insertMany(docs, options)
         return {
@@ -222,8 +313,14 @@ class MongoConnection implements DriverConnection {
       case 'updateOne':
       case 'updateMany': {
         const c = needCol()
-        const filter = (args.filter as Record<string, unknown>) ?? {}
-        const update = (args.update as Record<string, unknown>) ?? {}
+        const filter = normalizeIds(
+          (args.filter as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
+        const update = normalizeIds(
+          (args.update as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         const r = op === 'updateOne' ? await c.updateOne(filter, update, options) : await c.updateMany(filter, update, options)
         return {
@@ -234,8 +331,14 @@ class MongoConnection implements DriverConnection {
       }
       case 'replaceOne': {
         const c = needCol()
-        const filter = (args.filter as Record<string, unknown>) ?? {}
-        const replacement = (args.document as Record<string, unknown>) ?? {}
+        const filter = normalizeIds(
+          (args.filter as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
+        const replacement = normalizeIds(
+          (args.document as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         const r = await c.replaceOne(filter, replacement, options)
         return {
@@ -247,7 +350,10 @@ class MongoConnection implements DriverConnection {
       case 'deleteOne':
       case 'deleteMany': {
         const c = needCol()
-        const filter = (args.filter as Record<string, unknown>) ?? {}
+        const filter = normalizeIds(
+          (args.filter as Record<string, unknown>) ?? {},
+          this.ObjectId,
+        ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
         const r = op === 'deleteOne' ? await c.deleteOne(filter, options) : await c.deleteMany(filter, options)
         return {
@@ -308,7 +414,7 @@ export function createMongoDriver(dialect: DbDialect): DatabaseDriver {
       const MongoClient = mongodb.MongoClient
       const client = new MongoClient(buildUri(config), buildClientOptions(config))
       await client.connect()
-      return new MongoConnection(client, config.database || undefined)
+      return new MongoConnection(client, config.database || undefined, mongodb.ObjectId)
     },
 
     async test(config: ConnectionConfig): Promise<TestResult> {

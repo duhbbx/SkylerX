@@ -6,6 +6,7 @@ import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
 import { confirm as appConfirm } from '../dialog'
 import { t as tr } from '../i18n'
 import DdlEditor from './DdlEditor.vue'
+import ElasticPane from './ElasticPane.vue'
 import ErdView from './ErdView.vue'
 import MongoPane from './MongoPane.vue'
 import QueryPane from './QueryPane.vue'
@@ -16,7 +17,7 @@ import type { TreeNode } from './treeNode'
 
 interface Tab {
   id: number
-  kind: 'query' | 'structure' | 'erd' | ObjectKind | 'mongoCollection' | 'redisDb'
+  kind: 'query' | 'structure' | 'erd' | ObjectKind | 'mongoCollection' | 'redisDb' | 'esIndex'
   conn: ConnectionConfig
   title: string
   pending: { sql: string; seq: number } | null // query
@@ -30,6 +31,8 @@ interface Tab {
   mongo?: { database: string; collection: string }
   /** NoSQL：Redis tab 的逻辑库索引 */
   redis?: { dbIndex: number }
+  /** NoSQL：Elasticsearch index tab */
+  es?: { index: string }
 }
 
 const emit = defineEmits<{
@@ -37,6 +40,7 @@ const emit = defineEmits<{
   refresh: [TreeNode, string]
   ai: [string, string, string]
   askAiAboutError: [payload: { connId: string; connName?: string; sql: string; error: string }]
+  searchValue: [payload: { connId: string; value: string }]
 }>()
 
 const tabs = ref<Tab[]>([])
@@ -170,6 +174,24 @@ function openMongoCollection(conn: ConnectionConfig, database: string, collectio
     title: `${database}.${collection}`,
     pending: null,
     mongo: { database, collection },
+  })
+}
+
+/** 打开 Elasticsearch index 浏览器页（同连接.index 已开则聚焦）。 */
+function openEsIndex(conn: ConnectionConfig, index: string): void {
+  const existing = tabs.value.find(
+    (t) => t.kind === 'esIndex' && t.conn.id === conn.id && t.es?.index === index,
+  )
+  if (existing) {
+    activeId.value = existing.id
+    return
+  }
+  push({
+    kind: 'esIndex',
+    conn,
+    title: `${conn.name || conn.dialect} · ${index}`,
+    pending: null,
+    es: { index },
   })
 }
 
@@ -315,6 +337,7 @@ defineExpose({
   openDraft,
   openMongoCollection,
   openRedisDb,
+  openEsIndex,
   closeConnTabs,
   activeConnId,
 })
@@ -410,6 +433,7 @@ watch(tabs, saveLayout, { deep: true })
             @ai="(sql, cid, errMsg) => emit('ai', sql, cid, errMsg)"
             @new-draft="(sql, title) => openDraft(t.conn, sql, title)"
             @ask-ai-about-error="(p) => emit('askAiAboutError', p)"
+            @search-value="(p) => emit('searchValue', p)"
           />
           <MongoPane
             v-else-if="t.kind === 'mongoCollection' && t.mongo"
@@ -421,6 +445,11 @@ watch(tabs, saveLayout, { deep: true })
             v-else-if="t.kind === 'redisDb' && t.redis"
             :conn="t.conn"
             :db-index="t.redis.dbIndex"
+          />
+          <ElasticPane
+            v-else-if="t.kind === 'esIndex' && t.es"
+            :conn="t.conn"
+            :index="t.es.index"
           />
           <TableDesigner
             v-else-if="t.kind === 'table'"

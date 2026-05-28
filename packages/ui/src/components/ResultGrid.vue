@@ -18,7 +18,11 @@ import {
 import { applyMask, ruleFor } from '../masking'
 import { settings } from '../settings'
 import ChartDialog from './ChartDialog.vue'
+import GeoMapDialog from './GeoMapDialog.vue'
 import Modal from './Modal.vue'
+import PivotDialog from './PivotDialog.vue'
+import TimelineDialog from './TimelineDialog.vue'
+import TreeViewDialog from './TreeViewDialog.vue'
 
 const client = useDataClient()
 
@@ -55,6 +59,8 @@ const emit = defineEmits<{
   navigateFk: [{ refTable: string; refColumns: string[]; values: unknown[] }]
   /** 用户点了「问 AI」：父层负责打开聊天面板 + 填入 SQL/错误上下文 */
   askAi: [payload: { connId: string; connName?: string; sql: string; error: string }]
+  /** A8 反向查找：让上层弹 SearchValueDialog 找该值还出现在哪 */
+  searchValue: [value: string]
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -80,6 +86,9 @@ const hiddenCols = ref<Set<string>>(new Set())
 const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
 const chartOpen = ref(false)
+// A4/A5/A6/A7 视图模式切换：pivot / tree / geo / timeline
+const altView = ref<'pivot' | 'tree' | 'geo' | 'timeline' | null>(null)
+const showViewMenu = ref(false)
 const viewMode = ref<'grid' | 'json' | 'form'>('grid') // 视图：网格 / JSON / 单行表单（适合宽表）
 const formIndex = ref(0)
 const freezeFirst = ref(false) // 冻结首数据列
@@ -504,6 +513,18 @@ function onCellDblClick(area: 'r' | 'n', index: number, col: string): void {
   if (props.editable) startEdit(area, index, col)
   else viewer.value = { row: index, col }
 }
+
+// A8 反向查找：单元格右键 → 抛上去
+const ctxMenu = ref<{ x: number; y: number; value: unknown } | null>(null)
+function onCellContext(e: MouseEvent, value: unknown): void {
+  ctxMenu.value = { x: e.clientX, y: e.clientY, value }
+}
+function doSearchValue(): void {
+  const v = ctxMenu.value?.value
+  ctxMenu.value = null
+  if (v == null) return
+  emit('searchValue', String(v))
+}
 function openRow(index: number): void {
   viewer.value = { row: index, col: null }
 }
@@ -804,6 +825,19 @@ const summaryRow = computed<Record<string, string>>(() => {
         </div>
         <!-- #2 图表化：选两列出柱/折线/饼图 -->
         <button :disabled="!result?.rows.length" :title="t('chart.openTitle')" @click="chartOpen = true">📊 {{ t('chart.btn') }}</button>
+        <!-- A4/A5/A6/A7 视图切换 -->
+        <div class="menu-box">
+          <button :disabled="!result?.rows.length" @click.stop="showViewMenu = !showViewMenu">📐 {{ t('view.btn') }}</button>
+          <template v-if="showViewMenu">
+            <div class="exp-overlay" @click="showViewMenu = false" />
+            <div class="exp-menu" @click.stop>
+              <button @click="altView = 'pivot'; showViewMenu = false">⊞ {{ t('view.pivot') }}</button>
+              <button @click="altView = 'tree'; showViewMenu = false">🌳 {{ t('view.tree') }}</button>
+              <button @click="altView = 'geo'; showViewMenu = false">🗺 {{ t('view.geo') }}</button>
+              <button @click="altView = 'timeline'; showViewMenu = false">⏱ {{ t('view.timeline') }}</button>
+            </div>
+          </template>
+        </div>
         <div class="menu-box">
           <button @click.stop="showColsMenu = !showColsMenu">{{ t('grid.cols') }}</button>
           <template v-if="showColsMenu">
@@ -921,6 +955,7 @@ const summaryRow = computed<Record<string, string>>(() => {
                   },
                 ]"
                 @dblclick="onCellDblClick('r', i, c.name)"
+                @contextmenu.prevent="onCellContext($event, row[c.name])"
               >
                 <span v-if="editable && isEditing('r', i, c.name)" class="edit-cell">
                   <input
@@ -1090,7 +1125,20 @@ const summaryRow = computed<Record<string, string>>(() => {
       </Modal>
 
       <!-- #2 结果集图表化（选两列出柱/折线/饼图） -->
+      <!-- A8 单元格右键菜单：反向查找 + 复制 -->
+      <template v-if="ctxMenu">
+        <div class="exp-overlay" @click="ctxMenu = null" @contextmenu.prevent="ctxMenu = null" />
+        <div class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @click.stop>
+          <button @click="doSearchValue">🔍 {{ t('search.contextItem') }}</button>
+          <button @click="copyText(String(ctxMenu.value ?? '')); ctxMenu = null">📋 {{ t('common.copy') }}</button>
+        </div>
+      </template>
+
       <ChartDialog v-if="chartOpen && result" :result="result" @close="chartOpen = false" />
+      <PivotDialog v-if="altView === 'pivot' && result" :result="result" @close="altView = null" />
+      <TreeViewDialog v-if="altView === 'tree' && result" :result="result" @close="altView = null" />
+      <GeoMapDialog v-if="altView === 'geo' && result" :result="result" @close="altView = null" />
+      <TimelineDialog v-if="altView === 'timeline' && result" :result="result" @close="altView = null" />
     </template>
   </div>
 </template>
@@ -1682,6 +1730,30 @@ td.rownum:hover {
   letter-spacing: 0;
   background: var(--bg);
 }
+/* A8 单元格右键菜单 */
+.ctx-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 160px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+}
+.ctx-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 4px;
+}
+.ctx-menu button:hover { background: rgba(124, 108, 255, 0.14); }
 /* ── #5 BLOB 图片预览 + JSON 美化 ── */
 .cell-image-wrap {
   display: flex;

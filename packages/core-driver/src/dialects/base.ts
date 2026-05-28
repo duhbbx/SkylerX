@@ -76,4 +76,5 @@ export const DRIVER_PACKAGES: Record<DbDialect, string> = {
   [DbDialect.SqlServer]: 'mssql',
   [DbDialect.MongoDB]: 'mongodb',
   [DbDialect.Redis]: 'ioredis',
+  [DbDialect.Elasticsearch]: '@elastic/elasticsearch',
 }

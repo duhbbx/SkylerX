@@ -23,6 +23,8 @@ export enum DbDialect {
   MongoDB = 'mongodb',
   /** Redis（KV/数据结构型，走 executeCommand 通道，不走 SQL） */
   Redis = 'redis',
+  /** Elasticsearch（搜索引擎/文档型，走 executeCommand 通道，REST/HTTP 协议） */
+  Elasticsearch = 'elasticsearch',
 }
 
 /**
@@ -37,7 +39,9 @@ export enum DbKind {
 
 /** 给定方言归到 SQL 还是 NoSQL（前端/驱动通用判定）。 */
 export function dialectKind(d: DbDialect): DbKind {
-  return d === DbDialect.MongoDB || d === DbDialect.Redis ? DbKind.NoSql : DbKind.Sql
+  return d === DbDialect.MongoDB || d === DbDialect.Redis || d === DbDialect.Elasticsearch
+    ? DbKind.NoSql
+    : DbKind.Sql
 }
 
 /** 连接的传输/通道模式：进程内直连 vs 内网 agent 转发。 */

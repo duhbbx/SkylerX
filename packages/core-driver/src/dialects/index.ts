@@ -1,6 +1,7 @@
 import { DbDialect } from '@db-tool/shared-types'
 import { registerDriver } from '../registry.js'
 import { createDmDriver } from './dm.js'
+import { createElasticsearchDriver } from './elasticsearch.js'
 import { createMongoDriver } from './mongo.js'
 import { createMysqlFamilyDriver } from './mysql.js'
 import { createOracleDriver } from './oracle.js'
@@ -41,4 +42,7 @@ export function registerBuiltinDrivers(): void {
 
   // NoSQL：Redis（ioredis 包，惰性）
   registerDriver(createRedisDriver(DbDialect.Redis))
+
+  // NoSQL：Elasticsearch（@elastic/elasticsearch 包，惰性，REST/HTTP）
+  registerDriver(createElasticsearchDriver(DbDialect.Elasticsearch))
 }

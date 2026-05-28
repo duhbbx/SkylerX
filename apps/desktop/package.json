@@ -25,6 +25,7 @@
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "^8.15.0",
     "better-sqlite3": "^11.8.1",
     "electron-updater": "^6.3.9",
     "ioredis": "^5.4.1",

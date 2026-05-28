@@ -91,6 +91,10 @@ export interface TreeController {
   runSql(connId: string, sql: string): void
   refreshNode(node: TreeNode, connId: string): void
   copyText(text: string): void
+  /** A3+B5+B6+B9+B10 数据检查器：列采样 / 整表剖析 / 约束扫描 / 类型优化 / 维护 */
+  inspectTable(node: TreeNode, connId: string): void
+  /** B3+B4+B8 数据修整：重复行 / NULL 补全 / 软删恢复 */
+  fixupTable(node: TreeNode, connId: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

@@ -16,18 +16,24 @@ import BackupRestoreDialog from './components/BackupRestoreDialog.vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
 import DashboardDialog from './components/DashboardDialog.vue'
+import DataContractDialog from './components/DataContractDialog.vue'
 import DataDiffDialog from './components/DataDiffDialog.vue'
+import DataFixupDialog from './components/DataFixupDialog.vue'
+import DataInspectorDialog from './components/DataInspectorDialog.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
 import ExportOptionsDialog from './components/ExportOptionsDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
+import LineageDialog from './components/LineageDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import RowHistoryDialog from './components/RowHistoryDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
 import SchemaSnapshotsDialog from './components/SchemaSnapshotsDialog.vue'
+import SearchValueDialog from './components/SearchValueDialog.vue'
 import ServerActivityDialog from './components/ServerActivityDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -145,7 +151,7 @@ async function onSelectConn(id: string): Promise<void> {
 
 async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
   const conn = await client.connections.get(id)
-  // NoSQL：没有「SQL 查询页」概念，按方言路由到 Mongo/Redis 浏览器
+  // NoSQL：没有「SQL 查询页」概念，按方言路由到 Mongo/Redis/ES 浏览器
   if (dialectKind(conn.dialect) === DbKind.NoSql) {
     if (conn.dialect === DbDialect.Redis && node?.kind === MetaNodeKind.Database) {
       tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
@@ -157,6 +163,10 @@ async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
       node.path.length >= 1
     ) {
       tabsRef.value?.openMongoCollection(conn, node.path[0], node.name)
+      return
+    }
+    if (conn.dialect === DbDialect.Elasticsearch && node?.kind === MetaNodeKind.Table) {
+      tabsRef.value?.openEsIndex(conn, node.name)
       return
     }
     toast.warn(t('ws.noSqlUnsupported') || '该方言不支持 SQL 查询')
@@ -216,6 +226,10 @@ async function onViewStructure(connId: string, node: TreeNode): Promise<void> {
       tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
       return
     }
+    if (conn.dialect === DbDialect.Elasticsearch && node.kind === MetaNodeKind.Table) {
+      tabsRef.value?.openEsIndex(conn, node.name)
+      return
+    }
     toast.warn('该方言不支持「查看结构」')
     return
   }
@@ -237,6 +251,10 @@ async function onPreviewTable(connId: string, node: TreeNode): Promise<void> {
     }
     if (conn.dialect === DbDialect.Redis && node.kind === MetaNodeKind.Database) {
       tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
+      return
+    }
+    if (conn.dialect === DbDialect.Elasticsearch && node.kind === MetaNodeKind.Table) {
+      tabsRef.value?.openEsIndex(conn, node.name)
       return
     }
     toast.warn('该方言不支持「查询前 200 行」')
@@ -1017,6 +1035,30 @@ async function openBackup(connId: string): Promise<void> {
 }
 /** #12 Dashboard */
 const dashboardOpen = ref(false)
+/** A2/A8 跨表全文搜索 */
+const searchValueOpen = ref<{ connId: string; value?: string } | null>(null)
+/** A3+B5+B6+B9+B10 数据检查器 */
+const inspectorOpen = ref<{ conn: ConnectionConfig; table: string } | null>(null)
+async function openInspector(connId: string, table: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  inspectorOpen.value = { conn, table }
+}
+/** B3+B4+B8 数据修整 */
+const fixupOpen = ref<{ conn: ConnectionConfig; table: string } | null>(null)
+async function openFixup(connId: string, table: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  fixupOpen.value = { conn, table }
+}
+/** A9 行历史 */
+const rowHistOpen = ref<{
+  conn: ConnectionConfig
+  table: string
+  pk: Record<string, unknown>
+} | null>(null)
+/** A10 列血缘 */
+const lineageOpen = ref<{ conn: ConnectionConfig; table: string; column: string } | null>(null)
+/** B7 数据契约 */
+const contractOpen = ref(false)
 // #9-#21 AI 工具箱：选任务 → 填上下文 → 推到右侧聊天面板
 const aiToolboxOpen = ref<{
   task?:
@@ -1200,6 +1242,14 @@ const paletteItems = computed<PaletteItem[]>(() => [
     : []),
   // #12 Dashboard
   { id: 'act:dashboard', label: t('pal.dashboard'), group: t('pal.groupActions') },
+  // A2 跨表全文搜索
+  ...paletteConns.value.map((c) => ({
+    id: `act:search-value:${c.id}`,
+    label: `${t('pal.searchValue')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
+  // B7 数据契约
+  { id: 'act:contracts', label: t('pal.contracts'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
   { id: 'act:about', label: t('pal.about'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
@@ -1244,6 +1294,10 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:ai-toolbox') aiToolboxOpen.value = {}
   else if (item.id === 'act:new-window') void client.window?.newSession?.()
   else if (item.id === 'act:dashboard') dashboardOpen.value = true
+  else if (item.id.startsWith('act:search-value:')) {
+    const cid = item.id.slice('act:search-value:'.length)
+    searchValueOpen.value = { connId: cid }
+  } else if (item.id === 'act:contracts') contractOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
@@ -1336,6 +1390,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @copy-object-ddl="onCopyObjectDdl"
     @empty-table="onEmptyTable"
     @truncate-table="onTruncateTable"
+    @inspect-table="(cid, node) => openInspector(cid, node.sqlName ?? node.name)"
+    @fixup-table="(cid, node) => openFixup(cid, node.sqlName ?? node.name)"
     @rename-table="onRenameTable"
     @copy-table="onCopyTable"
     @toggle-prod-mark="onToggleProdMark"
@@ -1359,6 +1415,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       @refresh="onTreeRefresh"
       @ai="onAiFromPane"
       @ask-ai-about-error="onAskAiAboutError"
+      @search-value="(p) => { searchValueOpen = { connId: p.connId, value: p.value } }"
     />
   </main>
 
@@ -1615,6 +1672,52 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   <!-- #12 Dashboard：多 SQL 多卡片小盘子 -->
   <DashboardDialog v-if="dashboardOpen" @close="dashboardOpen = false" />
+
+  <!-- A2/A8 跨表全文搜索 -->
+  <SearchValueDialog
+    v-if="searchValueOpen"
+    :initial-conn-id="searchValueOpen.connId"
+    :prefill-value="searchValueOpen.value"
+    @close="searchValueOpen = null"
+  />
+
+  <!-- A3+B5+B6+B9+B10 数据检查器（连接 + 表） -->
+  <DataInspectorDialog
+    v-if="inspectorOpen"
+    :conn="inspectorOpen.conn"
+    :table="inspectorOpen.table"
+    @close="inspectorOpen = null"
+  />
+
+  <!-- B3+B4+B8 数据修整 -->
+  <DataFixupDialog
+    v-if="fixupOpen"
+    :conn="fixupOpen.conn"
+    :table="fixupOpen.table"
+    @close="fixupOpen = null"
+    @run-sql="(sql) => { tabsRef?.runSql(fixupOpen!.conn, sql); fixupOpen = null }"
+  />
+
+  <!-- A9 行历史 -->
+  <RowHistoryDialog
+    v-if="rowHistOpen"
+    :conn="rowHistOpen.conn"
+    :table="rowHistOpen.table"
+    :pk="rowHistOpen.pk"
+    @close="rowHistOpen = null"
+  />
+
+  <!-- A10 列血缘 -->
+  <LineageDialog
+    v-if="lineageOpen"
+    :conn="lineageOpen.conn"
+    :table="lineageOpen.table"
+    :column="lineageOpen.column"
+    @close="lineageOpen = null"
+  />
+
+  <!-- B7 数据契约 -->
+  <DataContractDialog v-if="contractOpen" @close="contractOpen = false" />
 
   <!-- #9-#21 AI 工具箱：选任务 → 拼 prompt → 推到右侧聊天面板 -->
   <AiToolboxDialog

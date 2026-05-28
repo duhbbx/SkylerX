@@ -24,10 +24,12 @@
     "pg": "^8.13.1"
   },
   "peerDependencies": {
+    "@elastic/elasticsearch": "^8",
     "ioredis": "^5",
     "mongodb": "^6"
   },
   "peerDependenciesMeta": {
+    "@elastic/elasticsearch": { "optional": true },
     "ioredis": { "optional": true },
     "mongodb": { "optional": true }
   },

@@ -32,7 +32,10 @@ const match = ref<string>('*')
 const selected = ref<KeyItem | null>(null)
 
 const SCAN_COUNT = 500
-const TYPE_BATCH_LIMIT = 100
+// 每次 pipeline 最多放这么多个 TYPE 调用；每批 SCAN 最多返回 SCAN_COUNT=500 个 key，
+// 所以一般两三块就完事。注意目前驱动未暴露真 pipeline op，这里只是“分块并发”——
+// 一个 chunk 内 Promise.all，多块之间串行 await，避免一次性把所有 key 全甩出去。
+const TYPE_PIPELINE_CHUNK = 200
 
 // 右侧 value
 interface ValueState {
@@ -77,7 +80,7 @@ async function resetAndLoad(): Promise<void> {
  * 迭代 SCAN 一次：
  *   SCAN <cursor> MATCH <match> COUNT 500
  * 驱动返回 [nextCursor, batch]；batch 去重后追加到 keys，
- * 然后批量并发 TYPE（限 100 条）。
+ * 然后对所有新 key 全量拉 TYPE（按 TYPE_PIPELINE_CHUNK 分块，块内并发、块间串行）。
  */
 async function loadMore(): Promise<void> {
   if (loadingKeys.value || finished.value) return
@@ -98,18 +101,21 @@ async function loadMore(): Promise<void> {
     const newItems: KeyItem[] = fresh.map((name) => ({ name, type: null }))
     keys.value = keys.value.concat(newItems)
 
-    // 批量 TYPE，限 TYPE_BATCH_LIMIT 条够用
-    const slice = newItems.slice(0, TYPE_BATCH_LIMIT)
-    await Promise.all(
-      slice.map(async (it) => {
-        try {
-          const r = await call('TYPE', [it.name])
-          it.type = String(r.data ?? 'none') as RedisType
-        } catch {
-          it.type = 'none'
-        }
-      }),
-    )
+    // 全量拉 TYPE：分块，块内 Promise.all 并发、块之间串行 await
+    // —— 限制单个 chunk 大小，避免一次性把成百上千个 IPC 全甩出去
+    for (let i = 0; i < newItems.length; i += TYPE_PIPELINE_CHUNK) {
+      const chunk = newItems.slice(i, i + TYPE_PIPELINE_CHUNK)
+      await Promise.all(
+        chunk.map(async (it) => {
+          try {
+            const r = await call('TYPE', [it.name])
+            it.type = String(r.data ?? 'none') as RedisType
+          } catch {
+            it.type = 'none'
+          }
+        }),
+      )
+    }
 
     cursor.value = nextCursor
     if (nextCursor === '0') finished.value = true

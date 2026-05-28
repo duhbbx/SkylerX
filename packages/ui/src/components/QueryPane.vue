@@ -79,6 +79,8 @@ const emit = defineEmits<{
   newDraft: [string, string]
   /** 结果网格里点「问 AI」：把这条 SQL + 错误 + 当前连接发给 AI 聊天面板 */
   askAiAboutError: [payload: { connId: string; connName?: string; sql: string; error: string }]
+  /** A8 反向查找单元格值 */
+  searchValue: [payload: { connId: string; value: string }]
 }>()
 
 const sql = ref('SELECT 1;')
@@ -1278,6 +1280,7 @@ defineExpose({
         @filter="(w) => applyServerFilter(cur, w)"
         @navigate-fk="onFkNavigate"
         @ask-ai="(p) => emit('askAiAboutError', p)"
+        @search-value="(v) => emit('searchValue', { connId: conn.id, value: v })"
       />
     </div>
 

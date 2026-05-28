@@ -35,6 +35,8 @@ const emit = defineEmits<{
   copyObjectDdl: [string, TreeNode]
   emptyTable: [string, TreeNode]
   truncateTable: [string, TreeNode]
+  inspectTable: [string, TreeNode]
+  fixupTable: [string, TreeNode]
   renameTable: [string, TreeNode]
   copyTable: [string, TreeNode, boolean]
   toggleProdMark: [string]
@@ -218,6 +220,8 @@ const controller: TreeController = {
     }
   },
   copyText: (text) => void navigator.clipboard?.writeText(text),
+  inspectTable: (node, connId) => emit('inspectTable', connId, node),
+  fixupTable: (node, connId) => emit('fixupTable', connId, node),
 }
 
 provide(TreeControllerKey, controller)

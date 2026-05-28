@@ -313,6 +313,22 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.generateMockData(node, connId),
   },
   {
+    id: 'inspect-table',
+    label: 'ctx.inspect-table',
+    section: 'meta',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.inspectTable(node, connId),
+  },
+  {
+    id: 'fixup-table',
+    label: 'ctx.fixup-table',
+    section: 'data',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.fixupTable(node, connId),
+  },
+  {
     id: 'import-data',
     label: 'ctx.import-data',
     section: 'data',

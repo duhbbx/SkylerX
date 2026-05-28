@@ -14,6 +14,65 @@ import { toast } from '../dialog'
 
 type Doc = Record<string, unknown>
 
+/** dot-path 操作集合：set 写入 / unset 删除字段。 */
+type DiffOps = { set: Record<string, unknown>; unset: Record<string, true> }
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return (
+    v !== null &&
+    typeof v === 'object' &&
+    !Array.isArray(v) &&
+    Object.getPrototypeOf(v) === Object.prototype
+  )
+}
+
+/**
+ * 在 `path` 下深 diff `oldV` → `newV`，把变化压成 dot-path 形态的 $set / $unset。
+ *
+ * 规则：
+ *  - 任一方不是 plain object（含 primitive / array / null / 类型不同）→ 整字段 set，
+ *    数组不展开避免索引错位。
+ *  - 两侧都是 plain object → 取 key 并集：仅 new 有 → 递归；仅 old 有 → $unset；
+ *    两侧都有 → 递归；两侧 JSON 等价则跳过。
+ *  - 空对象 `{}` 视作合法值，按整字段写入。
+ */
+function diffToOps(path: string, oldV: unknown, newV: unknown, ops: DiffOps): void {
+  if (!isPlainObject(oldV) || !isPlainObject(newV)) {
+    if (newV === undefined) {
+      ops.unset[path] = true
+    } else {
+      // 同值短路：避免对未变化的叶子重复 set（递归到 primitive 时也会走这里）。
+      try {
+        if (JSON.stringify(oldV) === JSON.stringify(newV)) return
+      } catch {
+        /* circular / unserializable → 落到下面整字段 set */
+      }
+      ops.set[path] = newV
+    }
+    return
+  }
+  // 两侧都是 plain object：空对象按整字段写入（避免空 $set 段）。
+  const oldKeys = Object.keys(oldV)
+  const newKeys = Object.keys(newV)
+  if (newKeys.length === 0 && oldKeys.length === 0) return
+  const seen = new Set<string>()
+  for (const k of newKeys) {
+    seen.add(k)
+    const sub = path ? `${path}.${k}` : k
+    if (k in oldV) {
+      diffToOps(sub, oldV[k], newV[k], ops)
+    } else {
+      // 新增 key：递归会把整子树压成 set / 嵌套的 set。
+      diffToOps(sub, undefined, newV[k], ops)
+    }
+  }
+  for (const k of oldKeys) {
+    if (seen.has(k)) continue
+    const sub = path ? `${path}.${k}` : k
+    ops.unset[sub] = true
+  }
+}
+
 const props = defineProps<{
   conn: ConnectionConfig
   database: string
@@ -226,23 +285,35 @@ async function commitEdits(): Promise<void> {
   if (dirty.value.size === 0) return
   committing.value = true
   const failures: string[] = []
+  let committed = 0
   try {
     for (const [docId, fields] of dirty.value) {
       const original = originals.value.get(docId)
       const current = rows.value.find((r) => docKey(r) === docId)
       if (!original || !current) continue
-      const set: Doc = {}
-      for (const f of fields) set[f] = current[f]
+      // 对每个 dirty 一级字段做深 diff，合并到单文档 ops。
+      const ops: DiffOps = { set: {}, unset: {} }
+      for (const f of fields) {
+        diffToOps(f, original[f], current[f], ops)
+      }
+      const hasSet = Object.keys(ops.set).length > 0
+      const hasUnset = Object.keys(ops.unset).length > 0
+      // 全字段被 diff 回原值 → 跳过；externally 也应被 applyEdit 清掉，这里兜底。
+      if (!hasSet && !hasUnset) continue
+      const update: Record<string, unknown> = {}
+      if (hasSet) update.$set = ops.set
+      if (hasUnset) update.$unset = ops.unset
       try {
         await client.connections.executeCommand(props.conn.id, {
           op: 'updateOne',
           args: {
             filter: { _id: original._id },
-            update: { $set: set },
+            update,
             options: {},
           },
           context: { database: props.database, collection: props.collection },
         })
+        committed += 1
       } catch (e) {
         failures.push(`${docId}: ${e instanceof Error ? e.message : String(e)}`)
       }
@@ -251,7 +322,7 @@ async function commitEdits(): Promise<void> {
       toast.error(`部分更新失败 (${failures.length}): ${failures[0]}`)
       // 失败保留 dirty，让用户重试
     } else {
-      toast.success(`已提交 ${dirty.value.size} 条修改`)
+      toast.success(`已提交 ${committed} 条修改`)
       await runQuery()
     }
   } finally {

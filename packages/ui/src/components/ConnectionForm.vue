@@ -28,6 +28,7 @@ const dialectOptions = [
   { value: DbDialect.OceanBase, label: 'OceanBase' },
   { value: DbDialect.MongoDB, label: 'MongoDB' },
   { value: DbDialect.Redis, label: 'Redis' },
+  { value: DbDialect.Elasticsearch, label: 'Elasticsearch' },
 ]
 
 const defaultPorts: Record<string, number> = {
@@ -41,6 +42,7 @@ const defaultPorts: Record<string, number> = {
   [DbDialect.SqlServer]: 1433,
   [DbDialect.MongoDB]: 27017,
   [DbDialect.Redis]: 6379,
+  [DbDialect.Elasticsearch]: 9200,
 }
 
 const form = reactive<ConnectionConfig>(blankForm())
