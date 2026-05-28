@@ -79,10 +79,29 @@ function startResize(col: string, e: MouseEvent): void {
 }
 
 const columnNames = computed(() => props.result?.columns.map((c) => c.name) ?? [])
-/** 渲染用的可见列（剔除隐藏列）；整行查看器仍展示全部列。 */
-const visibleColumns = computed(() =>
-  (props.result?.columns ?? []).filter((c) => !hiddenCols.value.has(c.name)),
-)
+// 列顺序（按列名；拖拽列头可重排）；结果变更时重置
+const colOrder = ref<string[]>([])
+const dragCol = ref<string | null>(null)
+/** 渲染用的可见列（应用自定义顺序 + 剔除隐藏列）；整行查看器仍展示全部列。 */
+const visibleColumns = computed(() => {
+  const cols = props.result?.columns ?? []
+  const byName = new Map(cols.map((c) => [c.name, c]))
+  const ordered = colOrder.value.map((n) => byName.get(n)).filter((c): c is (typeof cols)[number] => !!c)
+  for (const c of cols) if (!colOrder.value.includes(c.name)) ordered.push(c)
+  return ordered.filter((c) => !hiddenCols.value.has(c.name))
+})
+function onColDrop(target: string): void {
+  const from = dragCol.value
+  dragCol.value = null
+  if (!from || from === target) return
+  const order = colOrder.value.length ? [...colOrder.value] : columnNames.value.slice()
+  const fi = order.indexOf(from)
+  const ti = order.indexOf(target)
+  if (fi < 0 || ti < 0) return
+  order.splice(fi, 1)
+  order.splice(ti, 0, from)
+  colOrder.value = order
+}
 
 function toggleCol(name: string): void {
   const s = new Set(hiddenCols.value)
@@ -240,6 +259,7 @@ function resetEdits(): void {
   showColsMenu.value = false
   showCopyMenu.value = false
   colWidths.value = {}
+  colOrder.value = (props.result?.columns ?? []).map((c) => c.name)
   colFilters.value = {}
 }
 watch(() => props.result, resetEdits, { immediate: true })
@@ -522,9 +542,14 @@ const summaryRow = computed<Record<string, string>>(() => {
               <th
                 v-for="c in visibleColumns"
                 :key="c.name"
-                :class="{ sortable: !editable }"
+                :class="{ sortable: !editable, dragging: dragCol === c.name }"
                 :style="colWidths[c.name] ? { width: `${colWidths[c.name]}px` } : undefined"
+                draggable="true"
                 @click="toggleSort(c.name)"
+                @dragstart="dragCol = c.name"
+                @dragover.prevent
+                @drop="onColDrop(c.name)"
+                @dragend="dragCol = null"
               >
                 {{ c.name }}<span class="th-type">{{ c.dataType }}</span>
                 <span v-if="sortCol === c.name" class="sort-ind">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
@@ -978,6 +1003,9 @@ td input {
 th.sortable {
   cursor: pointer;
   user-select: none;
+}
+thead th.dragging {
+  opacity: 0.4;
 }
 th.sortable:hover {
   color: var(--text);
