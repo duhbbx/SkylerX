@@ -19,18 +19,25 @@ const NLS_SHIM = resolve(__dirname, '../../packages/ui/src/vendor/monaco-nls-shi
  * 阶段就解析掉了，运行时再加 Vite 插件也来不及。
  */
 function monacoNlsShim(): Plugin {
+  let hits = 0
   return {
     name: 'skylerx:monaco-nls-shim',
     enforce: 'pre',
     async resolveId(source, importer) {
       // 显式包路径
       if (source === 'monaco-editor/esm/vs/nls.js' || source === 'monaco-editor/esm/vs/nls') {
+        hits++
         return NLS_SHIM
       }
-      // monaco 自家文件里 `import '../nls.js'` / `import '../../../nls.js'` —— 解析成绝对路径再判断
+      // monaco 自家文件 `import '../nls.js'` —— 解析成绝对路径再判断；
+      // Vite 给路径加 ?v=hash cache-buster，所以末尾匹配要剥掉 query。
       if (importer && /[\\/]monaco-editor[\\/]/.test(importer) && /(^|[\\/])nls(\.js)?$/.test(source)) {
         const r = await this.resolve(source, importer, { skipSelf: true })
-        if (r?.id && /[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]nls\.js$/.test(r.id)) {
+        if (!r?.id) return null
+        const pathOnly = r.id.split('?')[0]
+        if (/[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]nls\.js$/.test(pathOnly)) {
+          hits++
+          if (hits <= 3) console.log(`[monacoNlsShim] redirected ${hits} → ${NLS_SHIM}`)
           return NLS_SHIM
         }
       }
