@@ -110,6 +110,12 @@ export interface TableSpec {
   rowFormat: string
   /** MySQL：自增起始值（写入 AUTO_INCREMENT=N） */
   autoIncStart: string
+  /** PG：表空间 */
+  tablespace: string
+  /** PG：填充因子（WITH (fillfactor=N)） */
+  fillfactor: string
+  /** PG：继承的父表（INHERITS (parent)） */
+  inherits: string
 }
 
 export function emptyTableSpec(): TableSpec {
@@ -125,6 +131,9 @@ export function emptyTableSpec(): TableSpec {
     collation: '',
     rowFormat: '',
     autoIncStart: '',
+    tablespace: '',
+    fillfactor: '',
+    inherits: '',
   }
 }
 
@@ -686,6 +695,11 @@ export function buildCreateTable(
     if (spec.autoIncStart.trim()) opts.push(`AUTO_INCREMENT=${spec.autoIncStart.trim()}`)
     if (spec.comment.trim()) opts.push(`COMMENT='${esc(spec.comment.trim())}'`)
     if (opts.length) create += ` ${opts.join(' ')}`
+  }
+  if (fam === 'pg') {
+    if (spec.inherits.trim()) create += ` INHERITS (${q(spec.inherits.trim())})`
+    if (spec.fillfactor.trim()) create += ` WITH (fillfactor=${spec.fillfactor.trim()})`
+    if (spec.tablespace.trim()) create += ` TABLESPACE ${q(spec.tablespace.trim())}`
   }
   create += ';'
 

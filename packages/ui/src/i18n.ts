@@ -340,6 +340,7 @@ const DICT: Record<string, [string, string]> = {
   'designer.zerofill': ['ZEROFILL', 'ZEROFILL'],
   'designer.wherePh': ['status = 1', 'status = 1'],
   'designer.concurrentTitle': ['CONCURRENTLY：在线建索引（PG，不锁表）', 'CONCURRENTLY: build the index without locking the table (PG)'],
+  'designer.inheritsPh': ['parent_table', 'parent_table'],
   'designer.generated': ['生成列表达式', 'Generated expression'],
   'designer.generatedPh': ['如 price * qty（留空=普通列）', 'e.g. price * qty (empty = normal column)'],
 

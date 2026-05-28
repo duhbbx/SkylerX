@@ -489,6 +489,11 @@ function saveAs(): void {
           </div>
           <div class="opt-row"><label>{{ t('designer.autoIncStart') }}</label><input v-model="spec.autoIncStart" placeholder="1" type="text" /></div>
         </template>
+        <template v-else-if="isPg">
+          <div class="opt-row"><label>TABLESPACE</label><input v-model="spec.tablespace" placeholder="pg_default" /></div>
+          <div class="opt-row"><label>FILLFACTOR</label><input v-model="spec.fillfactor" placeholder="100" type="text" /></div>
+          <div class="opt-row"><label>INHERITS</label><input v-model="spec.inherits" :placeholder="t('designer.inheritsPh')" /></div>
+        </template>
         <div v-else class="hint-pane">{{ t('designer.noOptions') }}</div>
       </div>
 
