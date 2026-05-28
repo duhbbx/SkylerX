@@ -57,6 +57,7 @@ const DICT: Record<string, [string, string]> = {
   'common.resetDefault': ['恢复默认', 'Reset to defaults'],
   'common.untitled': ['(未命名)', '(untitled)'],
   'common.loading': ['加载中…', 'Loading…'],
+  'common.remove': ['移除', 'Remove'],
 
   // ── 设置 ──
   'settings.title': ['设置', 'Settings'],
@@ -624,7 +625,10 @@ const DICT: Record<string, [string, string]> = {
   'pal.importConns': ['导入连接配置', 'Import connections'],
   'pal.refresh': ['刷新导航树', 'Refresh tree'],
   'pal.shortcuts': ['快捷键参考', 'Keyboard shortcuts'],
+  'pal.favorites': ['收藏夹', 'Favorites'],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
+  'ws.favoritesTitle': ['收藏夹', 'Favorites'],
+  'ws.favoritesEmpty': ['暂无收藏。右键表/视图 →「收藏 / 取消收藏」。', 'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".'],
   'ws.scAction': ['操作', 'Action'],
   'ws.scKey': ['快捷键', 'Shortcut'],
   'pal.groupActions': ['操作', 'Actions'],

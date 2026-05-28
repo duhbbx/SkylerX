@@ -18,6 +18,7 @@ import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { buildCreateFromColumns, buildDataDictMarkdown, buildTableDump } from './dump'
+import { type Favorite, favorites, removeFavorite, toggleFavorite } from './favorites'
 import { buildMockInserts } from './mockgen'
 import {
   type ObjectKind,
@@ -291,6 +292,29 @@ async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
   } catch (e) {
     window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
+}
+
+async function onToggleFavorite(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  toggleFavorite({
+    connId,
+    connName: conn.name || t('common.untitled'),
+    dialect: conn.dialect,
+    schema: ctx.schema ?? ctx.database ?? '',
+    name: node.name,
+    sqlName: node.sqlName ?? node.name,
+    kind: node.kind,
+  })
+}
+
+// 收藏夹点击：定位到对象 + 查询前 200 行
+async function onFavoriteOpen(fav: Favorite): Promise<void> {
+  shortcutsOpen.value = false
+  favoritesOpen.value = false
+  await navRef.value?.revealObject(fav.connId, fav.schema, fav.name)
+  const conn = await client.connections.get(fav.connId)
+  tabsRef.value?.runSql(conn, previewSql(conn.dialect, fav.sqlName, 200))
 }
 
 // 生成数据字典（Markdown）：迭代库/schema 下所有表的列信息
@@ -612,6 +636,7 @@ const privilegesOpen = ref(false)
 const dataDiffOpen = ref(false)
 const objectSearchOpen = ref(false)
 const shortcutsOpen = ref(false)
+const favoritesOpen = ref(false)
 // 快捷键参考表
 const SHORTCUTS: { k: string; label: string }[] = [
   { k: '⌘/Ctrl + K', label: t('pal.objectSearch') },
@@ -658,6 +683,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:export-conns', label: t('pal.exportConns'), group: t('pal.groupActions') },
   { id: 'act:import-conns', label: t('pal.importConns'), group: t('pal.groupActions') },
   { id: 'act:refresh', label: t('pal.refresh'), group: t('pal.groupActions') },
+  { id: 'act:favorites', label: t('pal.favorites'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
@@ -683,6 +709,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:export-conns') await exportConns()
   else if (item.id === 'act:import-conns') await importConns()
   else if (item.id === 'act:refresh') await navRef.value?.reload()
+  else if (item.id === 'act:favorites') favoritesOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
 }
@@ -754,6 +781,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @mock-data="onMockData"
     @deps="onDeps"
     @copy-ddl="onCopyDdl"
+    @toggle-favorite="onToggleFavorite"
     @data-dict="onDataDict"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
@@ -901,6 +929,18 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     </div>
   </Modal>
 
+  <Modal v-if="favoritesOpen" :title="t('ws.favoritesTitle')" @close="favoritesOpen = false">
+    <div class="fav-list">
+      <div v-if="!favorites.length" class="fav-empty">{{ t('ws.favoritesEmpty') }}</div>
+      <div v-for="f in favorites" :key="f.id" class="fav-row" @click="onFavoriteOpen(f)">
+        <span class="fav-icon">{{ f.kind === 'view' ? '👁' : '▦' }}</span>
+        <span class="fav-name">{{ f.name }}</span>
+        <span class="fav-meta">{{ f.connName }} · {{ f.schema }}</span>
+        <button class="fav-del" :title="t('common.remove')" @click.stop="removeFavorite(f.id)">✕</button>
+      </div>
+    </div>
+  </Modal>
+
   <Modal v-if="shortcutsOpen" :title="t('ws.shortcutsTitle')" @close="shortcutsOpen = false">
     <table class="sc-table">
       <thead>
@@ -1025,6 +1065,51 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   border-radius: 5px;
   background: var(--bg-subtle, rgba(127, 127, 127, 0.08));
   white-space: nowrap;
+}
+.fav-list {
+  min-width: 360px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.fav-empty {
+  color: var(--muted);
+  padding: 16px 4px;
+  text-align: center;
+  font-size: 13px;
+}
+.fav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.fav-row:hover {
+  background: rgba(124, 108, 255, 0.14);
+}
+.fav-icon {
+  opacity: 0.8;
+}
+.fav-name {
+  font-weight: 500;
+}
+.fav-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.fav-del {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.fav-del:hover {
+  color: var(--err);
 }
 .dep-sec {
   font-size: 12px;

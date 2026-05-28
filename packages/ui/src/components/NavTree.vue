@@ -31,6 +31,7 @@ const emit = defineEmits<{
   mockData: [string, TreeNode]
   deps: [string, TreeNode]
   copyDdl: [string, TreeNode]
+  toggleFavorite: [string, TreeNode]
   dataDict: [string, TreeNode]
   editObject: [string, TreeNode]
   viewDefinition: [string, TreeNode]
@@ -175,6 +176,7 @@ const controller: TreeController = {
   generateMockData: (node, connId) => emit('mockData', connId, node),
   viewDependencies: (node, connId) => emit('deps', connId, node),
   copyDdl: (node, connId) => emit('copyDdl', connId, node),
+  toggleFavorite: (node, connId) => emit('toggleFavorite', connId, node),
   dataDict: (node, connId) => emit('dataDict', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
   viewDefinition: (node, connId) => emit('viewDefinition', connId, node),

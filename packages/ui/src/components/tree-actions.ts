@@ -141,6 +141,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.copyDdl(node, connId),
   },
   {
+    id: 'toggle-favorite',
+    label: '收藏 / 取消收藏',
+    kinds: [MetaNodeKind.Table, MetaNodeKind.View],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.toggleFavorite(node, connId),
+  },
+  {
     id: 'import-data',
     label: '导入数据（CSV）',
     kinds: [MetaNodeKind.Table],

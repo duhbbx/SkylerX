@@ -49,6 +49,8 @@ export interface TreeController {
   viewDependencies(node: TreeNode, connId: string): void
   /** 复制建表语句（CREATE TABLE DDL）到剪贴板 */
   copyDdl(node: TreeNode, connId: string): void
+  /** 收藏 / 取消收藏该表/视图（全局收藏夹） */
+  toggleFavorite(node: TreeNode, connId: string): void
   /** 生成库/schema 的数据字典（Markdown 文件） */
   dataDict(node: TreeNode, connId: string): void
   /** 编辑视图/函数/存储过程：载入定义后以 DDL 编辑器打开 */
