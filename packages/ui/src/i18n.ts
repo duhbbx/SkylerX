@@ -345,6 +345,17 @@ const DICT: Record<string, [string, string]> = {
     'Click a result to locate it in the tree; "Preview" shows first 200 rows',
   ],
 
+  // ── 操作日志 OperationLogDialog ──
+  'oplog.title': ['操作日志', 'Operation log'],
+  'oplog.searchPh': ['搜索 SQL…', 'Search SQL…'],
+  'oplog.statusAll': ['全部状态', 'All statuses'],
+  'oplog.statusOk': ['成功', 'Succeeded'],
+  'oplog.statusErr': ['失败', 'Failed'],
+  'oplog.allConns': ['全部连接', 'All connections'],
+  'oplog.exportCsv': ['导出 CSV', 'Export CSV'],
+  'oplog.empty': ['无匹配的执行记录', 'No matching execution records'],
+  'oplog.foot': ['共 {n} 条 · 点击任一行可在对应连接打开该 SQL', '{n} records · click a row to open the SQL on its connection'],
+
   // ── 结构对比 SchemaDiffDialog ──
   'sdiff.status.added': ['新增表', 'New table'],
   'sdiff.status.changed': ['改表', 'Changed'],
@@ -626,6 +637,7 @@ const DICT: Record<string, [string, string]> = {
   'pal.refresh': ['刷新导航树', 'Refresh tree'],
   'pal.shortcuts': ['快捷键参考', 'Keyboard shortcuts'],
   'pal.favorites': ['收藏夹', 'Favorites'],
+  'pal.oplog': ['操作日志', 'Operation log'],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
   'ws.favoritesEmpty': ['暂无收藏。右键表/视图 →「收藏 / 取消收藏」。', 'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".'],
