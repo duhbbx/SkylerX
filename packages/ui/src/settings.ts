@@ -75,6 +75,10 @@ export interface Settings {
   aiFacts: { id: string; text: string; createdAt: number }[]
   /** B: 每轮对话结束后让 LLM 抽取 1-3 条事实（多一次小请求；可关） */
   aiAutoExtractFacts: boolean
+  /** I1 通知触发阈值：执行耗时超过此值（毫秒）算"慢查询"，触发 notify('slow-query')。0 = 不报 */
+  slowQueryNotifyMs: number
+  /** I1 是否启用执行失败通知（notify('query-error')） */
+  notifyOnQueryError: boolean
   /** C: 把每轮对话向量化存本地；查询前按相似度取 top-K 注入 */
   aiVectorMemory: boolean
   /** C: 本地向量记忆条目（小规模直接 localStorage；超过 1000 条会截断旧的） */
@@ -126,6 +130,8 @@ const DEFAULTS: Settings = {
   aiCustomInstructions: '',
   aiFacts: [],
   aiAutoExtractFacts: false,
+  slowQueryNotifyMs: 0, // 默认关；用户在通知配置里开
+  notifyOnQueryError: false,
   aiVectorMemory: false,
   aiVectorMemories: [],
   aiEmbeddingBaseUrl: 'https://api.openai.com',

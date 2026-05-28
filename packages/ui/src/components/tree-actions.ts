@@ -328,6 +328,30 @@ export const TREE_ACTIONS: TreeAction[] = [
     enabled: (n) => !!n.sqlName,
     run: ({ node, connId, ctrl }) => ctrl.fixupTable(node, connId),
   },
+  // ── G2 AI 写注释（表级直连，替代 ⌘K 后弹 prompt 的两步） ──
+  {
+    id: 'ai-comment-table',
+    label: 'ctx.ai-comment-table',
+    section: 'meta',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.aiCommentTable(node, connId),
+  },
+  // ── G1 AI 数据库体检 / C5 索引推荐：连接级，挂 Connection 节点右键 ──
+  {
+    id: 'ai-health-conn',
+    label: 'ctx.ai-health',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection],
+    run: ({ connId, ctrl }) => ctrl.aiHealthCheck(connId),
+  },
+  {
+    id: 'index-recommender-conn',
+    label: 'ctx.index-recommender',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection],
+    run: ({ connId, ctrl }) => ctrl.indexRecommender(connId),
+  },
   {
     id: 'import-data',
     label: 'ctx.import-data',

@@ -667,6 +667,13 @@ const DICT: Record<string, [string, string]> = {
   'pal.drift': ['Schema 漂移检测', 'Schema drift detect'],
   'pal.aiComment': ['AI 写注释', 'AI write comments'],
   'aicmt.askTable': ['请输入要写注释的表名（schema.table）', 'Enter table name (schema.table)'],
+  'ctx.ai-comment-table': ['🤖 AI 写注释', '🤖 AI write comments'],
+  'ctx.ai-health': ['🩺 AI 数据库体检', '🩺 AI database health check'],
+  'ctx.index-recommender': ['📊 索引推荐器', '📊 Index recommender'],
+  'notif.globalTriggers': ['全局触发器', 'Global triggers'],
+  'notif.triggerOnError': ['SQL 执行失败时通知', 'Notify on SQL error'],
+  'notif.slowMs': ['慢查询阈值 (ms)', 'Slow query threshold (ms)'],
+  'notif.slowOff': ['（0 = 关闭慢查询通知）', '(0 = off)'],
   // ── B7 数据契约 ──
   'pal.contracts': ['数据契约', 'Data contracts'],
   'contract.title': ['数据契约', 'Data Contracts'],

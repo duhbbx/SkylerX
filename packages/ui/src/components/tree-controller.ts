@@ -95,6 +95,12 @@ export interface TreeController {
   inspectTable(node: TreeNode, connId: string): void
   /** B3+B4+B8 数据修整：重复行 / NULL 补全 / 软删恢复 */
   fixupTable(node: TreeNode, connId: string): void
+  /** G2 AI 写表/列注释 */
+  aiCommentTable(node: TreeNode, connId: string): void
+  /** G1 AI 数据库体检（连接级） */
+  aiHealthCheck(connId: string): void
+  /** C5 索引推荐器（连接级） */
+  indexRecommender(connId: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

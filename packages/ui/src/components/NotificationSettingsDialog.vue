@@ -19,6 +19,7 @@ import {
   notify,
   saveNotifs,
 } from '../notifications'
+import { settings } from '../settings'
 import Modal from './Modal.vue'
 
 // props 无（spec 明确）
@@ -232,6 +233,21 @@ function onFieldChange(): void {
               </label>
             </div>
           </div>
+          <!-- 全局事件触发阈值（影响所有 channel）：失败开关 + 慢查询阈值 -->
+          <div class="row">
+            <label>{{ t('notif.globalTriggers') }}</label>
+            <div class="events">
+              <label class="check">
+                <input v-model="settings.notifyOnQueryError" type="checkbox" />
+                <span>{{ t('notif.triggerOnError') }}</span>
+              </label>
+              <label class="check">
+                <span>{{ t('notif.slowMs') }}</span>
+                <input v-model.number="settings.slowQueryNotifyMs" type="number" min="0" step="100" class="num" />
+                <span class="muted">{{ settings.slowQueryNotifyMs > 0 ? '' : t('notif.slowOff') }}</span>
+              </label>
+            </div>
+          </div>
           <div class="actions">
             <button class="ghost danger" @click="removeSelected">{{ t('notif.delete') }}</button>
             <span class="spacer"></span>
@@ -375,6 +391,19 @@ function onFieldChange(): void {
   flex-wrap: wrap;
   gap: 6px 14px;
   padding-top: 2px;
+}
+.events .num {
+  width: 72px;
+  padding: 2px 6px;
+  font-family: ui-monospace, monospace;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+}
+.events .muted {
+  color: var(--muted);
+  font-size: 11px;
 }
 .actions {
   display: flex;

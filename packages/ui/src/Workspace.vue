@@ -1076,6 +1076,11 @@ async function openAiCommentByPrompt(connId: string): Promise<void> {
   const conn = await client.connections.get(connId)
   aiCommentOpen.value = { conn, table: table.trim() }
 }
+/** G2 NavTree 表节点右键直连入口（已带表名，省去 prompt） */
+async function openAiCommentForTable(connId: string, table: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  aiCommentOpen.value = { conn, table }
+}
 /** G4 SQL 跨方言翻译（全局，无连接绑定） */
 const translateOpen = ref<{ initialSql?: string } | null>(null)
 /** I1 通知 webhook 设置 */
@@ -1425,7 +1430,14 @@ async function importConns(): Promise<void> {
   }
 }
 
-/** K1：把命令 id 映射到具体行为；命中返回 true，未识别返回 false（继续走硬编码 fallback）。 */
+/**
+ * K1：把命令 id 映射到具体行为；命中返回 true，未识别返回 false（继续走硬编码 fallback）。
+ *
+ * 「全局动作」（palette/settings 等）→ 直接调对应方法。
+ * 「编辑器内动作」（run-sql / find / replace / format-sql / save-snippet / close-tab）→ 派发 window CustomEvent，
+ * QueryPane / QueryTabs 在编辑态 mount 时各自 addEventListener 接听；这样用户改了 chord 也能命中。
+ * Monaco 自身的默认快捷键（⌘+Enter / ⌘+F / ⌘+H）跟事件互不冲突——Monaco 先吃，事件 noop。
+ */
 function dispatchCommand(cmdId: string): boolean {
   switch (cmdId) {
     case 'palette':
@@ -1444,9 +1456,20 @@ function dispatchCommand(cmdId: string): boolean {
     case 'settings':
       settingsOpen.value = true
       return true
-    // run-sql / new-query / close-tab / find / replace / format-sql / save-snippet
-    // 这些属于查询页内动作（Monaco 编辑器在编辑态时会自己吃掉这些按键），
-    // Workspace 层不拦截：如果用户改成更冷门的 chord，这里命中 false → 下面 fallback 继续放过去，不阻断 Monaco。
+    case 'new-query':
+      tabsRef.value?.newForCurrent?.()
+      return true
+    case 'close-tab':
+      tabsRef.value?.closeActive?.()
+      return true
+    // 这些在编辑态时由 QueryPane 监听 window event 触发对应方法
+    case 'run-sql':
+    case 'find':
+    case 'replace':
+    case 'format-sql':
+    case 'save-snippet':
+      window.dispatchEvent(new CustomEvent(`editor:${cmdId}`))
+      return true
     default:
       return false
   }
@@ -1624,6 +1647,9 @@ onUnmounted(() => unsubMenu?.())
     @truncate-table="onTruncateTable"
     @inspect-table="(cid, node) => openInspector(cid, node.sqlName ?? node.name)"
     @fixup-table="(cid, node) => openFixup(cid, node.sqlName ?? node.name)"
+    @ai-comment-table="(cid, node) => openAiCommentForTable(cid, node.sqlName ?? node.name)"
+    @ai-health-check="openHealth"
+    @index-recommender="openIdxRec"
     @rename-table="onRenameTable"
     @copy-table="onCopyTable"
     @toggle-prod-mark="onToggleProdMark"

@@ -324,6 +324,11 @@ function onCreated(tab: Tab): void {
 /** 暴露给父组件用：当前激活 tab 的连接 id（用于右侧 AI 聊天默认连接跟随）；computed 自带响应式 */
 const activeConnId = computed(() => active.value?.conn.id ?? '')
 
+/** K1：关当前活跃 tab（菜单 / 快捷键 close-tab 触发） */
+function closeActive(): void {
+  if (activeId.value) void close(activeId.value)
+}
+
 defineExpose({
   openConnection,
   newQuery,
@@ -339,6 +344,7 @@ defineExpose({
   openRedisDb,
   openEsIndex,
   closeConnTabs,
+  closeActive,
   activeConnId,
 })
 

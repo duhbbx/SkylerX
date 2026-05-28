@@ -37,6 +37,9 @@ const emit = defineEmits<{
   truncateTable: [string, TreeNode]
   inspectTable: [string, TreeNode]
   fixupTable: [string, TreeNode]
+  aiCommentTable: [string, TreeNode]
+  aiHealthCheck: [string]
+  indexRecommender: [string]
   renameTable: [string, TreeNode]
   copyTable: [string, TreeNode, boolean]
   toggleProdMark: [string]
@@ -222,6 +225,9 @@ const controller: TreeController = {
   copyText: (text) => void navigator.clipboard?.writeText(text),
   inspectTable: (node, connId) => emit('inspectTable', connId, node),
   fixupTable: (node, connId) => emit('fixupTable', connId, node),
+  aiCommentTable: (node, connId) => emit('aiCommentTable', connId, node),
+  aiHealthCheck: (connId) => emit('aiHealthCheck', connId),
+  indexRecommender: (connId) => emit('indexRecommender', connId),
 }
 
 provide(TreeControllerKey, controller)

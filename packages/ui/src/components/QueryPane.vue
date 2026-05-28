@@ -24,6 +24,7 @@ import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { addQueryFavorite } from '../favorites'
 import { t } from '../i18n'
 import type { Suggestion } from '../monaco-setup'
+import { notify } from '../notifications'
 import { type PlanNode, parsePgPlan, planQuery } from '../plan'
 import { pluginBuiltinSnippets } from '../plugins'
 import { settings } from '../settings'
@@ -875,6 +876,8 @@ async function execSql(text: string): Promise<void> {
     // AI 聊天面板：以原文 SQL 为 key 广播执行结果，更新代码块旁的执行徽章
     const firstErr = next.find((t) => t.error)?.error ?? null
     emitChatSqlExecuted({ sql: text, ok: !firstErr, error: firstErr })
+    // I1 通知 webhook：失败 → query-error；耗时超阈值 → slow-query
+    void notifyExecResult(text, next, firstErr)
   } finally {
     if (token === runToken) {
       running.value = false
@@ -1120,6 +1123,31 @@ watch(
   },
 )
 
+/**
+ * K1 编辑器内动作 window event 接听：Workspace.dispatchCommand 派发 editor:run-sql 等，
+ * 只有"激活"tab 应该响应——但 Vue 的 v-show 切换不卸载组件，所有 QueryPane 实例都会收到。
+ * 用 IntersectionObserver 太重；这里用 paneEl 是否在视口里的简单判定（visible 时 offsetParent 非 null）。
+ */
+function isPaneActive(): boolean {
+  const el = paneEl.value
+  return !!(el && el.offsetParent !== null)
+}
+function onEditorRunSql(): void {
+  if (isPaneActive()) run()
+}
+function onEditorFormatSql(): void {
+  if (isPaneActive()) formatSql()
+}
+function onEditorSaveSnippet(): void {
+  if (isPaneActive()) saveCurrentSnippet()
+}
+function onEditorFind(): void {
+  if (isPaneActive()) editorRef.value?.triggerFind?.()
+}
+function onEditorReplace(): void {
+  if (isPaneActive()) editorRef.value?.triggerReplace?.()
+}
+
 onMounted(() => {
   void loadHistory()
   void loadContext()
@@ -1130,13 +1158,50 @@ onMounted(() => {
     sql.value = props.initialSql // 草稿：只填入，不执行
   }
   window.addEventListener('mousedown', onWinClickForMore)
+  window.addEventListener('editor:run-sql', onEditorRunSql)
+  window.addEventListener('editor:format-sql', onEditorFormatSql)
+  window.addEventListener('editor:save-snippet', onEditorSaveSnippet)
+  window.addEventListener('editor:find', onEditorFind)
+  window.addEventListener('editor:replace', onEditorReplace)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousedown', onWinClickForMore)
+  window.removeEventListener('editor:run-sql', onEditorRunSql)
+  window.removeEventListener('editor:format-sql', onEditorFormatSql)
+  window.removeEventListener('editor:save-snippet', onEditorSaveSnippet)
+  window.removeEventListener('editor:find', onEditorFind)
+  window.removeEventListener('editor:replace', onEditorReplace)
   // 关 tab 时若还有未关闭的 session，按"放弃改动"语义结束（endSession 内部会 ROLLBACK）。
   // 这里不弹确认——确认的责任在 QueryTabs.close（它有机会先弹再卸载组件）。
   void endSessionIfAny()
 })
+
+/**
+ * I1：把执行结果转成 webhook 通知；耗时长 / 失败两条线分开发，方便用户在通知设置里只订阅其中一条。
+ * 失败 + 不可达连接 不重复发（不可达通常是网络/重启，靠 connError 处理）。
+ */
+async function notifyExecResult(
+  sql: string,
+  tabs: ResultTab[],
+  firstErr: string | null,
+): Promise<void> {
+  const connName = props.conn.name || props.conn.dialect
+  const totalMs = tabs.reduce((s, t) => s + (t.result?.executionTimeMs ?? 0), 0)
+  const sqlPreview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql
+  if (firstErr && settings.notifyOnQueryError) {
+    await notify('query-error', {
+      title: `❌ SQL 执行失败 @ ${connName}`,
+      body: `${firstErr}\n\n\`\`\`sql\n${sqlPreview}\n\`\`\``,
+      level: 'error',
+    })
+  } else if (!firstErr && settings.slowQueryNotifyMs > 0 && totalMs >= settings.slowQueryNotifyMs) {
+    await notify('slow-query', {
+      title: `🐢 慢查询 ${totalMs}ms @ ${connName}`,
+      body: `执行耗时 ${totalMs}ms，超过阈值 ${settings.slowQueryNotifyMs}ms。\n\n\`\`\`sql\n${sqlPreview}\n\`\`\``,
+      level: 'warn',
+    })
+  }
+}
 
 // 暴露给 QueryTabs.close 在卸载前检查是否有未提交（要弹挽留确认时调用）
 defineExpose({

@@ -181,7 +181,15 @@ function getTextBeforeCursor(): string {
   })
 }
 
-defineExpose({ getSelectedText, getTextBeforeCursor })
+/** Monaco 内置 find / replace 触发器，给上层（K1 自定义快捷键）绑用 */
+function triggerFind(): void {
+  editor?.getAction('actions.find')?.run()
+}
+function triggerReplace(): void {
+  editor?.getAction('editor.action.startFindReplaceAction')?.run()
+}
+
+defineExpose({ getSelectedText, getTextBeforeCursor, triggerFind, triggerReplace })
 
 onBeforeUnmount(() => {
   for (const d of actionDisposables) d.dispose()
