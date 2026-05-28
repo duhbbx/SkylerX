@@ -153,6 +153,9 @@ const DICT: Record<string, [string, string]> = {
   'grid.selRows': ['选中行', 'Selected'],
   'grid.all': ['全部', 'All'],
   'grid.cols': ['列 ▾', 'Columns ▾'],
+  'grid.viewGrid': ['网格', 'Grid'],
+  'grid.viewJson': ['JSON', 'JSON'],
+  'grid.freeze': ['冻结首列', 'Freeze 1st column'],
   'grid.sortHint': [
     '点列头排序 · 双击单元格查看 · 点行号看整行',
     'Click header to sort · double-click cell to view · click row number for full row',

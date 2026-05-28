@@ -55,6 +55,8 @@ const filterText = ref('')
 const hiddenCols = ref<Set<string>>(new Set())
 const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
+const viewMode = ref<'grid' | 'json'>('grid') // 只读态：网格 / JSON 视图
+const freezeFirst = ref(false) // 冻结首数据列
 // 列宽（px，按列名）
 const colWidths = ref<Record<string, number>>({})
 // 服务端列筛选：列名 → 条件串（如 "= 5"）
@@ -478,10 +480,21 @@ function sqlLiteral(v: unknown): string {
             </div>
           </template>
         </div>
+        <button
+          class="vm"
+          :class="{ on: viewMode === 'json' }"
+          :title="t('grid.viewJson')"
+          @click="viewMode = viewMode === 'json' ? 'grid' : 'json'"
+        >
+          {{ viewMode === 'json' ? t('grid.viewGrid') : t('grid.viewJson') }}
+        </button>
+        <button class="vm" :class="{ on: freezeFirst }" :title="t('grid.freeze')" @click="freezeFirst = !freezeFirst">❄</button>
         <span class="hint">{{ t('grid.sortHint') }}</span>
       </div>
 
-      <div v-if="result.columns.length" ref="gridScrollEl" class="grid-scroll" @scroll="onGridScroll">
+      <pre v-if="viewMode === 'json' && !editable && result.columns.length" class="json-view">{{ JSON.stringify(viewRows, null, 2) }}</pre>
+
+      <div v-else-if="result.columns.length" ref="gridScrollEl" class="grid-scroll" :class="{ 'freeze-1': freezeFirst }" @scroll="onGridScroll">
         <table>
           <thead>
             <tr>
@@ -735,6 +748,30 @@ function sqlLiteral(v: unknown): string {
 .grid-scroll {
   flex: 1;
   overflow: auto;
+}
+/* 冻结首列：行号列吸附左侧不随横向滚动 */
+.grid-scroll.freeze-1 td.rownum,
+.grid-scroll.freeze-1 th.rownum {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.json-view {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre;
+}
+.view-tools .vm {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.view-tools .vm.on {
+  background: var(--accent, #7c6cff);
+  color: #fff;
 }
 table {
   border-collapse: collapse;
