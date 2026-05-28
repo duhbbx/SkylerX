@@ -62,3 +62,29 @@ export interface SqlDialectHelpers {
   /** 为一条 SELECT 套上分页（limit/offset 或 ROWNUM 等方言写法）。 */
   paginate(sql: string, limit: number, offset: number): string
 }
+
+/**
+ * 应用层往 `ConnectionConfig.extra` 里塞的元数据键名集合
+ * （生产环境标记、只读模式、未来其它 UI/工作流字段...）。
+ * 这些键不能透传给底层驱动（如 mysql2 会对未知配置抛 invalid configuration option）。
+ *
+ * 各方言适配在拼装驱动 options 时统一用 `driverExtra(config)` 取已剥离的安全 extra。
+ */
+export const APP_META_EXTRA_KEYS = ['env', 'readOnly', 'agentId'] as const
+
+/**
+ * 取「可以安全传给原生驱动」的 extra 子集：剥掉应用层元数据键。
+ * 没有 extra 时返回 undefined（保留旧行为，避免给驱动一个 {}）。
+ */
+export function driverExtra(config: ConnectionConfig): Record<string, unknown> | undefined {
+  const src = config.extra
+  if (!src || typeof src !== 'object') return undefined
+  const out: Record<string, unknown> = {}
+  let kept = 0
+  for (const [k, v] of Object.entries(src as Record<string, unknown>)) {
+    if ((APP_META_EXTRA_KEYS as readonly string[]).includes(k)) continue
+    out[k] = v
+    kept++
+  }
+  return kept ? out : undefined
+}

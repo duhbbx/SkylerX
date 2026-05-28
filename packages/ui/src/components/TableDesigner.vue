@@ -47,6 +47,22 @@ const types = typeOptions(props.dialect)
 const isMysql = ['mysql', 'mariadb', 'oceanbase'].includes(props.dialect)
 const tableRef = computed(() => props.node?.sqlName ?? props.node?.name ?? tableName.value)
 
+/**
+ * 脏检查：以「最近一次载入/初始化的整体快照」为基线，比对当前 spec + tableName。
+ * 关闭设计器 tab 时父组件可调用 isDirty() 决定是否弹未保存提示。
+ */
+const dirtyBaseline = ref('')
+function snapshotDesigner(): string {
+  return JSON.stringify({ tableName: tableName.value, spec })
+}
+function resetDirtyBaseline(): void {
+  dirtyBaseline.value = snapshotDesigner()
+}
+function isDirty(): boolean {
+  return dirtyBaseline.value !== '' && snapshotDesigner() !== dirtyBaseline.value
+}
+defineExpose({ isDirty })
+
 // tab 标签经 t('designer.tab.<key>') 渲染（随语言切换）
 const INNER = [
   'fields',
@@ -139,6 +155,7 @@ async function loadExisting(): Promise<void> {
     originalForeignKeys.value = spec.foreignKeys.map((x) => ({ ...x }))
     tableName.value = props.node.name
     selected.value = 0
+    resetDirtyBaseline() // 改表模式：以载入的现有结构作为脏检测基线
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -188,7 +205,12 @@ async function loadForeignKeys(): Promise<ForeignKeyDef[]> {
   }
 }
 
-onMounted(loadExisting)
+onMounted(async () => {
+  await loadExisting()
+  // 新建模式不会进 loadExisting；仍要把「空表初始状态」当成基线，
+  // 否则一打开 tab 就处于 dirty 状态。
+  if (!isAlter.value) resetDirtyBaseline()
+})
 
 // ── 字段工具栏操作 ──
 function gotoFields(): void {
@@ -244,6 +266,7 @@ async function run(stmts: string[]): Promise<void> {
         schema: props.ctx.schema,
       })
     }
+    resetDirtyBaseline() // 保存成功 → 基线对齐，关闭 tab 时不再提示
     emit('created')
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

@@ -17,7 +17,7 @@ import type {
   ResultSetHeader,
   RowDataPacket,
 } from 'mysql2/promise'
-import type { DatabaseDriver, DriverConnection } from '../driver.js'
+import { type DatabaseDriver, type DriverConnection, driverExtra } from '../driver.js'
 import { mysqlFamilyHelpers } from './base.js'
 
 // mysql2 的 Pool/Connection 是 mixin 类型，其 query 方法在 moduleResolution=Bundler
@@ -110,7 +110,9 @@ function buildConnectionOptions(config: ConnectionConfig): ConnectionOptions {
     // 让 DATE/DATETIME 以字符串返回，避免时区漂移
     dateStrings: true,
     connectTimeout: 10_000,
-    ...((config.extra as ConnectionOptions) ?? {}),
+    // 只透传已剥离应用层元数据（env/readOnly/...）的安全 extra；
+    // 否则 mysql2 会对未知配置项报 invalid configuration option，将来还会升级为 throw。
+    ...((driverExtra(config) as ConnectionOptions | undefined) ?? {}),
   }
 }
 

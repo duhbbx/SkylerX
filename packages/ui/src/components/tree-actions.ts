@@ -67,14 +67,14 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 新建 ──
   {
     id: 'new-query',
-    label: '新建查询',
+    label: 'ctx.new-query',
     section: 'create',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
     run: ({ node, connId, ctrl }) => ctrl.newQuery(node, connId),
   },
   {
     id: 'new-table',
-    label: '新建表',
+    label: 'ctx.new-table',
     section: 'create',
     kinds: [MetaNodeKind.Group, MetaNodeKind.Table, MetaNodeKind.View],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'tables',
@@ -82,7 +82,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'new-view',
-    label: '新建视图',
+    label: 'ctx.new-view',
     section: 'create',
     kinds: [MetaNodeKind.Group, MetaNodeKind.View],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'views',
@@ -90,7 +90,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'new-function',
-    label: '新建函数',
+    label: 'ctx.new-function',
     section: 'create',
     kinds: [MetaNodeKind.Group, MetaNodeKind.Function],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'functions',
@@ -98,7 +98,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'new-procedure',
-    label: '新建存储过程',
+    label: 'ctx.new-procedure',
     section: 'create',
     kinds: [MetaNodeKind.Group, MetaNodeKind.Procedure],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'procedures',
@@ -108,7 +108,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 查看 / 打开 ──
   {
     id: 'select-200',
-    label: '查询前 200 行',
+    label: 'ctx.select-200',
     section: 'open',
     kinds: [MetaNodeKind.Table, MetaNodeKind.View],
     enabled: (n) => !!n.sqlName,
@@ -116,21 +116,21 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'view-structure',
-    label: '查看结构',
+    label: 'ctx.view-structure',
     section: 'open',
     kinds: [MetaNodeKind.Table, MetaNodeKind.View],
     run: ({ node, connId, ctrl }) => ctrl.viewStructure(node, connId),
   },
   {
     id: 'view-definition',
-    label: '查看定义',
+    label: 'ctx.view-definition',
     section: 'open',
     kinds: [MetaNodeKind.Trigger, MetaNodeKind.Sequence],
     run: ({ node, connId, ctrl }) => ctrl.viewDefinition(node, connId),
   },
   {
     id: 'design-table',
-    label: '设计表',
+    label: 'ctx.design-table',
     section: 'open',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -140,14 +140,14 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 编辑 ──
   {
     id: 'edit-object',
-    label: '编辑定义',
+    label: 'ctx.edit-object',
     section: 'edit',
     kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure, MetaNodeKind.Trigger],
     run: ({ node, connId, ctrl }) => ctrl.editObject(node, connId),
   },
   {
     id: 'edit-comment',
-    label: '编辑注释',
+    label: 'ctx.edit-comment',
     section: 'edit',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -155,7 +155,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'create-index',
-    label: '新建索引',
+    label: 'ctx.create-index',
     section: 'edit',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -163,7 +163,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'rename-table',
-    label: '重命名表',
+    label: 'ctx.rename-table',
     section: 'edit',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -173,7 +173,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 生成 SQL 模板 ──
   {
     id: 'gen-select',
-    label: '生成 SELECT',
+    label: 'ctx.gen-select',
     section: 'generate',
     kinds: [MetaNodeKind.Table, MetaNodeKind.View],
     enabled: (n) => !!n.sqlName,
@@ -181,7 +181,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'gen-insert',
-    label: '生成 INSERT',
+    label: 'ctx.gen-insert',
     section: 'generate',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -189,7 +189,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'gen-update',
-    label: '生成 UPDATE',
+    label: 'ctx.gen-update',
     section: 'generate',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -197,7 +197,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'gen-delete',
-    label: '生成 DELETE',
+    label: 'ctx.gen-delete',
     section: 'generate',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -207,7 +207,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 复制 / 重命名 / 拷贝 DDL ──
   {
     id: 'copy-structure',
-    label: '复制建表结构 (CREATE LIKE)',
+    label: 'ctx.copy-structure',
     section: 'transform',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -215,7 +215,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'copy-table-struct',
-    label: '复制表 → 仅结构',
+    label: 'ctx.copy-table-struct',
     section: 'transform',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -223,7 +223,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'copy-table-full',
-    label: '复制表 → 结构 + 数据',
+    label: 'ctx.copy-table-full',
     section: 'transform',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -231,7 +231,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'copy-ddl',
-    label: '复制 DDL',
+    label: 'ctx.copy-ddl',
     section: 'transform',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -239,14 +239,14 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'copy-object-ddl',
-    label: '复制 DDL',
+    label: 'ctx.copy-ddl',
     section: 'transform',
     kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure, MetaNodeKind.Trigger],
     run: ({ node, connId, ctrl }) => ctrl.copyObjectDdl(node, connId),
   },
   {
     id: 'copy-qualified',
-    label: '复制限定名',
+    label: 'ctx.copy-qualified',
     section: 'transform',
     kinds: [MetaNodeKind.Table, MetaNodeKind.View],
     enabled: (n) => !!n.sqlName,
@@ -254,7 +254,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'copy-name',
-    label: '复制名称',
+    label: 'ctx.copy-name',
     section: 'transform',
     kinds: [
       MetaNodeKind.Database,
@@ -271,7 +271,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 数据操作 ──
   {
     id: 'empty-table',
-    label: '清空表 (DELETE)',
+    label: 'ctx.empty-table',
     section: 'data',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -280,7 +280,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'truncate-table',
-    label: '截断表 (TRUNCATE)',
+    label: 'ctx.truncate-table',
     section: 'data',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -289,7 +289,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'mock-data',
-    label: '生成测试数据',
+    label: 'ctx.mock-data',
     section: 'data',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -297,7 +297,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'import-data',
-    label: '导入数据（CSV）',
+    label: 'ctx.import-data',
     section: 'data',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -307,7 +307,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 元数据 / 分析 ──
   {
     id: 'table-stats',
-    label: '统计信息',
+    label: 'ctx.table-stats',
     section: 'meta',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -315,7 +315,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'deps',
-    label: '依赖关系（外键）',
+    label: 'ctx.deps',
     section: 'meta',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -323,7 +323,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'erd',
-    label: 'ER 图',
+    label: 'ctx.erd',
     section: 'meta',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
     run: ({ node, connId, ctrl }) => ctrl.openErd(node, connId),
@@ -332,7 +332,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 导出 ──
   {
     id: 'export-sql',
-    label: '导出为 SQL（结构+数据）',
+    label: 'ctx.export-sql',
     section: 'export',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -340,7 +340,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'transfer-data',
-    label: '数据传输（复制到…）',
+    label: 'ctx.transfer-data',
     section: 'export',
     kinds: [MetaNodeKind.Table],
     enabled: (n) => !!n.sqlName,
@@ -348,21 +348,21 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'export-schema-sql',
-    label: '导出库为 SQL（结构+数据）',
+    label: 'ctx.export-schema-sql',
     section: 'export',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
     run: ({ node, connId, ctrl }) => ctrl.exportSchemaSql(node, connId),
   },
   {
     id: 'data-dict',
-    label: '生成数据字典（Markdown）',
+    label: 'ctx.data-dict',
     section: 'export',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
     run: ({ node, connId, ctrl }) => ctrl.dataDict(node, connId),
   },
   {
     id: 'data-dict-html',
-    label: '生成数据字典（HTML）',
+    label: 'ctx.data-dict-html',
     section: 'export',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
     run: ({ node, connId, ctrl }) => ctrl.dataDictHtml(node, connId),
@@ -371,7 +371,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 收藏 ──
   {
     id: 'toggle-favorite',
-    label: '收藏 / 取消收藏',
+    label: 'ctx.toggle-favorite',
     section: 'fav',
     kinds: [MetaNodeKind.Table, MetaNodeKind.View],
     enabled: (n) => !!n.sqlName,
@@ -381,14 +381,14 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 连接级别 ──
   {
     id: 'edit-conn',
-    label: '编辑连接',
+    label: 'ctx.edit-conn',
     section: 'conn',
     kinds: [MetaNodeKind.Connection],
     run: ({ connId, ctrl }) => ctrl.editConnection(connId),
   },
   {
     id: 'toggle-prod',
-    label: '标记为生产环境 / 取消标记',
+    label: 'ctx.toggle-prod',
     section: 'conn',
     kinds: [MetaNodeKind.Connection],
     run: ({ connId, ctrl }) => ctrl.toggleProdMark(connId),
@@ -397,7 +397,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 刷新 ──
   {
     id: 'refresh',
-    label: '刷新',
+    label: 'ctx.refresh',
     section: 'misc',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema, MetaNodeKind.Group],
     run: ({ node, connId, ctrl }) => ctrl.refreshNode(node, connId),
@@ -406,7 +406,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   // ── 删除（永远在最末，红色，分组 danger）──
   {
     id: 'drop-object',
-    label: '删除',
+    label: 'ctx.drop-object',
     section: 'danger',
     kinds: [
       MetaNodeKind.Table,
@@ -424,7 +424,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   },
   {
     id: 'del-conn',
-    label: '删除连接',
+    label: 'ctx.del-conn',
     section: 'danger',
     kinds: [MetaNodeKind.Connection],
     danger: true,

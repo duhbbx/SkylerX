@@ -146,9 +146,29 @@ function editTable(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): v
   })
 }
 
+/**
+ * 关闭 tab 之前的脏检查：表设计器 / DDL 编辑器 tab 都对外 expose 了 isDirty()，
+ * 若有未保存改动，先弹 confirm（同连接表单/设置弹窗的一致体验）。
+ */
+const dirtyRefs = new Map<number, { isDirty?: () => boolean }>()
+function setDirtyRef(id: number, el: unknown): void {
+  if (el && typeof (el as { isDirty?: unknown }).isDirty === 'function') {
+    dirtyRefs.set(id, el as { isDirty: () => boolean })
+  } else {
+    dirtyRefs.delete(id)
+  }
+}
 function close(id: number): void {
+  const tab = tabs.value.find((t) => t.id === id)
+  if (!tab) return
+  // 仅设计器 / DDL 编辑器需要检查；查询页/结构页/ER 图 无未保存概念，直接关
+  const checkable = tab.kind === 'table' || tab.kind === 'view' || tab.kind === 'function' || tab.kind === 'procedure' || tab.kind === 'trigger'
+  if (checkable && dirtyRefs.get(id)?.isDirty?.()) {
+    if (!window.confirm(tr('common.unsavedConfirm'))) return
+  }
   const i = tabs.value.findIndex((t) => t.id === id)
   if (i < 0) return
+  dirtyRefs.delete(id)
   tabs.value.splice(i, 1)
   if (activeId.value === id) activeId.value = tabs.value[Math.max(0, i - 1)]?.id ?? 0
 }
@@ -248,6 +268,7 @@ watch(tabs, saveLayout, { deep: true })
           />
           <TableDesigner
             v-else-if="t.kind === 'table'"
+            :ref="(el) => setDirtyRef(t.id, el)"
             :conn-id="t.conn.id"
             :dialect="t.conn.dialect"
             :ctx="t.ctx!"
@@ -270,6 +291,7 @@ watch(tabs, saveLayout, { deep: true })
           />
           <DdlEditor
             v-else
+            :ref="(el) => setDirtyRef(t.id, el)"
             :conn-id="t.conn.id"
             :dialect="t.conn.dialect"
             :object-kind="t.kind"

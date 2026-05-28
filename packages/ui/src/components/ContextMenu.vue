@@ -62,7 +62,7 @@ onMounted(async () => {
           :class="{ danger: (e as TreeAction).danger }"
           @click="emit('pick', e as TreeAction)"
         >
-          {{ (e as TreeAction).label }}
+          {{ t((e as TreeAction).label) }}
         </li>
       </template>
     </ul>

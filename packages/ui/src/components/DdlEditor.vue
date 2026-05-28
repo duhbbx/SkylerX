@@ -31,6 +31,16 @@ const error = ref<string | null>(null)
 
 const target = [props.ctx.database, props.ctx.schema].filter(Boolean).join(' / ')
 
+/** 脏检查：把当前 code 与上次载入/保存后的快照比对，关闭 tab 时由父组件调用决定是否提示。 */
+const dirtyBaseline = ref('')
+function resetDirtyBaseline(): void {
+  dirtyBaseline.value = code.value
+}
+function isDirty(): boolean {
+  return dirtyBaseline.value !== '' && code.value !== dirtyBaseline.value
+}
+defineExpose({ isDirty })
+
 /** 编辑模式：拉取现有对象定义为可执行 DDL。 */
 async function loadDefinition(): Promise<void> {
   if (!isEdit || !props.node) return
@@ -61,7 +71,11 @@ async function loadDefinition(): Promise<void> {
     loading.value = false
   }
 }
-onMounted(loadDefinition)
+onMounted(async () => {
+  await loadDefinition()
+  // 新建模式没有 load，要把初始模板当成基线，否则一打开就是 dirty
+  resetDirtyBaseline()
+})
 
 async function create(): Promise<void> {
   busy.value = true
@@ -72,6 +86,7 @@ async function create(): Promise<void> {
       database: props.ctx.database,
       schema: props.ctx.schema,
     })
+    resetDirtyBaseline() // 保存成功 → 基线对齐
     emit('created')
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

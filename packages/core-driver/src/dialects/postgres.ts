@@ -10,7 +10,7 @@ import {
   type TestResult,
 } from '@db-tool/shared-types'
 import { Pool, type PoolConfig } from 'pg'
-import type { DatabaseDriver, DriverConnection } from '../driver.js'
+import { type DatabaseDriver, type DriverConnection, driverExtra } from '../driver.js'
 import { pgFamilyHelpers } from './base.js'
 
 /** 常见 PostgreSQL 类型 OID → 类型名（结果列展示用）。 */
@@ -69,7 +69,8 @@ function buildPoolConfig(config: ConnectionConfig): PoolConfig {
       : undefined,
     max: 5,
     connectionTimeoutMillis: 10_000,
-    ...((config.extra as PoolConfig) ?? {}),
+    // 剥掉应用层元数据（env / readOnly 等）再透传给 pg
+    ...((driverExtra(config) as PoolConfig | undefined) ?? {}),
   }
 }
 

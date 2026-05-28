@@ -32,6 +32,8 @@ export { DbDialect, MetaNodeKind, TransportMode } from '@db-tool/shared-types'
 
 // 接口
 export type { DatabaseDriver, DriverConnection, SqlDialectHelpers } from './driver.js'
+// 应用层 extra 元数据剥离（避免 env/readOnly 等键被透传给原生驱动）
+export { APP_META_EXTRA_KEYS, driverExtra } from './driver.js'
 export type { ConnectionConfigStore, SqlTransport } from './transport.js'
 
 // 注册中心
