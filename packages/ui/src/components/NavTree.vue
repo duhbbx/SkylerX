@@ -38,6 +38,7 @@ const emit = defineEmits<{
   renameTable: [string, TreeNode]
   copyTable: [string, TreeNode, boolean]
   toggleProdMark: [string]
+  createTemplateDraft: ['sequence' | 'event', string, TreeNode]
   dataDict: [string, TreeNode]
   dataDictHtml: [string, TreeNode]
   editObject: [string, TreeNode]
@@ -190,6 +191,7 @@ const controller: TreeController = {
   renameTable: (node, connId) => emit('renameTable', connId, node),
   copyTable: (node, connId, withData) => emit('copyTable', connId, node, withData),
   toggleProdMark: (connId) => emit('toggleProdMark', connId),
+  createTemplateDraft: (kind, node, connId) => emit('createTemplateDraft', kind, connId, node),
   dataDict: (node, connId) => emit('dataDict', connId, node),
   dataDictHtml: (node, connId) => emit('dataDictHtml', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),

@@ -205,10 +205,10 @@ export function objectDdlQuery(
   return null
 }
 
-/** 查看「触发器 / 序列」定义：取定义的查询 + 解析方式（MySQL 触发器、PG 触发器/序列）。 */
+/** 查看「触发器 / 序列 / 事件」定义：取定义的查询 + 解析方式（MySQL 触发器/事件、PG 触发器/序列）。 */
 export interface DefinitionFetch {
   sql: string
-  mode: 'mysql-trigger' | 'pg-trigger' | 'pg-sequence'
+  mode: 'mysql-trigger' | 'pg-trigger' | 'pg-sequence' | 'mysql-event'
 }
 
 export function definitionQuery(dialect: DbDialect, node: TreeNode): DefinitionFetch | null {
@@ -235,6 +235,12 @@ export function definitionQuery(dialect: DbDialect, node: TreeNode): DefinitionF
       mode: 'pg-sequence',
     }
   }
+  if (node.kind === MetaNodeKind.Event && fam === 'mysql') {
+    return {
+      sql: `SHOW CREATE EVENT ${quoteId(dialect, name)}`,
+      mode: 'mysql-event',
+    }
+  }
   return null
 }
 
@@ -249,6 +255,11 @@ export function extractDefinition(
     return String(row[k ?? ''] ?? '')
   }
   if (mode === 'pg-trigger') return String(row.ddl ?? '')
+  if (mode === 'mysql-event') {
+    // SHOW CREATE EVENT 返回多列，含 'Create Event' / 'sql_mode' / 'time_zone' / 'event' 等
+    const k = Object.keys(row).find((key) => /^create event$/i.test(key))
+    return String(row[k ?? ''] ?? '')
+  }
   // pg-sequence：由参数重建 CREATE SEQUENCE
   const q = (s: string) => quoteId(dialect, s)
   return `CREATE SEQUENCE ${q(node.name)}\n  INCREMENT BY ${row.increment}\n  MINVALUE ${row.minimum_value}\n  MAXVALUE ${row.maximum_value}\n  START WITH ${row.start_value};`

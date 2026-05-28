@@ -493,6 +493,46 @@ async function onCopyTable(connId: string, node: TreeNode, withData: boolean): P
   tabsRef.value?.openDraft(conn, lines.join('\n'), t('ws.copyTableTabTitle', { name: newName.trim() }))
 }
 
+/**
+ * 在草稿查询页用模板打开「新建序列 / 事件」SQL（PG sequence / MySQL event）。
+ * 不走结构化设计器：这两类对象的字段太少且方言相关性高，让用户在 SQL 编辑器里直接调更灵活。
+ */
+async function onCreateTemplateDraft(kind: 'sequence' | 'event', connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  const fam = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
+    ? 'mysql'
+    : ['postgresql', 'kingbase'].includes(conn.dialect)
+      ? 'pg'
+      : 'other'
+  const q = (n: string) => quoteId(conn.dialect, n)
+  let sql = ''
+  let title = ''
+  if (kind === 'sequence' && fam === 'pg') {
+    const schema = ctx.schema ?? 'public'
+    sql = `CREATE SEQUENCE ${q(schema)}.${q('new_sequence')}
+  INCREMENT BY 1
+  MINVALUE 1
+  MAXVALUE 9223372036854775807
+  START WITH 1
+  CACHE 1;`
+    title = t('ws.tabNewSequence')
+  } else if (kind === 'event' && fam === 'mysql') {
+    sql = `CREATE EVENT ${q('new_event')}
+ON SCHEDULE EVERY 1 HOUR
+COMMENT 'description'
+DO
+BEGIN
+  -- your statements;
+END;`
+    title = t('ws.tabNewEvent')
+  } else {
+    window.alert(t('ws.defUnsupported'))
+    return
+  }
+  tabsRef.value?.openDraft(conn, sql, title)
+}
+
 /** 切换连接的「生产环境」标记（extra.env: 'prod' ↔ undefined），保存后刷新导航树。 */
 async function onToggleProdMark(connId: string): Promise<void> {
   const cfg = await client.connections.get(connId)
@@ -1019,6 +1059,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @rename-table="onRenameTable"
     @copy-table="onCopyTable"
     @toggle-prod-mark="onToggleProdMark"
+    @create-template-draft="onCreateTemplateDraft"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"
     @open-erd="onOpenErd"

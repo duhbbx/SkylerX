@@ -63,6 +63,8 @@ export interface TreeController {
   copyTable(node: TreeNode, connId: string, withData: boolean): void
   /** 切换连接的生产环境标记（extra.env: prod ↔ undefined） */
   toggleProdMark(connId: string): void
+  /** 用模板在草稿查询页里打开「新建序列 / 事件」之类的 SQL，给用户编辑后执行（不走结构化设计器） */
+  createTemplateDraft(kind: 'sequence' | 'event', node: TreeNode, connId: string): void
   /** 生成库/schema 的数据字典（Markdown 文件） */
   dataDict(node: TreeNode, connId: string): void
   /** 生成库/schema 的数据字典（HTML 文件，可打印 PDF） */

@@ -104,6 +104,23 @@ export const TREE_ACTIONS: TreeAction[] = [
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'procedures',
     run: ({ node, connId, ctrl }) => ctrl.createObject('procedure', node, connId),
   },
+  // 序列 / 事件无结构化设计器；直接在草稿查询页打开模板，由用户调整后执行
+  {
+    id: 'new-sequence',
+    label: 'ctx.new-sequence',
+    section: 'create',
+    kinds: [MetaNodeKind.Group, MetaNodeKind.Sequence],
+    enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'sequences',
+    run: ({ node, connId, ctrl }) => ctrl.createTemplateDraft('sequence', node, connId),
+  },
+  {
+    id: 'new-event',
+    label: 'ctx.new-event',
+    section: 'create',
+    kinds: [MetaNodeKind.Group, MetaNodeKind.Event],
+    enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'events',
+    run: ({ node, connId, ctrl }) => ctrl.createTemplateDraft('event', node, connId),
+  },
 
   // ── 查看 / 打开 ──
   {
@@ -125,7 +142,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'view-definition',
     label: 'ctx.view-definition',
     section: 'open',
-    kinds: [MetaNodeKind.Trigger, MetaNodeKind.Sequence],
+    kinds: [MetaNodeKind.Trigger, MetaNodeKind.Sequence, MetaNodeKind.Event],
     run: ({ node, connId, ctrl }) => ctrl.viewDefinition(node, connId),
   },
   {
