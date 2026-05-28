@@ -123,6 +123,47 @@ describe('buildAlterTable index/FK diff', () => {
   })
 })
 
+describe('DEFAULT value quoting (bug: bare 张三 → unquoted)', () => {
+  const col = (name: string, def: string, originalName?: string) => ({
+    ...emptyColumn(),
+    name,
+    type: 'varchar',
+    length: '60',
+    nullable: true,
+    defaultValue: def,
+    originalName,
+  })
+  it('quotes bare string defaults; passes through numbers/keywords/funcs/already-quoted', () => {
+    const cols = [
+      col('name', '张三'),
+      col('age', '18'),
+      col('flag', 'NULL'),
+      col('ts', 'CURRENT_TIMESTAMP'),
+      col('u', 'UUID()'),
+      col('lit', "'hello'"),
+    ]
+    const out = buildCreateTable(DbDialect.MySQL, { database: 'd' }, 't', { ...emptyTableSpec(), columns: cols })
+    expect(out).toContain("DEFAULT '张三'")
+    expect(out).toContain('DEFAULT 18')
+    expect(out).toContain('DEFAULT NULL')
+    expect(out).toContain('DEFAULT CURRENT_TIMESTAMP')
+    expect(out).toContain('DEFAULT UUID()')
+    expect(out).toContain("DEFAULT 'hello'")
+  })
+  it('ALTER CHANGE column quotes the same way', () => {
+    const orig = col('name', '', 'name')
+    const cur = col('name', '张三', 'name')
+    const out = buildAlterTable(DbDialect.MySQL, '`t`', [orig], { ...emptyTableSpec(), columns: [cur] }).join('\n')
+    expect(out).toContain("DEFAULT '张三'")
+  })
+  it('PG SET DEFAULT also quoted', () => {
+    const orig = col('city', '', 'city')
+    const cur = col('city', '北京', 'city')
+    const out = buildAlterTable(DbDialect.PostgreSQL, '"t"', [orig], { ...emptyTableSpec(), columns: [cur] }).join('\n')
+    expect(out).toContain(`SET DEFAULT '北京'`)
+  })
+})
+
 describe('MySQL charset / collation', () => {
   const baseCol = { ...emptyColumn(), name: 'name', type: 'varchar', length: '100', nullable: false }
   it('buildCreateTable emits CHARACTER SET / COLLATE for MySQL columns', () => {

@@ -524,6 +524,22 @@ const esc = (s: string) => s.replace(/'/g, "''")
 const splitCols = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
 
 /**
+ * DEFAULT 值的智能引号：数字、布尔、NULL、CURRENT_TIMESTAMP / NOW() 等保持原样；
+ * 已被引号包裹（'…' / "…" / `…`）也原样；否则按字符串字面量加单引号并转义。
+ * 修复了用户在设计器里直接写 `张三` 这类裸字时被原样拼成 `DEFAULT 张三` 报错的 bug。
+ */
+export function quoteDefaultValue(raw: string): string {
+  const s = raw.trim()
+  if (!s) return ''
+  if (/^['"`]/.test(s)) return s
+  if (/^-?\d+(\.\d+)?$/.test(s)) return s
+  if (/^(NULL|TRUE|FALSE|CURRENT_TIMESTAMP|CURRENT_DATE|CURRENT_TIME|LOCALTIMESTAMP)$/i.test(s)) return s
+  // 函数调用形式（NOW() / UUID() / gen_random_uuid() / GETDATE() …）保持原样
+  if (/^[A-Za-z_][\w]*\s*\([^)]*\)$/.test(s)) return s
+  return `'${s.replace(/'/g, "''")}'`
+}
+
+/**
  * 解析索引列项：支持 `name`、`name(10)`（MySQL 前缀长度）、`name DESC`、`name(10) DESC` 等组合。
  * 返回 { name, suffix }，suffix 已含 `(N)` 与 ` ASC/DESC` 顺序。
  */
@@ -645,7 +661,7 @@ export function buildCreateTable(
     if (fam === 'mysql' && c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
     s += c.nullable ? ' NULL' : ' NOT NULL'
     if (fam === 'mysql' && c.autoIncrement) s += ' AUTO_INCREMENT'
-    if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+    if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
     if (fam === 'mysql' && c.onUpdateNow) s += ' ON UPDATE CURRENT_TIMESTAMP'
     if (c.comment.trim() && fam === 'mysql') s += ` COMMENT '${esc(c.comment.trim())}'`
     return s
@@ -770,12 +786,12 @@ export function buildAlterTable(
         if (c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
         if (c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
         s += c.nullable ? ' NULL' : ' NOT NULL'
-        if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
         if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
         stmts.push(s)
       } else {
         let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}${c.nullable ? '' : ' NOT NULL'}`
-        if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
         stmts.push(s)
         if (c.comment.trim()) stmts.push(`COMMENT ON COLUMN ${tableRef}.${q(c.name)} IS '${esc(c.comment.trim())}'`)
       }
@@ -800,7 +816,7 @@ export function buildAlterTable(
         if (c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
         if (c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
         s += c.nullable ? ' NULL' : ' NOT NULL'
-        if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
         if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
         stmts.push(s)
       }
@@ -810,7 +826,7 @@ export function buildAlterTable(
       if (typeChanged) stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} TYPE ${t}`)
       if (nullChanged) stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.nullable ? 'DROP NOT NULL' : 'SET NOT NULL'}`)
       if (defChanged)
-        stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.defaultValue.trim() ? `SET DEFAULT ${c.defaultValue.trim()}` : 'DROP DEFAULT'}`)
+        stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.defaultValue.trim() ? `SET DEFAULT ${quoteDefaultValue(c.defaultValue)}` : 'DROP DEFAULT'}`)
       if (commentChanged) stmts.push(`COMMENT ON COLUMN ${tableRef}.${col} IS '${esc(c.comment.trim())}'`)
     }
   }
