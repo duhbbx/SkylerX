@@ -21,6 +21,7 @@ interface Tab {
   node?: TreeNode // structure：要查看的表/视图节点；table designer：改表时载入用
   mode?: 'create' | 'alter' | 'edit' // table designer：新建/改表；DDL 编辑器：新建/编辑
   draft?: string // query：初始草稿 SQL（只填入不执行，如「查看定义」）
+  pinned?: boolean // 固定标签：排在最前，不显示关闭按钮（双击切换）
 }
 
 const emit = defineEmits<{ connError: [string, string]; refresh: [TreeNode, string] }>()
@@ -31,6 +32,17 @@ let tabSeq = 0
 let pendSeq = 0
 
 const active = computed(() => tabs.value.find((t) => t.id === activeId.value) ?? null)
+
+// 固定标签排在最前（组内保持插入顺序）
+const orderedTabs = computed(() => [
+  ...tabs.value.filter((t) => t.pinned),
+  ...tabs.value.filter((t) => !t.pinned),
+])
+
+function togglePin(id: number): void {
+  const tab = tabs.value.find((t) => t.id === id)
+  if (tab) tab.pinned = !tab.pinned
+}
 
 function push(tab: Omit<Tab, 'id'>): void {
   const id = ++tabSeq
@@ -157,14 +169,22 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
     <template v-else>
       <div class="qtab-bar">
         <div
-          v-for="t in tabs"
+          v-for="t in orderedTabs"
           :key="t.id"
           class="qtab"
-          :class="{ active: t.id === activeId }"
+          :class="{ active: t.id === activeId, pinned: t.pinned }"
+          :title="tr('tabs.pinHint')"
           @click="activeId = t.id"
+          @dblclick="togglePin(t.id)"
         >
+          <span v-if="t.pinned" class="t-pin">📌</span>
           <span class="t-title">{{ t.title }}</span>
-          <button class="t-close" :title="tr('common.close')" @click.stop="close(t.id)">×</button>
+          <button
+            class="t-act"
+            :title="t.pinned ? tr('tabs.unpin') : tr('tabs.pin')"
+            @click.stop="togglePin(t.id)"
+          >{{ t.pinned ? '⇲' : '⇱' }}</button>
+          <button v-if="!t.pinned" class="t-close" :title="tr('common.close')" @click.stop="close(t.id)">×</button>
         </div>
         <button class="qtab-add" :title="tr('tabs.newQuery')" @click="newForCurrent">＋</button>
       </div>
@@ -256,6 +276,26 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
 .qtab.active {
   color: var(--text);
   box-shadow: inset 0 2px 0 var(--accent);
+}
+.t-pin {
+  font-size: 10px;
+  line-height: 1;
+}
+.t-act {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0;
+}
+.qtab:hover .t-act {
+  opacity: 1;
+}
+.t-act:hover {
+  color: var(--accent);
 }
 .t-close {
   background: transparent;

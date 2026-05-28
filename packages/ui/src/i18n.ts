@@ -432,6 +432,9 @@ const DICT: Record<string, [string, string]> = {
     'Expand a connection, right-click "New query / New table…" or double-click to start',
   ],
   'tabs.newQuery': ['新建查询', 'New query'],
+  'tabs.pin': ['固定标签', 'Pin tab'],
+  'tabs.unpin': ['取消固定', 'Unpin tab'],
+  'tabs.pinHint': ['双击可固定 / 取消固定', 'Double-click to pin / unpin'],
 
   // ── 表结构 TableStructure ──
   'struct.tab.columns': ['字段', 'Fields'],
