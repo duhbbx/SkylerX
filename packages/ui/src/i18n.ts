@@ -279,6 +279,7 @@ const DICT: Record<string, [string, string]> = {
   'designer.h.colsComma': ['字段(逗号分隔)', 'Columns (comma-separated)'],
   'designer.h.cols': ['字段', 'Columns'],
   'designer.h.unique': ['唯一', 'Unique'],
+  'designer.h.indexType': ['类型', 'Method'],
   'designer.h.refTable': ['引用表', 'Ref table'],
   'designer.h.refCols': ['引用字段', 'Ref columns'],
   'designer.h.expr': ['表达式', 'Expression'],

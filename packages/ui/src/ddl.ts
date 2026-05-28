@@ -49,6 +49,8 @@ export interface IndexDef {
   name: string
   columns: string
   unique: boolean
+  /** 索引方法/类型：MySQL BTREE/HASH/FULLTEXT/SPATIAL；PG btree/hash/gin/gist。空=默认 */
+  type?: string
 }
 export interface ForeignKeyDef {
   name: string
@@ -596,7 +598,11 @@ export function buildCreateTable(
     for (const idx of spec.indexes) {
       const c = splitCols(idx.columns)
       if (!c.length) continue
-      lines.push(`  ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${c.join('_')}`)} (${c.map(q).join(', ')})`)
+      const ty = (idx.type ?? '').toUpperCase()
+      const prefix = ty === 'FULLTEXT' || ty === 'SPATIAL' ? `${ty} ` : ''
+      const using = ty === 'BTREE' || ty === 'HASH' ? ` USING ${ty}` : ''
+      const uniq = idx.unique && !prefix ? 'UNIQUE ' : ''
+      lines.push(`  ${uniq}${prefix}INDEX ${q(idx.name.trim() || `idx_${c.join('_')}`)} (${c.map(q).join(', ')})${using}`)
     }
   }
 
@@ -617,8 +623,9 @@ export function buildCreateTable(
     for (const idx of spec.indexes) {
       const c = splitCols(idx.columns)
       if (!c.length) continue
+      const using = idx.type?.trim() ? ` USING ${idx.type.trim()}` : ''
       statements.push(
-        `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${tbl}_${c.join('_')}`)} ON ${name} (${c.map(q).join(', ')});`,
+        `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${tbl}_${c.join('_')}`)} ON ${name}${using} (${c.map(q).join(', ')});`,
       )
     }
   }
@@ -741,7 +748,7 @@ export function buildAlterTable(
   }
 
   // ── 索引：diff 出新增 / 删除（按名字；列或唯一性变化 = 先删后建）──
-  const idxSig = (ix: IndexDef) => `${splitCols(ix.columns).join(',')}|${ix.unique ? 1 : 0}`
+  const idxSig = (ix: IndexDef) => `${splitCols(ix.columns).join(',')}|${ix.unique ? 1 : 0}|${ix.type ?? ''}`
   const origIdx = originalExtras.indexes ?? []
   const specIdxByName = new Map(spec.indexes.filter((i) => i.name.trim()).map((i) => [i.name.trim(), i]))
   const dropIdx = (name: string) =>
@@ -756,8 +763,9 @@ export function buildAlterTable(
     if (!cols.length) continue
     const o = idx.name.trim() ? origIdxByName.get(idx.name.trim()) : undefined
     if (o && idxSig(o) === idxSig(idx)) continue // 未变化，跳过
+    const using = idx.type?.trim() ? ` USING ${idx.type.trim()}` : ''
     stmts.push(
-      `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${cols.join('_')}`)} ON ${tableRef} (${cols.map(q).join(', ')})`,
+      `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${cols.join('_')}`)} ON ${tableRef}${using} (${cols.map(q).join(', ')})`,
     )
   }
 

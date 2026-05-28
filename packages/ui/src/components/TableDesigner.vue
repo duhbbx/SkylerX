@@ -63,6 +63,12 @@ const INNER = [
 const inner = ref<(typeof INNER)[number]>('fields')
 const selected = ref(0)
 const selCol = computed(() => spec.columns[selected.value])
+const isPg = ['postgresql', 'kingbase'].includes(props.dialect)
+const indexTypes = isMysql
+  ? ['BTREE', 'HASH', 'FULLTEXT', 'SPATIAL']
+  : isPg
+    ? ['btree', 'hash', 'gin', 'gist']
+    : []
 
 const busy = ref(false)
 const error = ref<string | null>(null)
@@ -345,13 +351,19 @@ function saveAs(): void {
 
       <!-- 索引 -->
       <div v-else-if="inner === 'indexes'" class="sub">
-        <button class="ghost sm" @click="spec.indexes.push({ name: '', columns: '', unique: false })">{{ t('designer.addIndex') }}</button>
+        <button class="ghost sm" @click="spec.indexes.push({ name: '', columns: '', unique: false, type: '' })">{{ t('designer.addIndex') }}</button>
         <table class="grid">
-          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.colsComma') }}</th><th>{{ t('designer.h.unique') }}</th><th></th></tr></thead>
+          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.colsComma') }}</th><th>{{ t('designer.h.indexType') }}</th><th>{{ t('designer.h.unique') }}</th><th></th></tr></thead>
           <tbody>
             <tr v-for="(ix, i) in spec.indexes" :key="i">
               <td><input v-model="ix.name" /></td>
               <td><input v-model="ix.columns" /></td>
+              <td>
+                <select v-model="ix.type">
+                  <option value="">—</option>
+                  <option v-for="ty in indexTypes" :key="ty" :value="ty">{{ ty }}</option>
+                </select>
+              </td>
               <td class="c"><input v-model="ix.unique" type="checkbox" /></td>
               <td class="c"><button class="x" @click="spec.indexes.splice(i, 1)">×</button></td>
             </tr>
