@@ -173,6 +173,8 @@ const DICT: Record<string, [string, string]> = {
   'grid.cellTitle': ['单元格 · {col}', 'Cell · {col}'],
   'grid.rowTitle': ['第 {n} 行', 'Row {n}'],
   'grid.apply': ['应用', 'Apply'],
+  'grid.setNull': ['设为 NULL', 'Set NULL'],
+  'grid.copyAsSql': ['复制为 SQL', 'Copy as SQL'],
   'grid.prevRow': ['‹ 上一行', '‹ Prev row'],
   'grid.nextRow': ['下一行 ›', 'Next row ›'],
   'grid.copyJson': ['复制为 JSON', 'Copy as JSON'],

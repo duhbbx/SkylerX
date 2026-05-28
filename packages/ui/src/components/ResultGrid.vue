@@ -409,6 +409,27 @@ function applyCellEdit(): void {
   editing.value = null
   viewer.value = null
 }
+// 把当前查看的单元格设为 NULL（编辑态）
+function setCellNull(): void {
+  if (!viewer.value?.col) return
+  const r = localRows.value[viewer.value.row]
+  if (r) r[viewer.value.col] = null
+  editing.value = null
+  viewer.value = null
+}
+// 复制当前单元格值为 SQL 字面量
+function copyCellAsSql(): void {
+  if (!viewer.value?.col) return
+  const v = viewerRow.value?.[viewer.value.col]
+  copyText(sqlLiteral(v))
+}
+function sqlLiteral(v: unknown): string {
+  if (v === null || v === undefined) return 'NULL'
+  if (typeof v === 'number') return String(v)
+  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE'
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v)
+  return `'${s.replace(/'/g, "''")}'`
+}
 </script>
 
 <template>
@@ -620,7 +641,9 @@ function applyCellEdit(): void {
           <pre v-else class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
           <div class="viewer-actions">
             <button v-if="editable" class="primary" @click="applyCellEdit">{{ t('grid.apply') }}</button>
+            <button v-if="editable" @click="setCellNull">{{ t('grid.setNull') }}</button>
             <button @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
+            <button @click="copyCellAsSql">{{ t('grid.copyAsSql') }}</button>
           </div>
         </template>
         <template v-else-if="viewerRow">
