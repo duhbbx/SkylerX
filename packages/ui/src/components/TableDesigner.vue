@@ -354,6 +354,7 @@ function saveAs(): void {
       <div v-if="inner === 'fields' && selCol" class="field-props">
         <div class="fp-title">{{ t('designer.fieldProps', { name: selCol.name || '—' }) }}</div>
         <label v-if="isMysql" class="fp"><input v-model="selCol.unsigned" type="checkbox" /> {{ t('designer.unsigned') }}</label>
+        <label v-if="isMysql" class="fp"><input v-model="selCol.zerofill" type="checkbox" /> {{ t('designer.zerofill') }}</label>
         <label v-if="isMysql" class="fp"><input v-model="selCol.autoIncrement" type="checkbox" /> {{ t('designer.autoInc') }}</label>
         <label v-if="isMysql" class="fp"><input v-model="selCol.onUpdateNow" type="checkbox" /> {{ t('designer.onUpdateNow') }}</label>
         <label v-if="isMysql" class="fp fp-gen">{{ t('designer.colCharset') }}
@@ -371,7 +372,15 @@ function saveAs(): void {
       <div v-else-if="inner === 'indexes'" class="sub">
         <button class="ghost sm" @click="spec.indexes.push({ name: '', columns: '', unique: false, type: '' })">{{ t('designer.addIndex') }}</button>
         <table class="grid">
-          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.colsComma') }}</th><th>{{ t('designer.h.indexType') }}</th><th>{{ t('designer.h.unique') }}</th><th></th></tr></thead>
+          <thead><tr>
+            <th>{{ t('designer.h.name') }}</th>
+            <th>{{ t('designer.h.colsComma') }}</th>
+            <th>{{ t('designer.h.indexType') }}</th>
+            <th>{{ t('designer.h.unique') }}</th>
+            <th v-if="isPg">WHERE</th>
+            <th v-if="isPg" :title="t('designer.concurrentTitle')">CONC</th>
+            <th></th>
+          </tr></thead>
           <tbody>
             <tr v-for="(ix, i) in spec.indexes" :key="i">
               <td><input v-model="ix.name" /></td>
@@ -383,6 +392,8 @@ function saveAs(): void {
                 </select>
               </td>
               <td class="c"><input v-model="ix.unique" type="checkbox" /></td>
+              <td v-if="isPg"><input v-model="ix.where" :placeholder="t('designer.wherePh')" /></td>
+              <td v-if="isPg" class="c"><input v-model="ix.concurrent" type="checkbox" :title="t('designer.concurrentTitle')" /></td>
               <td class="c"><button class="x" @click="spec.indexes.splice(i, 1)">×</button></td>
             </tr>
           </tbody>

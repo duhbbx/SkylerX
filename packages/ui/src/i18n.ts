@@ -337,6 +337,9 @@ const DICT: Record<string, [string, string]> = {
   'designer.compressDdl': ['压缩为单行', 'Compress to one line'],
   'designer.idxColsPh': ['col1, col2(10) DESC', 'col1, col2(10) DESC'],
   'designer.idxColsTitle': ['多列逗号分隔；可加前缀长度 col(10)（MySQL）与排序 ASC/DESC', 'Comma-separated; supports col(10) prefix (MySQL) and ASC/DESC'],
+  'designer.zerofill': ['ZEROFILL', 'ZEROFILL'],
+  'designer.wherePh': ['status = 1', 'status = 1'],
+  'designer.concurrentTitle': ['CONCURRENTLY：在线建索引（PG，不锁表）', 'CONCURRENTLY: build the index without locking the table (PG)'],
   'designer.generated': ['生成列表达式', 'Generated expression'],
   'designer.generatedPh': ['如 price * qty（留空=普通列）', 'e.g. price * qty (empty = normal column)'],
 

@@ -16,6 +16,8 @@ export interface ColumnDef {
   unsigned?: boolean
   /** MySQL：自增 */
   autoIncrement?: boolean
+  /** MySQL：ZEROFILL（隐含 UNSIGNED） */
+  zerofill?: boolean
   /** MySQL：时间戳列 ON UPDATE CURRENT_TIMESTAMP */
   onUpdateNow?: boolean
   /** MySQL：字段级字符集（如 utf8mb4） */
@@ -55,6 +57,10 @@ export interface IndexDef {
   unique: boolean
   /** 索引方法/类型：MySQL BTREE/HASH/FULLTEXT/SPATIAL；PG btree/hash/gin/gist。空=默认 */
   type?: string
+  /** PG：部分索引谓词（写入 WHERE (expr)；含括号会自动包裹） */
+  where?: string
+  /** PG：在线建索引（CREATE INDEX CONCURRENTLY，不锁表） */
+  concurrent?: boolean
 }
 export interface ForeignKeyDef {
   name: string
@@ -625,6 +631,7 @@ export function buildCreateTable(
     }
     let s = `  ${q(c.name)} ${colType(c)}`
     if (fam === 'mysql' && c.unsigned) s += ' UNSIGNED'
+    if (fam === 'mysql' && c.zerofill) s += ' ZEROFILL'
     if (fam === 'mysql' && c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
     if (fam === 'mysql' && c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
     s += c.nullable ? ' NULL' : ' NOT NULL'
@@ -692,8 +699,11 @@ export function buildCreateTable(
       const using = idx.type?.trim() ? ` USING ${idx.type.trim()}` : ''
       const baseNames = c.map((r) => parseIdxCol(r).name)
       const colExpr = c.map((r) => quoteIdxCol(dialect, r)).join(', ')
+      const where = idx.where?.trim()
+      const whereSuffix = where ? ` WHERE ${where.startsWith('(') ? where : `(${where})`}` : ''
+      const conc = idx.concurrent && fam === 'pg' ? 'CONCURRENTLY ' : ''
       statements.push(
-        `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${tbl}_${baseNames.join('_')}`)} ON ${name}${using} (${colExpr});`,
+        `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${conc}${q(idx.name.trim() || `idx_${tbl}_${baseNames.join('_')}`)} ON ${name}${using} (${colExpr})${whereSuffix};`,
       )
     }
   }
@@ -742,6 +752,7 @@ export function buildAlterTable(
       if (fam === 'mysql') {
         let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}`
         if (c.unsigned) s += ' UNSIGNED'
+        if (c.zerofill) s += ' ZEROFILL'
         if (c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
         if (c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
         s += c.nullable ? ' NULL' : ' NOT NULL'
@@ -771,6 +782,7 @@ export function buildAlterTable(
       if (renamed || typeChanged || nullChanged || defChanged || commentChanged || charsetChanged || collationChanged) {
         let s = `ALTER TABLE ${tableRef} CHANGE ${q(c.originalName)} ${q(c.name)} ${t}`
         if (c.unsigned) s += ' UNSIGNED'
+        if (c.zerofill) s += ' ZEROFILL'
         if (c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
         if (c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
         s += c.nullable ? ' NULL' : ' NOT NULL'
@@ -824,7 +836,7 @@ export function buildAlterTable(
   }
 
   // ── 索引：diff 出新增 / 删除（按名字；列或唯一性变化 = 先删后建）──
-  const idxSig = (ix: IndexDef) => `${splitCols(ix.columns).join(',')}|${ix.unique ? 1 : 0}|${ix.type ?? ''}`
+  const idxSig = (ix: IndexDef) => `${splitCols(ix.columns).join(',')}|${ix.unique ? 1 : 0}|${ix.type ?? ''}|${(ix.where ?? '').trim()}|${ix.concurrent ? 1 : 0}`
   const origIdx = originalExtras.indexes ?? []
   const specIdxByName = new Map(spec.indexes.filter((i) => i.name.trim()).map((i) => [i.name.trim(), i]))
   const dropIdx = (name: string) =>
@@ -842,8 +854,11 @@ export function buildAlterTable(
     const using = idx.type?.trim() ? ` USING ${idx.type.trim()}` : ''
     const baseNames = cols.map((r) => parseIdxCol(r).name)
     const colExpr = cols.map((r) => quoteIdxCol(dialect, r)).join(', ')
+    const where = idx.where?.trim()
+    const whereSuffix = where ? ` WHERE ${where.startsWith('(') ? where : `(${where})`}` : ''
+    const conc = idx.concurrent && fam === 'pg' ? 'CONCURRENTLY ' : ''
     stmts.push(
-      `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${q(idx.name.trim() || `idx_${baseNames.join('_')}`)} ON ${tableRef}${using} (${colExpr})`,
+      `CREATE ${idx.unique ? 'UNIQUE ' : ''}INDEX ${conc}${q(idx.name.trim() || `idx_${baseNames.join('_')}`)} ON ${tableRef}${using} (${colExpr})${whereSuffix}`,
     )
   }
 
