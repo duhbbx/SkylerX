@@ -53,10 +53,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      # rpm / fakeroot：electron-builder 打 .rpm 必备；pacman 不需要额外工具（用内置打包器）
+      # rpm / fakeroot：electron-builder 打 .rpm 必备
+      # libarchive-tools：提供 bsdtar，fpm 打 .pacman 需要（缺这个会 exit 127）
       - name: Install Linux packaging tools
         if: startsWith(matrix.os, 'ubuntu')
-        run: sudo apt-get update && sudo apt-get install -y rpm fakeroot
+        run: sudo apt-get update && sudo apt-get install -y rpm fakeroot libarchive-tools
 
       - name: Install
         run: pnpm install --frozen-lockfile
