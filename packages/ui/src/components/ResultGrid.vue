@@ -59,7 +59,8 @@ const filterText = ref('')
 const hiddenCols = ref<Set<string>>(new Set())
 const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
-const viewMode = ref<'grid' | 'json'>('grid') // 只读态：网格 / JSON 视图
+const viewMode = ref<'grid' | 'json' | 'form'>('grid') // 视图：网格 / JSON / 单行表单（适合宽表）
+const formIndex = ref(0)
 const freezeFirst = ref(false) // 冻结首数据列
 const showSummary = ref(false) // 汇总行
 // 列宽（px，按列名）
@@ -553,12 +554,39 @@ const summaryRow = computed<Record<string, string>>(() => {
         >
           {{ viewMode === 'json' ? t('grid.viewGrid') : t('grid.viewJson') }}
         </button>
+        <button
+          class="vm"
+          :class="{ on: viewMode === 'form' }"
+          :title="t('grid.viewForm')"
+          @click="viewMode = viewMode === 'form' ? 'grid' : 'form'"
+        >
+          {{ viewMode === 'form' ? t('grid.viewGrid') : t('grid.viewForm') }}
+        </button>
         <button class="vm" :class="{ on: freezeFirst }" :title="t('grid.freeze')" @click="freezeFirst = !freezeFirst">❄</button>
         <button class="vm" :class="{ on: showSummary }" :title="t('grid.summaryTitle')" @click="showSummary = !showSummary">Σ {{ t('grid.summary') }}</button>
         <span class="hint">{{ t('grid.sortHint') }}</span>
       </div>
 
       <pre v-if="viewMode === 'json' && !editable && result.columns.length" class="json-view">{{ JSON.stringify(viewRows, null, 2) }}</pre>
+
+      <div v-else-if="viewMode === 'form' && result.columns.length" class="form-view">
+        <div class="form-nav">
+          <button :disabled="formIndex <= 0" @click="formIndex = Math.max(0, formIndex - 1)">‹</button>
+          <span>{{ formIndex + 1 }} / {{ viewRows.length }}</span>
+          <button :disabled="formIndex >= viewRows.length - 1" @click="formIndex = Math.min(viewRows.length - 1, formIndex + 1)">›</button>
+        </div>
+        <div v-if="viewRows[formIndex]" class="form-body">
+          <div v-for="c in result.columns" :key="c.name" class="form-row">
+            <label>{{ c.name }}<span class="form-ty">{{ c.dataType }}</span></label>
+            <input
+              v-if="editable"
+              :value="(viewRows[formIndex] as Row)[c.name] ?? ''"
+              @input="(e) => ((viewRows[formIndex] as Row)[c.name] = (e.target as HTMLInputElement).value)"
+            />
+            <span v-else :class="{ nullcell: isNull((viewRows[formIndex] as Row)[c.name]) }">{{ fmt((viewRows[formIndex] as Row)[c.name]) }}</span>
+          </div>
+        </div>
+      </div>
 
       <div v-else-if="result.columns.length" ref="gridScrollEl" class="grid-scroll" :class="{ 'freeze-1': freezeFirst }" @scroll="onGridScroll">
         <table>
@@ -838,6 +866,62 @@ const summaryRow = computed<Record<string, string>>(() => {
   position: sticky;
   left: 0;
   z-index: 2;
+}
+.form-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.form-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.form-nav button {
+  padding: 2px 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.form-nav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.form-body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr;
+  gap: 6px 14px;
+  align-items: center;
+  font-size: 13px;
+}
+.form-body label {
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.form-ty {
+  font-size: 10px;
+  opacity: 0.6;
+}
+.form-row {
+  display: contents;
+}
+.form-body input {
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
 }
 .json-view {
   flex: 1;

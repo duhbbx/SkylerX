@@ -172,6 +172,7 @@ const DICT: Record<string, [string, string]> = {
   'grid.cols': ['列 ▾', 'Columns ▾'],
   'grid.viewGrid': ['网格', 'Grid'],
   'grid.viewJson': ['JSON', 'JSON'],
+  'grid.viewForm': ['表单', 'Form'],
   'grid.freeze': ['冻结首列', 'Freeze 1st column'],
   'grid.summary': ['汇总', 'Summary'],
   'grid.summaryTitle': ['显示汇总行（数值列求和/均值，其余计非空数）', 'Show summary row (SUM/AVG for numeric, COUNT otherwise)'],
