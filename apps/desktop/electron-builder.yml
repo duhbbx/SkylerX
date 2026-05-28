@@ -11,26 +11,83 @@ files:
 # 且 .node 不能进 asar，必须解包。
 asarUnpack:
   - '**/*.node'
+
+# ── Windows：x64 + arm64 双架构 NSIS 安装包 ──
+# arm64 走交叉编译（GH-hosted 暂无 Windows ARM runner），native modules 用上游 arm64 prebuild。
 win:
   target:
-    - nsis
-  artifactName: ${productName}-${version}-setup.${ext}
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+
+# ── macOS：x64 + arm64 分两份 dmg ──
+# 不用 universal：x64 用户装 universal 多吃一倍体积。两份 dmg 各自下载更省。
 mac:
   target:
-    - dmg
+    - target: dmg
+      arch:
+        - x64
+        - arm64
   category: public.app-category.developer-tools
   # 本地 / 未配签名的 CI 跳过签名（正式发布再配证书）
   identity: null
   artifactName: ${productName}-${version}-${arch}.${ext}
+
+# ── Linux：x64 + arm64 × 5 种包格式 ──
+# AppImage 通用、deb（Ubuntu / Debian / Deepin / 统信 UOS / 优麒麟）、
+# rpm（Fedora / openEuler / 红旗 / 银河麒麟 RHEL 系）、
+# pacman（Arch / Manjaro）、tar.gz（内网装机 / 企业批量部署解压即用）
 linux:
   target:
-    - AppImage
-    - deb
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    - target: rpm
+      arch:
+        - x64
+        - arm64
+    - target: pacman
+      arch:
+        - x64
+        - arm64
+    - target: tar.gz
+      arch:
+        - x64
+        - arm64
   category: Development
-  artifactName: ${productName}-${version}.${ext}
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # deb 兼容：Ubuntu 24.04 起部分包名加 t64 后缀（time_t 64-bit 迁移）；
+  # `pkg | pkg-t64` 写法表示「任一可满足」，覆盖 Ubuntu 20.04-24.04 + 麒麟 + 统信。
+  # libsecret 是 Electron safeStorage 必需（密码加密落盘）。
+  deb:
+    depends:
+      - libgtk-3-0 | libgtk-3-0t64
+      - libnotify4
+      - libnss3
+      - libxss1
+      - libxtst6
+      - libatspi2.0-0 | libatspi2.0-0t64
+      - libuuid1
+      - libsecret-1-0
+      - libappindicator3-1 | libayatana-appindicator3-1
+  rpm:
+    depends:
+      - libnotify
+      - libXScrnSaver
+      - libXtst
+      - libsecret
+
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+
 # 自动更新发布渠道：GitHub Releases。
 # CI 打 tag 发布 release 时，electron-builder 会生成 latest*.yml 供 electron-updater 检查。
 publish:

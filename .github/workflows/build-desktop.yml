@@ -10,15 +10,34 @@ permissions:
 
 jobs:
   build:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          # ── macOS：Intel 用 macos-13、Apple Silicon 用 macos-latest（M-series）──
+          # 都是 native build，原生模块直接重编不需要交叉。
+          - { name: mac-x64,    os: macos-13,         eb_args: '--mac --x64',    npm_arch: x64    }
+          - { name: mac-arm64,  os: macos-latest,     eb_args: '--mac --arm64',  npm_arch: arm64  }
+
+          # ── Windows：x64 native；arm64 在 x64 runner 上交叉打包 ──
+          # GH-hosted 暂无 Windows ARM runner，arm64 native modules 走 prebuild。
+          - { name: win-x64,    os: windows-latest,   eb_args: '--win --x64',    npm_arch: x64    }
+          - { name: win-arm64,  os: windows-latest,   eb_args: '--win --arm64',  npm_arch: arm64  }
+
+          # ── Linux：x64 + arm64 双架构 ──
+          # ubuntu-24.04-arm 是 GH-hosted 的 ARM Linux runner（2024 新增），native build。
+          - { name: linux-x64,   os: ubuntu-latest,    eb_args: '--linux --x64',   npm_arch: x64   }
+          - { name: linux-arm64, os: ubuntu-24.04-arm, eb_args: '--linux --arm64', npm_arch: arm64 }
     runs-on: ${{ matrix.os }}
     env:
       # electron-builder 在 pnpm monorepo 下需要 hoisted 布局：
-      # 默认的符号链接会让原生依赖指向 app 目录之外，触发 “must be under appDir”。
+      # 默认的符号链接会让原生依赖指向 app 目录之外，触发 "must be under appDir"。
       NPM_CONFIG_NODE_LINKER: hoisted
+      # 给 node-gyp / install-app-deps 看：交叉构建（Windows arm64）按这个 arch 拉 prebuilds。
+      # native 构建（macos-13/macos-latest/ubuntu-*/ubuntu-24.04-arm）下设了也无害。
+      npm_config_arch: ${{ matrix.npm_arch }}
+      npm_config_target_arch: ${{ matrix.npm_arch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +53,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      # rpm / fakeroot：electron-builder 打 .rpm 必备；pacman 不需要额外工具（用内置打包器）
+      - name: Install Linux packaging tools
+        if: startsWith(matrix.os, 'ubuntu')
+        run: sudo apt-get update && sudo apt-get install -y rpm fakeroot
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
@@ -44,23 +68,28 @@ jobs:
         run: pnpm --filter @db-tool/desktop exec electron-vite build
 
       - name: Rebuild native modules for Electron ABI
-        run: pnpm --filter @db-tool/desktop exec electron-builder install-app-deps
+        run: pnpm --filter @db-tool/desktop exec electron-builder install-app-deps --arch=${{ matrix.npm_arch }}
 
       - name: Package installers
-        run: pnpm --filter @db-tool/desktop exec electron-builder --publish never
+        run: pnpm --filter @db-tool/desktop exec electron-builder ${{ matrix.eb_args }} --publish never
 
-      # 手动/分支触发：产物存为 Actions artifact，可在 run 页面下载
+      # 手动/分支触发：产物存为 Actions artifact，可在 run 页面下载（按 matrix.name 分开）
       - uses: actions/upload-artifact@v4
         with:
-          name: skylerx-${{ matrix.os }}
+          name: skylerx-${{ matrix.name }}
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.exe
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
+            apps/desktop/release/*.rpm
+            apps/desktop/release/*.pacman
+            apps/desktop/release/*.tar.gz
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.yml
           if-no-files-found: ignore
 
-      # tag v* 触发：把安装包挂到对应 GitHub Release（三平台各自追加）
+      # tag v* 触发：把安装包挂到对应 GitHub Release（所有 matrix 各自追加，不冲突）
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -70,8 +99,16 @@ jobs:
             apps/desktop/release/*.exe
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
+            apps/desktop/release/*.rpm
+            apps/desktop/release/*.pacman
+            apps/desktop/release/*.tar.gz
+            apps/desktop/release/*.zip
+            apps/desktop/release/latest*.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-# 备注：若 hoisted 布局仍报 “must be under appDir”，改用 `pnpm --filter @db-tool/desktop deploy`
-# 生成自包含目录后在其中 electron-builder。Oracle/达梦 原生驱动二期再纳入打包矩阵。
+# 备注：
+# - loong64（龙芯）需要换 electron-loongarch64 fork + 交叉编译 better-sqlite3 等原生模块，
+#   electron-builder 也不原生支持 loong64 包格式，需要 patch 或换 FPM。单独立 PR 做。
+# - sw_64（申威）没有公开的 Electron 分支，做不了。
+# - HarmonyOS NEXT 是不同框架（ArkTS + 自研内核），不是 Electron 平台。
