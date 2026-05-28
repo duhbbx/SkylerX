@@ -27,7 +27,8 @@ onMounted(() => {
     minimap: { enabled: false },
     fontSize: settings.fontSize,
     scrollBeyondLastLine: false,
-    tabSize: 2,
+    tabSize: settings.tabSize,
+    wordWrap: settings.wordWrap ? 'on' : 'off',
     renderLineHighlight: 'line',
     readOnly: props.readonly ?? false,
     domReadOnly: props.readonly ?? false,
@@ -56,7 +57,7 @@ onMounted(() => {
   })
 
   model = editor.getModel()
-  if (model && props.completion) setCompletionSource(model, props.completion)
+  if (model && props.completion && settings.enableCompletion) setCompletionSource(model, props.completion)
 })
 
 // 外部（如双击表名）改写 SQL 时同步进编辑器
@@ -71,6 +72,22 @@ watch(
 watch(
   () => settings.fontSize,
   (fs) => editor?.updateOptions({ fontSize: fs }),
+)
+watch(
+  () => settings.tabSize,
+  (n) => editor?.updateOptions({ tabSize: n }),
+)
+watch(
+  () => settings.wordWrap,
+  (w) => editor?.updateOptions({ wordWrap: w ? 'on' : 'off' }),
+)
+watch(
+  () => settings.enableCompletion,
+  (on) => {
+    if (!model || !props.completion) return
+    if (on) setCompletionSource(model, props.completion)
+    else clearCompletionSource(model)
+  },
 )
 
 /** 当前选中的文本（无选区时返回空串）。供「存为片段」等取选区用。 */

@@ -6,6 +6,7 @@ import { quoteId } from '../ddl'
 import { t } from '../i18n'
 import { type EditChanges, SQL_DEFAULT, isSqlSentinel } from '../editable'
 import { type ExportFormat, exportRows, toCSV, toJSON } from '../io'
+import { settings } from '../settings'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
@@ -360,7 +361,7 @@ function isNull(v: unknown): boolean {
   return v === null || v === undefined
 }
 function fmt(v: unknown): string {
-  if (v === null || v === undefined) return 'NULL'
+  if (v === null || v === undefined) return settings.nullDisplay
   if (isSqlSentinel(v)) return v.__sql
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)

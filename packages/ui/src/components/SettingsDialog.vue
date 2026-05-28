@@ -48,6 +48,23 @@ const LOCALES: Locale[] = ['zh', 'en']
       </label>
 
       <label class="row">
+        <span class="lbl">{{ t('settings.tabSize') }}</span>
+        <input v-model.number="settings.tabSize" type="number" min="1" max="8" />
+      </label>
+      <label class="row">
+        <span class="lbl">{{ t('settings.wordWrap') }}</span>
+        <input v-model="settings.wordWrap" type="checkbox" />
+      </label>
+      <label class="row">
+        <span class="lbl">{{ t('settings.enableCompletion') }}</span>
+        <input v-model="settings.enableCompletion" type="checkbox" />
+      </label>
+      <label class="row">
+        <span class="lbl">{{ t('settings.nullDisplay') }}</span>
+        <input v-model="settings.nullDisplay" type="text" placeholder="NULL" />
+      </label>
+
+      <label class="row">
         <span class="lbl">{{ t('settings.keywordCase') }}</span>
         <select v-model="settings.keywordCase">
           <option value="upper">{{ t('settings.keywordCase.upper') }}</option>

@@ -17,6 +17,14 @@ export interface Settings {
   aiModel: string
   /** AI 助手：API Base URL（可指向代理） */
   aiBaseUrl: string
+  /** 编辑器 Tab 宽度（空格数） */
+  tabSize: number
+  /** 编辑器自动换行 */
+  wordWrap: boolean
+  /** 编辑器启用补全 */
+  enableCompletion: boolean
+  /** 结果集 NULL 单元格的显示文本 */
+  nullDisplay: string
 }
 
 const KEY = 'skylerx.settings'
@@ -29,6 +37,10 @@ const DEFAULTS: Settings = {
   aiApiKey: '',
   aiModel: 'claude-sonnet-4-6',
   aiBaseUrl: 'https://api.anthropic.com',
+  tabSize: 2,
+  wordWrap: false,
+  enableCompletion: true,
+  nullDisplay: 'NULL',
 }
 
 function load(): Settings {
