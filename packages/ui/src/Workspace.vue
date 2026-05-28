@@ -46,6 +46,7 @@ import {
   objectDdlQuery,
   objectRef,
   previewSql,
+  quoteId,
 } from './ddl'
 
 const navRef = useTemplateRef('navRef')
@@ -413,6 +414,93 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
   } catch (e) {
     window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
+}
+
+// ── 表数据/结构操作 ──
+
+/** 清空表：DELETE FROM x；事务安全，可回滚，触发 ON DELETE 触发器（高危，二次确认）。 */
+async function onEmptyTable(connId: string, node: TreeNode): Promise<void> {
+  const ref = node.sqlName ?? node.name
+  if (!window.confirm(t('ws.confirmEmptyTable', { ref }))) return
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  try {
+    await client.connections.execute(connId, `DELETE FROM ${ref}`, [], { database: ctx.database, schema: ctx.schema })
+    window.alert(t('ws.emptyTableDone', { ref }))
+    if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
+  } catch (e) {
+    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
+}
+
+/** 截断表：TRUNCATE TABLE x；极快、重置自增、不进 binlog 行模式、DDL 不可回滚。 */
+async function onTruncateTable(connId: string, node: TreeNode): Promise<void> {
+  const ref = node.sqlName ?? node.name
+  if (!window.confirm(t('ws.confirmTruncateTable', { ref }))) return
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  try {
+    await client.connections.execute(connId, `TRUNCATE TABLE ${ref}`, [], { database: ctx.database, schema: ctx.schema })
+    window.alert(t('ws.truncateTableDone', { ref }))
+    if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
+  } catch (e) {
+    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
+}
+
+/** 重命名表：弹窗输入新名 → 方言对应 RENAME（MySQL: RENAME TABLE old TO new；PG/MSSQL: ALTER TABLE old RENAME TO new；Oracle: ALTER TABLE old RENAME TO new）。 */
+async function onRenameTable(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const newName = window.prompt(t('ws.renamePrompt', { name: node.name }), node.name)
+  if (!newName || !newName.trim() || newName.trim() === node.name) return
+  const ctx = deriveContext(conn.dialect, node)
+  const ref = node.sqlName ?? node.name
+  const newQuoted = quoteId(conn.dialect, newName.trim())
+  const sql = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
+    ? `RENAME TABLE ${ref} TO ${newQuoted}`
+    : `ALTER TABLE ${ref} RENAME TO ${newQuoted}`
+  try {
+    await client.connections.execute(connId, sql, [], { database: ctx.database, schema: ctx.schema })
+    if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
+  } catch (e) {
+    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
+}
+
+/** 复制表：仅结构 / 结构+数据。生成的 SQL 在草稿查询页打开（让用户检查/调整后再执行）。 */
+async function onCopyTable(connId: string, node: TreeNode, withData: boolean): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const newName = window.prompt(t('ws.copyTablePrompt', { name: node.name }), `${node.name}_copy`)
+  if (!newName || !newName.trim()) return
+  const ref = node.sqlName ?? node.name
+  const newQuoted = quoteId(conn.dialect, newName.trim())
+  const fam = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
+    ? 'mysql'
+    : ['postgresql', 'kingbase'].includes(conn.dialect)
+      ? 'pg'
+      : 'other'
+  const lines: string[] = []
+  if (fam === 'mysql') {
+    lines.push(`CREATE TABLE ${newQuoted} LIKE ${ref};`)
+    if (withData) lines.push(`INSERT INTO ${newQuoted} SELECT * FROM ${ref};`)
+  } else if (fam === 'pg') {
+    lines.push(`CREATE TABLE ${newQuoted} (LIKE ${ref} INCLUDING ALL);`)
+    if (withData) lines.push(`INSERT INTO ${newQuoted} SELECT * FROM ${ref};`)
+  } else {
+    // 其它方言：用 SELECT ... INTO 之类近似（不同方言差异大，统一走 CREATE TABLE AS）
+    lines.push(`CREATE TABLE ${newQuoted} AS SELECT * FROM ${ref}${withData ? '' : ' WHERE 1=0'};`)
+  }
+  tabsRef.value?.openDraft(conn, lines.join('\n'), t('ws.copyTableTabTitle', { name: newName.trim() }))
+}
+
+/** 切换连接的「生产环境」标记（extra.env: 'prod' ↔ undefined），保存后刷新导航树。 */
+async function onToggleProdMark(connId: string): Promise<void> {
+  const cfg = await client.connections.get(connId)
+  const { env: _drop, ...restExtra } = (cfg.extra ?? {}) as Record<string, unknown>
+  const extra =
+    _drop === 'prod' ? restExtra : { ...restExtra, env: 'prod' as const }
+  await client.connections.update({ ...cfg, extra: Object.keys(extra).length ? extra : undefined })
+  await navRef.value?.reload()
 }
 
 // ER 图 → 开 ER 图 Tab（按库/schema 节点推断目标）
@@ -915,6 +1003,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @data-dict-html="onDataDictHtml"
     @edit-object="onEditObject"
     @copy-object-ddl="onCopyObjectDdl"
+    @empty-table="onEmptyTable"
+    @truncate-table="onTruncateTable"
+    @rename-table="onRenameTable"
+    @copy-table="onCopyTable"
+    @toggle-prod-mark="onToggleProdMark"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"
     @open-erd="onOpenErd"

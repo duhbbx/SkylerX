@@ -144,10 +144,12 @@ function startDrag(id: string, e: MouseEvent): void {
   const sy = e.clientY
   const ox = p.x
   const oy = p.y
+  // 不再用 Math.max(0, …) 钳制坐标 —— 那会导致节点只能往右下拖、无法往左上回拖。
+  // 画布支持负坐标（pan 平移可显示左/上区域）；越界由 pan + zoom 处理。
   const move = (ev: MouseEvent): void => {
     pos[id] = {
-      x: Math.max(0, ox + (ev.clientX - sx) / zoom.value),
-      y: Math.max(0, oy + (ev.clientY - sy) / zoom.value),
+      x: ox + (ev.clientX - sx) / zoom.value,
+      y: oy + (ev.clientY - sy) / zoom.value,
     }
   }
   const up = (): void => {

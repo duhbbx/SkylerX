@@ -8,7 +8,7 @@ import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
 import { isConnectionError } from '../connError'
 import type { ObjectKind, SqlTemplateKind } from '../ddl'
-import { type TreeAction, actionsFor } from './tree-actions'
+import { type MenuEntry, type TreeAction, menuEntriesFor } from './tree-actions'
 import { type TreeController, TreeControllerKey } from './tree-controller'
 import { type TreeNode, fromMetadata, rootNode } from './treeNode'
 
@@ -33,6 +33,11 @@ const emit = defineEmits<{
   copyDdl: [string, TreeNode]
   toggleFavorite: [string, TreeNode]
   copyObjectDdl: [string, TreeNode]
+  emptyTable: [string, TreeNode]
+  truncateTable: [string, TreeNode]
+  renameTable: [string, TreeNode]
+  copyTable: [string, TreeNode, boolean]
+  toggleProdMark: [string]
   dataDict: [string, TreeNode]
   dataDictHtml: [string, TreeNode]
   editObject: [string, TreeNode]
@@ -95,10 +100,10 @@ const menu = reactive<{
   visible: boolean
   x: number
   y: number
-  actions: TreeAction[]
+  entries: MenuEntry[]
   node: TreeNode | null
   connId: string
-}>({ visible: false, x: 0, y: 0, actions: [], node: null, connId: '' })
+}>({ visible: false, x: 0, y: 0, entries: [], node: null, connId: '' })
 
 const selectedKey = ref<string | null>(null)
 function nodeKey(node: TreeNode, connId: string): string {
@@ -164,7 +169,7 @@ const controller: TreeController = {
     menu.y = y
     menu.node = node
     menu.connId = connId
-    menu.actions = actionsFor(node)
+    menu.entries = menuEntriesFor(node)
     menu.visible = true
   },
   openConnection: (connId) => emit('selectConn', connId),
@@ -180,6 +185,11 @@ const controller: TreeController = {
   copyDdl: (node, connId) => emit('copyDdl', connId, node),
   toggleFavorite: (node, connId) => emit('toggleFavorite', connId, node),
   copyObjectDdl: (node, connId) => emit('copyObjectDdl', connId, node),
+  emptyTable: (node, connId) => emit('emptyTable', connId, node),
+  truncateTable: (node, connId) => emit('truncateTable', connId, node),
+  renameTable: (node, connId) => emit('renameTable', connId, node),
+  copyTable: (node, connId, withData) => emit('copyTable', connId, node, withData),
+  toggleProdMark: (connId) => emit('toggleProdMark', connId),
   dataDict: (node, connId) => emit('dataDict', connId, node),
   dataDictHtml: (node, connId) => emit('dataDictHtml', connId, node),
   editObject: (node, connId) => emit('editObject', connId, node),
@@ -351,7 +361,7 @@ onMounted(reload)
       v-if="menu.visible"
       :x="menu.x"
       :y="menu.y"
-      :actions="menu.actions"
+      :entries="menu.entries"
       @pick="onMenuPick"
       @close="menu.visible = false"
     />

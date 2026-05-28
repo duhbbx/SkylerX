@@ -53,6 +53,16 @@ export interface TreeController {
   toggleFavorite(node: TreeNode, connId: string): void
   /** 复制视图/函数/存储过程/触发器的 DDL 到剪贴板 */
   copyObjectDdl(node: TreeNode, connId: string): void
+  /** 清空表：DELETE FROM x（事务安全、可回滚；触发触发器） */
+  emptyTable(node: TreeNode, connId: string): void
+  /** 截断表：TRUNCATE TABLE x（极快、重置自增；DDL 不可回滚） */
+  truncateTable(node: TreeNode, connId: string): void
+  /** 重命名表：弹窗输入新名 → 生成对应方言 ALTER/RENAME */
+  renameTable(node: TreeNode, connId: string): void
+  /** 复制表：仅结构 / 结构+数据；目标名走弹窗，DDL 在草稿查询页打开 */
+  copyTable(node: TreeNode, connId: string, withData: boolean): void
+  /** 切换连接的生产环境标记（extra.env: prod ↔ undefined） */
+  toggleProdMark(connId: string): void
   /** 生成库/schema 的数据字典（Markdown 文件） */
   dataDict(node: TreeNode, connId: string): void
   /** 生成库/schema 的数据字典（HTML 文件，可打印 PDF） */
