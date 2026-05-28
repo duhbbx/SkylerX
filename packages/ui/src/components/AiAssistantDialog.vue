@@ -159,7 +159,7 @@ onUnmounted(() => controller?.abort())
         </select>
         <label class="schk">
           <input type="checkbox" :checked="useSchema" @change="toggleSchema" />
-          {{ t('ai.useSchema') }}
+          <span class="schk-lbl">{{ t('ai.useSchema') }}</span>
           <span v-if="schemaLoading" class="mini">…</span>
           <span v-else-if="useSchema && schemaText" class="mini">✓</span>
         </label>
@@ -236,6 +236,8 @@ onUnmounted(() => controller?.abort())
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .schk {
   display: flex;
@@ -244,6 +246,11 @@ onUnmounted(() => controller?.abort())
   font-size: 12px;
   color: var(--muted);
   cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.schk-lbl {
+  white-space: nowrap;
 }
 .mini {
   color: var(--accent);

@@ -869,6 +869,7 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 右侧 AI 聊天侧边栏 AiChatPanel ──
   'aichat.title': ['AI 聊天', 'AI Chat'],
+  'aichat.resizeHint': ['拖动调整面板宽度（自动记住）', 'Drag to resize panel (auto-saved)'],
   'aichat.conn': ['连接', 'Conn'],
   'aichat.connFor': ['关联的连接（决定生成 SQL 的方言 + 可拉取库结构）', 'Linked connection (decides SQL dialect + schema source)'],
   'aichat.db': ['库', 'DB'],

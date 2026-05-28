@@ -183,7 +183,10 @@ function onCreated(tab: Tab): void {
   close(tab.id)
 }
 
-defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, openErd, openDraft, closeConnTabs })
+/** 暴露给父组件用：当前激活 tab 的连接 id（用于右侧 AI 聊天默认连接跟随）；computed 自带响应式 */
+const activeConnId = computed(() => active.value?.conn.id ?? '')
+
+defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, openErd, openDraft, closeConnTabs, activeConnId })
 
 // ── 布局持久化：仅记录查询页（connId + pinned），下次启动自动重开 ──
 const LAYOUT_KEY = 'skylerx.workspace.tabs'

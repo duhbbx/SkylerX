@@ -28,6 +28,43 @@ const client = useDataClient()
 
 const conns = ref<ConnectionConfig[]>([])
 const connId = ref<string>(props.activeConnId ?? '')
+
+// ── 宽度可拖拽 + 持久化 ──
+const WIDTH_KEY = 'skylerx.aiChat.width'
+const MIN_W = 280
+const MAX_W = 800
+const DEFAULT_W = 380
+function loadWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(WIDTH_KEY))
+    if (Number.isFinite(saved) && saved >= MIN_W) return Math.min(MAX_W, saved)
+  } catch { /* ignore */ }
+  return DEFAULT_W
+}
+const panelWidth = ref<number>(loadWidth())
+let dragStartX = 0
+let dragStartW = 0
+function onResizeDown(e: PointerEvent): void {
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  dragStartX = e.clientX
+  dragStartW = panelWidth.value
+  document.body.style.cursor = 'col-resize'
+}
+function onResizeMove(e: PointerEvent): void {
+  if (!e.buttons) return
+  // 面板在右边，往左拖（clientX 减小）→ 变宽
+  const w = dragStartW + (dragStartX - e.clientX)
+  panelWidth.value = Math.max(MIN_W, Math.min(MAX_W, Math.round(w)))
+}
+function onResizeUp(e: PointerEvent): void {
+  ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  document.body.style.cursor = ''
+  try {
+    localStorage.setItem(WIDTH_KEY, String(panelWidth.value))
+  } catch {
+    /* ignore */
+  }
+}
 const useSchema = ref(false)
 const schemaText = ref('')
 const schemaLoading = ref(false)
@@ -299,7 +336,15 @@ function onKeydown(e: KeyboardEvent): void {
 </script>
 
 <template>
-  <aside class="chat">
+  <aside class="chat" :style="{ width: panelWidth + 'px' }">
+    <!-- 左边沿拖拽把手：调整面板宽度（持久化到 localStorage） -->
+    <div
+      class="resize-handle"
+      :title="t('aichat.resizeHint')"
+      @pointerdown="onResizeDown"
+      @pointermove="onResizeMove"
+      @pointerup="onResizeUp"
+    />
     <header class="head">
       <span class="title">✨ {{ t('aichat.title') }}</span>
       <button class="x" :title="t('common.close')" @click="emit('close')">×</button>
@@ -381,9 +426,23 @@ function onKeydown(e: KeyboardEvent): void {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-width: 320px;
   background: var(--panel);
   border-left: 1px solid var(--border);
+  position: relative;
+  flex: none;
+}
+.resize-handle {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+}
+.resize-handle:hover {
+  background: var(--accent, #7c6cff);
+  opacity: 0.4;
 }
 .head {
   display: flex;

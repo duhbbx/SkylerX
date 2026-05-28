@@ -864,10 +864,10 @@ watch(aiChatOpen, (v) => {
     /* ignore */
   }
 })
-// 当前活跃 query tab 的连接 id（给侧边栏选默认连接用）
+// 当前活跃 query tab 的连接 id（给右侧 AI 聊天侧边栏当默认连接，跟着 tab 切换走）
 const activeChatConnId = computed(() => {
-  const cur = (tabsRef.value as { active?: { conn: { id: string } } } | null)?.active?.conn?.id
-  return cur ?? ''
+  const ref = tabsRef.value as { activeConnId?: { value: string } } | null
+  return ref?.activeConnId?.value ?? ''
 })
 async function onAiChatInsert(sql: string, connId: string): Promise<void> {
   const conn = await client.connections.get(connId)
@@ -1105,7 +1105,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     <QueryTabs ref="tabsRef" @conn-error="onConnError" @refresh="onTreeRefresh" @ai="onAiFromPane" />
   </main>
 
-  <!-- 右侧 AI 聊天侧边栏（类 Cursor）；点 ⌘K → AI 聊天 或 ⌘⇧A 唤起 -->
+  <!-- 右侧 AI 聊天侧边栏（类 Cursor）；点导航树 ✨ / ⌘⇧L / ⌘K → AI 聊天 唤起 -->
   <AiChatPanel
     v-if="aiChatOpen"
     :active-conn-id="activeChatConnId"
@@ -1113,6 +1113,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @insert-sql="onAiChatInsert"
     @run-sql="onAiChatRun"
   />
+
+  <!-- 右侧常驻竖栏（类 VS Code 活动栏）：始终可见，点 ✨ 开关 AI 聊天 -->
+  <aside class="right-rail">
+    <button
+      class="rail-btn"
+      :class="{ on: aiChatOpen }"
+      :title="t('nav.aiChat')"
+      @click="aiChatOpen = !aiChatOpen"
+    >✨</button>
+  </aside>
 
   <Modal
     v-if="editing"
@@ -1372,6 +1382,40 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </template>
 
 <style scoped>
+/* 右侧活动栏：永远可见的窄栏，类似 VS Code 右侧侧边按钮列 */
+.right-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  width: 40px;
+  flex: none;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+}
+.rail-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.rail-btn:hover {
+  background: rgba(124, 108, 255, 0.14);
+  color: var(--text);
+}
+.rail-btn.on {
+  background: rgba(124, 108, 255, 0.22);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent, #7c6cff);
+}
 .confirm p {
   margin: 0 0 12px;
   font-size: 14px;
