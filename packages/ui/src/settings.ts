@@ -11,10 +11,25 @@ export interface Settings {
   theme: 'dark' | 'light'
   /** 全局界面缩放（CSS zoom，1 = 100%） */
   uiZoom: number
+  /** AI 助手：Anthropic API Key（仅存本地） */
+  aiApiKey: string
+  /** AI 助手：模型 ID */
+  aiModel: string
+  /** AI 助手：API Base URL（可指向代理） */
+  aiBaseUrl: string
 }
 
 const KEY = 'skylerx.settings'
-const DEFAULTS: Settings = { pageSize: 200, fontSize: 13, keywordCase: 'upper', theme: 'dark', uiZoom: 1 }
+const DEFAULTS: Settings = {
+  pageSize: 200,
+  fontSize: 13,
+  keywordCase: 'upper',
+  theme: 'dark',
+  uiZoom: 1,
+  aiApiKey: '',
+  aiModel: 'claude-sonnet-4-6',
+  aiBaseUrl: 'https://api.anthropic.com',
+}
 
 function load(): Settings {
   try {
@@ -40,9 +55,11 @@ watch(
   { deep: true },
 )
 
+const hasDom = typeof document !== 'undefined'
+
 // 主题：应用到根元素的 data-theme（styles.css 据此切换变量）
 function applyTheme(): void {
-  document.documentElement.setAttribute('data-theme', settings.theme)
+  if (hasDom) document.documentElement.setAttribute('data-theme', settings.theme)
 }
 applyTheme()
 watch(() => settings.theme, applyTheme)
@@ -51,7 +68,9 @@ watch(() => settings.theme, applyTheme)
 const ZOOM_MIN = 0.6
 const ZOOM_MAX = 1.6
 function applyZoom(): void {
-  ;(document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom = String(settings.uiZoom)
+  if (hasDom) {
+    ;(document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom = String(settings.uiZoom)
+  }
 }
 applyZoom()
 watch(() => settings.uiZoom, applyZoom)

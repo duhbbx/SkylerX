@@ -55,7 +55,7 @@ const props = defineProps<{
   initialCtx?: TableContext
 }>()
 
-const emit = defineEmits<{ connError: [string, string] }>()
+const emit = defineEmits<{ connError: [string, string]; ai: [string, string, string] }>()
 
 const sql = ref('SELECT 1;')
 const editorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
@@ -385,6 +385,12 @@ function runToCursor(): void {
 function stripSqlComments(s: string): string {
   return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
 }
+// AI 助手：把当前编辑器内容（优先选区）+ 当前结果页的错误一起递给上层弹窗
+function askAi(): void {
+  const text = editorRef.value?.getSelectedText()?.trim() || sql.value.trim()
+  emit('ai', text, props.conn.id, cur.value?.error ?? '')
+}
+
 function compressSql(): void {
   sql.value = stripSqlComments(sql.value).replace(/\s+/g, ' ').trim()
 }
@@ -697,6 +703,7 @@ onMounted(() => {
       <button class="ghost" :title="t('query.saveSnippet.title')" @click="saveCurrentSnippet">
         {{ t('query.saveSnippet') }}
       </button>
+      <button class="ghost" :title="t('query.ai.title')" @click="askAi">✨ {{ t('query.ai') }}</button>
 
       <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
         <option value="">{{ t('query.defaultDb') }}</option>

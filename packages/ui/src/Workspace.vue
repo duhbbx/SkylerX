@@ -13,6 +13,8 @@ import NavTree from './components/NavTree.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
+import AiAssistantDialog from './components/AiAssistantDialog.vue'
+import type { AiMode } from './ai'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -642,6 +644,7 @@ const shortcutsOpen = ref(false)
 const favoritesOpen = ref(false)
 const opLogOpen = ref(false)
 const monitorOpen = ref(false)
+const aiState = ref<{ mode: AiMode; sql?: string; connId?: string; error?: string } | null>(null)
 // 快捷键参考表
 const SHORTCUTS: { k: string; label: string }[] = [
   { k: '⌘/Ctrl + K', label: t('pal.objectSearch') },
@@ -675,6 +678,23 @@ async function onDiffOpenSql(connId: string, sql: string): Promise<void> {
   tabsRef.value?.openDraft(conn, sql, t('ws.tabMigration'))
 }
 
+// AI 助手生成的 SQL → 在所选连接开一个草稿查询页
+async function onAiInsert(sql: string, connId: string): Promise<void> {
+  aiState.value = null
+  const conn = await client.connections.get(connId)
+  tabsRef.value?.openDraft(conn, sql, t('ai.tabTitle'))
+}
+
+// QueryPane 工具栏「AI」按钮：有错误→诊断，否则→解释当前 SQL
+function onAiFromPane(sql: string, connId: string, errMsg: string): void {
+  aiState.value = {
+    mode: errMsg ? 'diagnose' : 'explain',
+    sql,
+    connId,
+    error: errMsg || undefined,
+  }
+}
+
 // ── ⌘K 命令面板 ──
 const paletteOpen = ref(false)
 const paletteConns = ref<ConnectionConfig[]>([])
@@ -692,6 +712,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:favorites', label: t('pal.favorites'), group: t('pal.groupActions') },
   { id: 'act:oplog', label: t('pal.oplog'), group: t('pal.groupActions') },
   { id: 'act:monitor', label: t('pal.monitor'), group: t('pal.groupActions') },
+  { id: 'act:ai', label: t('pal.ai'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
@@ -720,6 +741,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:favorites') favoritesOpen.value = true
   else if (item.id === 'act:oplog') opLogOpen.value = true
   else if (item.id === 'act:monitor') monitorOpen.value = true
+  else if (item.id === 'act:ai') aiState.value = { mode: 'nl2sql' }
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
 }
@@ -815,7 +837,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   />
 
   <main class="main">
-    <QueryTabs ref="tabsRef" @conn-error="onConnError" @refresh="onTreeRefresh" />
+    <QueryTabs ref="tabsRef" @conn-error="onConnError" @refresh="onTreeRefresh" @ai="onAiFromPane" />
   </main>
 
   <Modal
@@ -1008,6 +1030,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   />
 
   <ServerMonitorDialog v-if="monitorOpen" @close="monitorOpen = false" />
+
+  <AiAssistantDialog
+    v-if="aiState"
+    :initial-mode="aiState.mode"
+    :initial-sql="aiState.sql"
+    :initial-conn-id="aiState.connId"
+    :initial-error="aiState.error"
+    @insert="onAiInsert"
+    @open-settings="settingsOpen = true"
+    @close="aiState = null"
+  />
 </template>
 
 <style scoped>

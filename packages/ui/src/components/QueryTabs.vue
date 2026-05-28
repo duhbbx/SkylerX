@@ -24,7 +24,11 @@ interface Tab {
   pinned?: boolean // 固定标签：排在最前，不显示关闭按钮（双击切换）
 }
 
-const emit = defineEmits<{ connError: [string, string]; refresh: [TreeNode, string] }>()
+const emit = defineEmits<{
+  connError: [string, string]
+  refresh: [TreeNode, string]
+  ai: [string, string, string]
+}>()
 
 const tabs = ref<Tab[]>([])
 const activeId = ref(0)
@@ -197,6 +201,7 @@ defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openS
             :initial-sql="t.draft"
             :initial-ctx="t.ctx"
             @conn-error="(id, msg) => emit('connError', id, msg)"
+            @ai="(sql, cid, errMsg) => emit('ai', sql, cid, errMsg)"
           />
           <TableDesigner
             v-else-if="t.kind === 'table'"

@@ -56,6 +56,21 @@ const LOCALES: Locale[] = ['zh', 'en']
         </select>
       </label>
 
+      <div class="section-title">{{ t('settings.aiSection') }}</div>
+      <label class="row">
+        <span class="lbl">{{ t('settings.aiApiKey') }}</span>
+        <input v-model="settings.aiApiKey" type="password" class="grow" :placeholder="t('settings.aiApiKeyPh')" />
+      </label>
+      <label class="row">
+        <span class="lbl">{{ t('settings.aiModel') }}</span>
+        <input v-model="settings.aiModel" type="text" class="grow" placeholder="claude-sonnet-4-6" />
+      </label>
+      <label class="row">
+        <span class="lbl">{{ t('settings.aiBaseUrl') }}</span>
+        <input v-model="settings.aiBaseUrl" type="text" class="grow" placeholder="https://api.anthropic.com" />
+      </label>
+      <p class="note">{{ t('settings.aiNote') }}</p>
+
       <div class="actions">
         <button class="ghost" @click="resetSettings">{{ t('common.resetDefault') }}</button>
         <button class="primary" @click="emit('close')">{{ t('common.done') }}</button>
@@ -91,6 +106,17 @@ const LOCALES: Locale[] = ['zh', 'en']
 }
 .row input[type='number'] {
   width: 80px;
+}
+.row .grow {
+  flex: 1;
+  min-width: 0;
+}
+.section-title {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 .unit {
   font-size: 12px;
