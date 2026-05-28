@@ -172,6 +172,16 @@ const KEYWORDS = [
   'LIKE', 'BETWEEN', 'DISTINCT', 'UNION', 'UNION ALL', 'ASC', 'DESC', 'VALUES', 'SET',
   'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
 ]
+// 内置片段触发词（输入 sel / ins… 选中即展开模板）
+const BUILTIN_SNIPPETS = [
+  { label: 'sel', insertText: 'SELECT * FROM ' },
+  { label: 'self', insertText: 'SELECT * FROM  WHERE ' },
+  { label: 'cnt', insertText: 'SELECT COUNT(*) FROM ' },
+  { label: 'ins', insertText: 'INSERT INTO  () VALUES ();' },
+  { label: 'upd', insertText: 'UPDATE  SET  WHERE ;' },
+  { label: 'del', insertText: 'DELETE FROM  WHERE ;' },
+  { label: 'cte', insertText: 'WITH t AS (\n  \n)\nSELECT * FROM t' },
+]
 const MYSQL_FAM = ['mysql', 'mariadb', 'oceanbase']
 const PG_FAM = ['postgresql', 'kingbase']
 const ORA_FAM = ['oracle', 'dm']
@@ -306,6 +316,8 @@ async function completion(ctx: {
   const out: Suggestion[] = KEYWORDS.map((k) => ({ label: k, kind: 'keyword' as const }))
   for (const fn of dialectFuncs())
     out.push({ label: fn, insertText: `${fn}()`, kind: 'function', detail: t('completion.function') })
+  for (const bs of BUILTIN_SNIPPETS)
+    out.push({ label: bs.label, insertText: bs.insertText, kind: 'snippet', detail: t('completion.snippet') })
   for (const s of snippets)
     out.push({ label: s.name, insertText: s.sql, kind: 'snippet', detail: t('completion.snippet') })
   for (const tbl of await loadTables()) out.push({ label: tbl, kind: 'table', detail: t('completion.table') })
