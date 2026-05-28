@@ -4,6 +4,32 @@ import { toInsertSql } from './io'
 
 type Row = Record<string, unknown>
 
+/** 生成库/schema 的数据字典（Markdown：每表一节，列出字段/类型/可空/主键/默认/注释）。 */
+export function buildDataDictMarkdown(
+  title: string,
+  tables: { name: string; columns: MetadataNode[] }[],
+): string {
+  const esc = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  const out: string[] = [
+    `# 数据字典：${title}`,
+    '',
+    `> 共 ${tables.length} 张表 · 生成于 ${new Date().toLocaleString()}`,
+    '',
+  ]
+  for (const tbl of tables) {
+    out.push(`## ${tbl.name}`, '')
+    out.push('| 字段 | 类型 | 可空 | 主键 | 默认 | 注释 |', '| --- | --- | --- | --- | --- | --- |')
+    for (const c of tbl.columns) {
+      const d = c.detail ?? {}
+      out.push(
+        `| ${esc(c.name)} | ${esc(d.dataType ?? '')} | ${d.nullable ? 'Y' : 'N'} | ${d.primaryKey ? '🔑' : ''} | ${esc(d.defaultValue == null ? '' : String(d.defaultValue))} | ${esc(d.comment ?? '')} |`,
+      )
+    }
+    out.push('')
+  }
+  return out.join('\n')
+}
+
 /** 由列元数据重建 CREATE TABLE（结构 dump；含主键，不含索引/外键——v1）。 */
 export function buildCreateFromColumns(
   dialect: DbDialect,

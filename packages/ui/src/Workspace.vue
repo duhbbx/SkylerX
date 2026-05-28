@@ -17,7 +17,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
-import { buildCreateFromColumns, buildTableDump } from './dump'
+import { buildCreateFromColumns, buildDataDictMarkdown, buildTableDump } from './dump'
 import { buildMockInserts } from './mockgen'
 import {
   type ObjectKind,
@@ -290,6 +290,40 @@ async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
     window.alert(t('ws.ddlCopied'))
   } catch (e) {
     window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
+}
+
+// 生成数据字典（Markdown）：迭代库/schema 下所有表的列信息
+async function onDataDict(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const ctx = erdContext(conn.dialect, node)
+  try {
+    const tables = await client.connections.metadata(connId, {
+      parentKind: MetaNodeKind.Group,
+      path: [...node.path],
+      group: 'tables',
+    })
+    if (!tables.length) {
+      window.alert(t('ws.noTables'))
+      return
+    }
+    const withCols: { name: string; columns: typeof tables }[] = []
+    for (const tbl of tables) {
+      const cols = await client.connections.metadata(connId, {
+        parentKind: MetaNodeKind.Group,
+        path: [...tbl.path],
+        group: 'columns',
+      })
+      withCols.push({ name: tbl.name, columns: cols })
+    }
+    const label = ctx.schema || ctx.database || 'schema'
+    await client.files.saveText({
+      defaultName: `${label}-data-dict.md`,
+      content: buildDataDictMarkdown(label, withCols),
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    })
+  } catch (e) {
+    window.alert(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -700,6 +734,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @mock-data="onMockData"
     @deps="onDeps"
     @copy-ddl="onCopyDdl"
+    @data-dict="onDataDict"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"

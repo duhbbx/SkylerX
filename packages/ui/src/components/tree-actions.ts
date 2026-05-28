@@ -202,6 +202,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.exportSchemaSql(node, connId),
   },
   {
+    id: 'data-dict',
+    label: '生成数据字典（Markdown）',
+    kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    run: ({ node, connId, ctrl }) => ctrl.dataDict(node, connId),
+  },
+  {
     id: 'refresh',
     label: '刷新',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema, MetaNodeKind.Group],
