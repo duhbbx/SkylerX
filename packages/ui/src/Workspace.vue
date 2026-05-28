@@ -763,8 +763,19 @@ async function onDeleted(id: string): Promise<void> {
   tabsRef.value?.closeConnTabs(id)
 }
 
-function onCancel(): void {
-  editing.value = null
+// ── 连接表单：未保存关闭确认 ──
+const connFormRef = useTemplateRef<{ isDirty: () => boolean } | null>('connFormRef')
+/**
+ * Modal beforeClose 钩子：脏表单关闭前先 confirm；
+ * 返回 false 阻止关闭，true 才允许 Modal 发 close。
+ */
+function confirmDiscardConnForm(): boolean {
+  if (!connFormRef.value?.isDirty()) return true
+  return window.confirm(t('common.unsavedConfirm'))
+}
+/** Cancel 按钮也走同一道关：取消则不关；同意才置空 editing。 */
+function onCancelConn(): void {
+  if (confirmDiscardConnForm()) editing.value = null
 }
 
 // ── 设置中心 ──
@@ -1029,14 +1040,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     width="medium"
     fixed-height
     storage-key="connection"
-    @close="onCancel"
+    :before-close="confirmDiscardConnForm"
+    @close="onCancelConn"
   >
     <ConnectionForm
+      ref="connFormRef"
       :conn-id="editing.connId"
       :initial-error="editing.error"
       @saved="onSaved"
       @deleted="onDeleted"
-      @cancel="onCancel"
+      @cancel="onCancelConn"
     />
   </Modal>
 

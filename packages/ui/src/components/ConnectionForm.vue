@@ -84,7 +84,23 @@ async function load(): Promise<void> {
   } catch {
     groups.value = []
   }
+  // 载入完成后给整体表单拍个快照，用来判断「是否有未保存的修改」
+  resetDirtyBaseline()
 }
+
+/** 表单脏检查：与载入/上一次保存时的快照做 JSON 对比。 */
+const dirtyBaseline = ref('')
+function snapshot(): string {
+  return JSON.stringify({ form, env: env.value, readOnly: readOnly.value })
+}
+function resetDirtyBaseline(): void {
+  dirtyBaseline.value = snapshot()
+}
+/** 是否有未保存修改（供父组件经 template ref 调用）。 */
+function isDirty(): boolean {
+  return dirtyBaseline.value !== '' && snapshot() !== dirtyBaseline.value
+}
+defineExpose({ isDirty })
 
 watch(() => props.connId, load, { immediate: true })
 
@@ -114,6 +130,7 @@ async function save(): Promise<void> {
     const saved = props.connId
       ? await client.connections.update({ ...buildConfig(), id: props.connId })
       : await client.connections.create(buildConfig())
+    resetDirtyBaseline() // 保存成功后表单与基线对齐，不再被视为脏
     emit('saved', saved)
   } finally {
     busy.value = false

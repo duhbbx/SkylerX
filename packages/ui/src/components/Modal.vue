@@ -19,8 +19,29 @@ const props = defineProps<{
    * 不同 key 互不干扰。仅在 fixedHeight 模式下生效。
    */
   storageKey?: string
+  /**
+   * 关闭前钩子：返回 false（或 Promise 解析为 false）则阻止关闭。
+   * 用于「未保存修改」类提示——脏表单关闭时弹 confirm，用户取消即不关。
+   */
+  beforeClose?: () => boolean | Promise<boolean>
 }>()
 const emit = defineEmits<{ close: [] }>()
+
+async function tryClose(): Promise<void> {
+  if (props.beforeClose) {
+    const ok = await props.beforeClose()
+    if (!ok) return
+  }
+  emit('close')
+}
+
+function onKey(e: KeyboardEvent): void {
+  // Esc 视为用户主动关闭：仍走 beforeClose 钩子，脏表单照样会提示
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    void tryClose()
+  }
+}
 
 const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
 const modalEl = ref<HTMLDivElement>()
@@ -48,6 +69,7 @@ function saveSize(width: number, height: number): void {
 let ro: ResizeObserver | null = null
 
 onMounted(() => {
+  window.addEventListener('keydown', onKey)
   if (!props.fixedHeight || !modalEl.value) return
   // 恢复上次保存的尺寸（覆盖默认 CSS 宽高）
   const saved = loadSize()
@@ -70,17 +92,23 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey)
   ro?.disconnect()
   ro = null
 })
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
+  <!--
+    背景遮罩不再绑定 click 关闭：用户点空白处不应误关弹窗（防止刚写到一半的表单丢失）。
+    关闭路径仅剩三条：① 标题栏 ✕ 按钮、② Esc 键、③ 调用方主动设为 null。
+    每条都会走 beforeClose 钩子，脏表单可以拦截。
+  -->
+  <div class="modal-backdrop">
     <div ref="modalEl" class="modal" :class="[widthClass, { fixed: fixedHeight }]">
       <div class="modal-head">
         <span>{{ title }}</span>
-        <button class="x" :title="t('common.close')" @click="emit('close')">×</button>
+        <button class="x" :title="t('common.close')" @click="tryClose">×</button>
       </div>
       <div class="modal-body">
         <slot />
