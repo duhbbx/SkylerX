@@ -51,6 +51,7 @@ const emit = defineEmits<{
   previewTable: [string, TreeNode]
   openErd: [string, TreeNode]
   openSettings: []
+  toggleAiChat: []
   bulkDrop: [{ connId: string; node: TreeNode }[]]
 }>()
 
@@ -331,6 +332,7 @@ onMounted(reload)
       <span class="head-actions">
         <button class="icon" :title="t('nav.newConn')" @click="controller.newConnection()">+</button>
         <button class="icon" :title="t('nav.refresh')" @click="reload">⟳</button>
+        <button class="icon" :title="t('nav.aiChat')" @click="emit('toggleAiChat')">✨</button>
         <button class="icon" :title="t('nav.settings')" @click="emit('openSettings')">⚙</button>
       </span>
     </div>

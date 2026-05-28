@@ -57,6 +57,7 @@ const DICT: Record<string, [string, string]> = {
   'nav.newConn': ['新建连接', 'New connection'],
   'nav.refresh': ['刷新', 'Refresh'],
   'nav.settings': ['设置', 'Settings'],
+  'nav.aiChat': ['AI 聊天侧边栏（⌘⇧L）', 'AI chat sidebar (⌘⇧L)'],
   'nav.empty': ['还没有连接，点上方 + 新建', 'No connections yet — click + above to add one'],
   'nav.loading': ['加载中…', 'Loading…'],
   'bulk.selected': ['已选 {n} 项', '{n} selected'],

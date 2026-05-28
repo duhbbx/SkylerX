@@ -1098,6 +1098,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @transfer-data="onTransferData"
     @bulk-drop="onBulkDrop"
     @open-settings="settingsOpen = true"
+    @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
 
   <main class="main">
