@@ -1,3 +1,8 @@
+// 必须在导入 monaco-editor 之前先装好翻译数组：
+// monaco 的 nls.js 是惰性查表（每次 localize() 时从 globalThis._VSCODE_NLS_MESSAGES 读），
+// 但 *某些* action label / 命令描述会在 monaco 模块装载时就求值缓存，
+// 所以保险起见把这个 import 放在第一行，让它的副作用最先发生。
+import './monaco-nls'
 import * as monaco from 'monaco-editor'
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 

@@ -27,11 +27,26 @@ export const locale = ref<Locale>(detect())
 export const LOCALE_LABEL: Record<Locale, string> = { zh: '简体中文', en: 'English' }
 
 export function setLocale(l: Locale): void {
+  const prev = locale.value
   locale.value = l
   try {
     localStorage.setItem(STORAGE_KEY, l)
   } catch {
     /* 忽略写入失败 */
+  }
+  // 同步切 Monaco NLS：对「未来新打开」的编辑器立刻生效；
+  // 已渲染编辑器的内置菜单 label 由 Monaco 在模块加载期已缓存，需要刷新窗口才能完整跟随。
+  if (prev !== l) {
+    void import('./monaco-nls').then((m) => m.applyMonacoLocale(l))
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      // 后续微任务里弹确认框，避免阻塞同步流程
+      queueMicrotask(() => {
+        const tip = l === 'zh'
+          ? '语言已切换到中文。要立即刷新窗口以让 SQL 编辑器内置菜单（剪切/查找等）完整切换吗？'
+          : 'Language switched to English. Reload the window now to fully apply the editor built-in menus?'
+        if (window.confirm(tip)) window.location.reload()
+      })
+    }
   }
 }
 
