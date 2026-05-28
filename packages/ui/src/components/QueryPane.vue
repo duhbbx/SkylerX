@@ -68,7 +68,36 @@ const sql = ref('SELECT 1;')
 const editorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
 const tabs = ref<ResultTab[]>([])
 const activeTab = ref(0)
-const moreOpen = ref(false) // 工具栏「⋯ 更多」下拉
+// 工具栏「⋯ 更多」下拉：用 fixed 定位 + Teleport 到 body，绕过 toolbar 的 overflow 裁切
+// 与下方 Monaco 编辑器的 z-index 竞争。每次打开按按钮 rect 重新计算坐标。
+const moreOpen = ref(false)
+const moreBtn = ref<HTMLButtonElement>()
+const moreMenuPos = ref<{ left: number; top: number }>({ left: 0, top: 0 })
+function toggleMore(): void {
+  if (moreOpen.value) {
+    moreOpen.value = false
+    return
+  }
+  const rect = moreBtn.value?.getBoundingClientRect()
+  if (rect) {
+    // 右对齐到按钮右边缘，菜单大致宽 180；如越界视口右侧则贴左对齐到按钮左侧
+    const menuW = 200
+    const right = rect.right
+    moreMenuPos.value = {
+      left: Math.max(8, Math.min(window.innerWidth - menuW - 8, right - menuW)),
+      top: rect.bottom + 4,
+    }
+  }
+  moreOpen.value = true
+}
+function onWinClickForMore(e: MouseEvent): void {
+  if (!moreOpen.value) return
+  const tgt = e.target as Node
+  // 点击按钮自身或菜单内部不算外部点击
+  if (moreBtn.value?.contains(tgt)) return
+  if (document.querySelector('.more-menu')?.contains(tgt)) return
+  moreOpen.value = false
+}
 const showHistory = ref(false)
 const showSnippets = ref(false)
 const showPlan = ref(false)
@@ -807,7 +836,9 @@ onMounted(() => {
   } else if (props.initialSql) {
     sql.value = props.initialSql // 草稿：只填入，不执行
   }
+  window.addEventListener('mousedown', onWinClickForMore)
 })
+onBeforeUnmount(() => window.removeEventListener('mousedown', onWinClickForMore))
 </script>
 
 <template>
@@ -829,17 +860,24 @@ onMounted(() => {
       <button :title="t('query.format.title')" @click="formatSql">fx {{ t('query.format') }}</button>
       <button class="ghost" :title="t('query.ai.title')" @click="askAi">✨ AI</button>
       <span class="tb-sep" />
-      <!-- 更多操作下拉 -->
-      <div class="more-wrap" @mouseleave="moreOpen = false">
-        <button class="ghost" :title="t('query.more')" @click="moreOpen = !moreOpen">⋯</button>
-        <div v-if="moreOpen" class="more-menu" @click="moreOpen = false">
+      <!-- 更多操作下拉：用 position:fixed 渲染，避免被 toolbar 的 overflow:auto 裁切 / 被下方 Monaco 编辑器盖住 -->
+      <div class="more-wrap">
+        <button ref="moreBtn" class="ghost" :title="t('query.more')" @click="toggleMore">⋯</button>
+        <Teleport to="body">
+          <div
+            v-if="moreOpen"
+            class="more-menu"
+            :style="{ left: moreMenuPos.left + 'px', top: moreMenuPos.top + 'px' }"
+            @click="moreOpen = false"
+          >
           <button @click="compressSql">{{ t('query.compress') }}</button>
           <button @click="removeComments">{{ t('query.stripComments') }}</button>
           <button @click="saveCurrentSnippet">{{ t('query.saveSnippet') }}</button>
           <button @click="favoriteCurrentQuery">★ {{ t('query.favorite') }}</button>
           <hr />
           <button class="danger" @click="clearEditor">{{ t('query.clear') }}</button>
-        </div>
+          </div>
+        </Teleport>
       </div>
 
       <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
@@ -1068,11 +1106,11 @@ onMounted(() => {
   flex: none;
 }
 .more-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 30;
-  min-width: 160px;
+  /* Teleport 到 body 后用 fixed 定位（坐标由脚本根据按钮 rect 算好），
+   * z-index 抬高到 1000+，盖过 Monaco 编辑器（其内部 widget z-index 在 50~100 量级） */
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
   padding: 4px;
   background: var(--panel);
   border: 1px solid var(--border);
