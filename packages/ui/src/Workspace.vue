@@ -821,6 +821,11 @@ function onCancelConn(): void {
 
 // ── 设置中心 ──
 const settingsOpen = ref(false)
+const settingsInitialSection = ref<'general' | 'editor' | 'grid' | 'watermark' | 'ai'>('general')
+function openSettingsAtAi(): void {
+  settingsInitialSection.value = 'ai'
+  settingsOpen.value = true
+}
 const schemaDiffOpen = ref(false)
 const privilegesOpen = ref(false)
 const dataDiffOpen = ref(false)
@@ -1112,6 +1117,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @close="aiChatOpen = false"
     @insert-sql="onAiChatInsert"
     @run-sql="onAiChatRun"
+    @open-settings="openSettingsAtAi"
   />
 
   <!-- 右侧常驻竖栏（类 VS Code 活动栏）：始终可见，点 ✨ 开关 AI 聊天 -->
@@ -1295,7 +1301,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     </table>
   </Modal>
 
-  <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
+  <SettingsDialog v-if="settingsOpen" :initial-section="settingsInitialSection" @close="settingsOpen = false" />
 
   <SchemaDiffDialog
     v-if="schemaDiffOpen"

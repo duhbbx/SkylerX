@@ -5,7 +5,8 @@ import { type ChatMessage, askAiChat, extractAllSql } from '../ai'
 import { useDataClient } from '../data-client'
 import { t } from '../i18n'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
-import { settings } from '../settings'
+import { monaco } from '../monaco-setup'
+import { AI_PROVIDER_LABEL, AI_PROVIDER_ORDER, type AiProvider, settings } from '../settings'
 
 /**
  * 右侧 AI 聊天侧边栏（类 Cursor 体验）。
@@ -23,7 +24,25 @@ const emit = defineEmits<{
   insertSql: [sql: string, connId: string]
   /** 直接执行（带二次确认） */
   runSql: [sql: string, connId: string]
+  /** 打开设置弹窗（默认跳到 AI 助手 section） */
+  openSettings: []
 }>()
+
+// 仅显示已配置 apiKey 的 provider，避免「切到一个没填 key 的就报 NO_API_KEY」
+const configuredProviders = computed<AiProvider[]>(() =>
+  AI_PROVIDER_ORDER.filter((p) => settings.aiProviders[p]?.apiKey?.trim()),
+)
+
+// SQL 代码块按内容哈希缓存高亮后的 HTML，避免每帧重复 colorize
+const sqlHtml = ref<Record<string, string>>({})
+async function highlightSql(code: string): Promise<void> {
+  if (sqlHtml.value[code]) return
+  try {
+    sqlHtml.value[code] = await monaco.editor.colorize(code, 'sql', { tabSize: 2 })
+  } catch {
+    /* 走 fallback：plain pre */
+  }
+}
 
 const client = useDataClient()
 
@@ -130,6 +149,19 @@ watch(
   (v) => {
     if (v) connId.value = v
   },
+)
+// 新增/变化消息时：把里面所有 ```sql 块送进 Monaco colorize 异步高亮
+watch(
+  () => messages.value,
+  (msgs) => {
+    for (const m of msgs) {
+      if (m.role !== 'assistant') continue
+      for (const p of splitParts(m.content)) {
+        if (p.type === 'sql') void highlightSql(p.content)
+      }
+    }
+  },
+  { deep: true, immediate: true },
 )
 // 切连接 → 重新拉 database/schema 列表 + 重置 schema 缓存
 watch(connId, async () => {
@@ -411,7 +443,9 @@ function onKeydown(e: KeyboardEvent): void {
           <template v-for="(p, pi) in splitParts(msg.content)" :key="pi">
             <pre v-if="p.type === 'text'" class="part-text">{{ p.content }}</pre>
             <div v-else class="part-sql">
-              <pre>{{ p.content }}</pre>
+              <!-- 若 Monaco colorize 完成则用高亮 HTML；否则降级到 plain pre 等异步完成 -->
+              <pre v-if="sqlHtml[p.content]" class="hl" v-html="sqlHtml[p.content]"></pre>
+              <pre v-else>{{ p.content }}</pre>
               <div class="part-actions">
                 <button @click="copyText(p.content)">{{ t('common.copy') }}</button>
                 <button @click="emitInsert(p.content)">{{ t('aichat.insertDraft') }}</button>
@@ -437,9 +471,18 @@ function onKeydown(e: KeyboardEvent): void {
         @keydown="onKeydown"
       ></textarea>
       <div class="foot-bar">
-        <span class="model">{{ settings.aiProvider }} · {{ settings.aiProviders[settings.aiProvider]?.model || '?' }}</span>
+        <!-- 只列已配 apiKey 的 provider；没配 → 显示「未配置」+ ⚙ 按钮跳到设置 -->
+        <template v-if="configuredProviders.length">
+          <select v-model="settings.aiProvider" class="provider-sel" :title="t('aichat.switchProvider')">
+            <option v-for="p in configuredProviders" :key="p" :value="p">
+              {{ AI_PROVIDER_LABEL[p] }} · {{ settings.aiProviders[p].model || '?' }}
+            </option>
+          </select>
+        </template>
+        <span v-else class="model unconf">{{ t('aichat.noneConfigured') }}</span>
+        <button class="cfg" :title="t('aichat.openSettings')" @click="emit('openSettings')">⚙</button>
         <span v-if="allSqls.length" class="hint">{{ t('aichat.lastSqlHint', { n: allSqls.length }) }}</span>
-        <button v-if="!running" class="primary" :disabled="!input.trim()" @click="send">{{ t('aichat.send') }}</button>
+        <button v-if="!running" class="primary" :disabled="!input.trim() || !configuredProviders.length" @click="send">{{ t('aichat.send') }}</button>
         <button v-else class="ghost" @click="stop">{{ t('aichat.stop') }}</button>
       </div>
     </footer>
@@ -633,6 +676,13 @@ function onKeydown(e: KeyboardEvent): void {
   word-break: break-all;
   color: var(--text);
 }
+/* Monaco colorize 输出的 token 类名 mtkX 是 monaco 全局 CSS 注入的，scoped 不能覆盖 */
+.part-sql pre.hl {
+  white-space: pre;
+  overflow-x: auto;
+  word-break: normal;
+  line-height: 1.5;
+}
 .part-actions {
   display: flex;
   gap: 6px;
@@ -709,6 +759,35 @@ function onKeydown(e: KeyboardEvent): void {
   font-size: 10px;
   color: var(--muted);
   font-family: ui-monospace, monospace;
+}
+.model.unconf {
+  color: var(--err, #e04050);
+}
+.provider-sel {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 11px;
+}
+.cfg {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.cfg:hover {
+  color: var(--text);
+  border-color: var(--accent, #7c6cff);
 }
 .hint {
   font-size: 10px;

@@ -210,6 +210,12 @@ const controller: TreeController = {
   async refreshNode(node, connId) {
     node.children = null
     if (node.expanded) await this.loadChildren(node, connId)
+    // count（"表 (15)" 这种数字）是父库元数据拉取时存好的；增删后用实际 children.length 同步
+    // 注：TS 看不到 loadChildren 的副作用，children 类型仍被收窄为 null，所以这里走 unknown 中转
+    const reloaded = node.children as unknown as TreeNode[] | null
+    if (node.kind === MetaNodeKind.Group && reloaded) {
+      node.count = reloaded.length
+    }
   },
   copyText: (text) => void navigator.clipboard?.writeText(text),
 }
