@@ -927,14 +927,18 @@ export function incomingForeignKeysQuery(
   const esc = (s: string) => s.replace(/'/g, "''")
   switch (familyOf(dialect)) {
     case 'mysql':
+      // 同时返回源列 cols 与对应被引用列 refcols（按 ORDINAL_POSITION 同序聚合），
+      // 用于单元格上「反向外键导航」精确定位到「被本行某列引用」的源表行。
       return `SELECT TABLE_NAME AS srctab, CONSTRAINT_NAME AS name,
-        GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) AS cols
+        GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) AS cols,
+        GROUP_CONCAT(REFERENCED_COLUMN_NAME ORDER BY ORDINAL_POSITION) AS refcols
         FROM information_schema.KEY_COLUMN_USAGE
         WHERE REFERENCED_TABLE_SCHEMA = '${esc(ctx.database ?? '')}' AND REFERENCED_TABLE_NAME = '${esc(table)}'
         GROUP BY TABLE_NAME, CONSTRAINT_NAME`
     case 'pg':
       return `SELECT t.relname AS srctab, con.conname AS name,
-        (SELECT string_agg(a.attname, ',') FROM pg_attribute a WHERE a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)) AS cols
+        (SELECT string_agg(a.attname, ',') FROM pg_attribute a WHERE a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)) AS cols,
+        (SELECT string_agg(a.attname, ',') FROM pg_attribute a WHERE a.attrelid = con.confrelid AND a.attnum = ANY(con.confkey)) AS refcols
         FROM pg_constraint con
         JOIN pg_class t ON t.oid = con.conrelid
         JOIN pg_class rt ON rt.oid = con.confrelid

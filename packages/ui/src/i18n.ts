@@ -218,6 +218,8 @@ const DICT: Record<string, [string, string]> = {
   'grid.setDefault': ['设为 DEFAULT', 'Set DEFAULT'],
   'grid.fkJump': ['→ {tbl}', '→ {tbl}'],
   'grid.fkJumpTitle': ['打开新查询页：{tbl}.{col} = 当前值', 'Open new query: {tbl}.{col} = current value'],
+  'grid.revFkTitle': ['被以下 {n} 张表引用：', 'Referenced by {n} table(s):'],
+  'grid.copyHex': ['复制 Hex', 'Copy hex'],
   'grid.copyAsSql': ['复制为 SQL', 'Copy as SQL'],
   'grid.prevRow': ['‹ 上一行', '‹ Prev row'],
   'grid.nextRow': ['下一行 ›', 'Next row ›'],

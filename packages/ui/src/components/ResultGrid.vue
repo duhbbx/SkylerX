@@ -26,15 +26,17 @@ const props = defineProps<{
   dialect?: DbDialect
   /** 可服务端筛选（浏览单表时）：列头出现漏斗，生成 WHERE 重查 */
   filterable?: boolean
-  /** 该表的外键（仅 MySQL/PG 单表 SELECT 时由 QueryPane 注入），用于「跳到关联行」 */
-  foreignKeys?: { column: string; refTable: string; refColumn: string }[]
+  /** 本表外键（columns/refColumns 同长度对齐，支持复合外键），用于「→ 关联表」 */
+  foreignKeys?: { columns: string[]; refTable: string; refColumns: string[] }[]
+  /** 反向外键（其它表引用本表），用于「← 被以下表引用」 */
+  incomingForeignKeys?: { columns: string[]; refTable: string; refColumns: string[] }[]
 }>()
 const emit = defineEmits<{
   changePage: [number]
   changePageSize: [number]
   commit: [EditChanges]
   filter: [string]
-  navigateFk: [{ refTable: string; refColumn: string; value: unknown }]
+  navigateFk: [{ refTable: string; refColumns: string[]; values: unknown[] }]
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -438,17 +440,68 @@ function applyCellEdit(): void {
   editing.value = null
   viewer.value = null
 }
-// 当前查看的单元格是否为外键（用于「跳到关联行」按钮）
+// 当前查看的单元格是否落在某条复合外键上（任一列匹配即命中）
 const cellFk = computed(() => {
   if (!viewer.value?.col || !props.foreignKeys?.length) return null
-  return props.foreignKeys.find((f) => f.column === viewer.value?.col) ?? null
+  return props.foreignKeys.find((f) => f.columns.includes(viewer.value?.col ?? '')) ?? null
 })
 function navigateFk(): void {
   const fk = cellFk.value
-  const v = viewerRow.value?.[viewer.value?.col ?? '']
-  if (!fk || v == null) return
-  emit('navigateFk', { refTable: fk.refTable, refColumn: fk.refColumn, value: v })
+  const row = viewerRow.value
+  if (!fk || !row) return
+  // 复合外键：把所有 fk.columns 在本行的取值按序送出，由 QueryPane 拼成 refCol = lit AND ...
+  const values = fk.columns.map((c) => row[c])
+  emit('navigateFk', { refTable: fk.refTable, refColumns: fk.refColumns, values })
   viewer.value = null
+}
+
+// 反向外键：哪些「源表的某条复合外键」其 refColumn 命中当前查看的列。
+const cellRevFks = computed(() => {
+  if (!viewer.value?.col || !props.incomingForeignKeys?.length) return [] as { refTable: string; refColumns: string[]; values: unknown[] }[]
+  const col = viewer.value.col
+  const row = viewerRow.value
+  if (!row) return []
+  // refTable 实际是「源表」名（QueryPane 传入时已映射）；只在当前列在该 FK 的 refColumns 中时显示
+  return props.incomingForeignKeys
+    .filter((f) => f.refColumns.includes(col))
+    .map((f) => ({
+      // 注意：反向场景下要查源表，按 source 表过滤 source 列 = 当前行的 refColumn 值
+      refTable: f.refTable,
+      refColumns: f.columns, // 源表上的列（作为 WHERE 列名）
+      values: f.refColumns.map((rc) => row[rc]), // 对应的「本行被引用列」当前值
+    }))
+})
+function navigateRevFk(rev: { refTable: string; refColumns: string[]; values: unknown[] }): void {
+  emit('navigateFk', rev)
+  viewer.value = null
+}
+
+// ── BLOB / Hex 查看 ──
+// 驱动可能把二进制返回为 Uint8Array / Buffer-shaped {type:'Buffer',data:[]} / 普通 number[]
+function asBytes(v: unknown): Uint8Array | null {
+  if (v instanceof Uint8Array) return v
+  if (Array.isArray(v) && v.every((b) => typeof b === 'number' && b >= 0 && b <= 255)) return Uint8Array.from(v as number[])
+  if (v && typeof v === 'object' && (v as { type?: string }).type === 'Buffer') {
+    const d = (v as { data?: number[] }).data
+    if (Array.isArray(d)) return Uint8Array.from(d)
+  }
+  return null
+}
+const cellBytes = computed(() => {
+  if (!viewer.value?.col) return null
+  return asBytes(viewerRow.value?.[viewer.value.col])
+})
+function hexDump(bytes: Uint8Array, maxBytes = 4096): string {
+  const lines: string[] = []
+  const n = Math.min(bytes.length, maxBytes)
+  for (let i = 0; i < n; i += 16) {
+    const chunk = bytes.slice(i, i + 16)
+    const hex = Array.from(chunk).map((b) => b.toString(16).padStart(2, '0')).join(' ').padEnd(48, ' ')
+    const asc = Array.from(chunk).map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '.')).join('')
+    lines.push(`${i.toString(16).padStart(8, '0')}  ${hex}  ${asc}`)
+  }
+  if (bytes.length > n) lines.push(`… (${bytes.length - n} more bytes truncated)`)
+  return lines.join('\n')
 }
 
 // 把当前查看的单元格设为 NULL（编辑态）
@@ -757,16 +810,31 @@ const summaryRow = computed<Record<string, string>>(() => {
         @close="viewer = null"
       >
         <template v-if="viewer.col">
-          <textarea v-if="editable" v-model="editBuf" class="cell-edit" spellcheck="false" />
+          <!-- 二进制：以 hex dump 渲染（左偏移 / 中部 hex / 右 ASCII），可复制 -->
+          <pre v-if="cellBytes" class="cell-view hex-view">{{ hexDump(cellBytes) }}</pre>
+          <textarea v-else-if="editable" v-model="editBuf" class="cell-edit" spellcheck="false" />
           <pre v-else class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
           <div class="viewer-actions">
-            <button v-if="editable" class="primary" @click="applyCellEdit">{{ t('grid.apply') }}</button>
-            <button v-if="editable" @click="setCellNull">{{ t('grid.setNull') }}</button>
-            <button v-if="editable" @click="setCellDefault">{{ t('grid.setDefault') }}</button>
-            <button @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
-            <button @click="copyCellAsSql">{{ t('grid.copyAsSql') }}</button>
-            <button v-if="cellFk" :title="t('grid.fkJumpTitle', { tbl: cellFk.refTable, col: cellFk.refColumn })" @click="navigateFk">
+            <button v-if="editable && !cellBytes" class="primary" @click="applyCellEdit">{{ t('grid.apply') }}</button>
+            <button v-if="editable && !cellBytes" @click="setCellNull">{{ t('grid.setNull') }}</button>
+            <button v-if="editable && !cellBytes" @click="setCellDefault">{{ t('grid.setDefault') }}</button>
+            <button v-if="cellBytes" @click="copyText(hexDump(cellBytes))">{{ t('grid.copyHex') }}</button>
+            <button v-else @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
+            <button v-if="!cellBytes" @click="copyCellAsSql">{{ t('grid.copyAsSql') }}</button>
+            <button
+              v-if="cellFk"
+              :title="t('grid.fkJumpTitle', { tbl: cellFk.refTable, col: cellFk.refColumns.join(',') })"
+              @click="navigateFk"
+            >
               {{ t('grid.fkJump', { tbl: cellFk.refTable }) }}
+            </button>
+          </div>
+          <!-- 反向外键：被以下表引用 -->
+          <div v-if="cellRevFks.length" class="rev-fks">
+            <div class="rev-title">{{ t('grid.revFkTitle', { n: cellRevFks.length }) }}</div>
+            <button v-for="(r, i) in cellRevFks" :key="i" class="rev-btn" @click="navigateRevFk(r)">
+              ← {{ r.refTable }}
+              <span class="rev-cols">({{ r.refColumns.join(', ') }})</span>
             </button>
           </div>
         </template>
@@ -1250,6 +1318,45 @@ td.rownum:hover {
 .viewer-actions button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.hex-view {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  background: var(--bg);
+}
+.rev-fks {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.rev-title {
+  width: 100%;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.rev-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.rev-btn:hover {
+  background: rgba(124, 108, 255, 0.14);
+}
+.rev-cols {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 4px;
 }
 .view-tools {
   display: flex;

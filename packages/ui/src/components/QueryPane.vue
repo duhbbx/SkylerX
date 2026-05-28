@@ -9,7 +9,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
 import { ENV_META, connEnv, connReadOnly, isReadOnlyStatement } from '../connEnv'
-import { type TableContext, existingForeignKeysQuery, explainSql, familyOf, quoteId } from '../ddl'
+import { type TableContext, existingForeignKeysQuery, explainSql, familyOf, incomingForeignKeysQuery, quoteId } from '../ddl'
 import { t } from '../i18n'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import type { Suggestion } from '../monaco-setup'
@@ -80,59 +80,99 @@ let runToken = 0 // 软取消令牌：停止后丢弃在途结果
 
 const cur = computed<ResultTab | undefined>(() => tabs.value[activeTab.value])
 const paginatable = PAGINATABLE.includes(props.conn.dialect)
-// 当前 editTable 的单列外键（{column, refTable, refColumn}），用于结果集「跳到关联行」
-const currentFks = ref<{ column: string; refTable: string; refColumn: string }[]>([])
-const fkCache = new Map<string, typeof currentFks.value>()
+
+/**
+ * 外键元数据：
+ * - currentFks：本表 → 父表，cellFk 用于「→ 关联行」；
+ * - currentIncomingFks：子表 → 本表，反向导航 cellRevFks「← 被以下表引用」。
+ * 都支持复合外键（columns/refColumns 同长度对齐）。
+ */
+interface FkPair { columns: string[]; refTable: string; refColumns: string[] }
+const currentFks = ref<FkPair[]>([])
+const currentIncomingFks = ref<FkPair[]>([])
+const fkCache = new Map<string, { out: FkPair[]; rev: FkPair[] }>()
 
 function parseTableRef(ref: string): { schema?: string; table: string } {
   const parts = ref.split('.').map((p) => p.replace(/^["`[]/, '').replace(/["`\]]$/, ''))
   if (parts.length >= 2) return { schema: parts[parts.length - 2], table: parts[parts.length - 1] }
   return { table: parts[0] }
 }
+
+function parseFkRows(rows: Record<string, unknown>[], srcKey: 'reftab' | 'srctab'): FkPair[] {
+  const out: FkPair[] = []
+  for (const r of rows) {
+    const cols = String(r.cols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const refcols = String(r.refcols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const tab = String(r[srcKey] ?? '')
+    if (!cols.length || !refcols.length || cols.length !== refcols.length || !tab) continue
+    out.push({ columns: cols, refTable: tab, refColumns: refcols })
+  }
+  return out
+}
+
 async function loadFks(editTable: string): Promise<void> {
   const cached = fkCache.get(editTable)
-  if (cached) { currentFks.value = cached; return }
+  if (cached) {
+    currentFks.value = cached.out
+    currentIncomingFks.value = cached.rev
+    return
+  }
   currentFks.value = []
+  currentIncomingFks.value = []
   const fam = familyOf(props.conn.dialect)
   if (fam !== 'mysql' && fam !== 'pg') return
   const ref = parseTableRef(editTable)
   const ctx: TableContext =
     fam === 'mysql' ? { database: ref.schema ?? props.conn.database } : { schema: ref.schema ?? 'public' }
-  const sql = existingForeignKeysQuery(props.conn.dialect, ctx, ref.table)
-  if (!sql) return
+  const fwdSql = existingForeignKeysQuery(props.conn.dialect, ctx, ref.table)
+  const revSql = incomingForeignKeysQuery(props.conn.dialect, ctx, ref.table)
   try {
-    const res = await client.connections.execute(props.conn.id, sql, [], ctx)
-    const out: typeof currentFks.value = []
-    for (const r of res.rows as Record<string, unknown>[]) {
-      const cols = String(r.cols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-      const refcols = String(r.refcols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-      const refTab = String(r.reftab ?? '')
-      if (cols.length === 1 && refcols.length === 1 && refTab) {
-        out.push({ column: cols[0], refTable: refTab, refColumn: refcols[0] })
-      }
-    }
-    fkCache.set(editTable, out)
+    const out = fwdSql
+      ? parseFkRows((await client.connections.execute(props.conn.id, fwdSql, [], ctx)).rows as Record<string, unknown>[], 'reftab')
+      : []
+    const rev = revSql
+      ? parseFkRows((await client.connections.execute(props.conn.id, revSql, [], ctx)).rows as Record<string, unknown>[], 'srctab')
+      : []
+    fkCache.set(editTable, { out, rev })
     currentFks.value = out
+    currentIncomingFks.value = rev
   } catch {
     /* 元数据查询失败：静默 */
   }
 }
+
 watch(
   () => cur.value?.editTable,
   (v) => {
     if (v) void loadFks(v)
-    else currentFks.value = []
+    else {
+      currentFks.value = []
+      currentIncomingFks.value = []
+    }
   },
 )
 
-function onFkNavigate(fk: { refTable: string; refColumn: string; value: unknown }): void {
+/** 复合 FK 字面量构造：每列用相应方言的字面量；null 走 IS NULL。 */
+function whereForFk(refColumns: string[], values: unknown[]): string {
+  const fam = familyOf(props.conn.dialect)
+  return refColumns
+    .map((col, i) => {
+      const q = quoteId(props.conn.dialect, col)
+      const v = values[i]
+      if (v == null) return `${q} IS NULL`
+      if (typeof v === 'number') return `${q} = ${v}`
+      if (typeof v === 'boolean') return `${q} = ${fam === 'pg' ? (v ? 'TRUE' : 'FALSE') : v ? '1' : '0'}`
+      return `${q} = '${String(v).replace(/'/g, "''")}'`
+    })
+    .join(' AND ')
+}
+
+interface FkNavigate { refTable: string; refColumns: string[]; values: unknown[] }
+function onFkNavigate(fk: FkNavigate): void {
   const fam = familyOf(props.conn.dialect)
   const tbl = quoteId(props.conn.dialect, fk.refTable)
-  const col = quoteId(props.conn.dialect, fk.refColumn)
-  const v = fk.value
-  const lit = v == null ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`
-  const where = v == null ? `${col} IS NULL` : `${col} = ${lit}`
   const ctxSchema = fam === 'pg' ? 'public' : undefined
+  const where = whereForFk(fk.refColumns, fk.values)
   const full = `SELECT * FROM ${ctxSchema ? `${quoteId(props.conn.dialect, ctxSchema)}.${tbl}` : tbl} WHERE ${where} LIMIT 200`
   emit('newDraft', full, t('query.fkTabTitle', { tbl: fk.refTable }))
 }
@@ -857,6 +897,7 @@ onMounted(() => {
         :dialect="conn.dialect"
         :filterable="!!cur?.editTable"
         :foreign-keys="currentFks"
+        :incoming-foreign-keys="currentIncomingFks"
         @change-page="(p) => gotoPage(cur, p)"
         @change-page-size="(s) => changePageSize(cur, s)"
         @commit="onCommit"
