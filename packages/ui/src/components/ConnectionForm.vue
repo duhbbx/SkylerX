@@ -152,6 +152,7 @@ async function remove(): Promise<void> {
       </button>
     </div>
 
+    <div class="form-scroll">
     <div v-show="section === 'general'" class="form-grid">
       <label>{{ t('conn.name') }}</label>
       <input v-model="form.name" :placeholder="t('conn.name.ph')" />
@@ -230,6 +231,7 @@ async function remove(): Promise<void> {
       </template>
     </div>
 
+    </div>
     <div class="actions">
       <button :disabled="busy" @click="save">{{ connId ? t('conn.save') : t('conn.create') }}</button>
       <button class="ghost" :disabled="busy" @click="testConnection">{{ t('conn.test') }}</button>
@@ -251,14 +253,42 @@ async function remove(): Promise<void> {
 <style scoped>
 .form-pane {
   width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .form-pane .banner.err {
   margin: 0 0 14px;
+  flex: none;
 }
 .sec-tabs {
   display: flex;
   gap: 4px;
   margin-bottom: 14px;
+  flex: none;
+}
+/*
+ * 中间表单区：唯一可滚动的区块，宽度由 modal 决定（不出横向滚动条），
+ * 高度随 modal 调整。切 general/ssl/ssh 切 v-show 时，
+ * 由于这一层固定 flex:1，整体弹窗尺寸不会跳。
+ */
+.form-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+.actions {
+  flex: none;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+.form-pane .banner:not(.err) {
+  flex: none;
+  margin-top: 10px;
 }
 .sec-tabs button {
   padding: 5px 14px;

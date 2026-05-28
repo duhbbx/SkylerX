@@ -98,7 +98,7 @@ async function run(): Promise<void> {
 </script>
 
 <template>
-  <Modal :title="t('transfer.title', { name: node.name })" wide @close="emit('close')">
+  <Modal :title="t('transfer.title', { name: node.name })" width="wide" @close="emit('close')">
     <div class="dt">
       <div class="src">{{ t('transfer.sourceLabel') }}<b>{{ node.sqlName ?? node.name }}</b>{{ t('transfer.colsCount', { n: cols.length }) }}</div>
 

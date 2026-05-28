@@ -34,7 +34,7 @@ function watermarkPreviewSvg(): string {
 </script>
 
 <template>
-  <Modal :title="t('settings.title')" @close="emit('close')">
+  <Modal :title="t('settings.title')" width="medium" fixed-height @close="emit('close')">
     <div class="cfg">
       <nav class="cfg-nav">
         <button
@@ -204,11 +204,10 @@ function watermarkPreviewSvg(): string {
 <style scoped>
 .cfg {
   display: grid;
-  grid-template-columns: 168px 1fr;
-  gap: 16px;
-  min-width: 680px;
-  min-height: 420px;
-  max-height: 70vh;
+  grid-template-columns: 150px minmax(0, 1fr); /* minmax(0,1fr) 让右列允许收缩，子元素不会撑出横向溢出 */
+  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0; /* 给内部 overflow:auto 一个能收缩的容器 */
 }
 .cfg-nav {
   display: flex;
@@ -247,7 +246,9 @@ function watermarkPreviewSvg(): string {
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
+  min-width: 0; /* 让 grid 列允许收缩，长 input/url 不撑出横向溢出 */
 }
 .cfg-body h3 {
   margin: 0 0 4px;
@@ -377,6 +378,9 @@ function watermarkPreviewSvg(): string {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  flex: none;
 }
 .actions button {
   padding: 6px 16px;

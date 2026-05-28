@@ -129,7 +129,7 @@ async function runImport(): Promise<void> {
 </script>
 
 <template>
-  <Modal :title="t('import.title', { name: node.name })" wide @close="emit('close')">
+  <Modal :title="t('import.title', { name: node.name })" width="wide" @close="emit('close')">
     <div class="imp">
       <div class="row">
         <button class="primary" @click="pickFile">{{ t('import.pickFile') }}</button>

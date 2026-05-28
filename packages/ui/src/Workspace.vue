@@ -1026,6 +1026,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   <Modal
     v-if="editing"
     :title="editing.connId ? t('ws.titleEditConn') : t('ws.titleNewConn')"
+    width="medium"
+    fixed-height
     @close="onCancel"
   >
     <ConnectionForm
