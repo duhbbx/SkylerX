@@ -156,6 +156,8 @@ const DICT: Record<string, [string, string]> = {
   'grid.viewGrid': ['网格', 'Grid'],
   'grid.viewJson': ['JSON', 'JSON'],
   'grid.freeze': ['冻结首列', 'Freeze 1st column'],
+  'grid.summary': ['汇总', 'Summary'],
+  'grid.summaryTitle': ['显示汇总行（数值列求和/均值，其余计非空数）', 'Show summary row (SUM/AVG for numeric, COUNT otherwise)'],
   'grid.sortHint': [
     '点列头排序 · 双击单元格查看 · 点行号看整行',
     'Click header to sort · double-click cell to view · click row number for full row',

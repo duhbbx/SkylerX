@@ -57,6 +57,7 @@ const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
 const viewMode = ref<'grid' | 'json'>('grid') // 只读态：网格 / JSON 视图
 const freezeFirst = ref(false) // 冻结首数据列
+const showSummary = ref(false) // 汇总行
 // 列宽（px，按列名）
 const colWidths = ref<Record<string, number>>({})
 // 服务端列筛选：列名 → 条件串（如 "= 5"）
@@ -432,6 +433,24 @@ function sqlLiteral(v: unknown): string {
   const s = typeof v === 'object' ? JSON.stringify(v) : String(v)
   return `'${s.replace(/'/g, "''")}'`
 }
+
+// 汇总行：数值列给 Σ求和/ø均值，其余给非空计数
+const fmtNum = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2))
+const summaryRow = computed<Record<string, string>>(() => {
+  if (!showSummary.value) return {}
+  const out: Record<string, string> = {}
+  for (const c of visibleColumns.value) {
+    const vals = viewRows.value.map((r) => r[c.name]).filter((v) => v !== null && v !== undefined)
+    const nums = vals.map((v) => Number(v)).filter((n) => Number.isFinite(n))
+    if (vals.length > 0 && nums.length === vals.length) {
+      const sum = nums.reduce((a, b) => a + b, 0)
+      out[c.name] = `Σ${fmtNum(sum)} ø${fmtNum(sum / nums.length)}`
+    } else {
+      out[c.name] = String(vals.length)
+    }
+  }
+  return out
+})
 </script>
 
 <template>
@@ -489,6 +508,7 @@ function sqlLiteral(v: unknown): string {
           {{ viewMode === 'json' ? t('grid.viewGrid') : t('grid.viewJson') }}
         </button>
         <button class="vm" :class="{ on: freezeFirst }" :title="t('grid.freeze')" @click="freezeFirst = !freezeFirst">❄</button>
+        <button class="vm" :class="{ on: showSummary }" :title="t('grid.summaryTitle')" @click="showSummary = !showSummary">Σ {{ t('grid.summary') }}</button>
         <span class="hint">{{ t('grid.sortHint') }}</span>
       </div>
 
@@ -592,6 +612,12 @@ function sqlLiteral(v: unknown): string {
               </td>
             </tr>
           </tbody>
+          <tfoot v-if="showSummary">
+            <tr class="summary">
+              <td class="rownum">Σ</td>
+              <td v-for="c in visibleColumns" :key="c.name">{{ summaryRow[c.name] }}</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       <div v-else class="grid-msg">{{ t('grid.execOk') }}</div>
@@ -772,6 +798,16 @@ function sqlLiteral(v: unknown): string {
 .view-tools .vm.on {
   background: var(--accent, #7c6cff);
   color: #fff;
+}
+tfoot tr.summary td {
+  position: sticky;
+  bottom: 0;
+  background: var(--panel);
+  border-top: 2px solid var(--border);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 table {
   border-collapse: collapse;
