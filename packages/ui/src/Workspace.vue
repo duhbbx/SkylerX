@@ -12,6 +12,7 @@ import DataDiffDialog from './components/DataDiffDialog.vue'
 import NavTree from './components/NavTree.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
+import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -639,6 +640,7 @@ const objectSearchOpen = ref(false)
 const shortcutsOpen = ref(false)
 const favoritesOpen = ref(false)
 const opLogOpen = ref(false)
+const monitorOpen = ref(false)
 // 快捷键参考表
 const SHORTCUTS: { k: string; label: string }[] = [
   { k: '⌘/Ctrl + K', label: t('pal.objectSearch') },
@@ -687,6 +689,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:refresh', label: t('pal.refresh'), group: t('pal.groupActions') },
   { id: 'act:favorites', label: t('pal.favorites'), group: t('pal.groupActions') },
   { id: 'act:oplog', label: t('pal.oplog'), group: t('pal.groupActions') },
+  { id: 'act:monitor', label: t('pal.monitor'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
@@ -714,6 +717,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:refresh') await navRef.value?.reload()
   else if (item.id === 'act:favorites') favoritesOpen.value = true
   else if (item.id === 'act:oplog') opLogOpen.value = true
+  else if (item.id === 'act:monitor') monitorOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
 }
@@ -991,6 +995,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @open-sql="onDiffOpenSql"
     @close="opLogOpen = false"
   />
+
+  <ServerMonitorDialog v-if="monitorOpen" @close="monitorOpen = false" />
 </template>
 
 <style scoped>

@@ -356,6 +356,20 @@ const DICT: Record<string, [string, string]> = {
   'oplog.empty': ['无匹配的执行记录', 'No matching execution records'],
   'oplog.foot': ['共 {n} 条 · 点击任一行可在对应连接打开该 SQL', '{n} records · click a row to open the SQL on its connection'],
 
+  // ── 服务器监控 ServerMonitorDialog ──
+  'monitor.title': ['服务器监控', 'Server monitor'],
+  'monitor.unsupported': ['服务器监控目前支持 MySQL / PostgreSQL 系连接', 'Server monitoring currently supports MySQL / PostgreSQL connections'],
+  'monitor.uptime': ['运行时长', 'Uptime'],
+  'monitor.qps': ['每秒查询(QPS)', 'Queries/s (QPS)'],
+  'monitor.tps': ['每秒事务(TPS)', 'Txns/s (TPS)'],
+  'monitor.connections': ['连接数', 'Connections'],
+  'monitor.running': ['活动', 'Active'],
+  'monitor.waiting': ['等待锁', 'Waiting on lock'],
+  'monitor.slow': ['慢查询累计', 'Slow queries (total)'],
+  'monitor.aborted': ['失败连接累计', 'Aborted connects (total)'],
+  'monitor.cacheHit': ['缓存命中率', 'Cache hit ratio'],
+  'monitor.foot': ['每 2 秒刷新 · QPS/TPS 由计数器增量估算', 'Refreshes every 2s · QPS/TPS estimated from counter deltas'],
+
   // ── 结构对比 SchemaDiffDialog ──
   'sdiff.status.added': ['新增表', 'New table'],
   'sdiff.status.changed': ['改表', 'Changed'],
@@ -638,6 +652,7 @@ const DICT: Record<string, [string, string]> = {
   'pal.shortcuts': ['快捷键参考', 'Keyboard shortcuts'],
   'pal.favorites': ['收藏夹', 'Favorites'],
   'pal.oplog': ['操作日志', 'Operation log'],
+  'pal.monitor': ['服务器监控', 'Server monitor'],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
   'ws.favoritesEmpty': ['暂无收藏。右键表/视图 →「收藏 / 取消收藏」。', 'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".'],
