@@ -17,7 +17,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
-import { buildTableDump } from './dump'
+import { buildCreateFromColumns, buildTableDump } from './dump'
 import { buildMockInserts } from './mockgen'
 import {
   type ObjectKind,
@@ -261,6 +261,38 @@ async function onDeps(connId: string, node: TreeNode): Promise<void> {
     if (deps.value) deps.value.error = e instanceof Error ? e.message : String(e)
   }
 }
+// 复制建表语句：MySQL 用 SHOW CREATE TABLE，其余由列信息重建
+async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const ctx = deriveContext(conn.dialect, node)
+  try {
+    let ddl = ''
+    if (['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)) {
+      const r = await client.connections.execute(connId, `SHOW CREATE TABLE ${node.sqlName ?? node.name}`, [], {
+        database: ctx.database,
+        schema: ctx.schema,
+      })
+      const row = (r.rows as Record<string, unknown>[])[0] ?? {}
+      ddl = String(row['Create Table'] ?? row['Create View'] ?? Object.values(row)[1] ?? '')
+    } else {
+      const cols = await client.connections.metadata(connId, {
+        parentKind: MetaNodeKind.Group,
+        path: [...node.path],
+        group: 'columns',
+      })
+      ddl = buildCreateFromColumns(conn.dialect, node.sqlName ?? node.name, cols)
+    }
+    if (!ddl) {
+      window.alert(t('ws.noDef'))
+      return
+    }
+    await navigator.clipboard?.writeText(ddl)
+    window.alert(t('ws.ddlCopied'))
+  } catch (e) {
+    window.alert(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
+}
+
 function onDepReveal(table: string): void {
   const d = deps.value
   if (!d) return
@@ -667,6 +699,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @table-stats="onTableStats"
     @mock-data="onMockData"
     @deps="onDeps"
+    @copy-ddl="onCopyDdl"
     @edit-object="onEditObject"
     @view-definition="onViewDefinition"
     @generate-sql="onGenerateSql"

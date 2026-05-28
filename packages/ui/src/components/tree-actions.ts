@@ -134,6 +134,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.viewDependencies(node, connId),
   },
   {
+    id: 'copy-ddl',
+    label: '复制建表语句',
+    kinds: [MetaNodeKind.Table],
+    enabled: (n) => !!n.sqlName,
+    run: ({ node, connId, ctrl }) => ctrl.copyDdl(node, connId),
+  },
+  {
     id: 'import-data',
     label: '导入数据（CSV）',
     kinds: [MetaNodeKind.Table],

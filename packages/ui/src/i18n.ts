@@ -565,6 +565,7 @@ const DICT: Record<string, [string, string]> = {
   ],
   'ws.defUnsupported': ['该对象暂不支持查看定义', 'Viewing definition not supported for this object'],
   'ws.noDef': ['未取到定义', 'Definition not found'],
+  'ws.ddlCopied': ['已复制建表语句', 'CREATE statement copied'],
   'ws.tabDef': ['{name} · 定义', '{name} · Definition'],
   'ws.viewDefFail': ['查看定义失败：{msg}', 'Failed to view definition: {msg}'],
   'ws.genSqlFail': ['生成 SQL 失败：{msg}', 'Failed to generate SQL: {msg}'],

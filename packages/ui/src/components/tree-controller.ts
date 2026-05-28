@@ -47,6 +47,8 @@ export interface TreeController {
   generateMockData(node: TreeNode, connId: string): void
   /** 查看表的外键依赖关系（引用/被引用） */
   viewDependencies(node: TreeNode, connId: string): void
+  /** 复制建表语句（CREATE TABLE DDL）到剪贴板 */
+  copyDdl(node: TreeNode, connId: string): void
   /** 编辑视图/函数/存储过程：载入定义后以 DDL 编辑器打开 */
   editObject(node: TreeNode, connId: string): void
   /** 查看触发器/序列定义：取定义填入查询页（可改后手动执行） */
