@@ -611,6 +611,21 @@ const schemaDiffOpen = ref(false)
 const privilegesOpen = ref(false)
 const dataDiffOpen = ref(false)
 const objectSearchOpen = ref(false)
+const shortcutsOpen = ref(false)
+// 快捷键参考表
+const SHORTCUTS: { k: string; label: string }[] = [
+  { k: '⌘/Ctrl + K', label: t('pal.objectSearch') },
+  { k: '⌘/Ctrl + ⇧ + O', label: t('osearch.title') },
+  { k: '⌘/Ctrl + Enter', label: t('query.run') },
+  { k: '⌘/Ctrl + ⇧ + F', label: t('query.format') },
+  { k: '⌘/Ctrl + /', label: '注释 / Comment' },
+  { k: '⌘/Ctrl + F / H', label: '查找 / 替换' },
+  { k: 'F11', label: '全屏 / Full screen' },
+]
+function toggleFullscreen(): void {
+  if (document.fullscreenElement) void document.exitFullscreen()
+  else void document.documentElement.requestFullscreen?.()
+}
 
 // 全局对象搜索命中 → 在该连接「查询前 200 行」
 async function onSearchPreview(connId: string, qualified: string): Promise<void> {
@@ -643,6 +658,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:export-conns', label: t('pal.exportConns'), group: t('pal.groupActions') },
   { id: 'act:import-conns', label: t('pal.importConns'), group: t('pal.groupActions') },
   { id: 'act:refresh', label: t('pal.refresh'), group: t('pal.groupActions') },
+  { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
   ...paletteConns.value.map((c) => ({
     id: `conn:${c.id}`,
     label: c.name || t('common.untitled'),
@@ -667,6 +683,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:export-conns') await exportConns()
   else if (item.id === 'act:import-conns') await importConns()
   else if (item.id === 'act:refresh') await navRef.value?.reload()
+  else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
 }
 
@@ -709,6 +726,9 @@ function onKeydown(e: KeyboardEvent): void {
     // ⌘/Ctrl+Shift+O：全局对象搜索
     e.preventDefault()
     objectSearchOpen.value = true
+  } else if (e.key === 'F11') {
+    e.preventDefault()
+    toggleFullscreen()
   }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
@@ -881,6 +901,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     </div>
   </Modal>
 
+  <Modal v-if="shortcutsOpen" :title="t('ws.shortcutsTitle')" @close="shortcutsOpen = false">
+    <table class="sc-table">
+      <thead>
+        <tr><th>{{ t('ws.scAction') }}</th><th>{{ t('ws.scKey') }}</th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="s in SHORTCUTS" :key="s.k">
+          <td>{{ s.label }}</td>
+          <td><kbd>{{ s.k }}</kbd></td>
+        </tr>
+      </tbody>
+    </table>
+  </Modal>
+
   <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
 
   <SchemaDiffDialog
@@ -963,6 +997,34 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .kv-row.total {
   border-bottom: none;
   font-weight: 600;
+}
+.sc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.sc-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.sc-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.sc-table tr:last-child td {
+  border-bottom: none;
+}
+.sc-table kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-subtle, rgba(127, 127, 127, 0.08));
+  white-space: nowrap;
 }
 .dep-sec {
   font-size: 12px;

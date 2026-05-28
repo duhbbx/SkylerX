@@ -617,6 +617,10 @@ const DICT: Record<string, [string, string]> = {
   'pal.exportConns': ['导出连接配置', 'Export connections'],
   'pal.importConns': ['导入连接配置', 'Import connections'],
   'pal.refresh': ['刷新导航树', 'Refresh tree'],
+  'pal.shortcuts': ['快捷键参考', 'Keyboard shortcuts'],
+  'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
+  'ws.scAction': ['操作', 'Action'],
+  'ws.scKey': ['快捷键', 'Shortcut'],
   'pal.groupActions': ['操作', 'Actions'],
   'pal.groupConns': ['连接', 'Connections'],
 }
