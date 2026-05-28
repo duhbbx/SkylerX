@@ -96,7 +96,7 @@ export const TREE_ACTIONS: TreeAction[] = [
   {
     id: 'edit-object',
     label: '编辑定义',
-    kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure],
+    kinds: [MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure, MetaNodeKind.Trigger],
     run: ({ node, connId, ctrl }) => ctrl.editObject(node, connId),
   },
   {

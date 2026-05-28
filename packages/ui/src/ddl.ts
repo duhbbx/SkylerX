@@ -172,7 +172,12 @@ export function objectDdlQuery(
 ): ObjectDdlFetch | null {
   const fam = familyOf(dialect)
   if (fam === 'mysql') {
-    const kw = kind === 'view' ? 'VIEW' : kind === 'function' ? 'FUNCTION' : kind === 'procedure' ? 'PROCEDURE' : null
+    const kw =
+      kind === 'view' ? 'VIEW'
+      : kind === 'function' ? 'FUNCTION'
+      : kind === 'procedure' ? 'PROCEDURE'
+      : kind === 'trigger' ? 'TRIGGER'
+      : null
     return kw ? { sql: `SHOW CREATE ${kw} ${ref}`, mode: 'showCreate' } : null
   }
   if (fam === 'pg') {
@@ -446,13 +451,14 @@ export function erdContext(dialect: DbDialect, node: TreeNode): TableContext {
 }
 
 /** 可在 Tab 中新建的对象类型。 */
-export type ObjectKind = 'table' | 'view' | 'function' | 'procedure'
+export type ObjectKind = 'table' | 'view' | 'function' | 'procedure' | 'trigger'
 
 export const OBJECT_LABEL: Record<ObjectKind, string> = {
   table: '新建表',
   view: '新建视图',
   function: '新建函数',
   procedure: '新建存储过程',
+  trigger: '新建触发器',
 }
 
 /** 视图/函数/存储过程的起始 DDL 模板（按方言）。表用结构化设计器，不走这里。 */
@@ -461,6 +467,18 @@ export function objectTemplate(dialect: DbDialect, kind: ObjectKind, _ctx: Table
   const q = (id: string) => quoteId(dialect, id)
   if (kind === 'view') {
     return `CREATE VIEW ${q('new_view')} AS\nSELECT 1 AS col;`
+  }
+  if (kind === 'trigger') {
+    switch (fam) {
+      case 'mysql':
+        return `CREATE TRIGGER ${q('trg_name')}\nBEFORE INSERT ON ${q('your_table')}\nFOR EACH ROW\nBEGIN\n  -- new.col := ...;\nEND`
+      case 'pg':
+        return `-- PG 触发器需先有触发函数：\nCREATE OR REPLACE FUNCTION ${q('trg_fn')}() RETURNS trigger AS $$\nBEGIN\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER ${q('trg_name')}\nBEFORE INSERT ON ${q('your_table')}\nFOR EACH ROW EXECUTE FUNCTION ${q('trg_fn')}();`
+      case 'sqlserver':
+        return `CREATE TRIGGER ${q('trg_name')} ON ${q('your_table')}\nAFTER INSERT AS\nBEGIN\n  SET NOCOUNT ON;\nEND;`
+      case 'oracle':
+        return `CREATE OR REPLACE TRIGGER ${q('TRG_NAME')}\nBEFORE INSERT ON ${q('YOUR_TABLE')}\nFOR EACH ROW\nBEGIN\n  NULL;\nEND;`
+    }
   }
   if (kind === 'function') {
     switch (fam) {
