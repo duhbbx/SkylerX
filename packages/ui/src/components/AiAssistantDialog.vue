@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { onMounted, onUnmounted, ref } from 'vue'
-import { type AiMode, askClaude, extractSql } from '../ai'
+import { type AiMode, askAi, extractSql } from '../ai'
 import { useDataClient } from '../data-client'
 import { t } from '../i18n'
 import { settings } from '../settings'
@@ -97,7 +97,7 @@ function toggleSchema(): void {
 
 async function run(): Promise<void> {
   if (!input.value.trim()) return
-  if (!settings.aiApiKey.trim()) {
+  if (!settings.aiProviders[settings.aiProvider]?.apiKey?.trim()) {
     error.value = t('ai.noKey')
     return
   }
@@ -106,7 +106,7 @@ async function run(): Promise<void> {
   running.value = true
   controller = new AbortController()
   try {
-    answer.value = await askClaude({
+    answer.value = await askAi({
       mode: mode.value,
       dialect: connOf(connId.value)?.dialect,
       input: input.value,
@@ -182,7 +182,7 @@ onUnmounted(() => controller?.abort())
       <div class="actions">
         <button v-if="!running" class="primary" :disabled="!input.trim()" @click="run">{{ t('ai.ask') }}</button>
         <button v-else class="ghost" @click="stop">{{ t('ai.stop') }}</button>
-        <span class="model">{{ settings.aiModel }}</span>
+        <span class="model">{{ settings.aiProvider }} · {{ settings.aiProviders[settings.aiProvider]?.model || '?' }}</span>
         <button class="link" @click="emit('openSettings')">{{ t('ai.configure') }}</button>
       </div>
 

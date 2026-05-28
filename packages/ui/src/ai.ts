@@ -1,5 +1,5 @@
 import type { DbDialect } from '@db-tool/shared-types'
-import { settings } from './settings'
+import { type AiProvider, settings } from './settings'
 
 export type AiMode = 'nl2sql' | 'explain' | 'optimize' | 'diagnose'
 
@@ -47,11 +47,8 @@ function buildUserMessage(o: AskOptions): string {
   return parts.join('\n\n')
 }
 
-/** 调用 Anthropic Messages API（浏览器/Electron 渲染层直连，需 dangerous-direct-browser-access）。 */
-export async function askClaude(o: AskOptions): Promise<string> {
-  const key = settings.aiApiKey.trim()
-  if (!key) throw new Error('NO_API_KEY')
-  const base = (settings.aiBaseUrl || 'https://api.anthropic.com').replace(/\/$/, '')
+/** Anthropic Messages API（claude-*）。浏览器/Electron 渲染层直连需 dangerous-direct-browser-access。 */
+async function callAnthropic(o: AskOptions, key: string, base: string, model: string): Promise<string> {
   const res = await fetch(`${base}/v1/messages`, {
     method: 'POST',
     headers: {
@@ -61,23 +58,14 @@ export async function askClaude(o: AskOptions): Promise<string> {
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: settings.aiModel || 'claude-sonnet-4-6',
+      model,
       max_tokens: 1500,
       system: SYSTEM[o.mode],
       messages: [{ role: 'user', content: buildUserMessage(o) }],
     }),
     signal: o.signal,
   })
-  if (!res.ok) {
-    let detail = ''
-    try {
-      const j = (await res.json()) as { error?: { message?: string } }
-      detail = j.error?.message ?? ''
-    } catch {
-      /* ignore */
-    }
-    throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
-  }
+  await throwIfNotOk(res)
   const data = (await res.json()) as { content?: { type: string; text?: string }[] }
   return (data.content ?? [])
     .filter((b) => b.type === 'text')
@@ -86,8 +74,65 @@ export async function askClaude(o: AskOptions): Promise<string> {
     .trim()
 }
 
+/** OpenAI 兼容的 chat/completions（OpenAI / DeepSeek / Codex / Grok / 其他兼容代理）。 */
+async function callOpenAiCompat(o: AskOptions, key: string, base: string, model: string): Promise<string> {
+  const res = await fetch(`${base}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1500,
+      messages: [
+        { role: 'system', content: SYSTEM[o.mode] },
+        { role: 'user', content: buildUserMessage(o) },
+      ],
+    }),
+    signal: o.signal,
+  })
+  await throwIfNotOk(res)
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+  return (data.choices?.[0]?.message?.content ?? '').trim()
+}
+
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (res.ok) return
+  let detail = ''
+  try {
+    const j = (await res.json()) as { error?: { message?: string } | string; message?: string }
+    detail = typeof j.error === 'string' ? j.error : (j.error?.message ?? j.message ?? '')
+  } catch {
+    /* ignore */
+  }
+  throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
+}
+
+/**
+ * 询问 AI 助手（根据 settings.aiProvider 分发到对应后端）。
+ * 兼容旧名 `askClaude`（重导出别名）。
+ */
+export async function askAi(o: AskOptions): Promise<string> {
+  const provider = settings.aiProvider
+  const cfg = settings.aiProviders[provider]
+  if (!cfg?.apiKey?.trim()) throw new Error('NO_API_KEY')
+  const base = (cfg.baseUrl || '').replace(/\/$/, '')
+  if (!base) throw new Error('NO_BASE_URL')
+  const model = cfg.model || 'default'
+  if (provider === 'anthropic') return callAnthropic(o, cfg.apiKey.trim(), base, model)
+  return callOpenAiCompat(o, cfg.apiKey.trim(), base, model)
+}
+
+/** 旧导出名兼容（早期组件 import askClaude）。 */
+export const askClaude = askAi
+
 /** 从模型回复中提取首个 ```sql 代码块（无则返回整段去除围栏）。 */
 export function extractSql(text: string): string {
   const m = text.match(/```sql\s*([\s\S]*?)```/i) ?? text.match(/```\s*([\s\S]*?)```/)
   return (m ? m[1] : text).trim()
+}
+
+export function currentProvider(): AiProvider {
+  return settings.aiProvider
 }

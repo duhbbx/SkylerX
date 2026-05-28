@@ -26,6 +26,7 @@ import PlanPanel from './PlanPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SnippetsPanel from './SnippetsPanel.vue'
 import SqlEditor from './SqlEditor.vue'
+import Watermark from './Watermark.vue'
 
 const client = useDataClient()
 
@@ -770,6 +771,7 @@ onMounted(() => {
 
 <template>
   <div ref="paneEl" class="pane">
+    <Watermark v-if="env === 'prod'" />
     <div class="toolbar">
       <button class="primary" :disabled="running" :title="t('query.run.title')" @click="run">
         ▶ {{ t('query.run') }}
@@ -945,6 +947,7 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  position: relative; /* 让 .watermark 绝对定位铺满整个查询页 */
 }
 .toolbar {
   display: flex;
