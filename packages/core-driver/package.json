@@ -24,14 +24,22 @@
     "pg": "^8.13.1"
   },
   "peerDependencies": {
+    "@clickhouse/client": "^1",
+    "@duckdb/node-api": ">=1.4.0-r.0",
     "@elastic/elasticsearch": "^8",
+    "better-sqlite3": "^11",
     "ioredis": "^5",
-    "mongodb": "^6"
+    "mongodb": "^6",
+    "snowflake-sdk": "^2"
   },
   "peerDependenciesMeta": {
+    "@clickhouse/client": { "optional": true },
+    "@duckdb/node-api": { "optional": true },
     "@elastic/elasticsearch": { "optional": true },
+    "better-sqlite3": { "optional": true },
     "ioredis": { "optional": true },
-    "mongodb": { "optional": true }
+    "mongodb": { "optional": true },
+    "snowflake-sdk": { "optional": true }
   },
   "devDependencies": {
     "@types/mssql": "^9.1.7",

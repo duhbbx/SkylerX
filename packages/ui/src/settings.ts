@@ -91,6 +91,10 @@ export interface Settings {
   maskingEnabled: boolean
   /** 规则列表（首次启动取 DEFAULT_MASK_RULES，之后从 localStorage 读用户改过的） */
   maskingRules: MaskRule[]
+
+  // ── K1 自定义键盘快捷键 ──
+  /** 用户自定义的快捷键覆盖；key = 命令 id，value = chord 字符串（详见 keybindings.ts） */
+  keyBindings: Record<string, string>
 }
 
 const KEY = 'skylerx.settings'
@@ -130,6 +134,7 @@ const DEFAULTS: Settings = {
   aiVectorTopK: 5,
   maskingEnabled: false,
   maskingRules: structuredClone(DEFAULT_MASK_RULES),
+  keyBindings: {},
 }
 
 interface LegacySettings {

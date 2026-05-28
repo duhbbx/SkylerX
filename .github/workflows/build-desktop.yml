@@ -39,10 +39,13 @@ jobs:
       npm_config_arch: ${{ matrix.npm_arch }}
       npm_config_target_arch: ${{ matrix.npm_arch }}
     steps:
+      # actions/checkout：截至当前 v4 仍是 GA stable，v5 尚未发布。等 v5 stable 再升。
       - uses: actions/checkout@v4
 
+      # pnpm/action-setup：v4 是当前 stable。等 v5 stable 再升。
       - uses: pnpm/action-setup@v4
 
+      # actions/setup-node：v4 是当前 stable。等 v5 stable 再升。
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -58,6 +61,13 @@ jobs:
       - name: Install Linux packaging tools
         if: startsWith(matrix.os, 'ubuntu')
         run: sudo apt-get update && sudo apt-get install -y rpm fakeroot libarchive-tools
+
+      # tag push 时根据 git tag 同步 apps/desktop/package.json 的 version，
+      # 让产物文件名（${productName}-${version}-…）跟 tag 对齐。手工/分支触发下 noop。
+      # 必须在 Install / Build / Package 之前跑，否则 electron-builder 还会读到旧 version。
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/sync-version.mjs
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -75,6 +85,7 @@ jobs:
         run: pnpm --filter @db-tool/desktop exec electron-builder ${{ matrix.eb_args }} --publish never
 
       # 手动/分支触发：产物存为 Actions artifact，可在 run 页面下载（按 matrix.name 分开）
+      # actions/upload-artifact：v4 是当前 stable。等 v5 stable 再升。
       - uses: actions/upload-artifact@v4
         with:
           name: skylerx-${{ matrix.name }}
@@ -91,6 +102,7 @@ jobs:
           if-no-files-found: ignore
 
       # tag v* 触发：把安装包挂到对应 GitHub Release（所有 matrix 各自追加，不冲突）
+      # softprops/action-gh-release：v2 是当前 stable。
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2

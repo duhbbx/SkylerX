@@ -28,6 +28,8 @@ const error = ref<string | null>(null)
 const refreshIntervalSec = ref<0 | 2 | 5 | 10>(0)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
+// 复用 ddl.ts 的 familyOf()：CockroachDB / Greenplum / OpenGauss / H2 已被归入 'pg' 家族，
+// 因此会自动走 PG 的 pg_stat_activity / pg_stat_statements 查询分支。
 function familyOfConn(): 'mysql' | 'pg' | 'mssql' | 'other' {
   const f = familyOf(props.conn.dialect)
   if (f === 'sqlserver') return 'mssql'

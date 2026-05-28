@@ -71,6 +71,12 @@ const api = {
       filters?: { name: string; extensions: string[] }[],
     ): Promise<{ name: string; content: string } | null> =>
       ipcRenderer.invoke('files:openText', filters),
+    /** 仅选文件路径（SQLite/DuckDB 数据库文件指定）；取消返回 null */
+    selectFile: (req?: {
+      filters?: { name: string; extensions: string[] }[]
+      allowCreate?: boolean
+      defaultPath?: string
+    }): Promise<string | null> => ipcRenderer.invoke('files:selectFile', req),
   },
   ai: {
     /** 经主进程做 HTTP；避开渲染层 CORS（DeepSeek/OpenAI/Grok 直发会被预检卡）；
@@ -91,6 +97,18 @@ const api = {
     /** #15 复制当前 SPA 到新 BrowserWindow，跟主窗口完全独立；
      *  常用于在两个连接 / 两条 SQL 之间做侧对照 */
     newSession: (): Promise<void> => ipcRenderer.invoke('window:newSession'),
+  },
+  menu: {
+    /**
+     * 订阅主进程发来的菜单命令。主进程的非系统菜单项（"打开设置"、"切换 AI 聊天" 等）
+     * 通过 'menu:command' channel 把 key 发过来，渲染层按 key 路由。
+     * 返回反订阅函数。
+     */
+    onCommand: (handler: (key: string) => void): (() => void) => {
+      const listener = (_e: unknown, key: string): void => handler(key)
+      ipcRenderer.on('menu:command', listener)
+      return () => ipcRenderer.removeListener('menu:command', listener)
+    },
   },
 }
 

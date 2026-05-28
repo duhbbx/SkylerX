@@ -153,6 +153,10 @@ export function familyOf(dialect: DbDialect): Family {
       return 'mysql'
     case DbDialect.PostgreSQL:
     case DbDialect.KingbaseES:
+    case DbDialect.CockroachDB:
+    case DbDialect.Greenplum:
+    case DbDialect.OpenGauss:
+    case DbDialect.H2:
       return 'pg'
     case DbDialect.SqlServer:
       return 'sqlserver'

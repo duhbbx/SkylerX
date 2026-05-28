@@ -332,7 +332,33 @@ function bulkCopyNames(): void {
   void navigator.clipboard?.writeText(text)
 }
 
-defineExpose({ reload, refreshNode, clearMulti: () => multiSel.clear(), revealObject })
+/**
+ * 展开全部：打开所有分组文件夹 + 所有根连接节点（只到根连接层；再深入会触发
+ * 大量 information_schema 查询，对千张表的库不友好，用户想细看再点）。
+ */
+function expandAll(): void {
+  const allGroups = new Set(roots.value.map((r) => r.group).filter(Boolean) as string[])
+  expandedGroups.value = allGroups
+  for (const r of roots.value) r.node.expanded = true
+}
+/** 收起全部：关分组 + 递归把所有 TreeNode.expanded 置 false（不动数据缓存）。 */
+function collapseAll(): void {
+  expandedGroups.value = new Set()
+  const walk = (n: TreeNode): void => {
+    n.expanded = false
+    if (Array.isArray(n.children)) for (const c of n.children) walk(c)
+  }
+  for (const r of roots.value) walk(r.node)
+}
+
+defineExpose({
+  reload,
+  refreshNode,
+  clearMulti: () => multiSel.clear(),
+  revealObject,
+  expandAll,
+  collapseAll,
+})
 onMounted(reload)
 </script>
 
@@ -343,8 +369,8 @@ onMounted(reload)
       <span class="head-actions">
         <button class="icon" :title="t('nav.newConn')" @click="controller.newConnection()">+</button>
         <button class="icon" :title="t('nav.refresh')" @click="reload">⟳</button>
-        <button class="icon" :title="t('nav.aiChat')" @click="emit('toggleAiChat')">✨</button>
-        <button class="icon" :title="t('nav.settings')" @click="emit('openSettings')">⚙</button>
+        <button class="icon" :title="t('nav.expandAll')" @click="expandAll">⊞</button>
+        <button class="icon" :title="t('nav.collapseAll')" @click="collapseAll">⊟</button>
       </span>
     </div>
     <div ref="treeBodyEl" class="tree-body">

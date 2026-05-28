@@ -120,6 +120,8 @@ function watermarkPreviewSvg(): string {
             <button class="step" @click="zoomIn">+</button>
             <button class="ghost reset-zoom" @click="zoomReset">{{ t('settings.zoomReset') }}</button>
           </label>
+          <!-- 全局「提交模式」：仅作为「新建查询页」的默认值（首次打开时继承此设置）；
+               已经打开的查询 tab 各自保持当前的 auto/manual 状态，不会被这里的修改回溯影响。 -->
           <label class="row">
             <span class="lbl">{{ t('commit.mode') }}</span>
             <select v-model="settings.commitMode">
@@ -128,6 +130,7 @@ function watermarkPreviewSvg(): string {
             </select>
           </label>
           <p class="hint">
+            <!-- 文案上明示：本项仅影响「新建查询页」的初始提交模式；已打开的 tab 不受影响 -->
             {{ settings.commitMode === 'manual' ? t('commit.modeManualDesc') : t('commit.modeAutoDesc') }}
           </p>
           <!-- #13 数据脱敏：列名匹配 → 结果集渲染遮罩 -->

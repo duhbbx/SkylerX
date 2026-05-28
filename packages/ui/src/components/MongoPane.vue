@@ -17,6 +17,9 @@ type Doc = Record<string, unknown>
 /** dot-path 操作集合：set 写入 / unset 删除字段。 */
 type DiffOps = { set: Record<string, unknown>; unset: Record<string, true> }
 
+/** Mongo ObjectId 的十六进制串形态 — 24 位小写 hex（驱动 toString 出来就是这个）。 */
+const HEX24 = /^[0-9a-f]{24}$/
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return (
     v !== null &&
@@ -24,6 +27,34 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
     !Array.isArray(v) &&
     Object.getPrototypeOf(v) === Object.prototype
   )
+}
+
+/**
+ * 把任何 24-hex 字符串 wrap 成 `{ $oid: "..." }` marker，递归处理对象 / 数组。
+ *
+ * 用于回写：UI 层无法持有真 BSON ObjectId，只能用约定 marker 把"这串其实是 ObjectId"
+ * 的信号传给驱动层。已是 marker 形态（只有 `$oid` 一个键）的原样保留，避免双层包裹。
+ *
+ * TODO: 驱动层 (mongo.ts) 需配合识别 `{ $oid: "..." }` → `new ObjectId(...)`。
+ *       目前驱动只对键名 `_id` 做了 24-hex → ObjectId 的自动 wrap；非 `_id` 字段
+ *       的引用 ObjectId（例如 `userId`、`refId`）必须依赖 `$oid` marker 才能正确还原。
+ */
+function wrapOidStrings(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return HEX24.test(value) ? { $oid: value } : value
+  }
+  if (Array.isArray(value)) return value.map(wrapOidStrings)
+  if (isPlainObject(value)) {
+    // 已是 marker 形态：原样保留（不要把 hex 串再包一层）
+    const keys = Object.keys(value)
+    if (keys.length === 1 && keys[0] === '$oid' && typeof value.$oid === 'string') {
+      return value
+    }
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = wrapOidStrings(v)
+    return out
+  }
+  return value
 }
 
 /**
@@ -134,11 +165,27 @@ function docKey(doc: Doc): string {
   return String(doc._id)
 }
 
-/** 把单元格内的值压成短字符串：原子量直接 String；对象 JSON 截断到 120 字符。 */
-function renderCell(v: unknown): string {
+/**
+ * 把单元格内的值压成短字符串：原子量直接 String；对象 JSON 截断到 120 字符。
+ *
+ * 特殊处理：
+ *  - `_id` 列且值是 24-hex 字符串 → 展示为 `ObjectId("...")`，提示用户这是 BSON ObjectId
+ *    （IPC 序列化后变成了字符串）。
+ *  - 已是 `{ $oid: "..." }` marker 形态的对象（任何列）→ 也展示为 `ObjectId("...")`。
+ */
+function renderCell(v: unknown, col?: string): string {
   if (v == null) return ''
-  if (typeof v === 'string') return v
+  if (typeof v === 'string') {
+    if (col === '_id' && HEX24.test(v)) return `ObjectId("${v}")`
+    return v
+  }
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  if (isPlainObject(v)) {
+    const keys = Object.keys(v)
+    if (keys.length === 1 && keys[0] === '$oid' && typeof v.$oid === 'string') {
+      return `ObjectId("${v.$oid}")`
+    }
+  }
   let s: string
   try {
     s = JSON.stringify(v)
@@ -276,10 +323,15 @@ function revertEdits(): void {
 /**
  * 提交修改：对每个 dirty doc 调一次 updateOne。
  *
- * TODO: ObjectId 经 IPC JSON 序列化后已变为字符串（如 "65f1..."），Mongo 驱动 v6
- *       不会自动还原成 ObjectId 类型，filter `{ _id: '65f1...' }` 在 _id 是真 ObjectId
- *       的集合上匹配不上。要彻底正确，需要在驱动层把字符串形态的 24 hex 还原成 ObjectId。
- *       这里先用 _id 原值透传，字符串主键 / 数字主键的集合可以工作。
+ * ObjectId 经 IPC JSON 序列化后已变为字符串（如 "65f1..."），用户编辑也是字符串形态。
+ * 这里在送出时把所有 24-hex 字符串包成 `{ $oid: "..." }` marker，由驱动层负责还原成
+ * 真 BSON ObjectId（命中 `_id` 是 ObjectId 的文档必需）。
+ *
+ * 已知 trade-off：刚好长得像 24-hex 的纯文本字符串（极少见）会被误包成 ObjectId。
+ *
+ * TODO: 驱动层 (mongo.ts) 需配合识别 `{ $oid: "..." }` marker。当前驱动只对键名 `_id`
+ *       做 24-hex → ObjectId 的自动 wrap；非 `_id` 字段的 ObjectId 引用，必须依赖
+ *       驱动层先实现 `$oid` marker 识别才能正确写回。
  */
 async function commitEdits(): Promise<void> {
   if (dirty.value.size === 0) return
@@ -301,13 +353,16 @@ async function commitEdits(): Promise<void> {
       // 全字段被 diff 回原值 → 跳过；externally 也应被 applyEdit 清掉，这里兜底。
       if (!hasSet && !hasUnset) continue
       const update: Record<string, unknown> = {}
-      if (hasSet) update.$set = ops.set
+      // $set 里凡 24-hex 字符串 → wrap 成 $oid marker（驱动层解码）
+      if (hasSet) update.$set = wrapOidStrings(ops.set) as Record<string, unknown>
       if (hasUnset) update.$unset = ops.unset
+      // filter._id 同样 wrap：原始 _id 多半是 24-hex string，需要驱动还原成 ObjectId
+      const filterId = wrapOidStrings(original._id)
       try {
         await client.connections.executeCommand(props.conn.id, {
           op: 'updateOne',
           args: {
-            filter: { _id: original._id },
+            filter: { _id: filterId },
             update,
             options: {},
           },
@@ -399,7 +454,7 @@ async function commitEdits(): Promise<void> {
                   editing: isEditing(r, c),
                   idcol: c === '_id',
                 }"
-                :title="isEditing(r, c) ? '' : renderCell(r[c])"
+                :title="isEditing(r, c) ? '' : renderCell(r[c], c)"
                 @dblclick="onCellDblClick(r, c)"
               >
                 <span v-if="isEditing(r, c)" class="cell-edit" @click.stop>
@@ -416,7 +471,7 @@ async function commitEdits(): Promise<void> {
                     <button title="取消 (Esc)" @mousedown.prevent="cancelEdit">✕</button>
                   </span>
                 </span>
-                <template v-else>{{ renderCell(r[c]) }}</template>
+                <template v-else>{{ renderCell(r[c], c) }}</template>
               </td>
             </tr>
           </tbody>

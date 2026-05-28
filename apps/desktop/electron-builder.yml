@@ -35,10 +35,12 @@ mac:
   identity: null
   artifactName: ${productName}-${version}-${arch}.${ext}
 
-# ── Linux：x64 + arm64 × 5 种包格式 ──
+# ── Linux：x64 全套 + arm64 仅 AppImage / tar.gz ──
 # AppImage 通用、deb（Ubuntu / Debian / Deepin / 统信 UOS / 优麒麟）、
 # rpm（Fedora / openEuler / 红旗 / 银河麒麟 RHEL 系）、
 # pacman（Arch / Manjaro）、tar.gz（内网装机 / 企业批量部署解压即用）
+# NOTE: electron-builder 25 给 arm64 拉的 fpm 是 x86 二进制（upstream fpm 没发 arm64 release），
+# 在 arm64 runner 上跑直接 ENOEXEC。所以 arm64 只留 AppImage + tar.gz（这俩不走 fpm）。
 linux:
   target:
     - target: AppImage
@@ -48,15 +50,12 @@ linux:
     - target: deb
       arch:
         - x64
-        - arm64
     - target: rpm
       arch:
         - x64
-        - arm64
     - target: pacman
       arch:
         - x64
-        - arm64
     - target: tar.gz
       arch:
         - x64

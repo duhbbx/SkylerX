@@ -10,6 +10,8 @@ import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vu
 import type { AiMode } from './ai'
 import AiAssistantDialog from './components/AiAssistantDialog.vue'
 import AiChatPanel from './components/AiChatPanel.vue'
+import AiCommentDialog from './components/AiCommentDialog.vue'
+import AiHealthCheckDialog from './components/AiHealthCheckDialog.vue'
 import AiToolboxDialog from './components/AiToolboxDialog.vue'
 import AppDialogs from './components/AppDialogs.vue'
 import BackupRestoreDialog from './components/BackupRestoreDialog.vue'
@@ -23,20 +25,26 @@ import DataInspectorDialog from './components/DataInspectorDialog.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
 import ExportOptionsDialog from './components/ExportOptionsDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
+import IndexRecommenderDialog from './components/IndexRecommenderDialog.vue'
+import KeyBindingsDialog from './components/KeyBindingsDialog.vue'
 import LineageDialog from './components/LineageDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
+import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import ReplicationLagDialog from './components/ReplicationLagDialog.vue'
 import RowHistoryDialog from './components/RowHistoryDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
+import SchemaDriftDialog from './components/SchemaDriftDialog.vue'
 import SchemaSnapshotsDialog from './components/SchemaSnapshotsDialog.vue'
 import SearchValueDialog from './components/SearchValueDialog.vue'
 import ServerActivityDialog from './components/ServerActivityDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import SqlTranslateDialog from './components/SqlTranslateDialog.vue'
 import type { TreeNode } from './components/treeNode'
 import { useDataClient } from './data-client'
 import {
@@ -77,8 +85,9 @@ import {
   toggleFavorite,
 } from './favorites'
 import { t } from './i18n'
+import { chordFromEvent, getBindings } from './keybindings'
 import { buildMockInserts } from './mockgen'
-import { zoomIn, zoomOut, zoomReset } from './settings'
+import { settings, zoomIn, zoomOut, zoomReset } from './settings'
 
 const navRef = useTemplateRef('navRef')
 const tabsRef = useTemplateRef('tabsRef')
@@ -1033,10 +1042,48 @@ async function openBackup(connId: string): Promise<void> {
   const conn = await client.connections.get(connId)
   backupOpen.value = { conn }
 }
+/** G1 AI 数据库体检 */
+const healthOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openHealth(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  healthOpen.value = { conn }
+}
 /** #12 Dashboard */
 const dashboardOpen = ref(false)
 /** A2/A8 跨表全文搜索 */
 const searchValueOpen = ref<{ connId: string; value?: string } | null>(null)
+/** C5 索引推荐器（per 连接） */
+const idxRecOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openIdxRec(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  idxRecOpen.value = { conn }
+}
+/** C1 主从复制延迟监控（per 连接） */
+const replOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openRepl(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  replOpen.value = { conn }
+}
+/** G2 AI 写注释（per 连接 + 表）。⌘K 走的入口先弹 prompt 让用户填表名；
+ *  下一波在 NavTree 右键加直连入口替代手填。 */
+const aiCommentOpen = ref<{ conn: ConnectionConfig; table: string } | null>(null)
+async function openAiCommentByPrompt(connId: string): Promise<void> {
+  const table = await appPrompt({
+    message: t('aicmt.askTable'),
+    placeholder: 'schema.table',
+  })
+  if (!table?.trim()) return
+  const conn = await client.connections.get(connId)
+  aiCommentOpen.value = { conn, table: table.trim() }
+}
+/** G4 SQL 跨方言翻译（全局，无连接绑定） */
+const translateOpen = ref<{ initialSql?: string } | null>(null)
+/** I1 通知 webhook 设置 */
+const notifOpen = ref(false)
+/** K1 自定义快捷键 */
+const keybindOpen = ref(false)
+/** D6 Schema 漂移检测（全局，对话框内自己选 2 个连接） */
+const driftOpen = ref(false)
 /** A3+B5+B6+B9+B10 数据检查器 */
 const inspectorOpen = ref<{ conn: ConnectionConfig; table: string } | null>(null)
 async function openInspector(connId: string, table: string): Promise<void> {
@@ -1234,6 +1281,12 @@ const paletteItems = computed<PaletteItem[]>(() => [
     label: `${t('pal.backup')} · ${c.name || c.dialect}`,
     group: t('pal.groupActions'),
   })),
+  // G1 AI 数据库体检
+  ...paletteConns.value.map((c) => ({
+    id: `act:health:${c.id}`,
+    label: `${t('pal.aiHealth')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
   { id: 'act:ai', label: t('pal.ai'), group: t('pal.groupActions') },
   { id: 'act:ai-toolbox', label: t('pal.aiToolbox'), group: t('pal.groupActions') },
   // #15 新窗口（仅桌面端有 window.newSession）
@@ -1250,6 +1303,32 @@ const paletteItems = computed<PaletteItem[]>(() => [
   })),
   // B7 数据契约
   { id: 'act:contracts', label: t('pal.contracts'), group: t('pal.groupActions') },
+  // C5 索引推荐器
+  ...paletteConns.value.map((c) => ({
+    id: `act:idxrec:${c.id}`,
+    label: `${t('pal.idxRec')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
+  // C1 主从复制延迟
+  ...paletteConns.value.map((c) => ({
+    id: `act:repl:${c.id}`,
+    label: `${t('pal.replLag')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
+  // G2 AI 写注释（per 连接，⌘K 命中后弹 prompt 让用户填表名）
+  ...paletteConns.value.map((c) => ({
+    id: `act:aicmt:${c.id}`,
+    label: `${t('pal.aiComment')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
+  // G4 SQL 翻译（全局）
+  { id: 'act:translate', label: t('pal.translate'), group: t('pal.groupActions') },
+  // I1 通知 webhook
+  { id: 'act:notif', label: t('pal.notif'), group: t('pal.groupActions') },
+  // K1 自定义快捷键
+  { id: 'act:keybind', label: t('pal.keybind'), group: t('pal.groupActions') },
+  // D6 Schema 漂移检测
+  { id: 'act:drift', label: t('pal.drift'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
   { id: 'act:about', label: t('pal.about'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
@@ -1289,6 +1368,9 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   } else if (item.id.startsWith('act:backup:')) {
     const cid = item.id.slice('act:backup:'.length)
     void openBackup(cid)
+  } else if (item.id.startsWith('act:health:')) {
+    const cid = item.id.slice('act:health:'.length)
+    void openHealth(cid)
   } else if (item.id === 'act:ai') aiState.value = { mode: 'nl2sql' }
   else if (item.id === 'act:ai-chat') aiChatOpen.value = !aiChatOpen.value
   else if (item.id === 'act:ai-toolbox') aiToolboxOpen.value = {}
@@ -1298,6 +1380,16 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
     const cid = item.id.slice('act:search-value:'.length)
     searchValueOpen.value = { connId: cid }
   } else if (item.id === 'act:contracts') contractOpen.value = true
+  else if (item.id.startsWith('act:idxrec:')) {
+    void openIdxRec(item.id.slice('act:idxrec:'.length))
+  } else if (item.id.startsWith('act:repl:')) {
+    void openRepl(item.id.slice('act:repl:'.length))
+  } else if (item.id.startsWith('act:aicmt:')) {
+    void openAiCommentByPrompt(item.id.slice('act:aicmt:'.length))
+  } else if (item.id === 'act:translate') translateOpen.value = {}
+  else if (item.id === 'act:notif') notifOpen.value = true
+  else if (item.id === 'act:keybind') keybindOpen.value = true
+  else if (item.id === 'act:drift') driftOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
@@ -1333,7 +1425,48 @@ async function importConns(): Promise<void> {
   }
 }
 
+/** K1：把命令 id 映射到具体行为；命中返回 true，未识别返回 false（继续走硬编码 fallback）。 */
+function dispatchCommand(cmdId: string): boolean {
+  switch (cmdId) {
+    case 'palette':
+      if (paletteOpen.value) paletteOpen.value = false
+      else void openPalette()
+      return true
+    case 'object-search':
+      objectSearchOpen.value = true
+      return true
+    case 'ai-chat':
+      aiChatOpen.value = !aiChatOpen.value
+      return true
+    case 'new-conn':
+      onNew()
+      return true
+    case 'settings':
+      settingsOpen.value = true
+      return true
+    // run-sql / new-query / close-tab / find / replace / format-sql / save-snippet
+    // 这些属于查询页内动作（Monaco 编辑器在编辑态时会自己吃掉这些按键），
+    // Workspace 层不拦截：如果用户改成更冷门的 chord，这里命中 false → 下面 fallback 继续放过去，不阻断 Monaco。
+    default:
+      return false
+  }
+}
+
 function onKeydown(e: KeyboardEvent): void {
+  // K1：先查用户自定义快捷键。若 chord 命中一个已知命令，执行后 return。
+  // 用户未改的 chord 会等同 DEFAULT_KEY_BINDINGS → 下面硬编码分支仍可命中（双保险）。
+  const chord = chordFromEvent(e)
+  if (chord) {
+    const bindings = getBindings(settings.keyBindings)
+    for (const [cmdId, c] of Object.entries(bindings)) {
+      if (c !== chord) continue
+      if (dispatchCommand(cmdId)) {
+        e.preventDefault()
+        return
+      }
+      break
+    }
+  }
   if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
     e.preventDefault()
     if (paletteOpen.value) paletteOpen.value = false
@@ -1362,6 +1495,105 @@ function onKeydown(e: KeyboardEvent): void {
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+
+/**
+ * 应用菜单命令路由：主进程菜单点击后 send('menu:command', key)，按 key 调对应方法。
+ *
+ * 大多数 key 都对应已经存在的 ⌘K 命令面板 item id（act:xxx），统一复用 onPalettePick；
+ * 个别系统级 / 编辑器内动作（find / replace / format-sql / new-query）单独路由。
+ */
+const PALETTE_KEY_MAP: Record<string, string> = {
+  'new-conn': 'act:new-conn',
+  settings: 'act:settings',
+  about: 'act:about',
+  shortcuts: 'act:shortcuts',
+  'object-search': 'act:object-search',
+  palette: 'act:palette', // 见下面单独处理
+  'toggle-ai-chat': 'act:ai-chat',
+  favorites: 'act:favorites',
+  'op-log': 'act:oplog',
+  activity: 'act:activity-pick',
+  'backup-restore': 'act:backup-pick',
+  'data-transfer': 'act:transfer-pick',
+  'schema-diff': 'act:schema-diff',
+  'data-diff': 'act:data-diff',
+  snapshots: 'act:snapshots-pick',
+  dashboard: 'act:dashboard',
+  'search-value': 'act:search-value-pick',
+  contracts: 'act:contracts',
+  'ai-toolbox': 'act:ai-toolbox',
+  'ai-assistant': 'act:ai',
+  'new-window': 'act:new-window',
+  'import-conns': 'act:import-conns',
+  'export-conns': 'act:export-conns',
+}
+
+function onMenuCommand(key: string): void {
+  // 命令面板 = 直接打开搜索框
+  if (key === 'palette') {
+    paletteOpen.value = true
+    return
+  }
+  // 新建查询：交给当前活跃 tab 的连接
+  if (key === 'new-query') {
+    tabsRef.value?.newForCurrent?.()
+    return
+  }
+  // 关闭当前 tab：交给 QueryTabs
+  if (key === 'close-tab') {
+    // QueryTabs 没暴露 closeActive，先 noop；快捷键 ⌘W 现在由 Electron 标签关闭代替
+    return
+  }
+  // 编辑器级动作：Monaco 自带，转发给 window event 让 SqlEditor 捕获
+  if (key === 'find' || key === 'replace' || key === 'format-sql') {
+    window.dispatchEvent(new CustomEvent(`editor:${key}`))
+    return
+  }
+  // 选连接才能跑的：弹一个简单 picker（这里走命令面板更省事）
+  if (
+    key === 'activity' ||
+    key === 'backup-restore' ||
+    key === 'data-transfer' ||
+    key === 'snapshots' ||
+    key === 'search-value'
+  ) {
+    paletteOpen.value = true
+    return
+  }
+  if (key === 'check-update') {
+    void checkForUpdate()
+    aboutOpen.value = true
+    return
+  }
+  if (key === 'open-sql') {
+    // SqlEditor 用 hidden file input；这里走 client.files.openText 再喂给 QueryPane
+    void (async () => {
+      const f = await client.files?.openText([{ name: 'SQL', extensions: ['sql', 'txt'] }])
+      if (!f) return
+      // activeConnId 是 tabsRef expose 的 computed，取值用 .value
+      const tabsExp = tabsRef.value as {
+        activeConnId?: { value: string }
+        openDraft?: (c: ConnectionConfig, sql: string, title: string) => void
+      } | null
+      const cid = tabsExp?.activeConnId?.value
+      if (cid) {
+        const cfg = await client.connections.get(cid)
+        tabsExp?.openDraft?.(cfg, f.content, f.name)
+      }
+    })()
+    return
+  }
+  // 落到命令面板 id：直接构造 PaletteItem 然后跑现有 dispatcher
+  const palId = PALETTE_KEY_MAP[key]
+  if (palId) void onPaletteSelect({ id: palId, label: key, group: '' } as PaletteItem)
+}
+
+// 订阅主进程菜单命令；卸载时反订阅
+let unsubMenu: (() => void) | null = null
+onMounted(() => {
+  unsubMenu = client.menu?.onCommand?.(onMenuCommand) ?? null
+})
+onUnmounted(() => unsubMenu?.())
 </script>
 
 <template>
@@ -1670,6 +1902,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     @close="backupOpen = null"
   />
 
+  <!-- G1 AI 数据库体检 -->
+  <AiHealthCheckDialog
+    v-if="healthOpen"
+    :conn="healthOpen.conn"
+    @close="healthOpen = null"
+    @open-settings="settingsOpen = true"
+  />
+
   <!-- #12 Dashboard：多 SQL 多卡片小盘子 -->
   <DashboardDialog v-if="dashboardOpen" @close="dashboardOpen = false" />
 
@@ -1718,6 +1958,46 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
   <!-- B7 数据契约 -->
   <DataContractDialog v-if="contractOpen" @close="contractOpen = false" />
+
+  <!-- C5 索引推荐器：建议 → emit runSql 走当前 tab 跑 -->
+  <IndexRecommenderDialog
+    v-if="idxRecOpen"
+    :conn="idxRecOpen.conn"
+    @close="idxRecOpen = null"
+    @run-sql="(sql) => { tabsRef?.runSql(idxRecOpen!.conn, sql) }"
+  />
+
+  <!-- C1 主从复制延迟监控 -->
+  <ReplicationLagDialog
+    v-if="replOpen"
+    :conn="replOpen.conn"
+    @close="replOpen = null"
+  />
+
+  <!-- G2 AI 写注释：emit runSql 跑 COMMENT/ALTER -->
+  <AiCommentDialog
+    v-if="aiCommentOpen"
+    :conn="aiCommentOpen.conn"
+    :table="aiCommentOpen.table"
+    @close="aiCommentOpen = null"
+    @run-sql="(sql) => { tabsRef?.runSql(aiCommentOpen!.conn, sql) }"
+  />
+
+  <!-- G4 SQL 跨方言翻译（全局） -->
+  <SqlTranslateDialog
+    v-if="translateOpen"
+    :initial-sql="translateOpen.initialSql"
+    @close="translateOpen = null"
+  />
+
+  <!-- I1 通知 webhook 设置 -->
+  <NotificationSettingsDialog v-if="notifOpen" @close="notifOpen = false" />
+
+  <!-- K1 自定义快捷键 -->
+  <KeyBindingsDialog v-if="keybindOpen" @close="keybindOpen = false" />
+
+  <!-- D6 Schema 漂移检测（内部自己选连接） -->
+  <SchemaDriftDialog v-if="driftOpen" @close="driftOpen = false" />
 
   <!-- #9-#21 AI 工具箱：选任务 → 拼 prompt → 推到右侧聊天面板 -->
   <AiToolboxDialog

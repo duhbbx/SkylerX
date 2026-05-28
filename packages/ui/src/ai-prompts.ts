@@ -125,3 +125,123 @@ ${foreignKeyHint ? `**外键引用**：\n${foreignKeyHint}\n` : ''}
 2. **谁会读它**（哪些常见查询场景）
 3. **删除策略**（看起来是硬删还是软删；如有 deleted_at / status 字段请指出）`
 }
+
+/**
+ * G1 「AI 数据库体检」prompt：把整库元数据（columns/indexes/FKs，CSV/Markdown 文本）
+ * 一次性塞给 AI，让它按 6 类常见反模式产出健康报告。
+ *
+ * 输出强约束：必须用 Markdown 二级标题（`##`）分节，便于前端按 H2 拆卡片；
+ * 没有问题的小节也要保留标题并写"未发现明显问题"。
+ */
+export function pHealthCheck(ctx: { dialect: string }, metadata: string): string {
+  return `请对下面这个 **${ctx.dialect}** 数据库做一次「健康体检」，按下面 6 类常见反模式给出报告。
+
+**库元数据**（columns / indexes / foreign keys，已按表分组，可能被截断）：
+
+${metadata}
+
+---
+
+请严格按 **6 个 Markdown 二级标题（\`## 1. xxx\` ~ \`## 6. xxx\`）** 分节输出，每节先点出"哪张表 / 哪个字段"，再用一段简短中文说明问题，最后给出**修复建议**（如可给出 SQL，用 \`\`\`sql 代码块）。如果某小节没发现明显问题，也请保留标题并写一句"未发现明显问题"。
+
+## 1. 高频查询列缺少索引
+基于字段命名 / 类型 / 是否出现在外键和常见 WHERE 条件中**启发式推断**——例如 \`status\`、\`created_at\`、\`user_id\`、\`type\`、\`is_*\`、\`*_at\` 这类高频过滤/排序列，但没有对应索引的，请点出来。
+
+## 2. 命名上像外键但没有 FK 约束
+形如 \`xxx_id\` / \`xxxId\` 但该字段所在表上没有指向任何父表的 FOREIGN KEY 的，列出来；并给出推测的父表（基于命名）。
+
+## 3. 字段命名风格混用（snake_case / camelCase）
+列出在**同一张表内**或**整个库内**两种命名风格混用的字段；指出统一到哪种更合适。
+
+## 4. 类型选得过大
+- \`VARCHAR(255)\` / \`TEXT\` 但看上去只装短串（状态码、枚举、手机号等）
+- \`BIGINT\` 但显然只装小整数（如 \`status\`、\`type\`、\`level\`）
+- 时间用 \`VARCHAR\` 存而非 \`DATETIME/TIMESTAMP\`
+列出可疑字段并给出更紧凑的类型建议。
+
+## 5. 关键表 / 字段没有 comment
+没有 COMMENT 的"业务核心表"（看名字像 \`user\` / \`order\` / \`payment\` / \`account\` 等）以及其关键字段（主键、外键、状态字段、金额字段）列出来；不需要列全部"无 comment"的字段，只挑值得加注释的。
+
+## 6. 软删字段缺索引
+表里有 \`deleted_at\` / \`is_deleted\` / \`deleted\` 这类软删字段，但**没把它放进任何索引**的——会导致每次 WHERE deleted_at IS NULL 走全表过滤。请列出并给出 \`CREATE INDEX\` 建议。
+
+最后再加一节：
+
+## 总结
+3~5 条最值得**优先动手**的事项，按"性价比"排序。`
+}
+
+/**
+ * G4 「AI SQL 跨方言翻译」prompt：把一段 SQL 从源方言转写成目标方言，
+ * 同时让 AI 指出**不可平移**的语法（如 MySQL 的 ON DUPLICATE KEY UPDATE → PG 没有等价单语句）、
+ * 并给出更地道的目标方言写法建议。
+ *
+ * 输出强约束：
+ *   1) 译后 SQL 包在 ```sql 代码块里（前端用首个 sql 代码块抽取并 colorize 显示）
+ *   2) 「警告」一节用 bullet 列表列出无法直接平移的语法点（缺则写"无"）
+ *   3) 「建议」一节用 bullet 列表给出目标方言更地道的等价写法（如 LIMIT/OFFSET 写法、CTE 替换、类型选择等）
+ */
+export function pTranslate(
+  from: string, // 源方言 'mysql' / 'postgres' / 'mssql' / 'oracle'
+  to: string,
+  sql: string,
+): string {
+  return `请把下面这段 SQL 从 **${from}** 翻译成 **${to}** 方言；保持语义不变，标识符 / 字面量保持原样，仅在语法层面做必要改写。
+
+**源 SQL（${from}）**
+\`\`\`sql
+${sql}
+\`\`\`
+
+请严格按以下三段输出：
+
+1. **译后 SQL**：包在 \`\`\`sql 代码块里，**只放一条**译后 SQL，不要解释、不要额外注释。
+
+2. **警告**：用 Markdown bullet 列表（\`- xxx\`）列出**不可平移**的语法点——例如：
+   - 源方言里某个内置函数 / 关键字在目标方言**没有等价**（如 MySQL \`ON DUPLICATE KEY UPDATE\` → PostgreSQL 需 \`INSERT ... ON CONFLICT ... DO UPDATE\`，语义大体可对齐但行为细节不同）
+   - 数据类型不一一对应（如 MySQL \`DATETIME\` vs PostgreSQL \`TIMESTAMP\`，MSSQL \`NVARCHAR\` vs Oracle \`NVARCHAR2\`）
+   - 分页 / 自增 / 字符串拼接 / 引号风格等方言差异
+   - 隐式类型转换、NULL 排序行为差异
+   如果没有任何不可平移点，写一条 \`- 无明显不可平移语法\`。
+
+3. **建议**：用 Markdown bullet 列表给出**目标方言更地道**的等价写法 / 风格建议（例如改用 CTE、改用 \`LIMIT ... OFFSET\`、改用 \`COALESCE\` 而非 \`IFNULL\` 等）；如无建议，写一条 \`- 直译已足够地道\`。
+
+请用清晰的 H3（\`### 警告\` / \`### 建议\`）标题分隔后两段，方便前端按标题切分渲染。`
+}
+
+/**
+ * G2 「AI 写表/列注释」prompt：把列定义清单（columnsCsv）交给 AI，让它**只输出 JSON 数组**，
+ * 每项 `{ col: "列名", comment: "中文一句话业务含义" }`，外层包 ```json 代码块，
+ * 方便前端用稳定的正则解析回结构化数据后做对比 + 落库。
+ *
+ * 设计要点：
+ *  - 强约束"只输出一个 ```json 代码块"，前后不要解释，避免解析裸 JSON 时被噪声污染
+ *  - 列名要**原样**回写（不要被 AI 翻译/改写），便于和现状对比 + 拼 ALTER
+ *  - 注释用中文一句话（≤ 30 字），信息不足请写问号占位提示人工补
+ */
+export function pComment(ctx: TableContextHint, columnsCsv: string): string {
+  return `请为下表的每个字段**猜业务含义**，给出适合写进 \`COMMENT\` 的中文注释。
+
+- **方言**：${ctx.dialect}
+- **目标表**：\`${ctx.tableRef}\`
+- **字段** (name, type, nullable, key, default)：
+
+${columnsCsv}
+
+**输出要求（必须严格遵守，否则前端无法解析）**：
+
+- **只输出一个** \`\`\`json 代码块，**不要任何前后说明文字**
+- 代码块内是一个 JSON 数组，每项形如 \`{ "col": "列名", "comment": "中文一句话业务含义" }\`
+- \`col\` 必须**原样**抄上方字段名（区分大小写、别加引号、别翻译）
+- \`comment\` 用中文一句话（≤ 30 字）说清字段业务含义；信息不足请写 "?（建议人工补充）"
+- 列出**全部字段**（即便是 id / created_at 这类基础字段也要给注释）
+
+示例（仅示意格式）：
+
+\`\`\`json
+[
+  { "col": "id", "comment": "主键，自增订单 ID" },
+  { "col": "user_id", "comment": "下单用户 ID，外键 users.id" }
+]
+\`\`\``
+}

@@ -8,13 +8,7 @@ import {
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { emitChatSqlExecuted } from '../chat-bus'
-import {
-  ENV_META,
-  connEnv,
-  connReadOnly,
-  effectiveCommitMode,
-  isReadOnlyStatement,
-} from '../connEnv'
+import { ENV_META, connEnv, connReadOnly, initialCommitMode, isReadOnlyStatement } from '../connEnv'
 import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
 import {
@@ -256,8 +250,40 @@ function onFkNavigate(fk: FkNavigate): void {
 }
 const env = connEnv(props.conn) // 环境标记（生产库高危操作加强确认 + 工具栏标识）
 const readOnly = connReadOnly(props.conn) // 只读连接：整连接禁写
-// 生效的提交模式（auto/manual）；用 computed 跟随 settings.commitMode 全局变更
-const commitMode = computed(() => effectiveCommitMode(props.conn, settings.commitMode))
+// 提交模式：本 tab 局部状态，初始跟随全局 settings.commitMode（只读连接强制 auto）；
+// 工具栏按钮可即时切换。新建 tab 时取一次初始值，之后用户改了全局也不再影响已开 tab。
+const commitMode = ref<'auto' | 'manual'>(initialCommitMode(props.conn, settings.commitMode))
+
+/** 工具栏点切换：auto ↔ manual。切到 auto 前若 manual 还有 dirty 事务，先让用户决定提交/回滚。 */
+async function toggleCommitMode(): Promise<void> {
+  if (readOnly) {
+    toast.info(t('commit.readOnlyForcedAuto'))
+    return
+  }
+  if (commitMode.value === 'manual' && sessionId.value) {
+    if (dirty.value) {
+      // dirty 时不能简单关 session：弹 confirm 让用户选「提交→切」「回滚→切」「取消」
+      const doCommit = await appConfirm({
+        title: t('commit.switchToAutoTitle'),
+        message: t('commit.switchToAutoPending'),
+        confirmText: t('commit.commit'),
+        cancelText: t('commit.rollback'),
+        variant: 'warn',
+      })
+      try {
+        if (doCommit) await client.connections.commitSession(sessionId.value)
+        else await client.connections.rollbackSession(sessionId.value)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e))
+        return // 切换中止
+      }
+    }
+    // 干净的 session 直接关
+    await endSessionIfAny()
+  }
+  commitMode.value = commitMode.value === 'manual' ? 'auto' : 'manual'
+  toast.info(commitMode.value === 'manual' ? t('commit.modeManual') : t('commit.modeAuto'))
+}
 
 // ── 手动提交会话状态 ─────────────────────────────────────────────
 // sessionId 在首次 manual 执行时懒申请；任何非「纯读」语句执行后置 dirty
@@ -1145,9 +1171,19 @@ defineExpose({
       <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭</button>
       <button :disabled="running" :title="t('query.explain.title')" @click="explain(false)">{{ t('query.explain') }}</button>
       <button :disabled="running" :title="t('query.explainAnalyzeTitle')" @click="explain(true)">{{ t('query.explainAnalyze') }}</button>
+      <!-- 提交模式切换：点一下 auto/manual 互切；manual 时 dirty 状态点切换会先弹 commit/rollback 确认 -->
+      <span class="tb-sep" />
+      <button
+        class="commit-mode-toggle"
+        :class="commitMode"
+        :title="commitMode === 'manual' ? t('commit.toggleToAutoTitle') : t('commit.toggleToManualTitle')"
+        :disabled="readOnly || running"
+        @click="toggleCommitMode"
+      >
+        {{ commitMode === 'manual' ? '⌨ ' + t('commit.modeManual') : '⚡ ' + t('commit.modeAuto') }}
+      </button>
       <!-- 手动提交模式专属：提交 / 回滚 / 事务状态 -->
       <template v-if="commitMode === 'manual'">
-        <span class="tb-sep" />
         <button
           class="commit"
           :disabled="!sessionId || !dirty || running"
@@ -1416,6 +1452,24 @@ defineExpose({
   background: var(--border);
   flex: none;
   margin: 0 2px;
+}
+/* ── 提交模式切换按钮（点一下 auto / manual 互切，颜色随状态） ── */
+.toolbar button.commit-mode-toggle {
+  font-weight: 500;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.toolbar button.commit-mode-toggle.auto {
+  color: #4caf50;
+  border-color: rgba(76, 175, 80, 0.5);
+}
+.toolbar button.commit-mode-toggle.manual {
+  color: #e0a020;
+  border-color: rgba(224, 160, 32, 0.5);
+}
+.toolbar button.commit-mode-toggle:hover:not(:disabled) {
+  background: rgba(124, 108, 255, 0.10);
 }
 /* ── 手动提交模式按钮 + 状态徽章 ── */
 .toolbar button.commit {

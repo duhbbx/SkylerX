@@ -28,19 +28,18 @@ export function isReadOnlyStatement(sql: string): boolean {
 }
 
 /**
- * 解析连接生效的提交模式：
- *  - 连接 extra.commitMode = 'auto' / 'manual' → 强制本连接
- *  - = 'inherit'（或缺省）→ 跟随全局 settings.commitMode
- *  - 只读连接强制 'auto'：手动事务对只读连接无意义，避免误导
+ * 解析连接初始的提交模式（仅用于「新建 query tab 时取个默认值」）。
  *
- * 调用方：QueryPane / ConnectionForm（展示生效值），settings 在调用处传入。
+ * 不再读 `conn.extra.commitMode`——提交模式已经从连接配置迁移到 query tab，
+ * 每个 tab 在工具栏里可以即时切换 auto/manual。
+ *
+ *  - 只读连接强制 'auto'：手动事务对只读连接无意义
+ *  - 其它一律跟随全局 settings.commitMode
  */
-export function effectiveCommitMode(
+export function initialCommitMode(
   conn: { extra?: Record<string, unknown> } | undefined,
   globalDefault: CommitMode,
 ): CommitMode {
   if (connReadOnly(conn)) return 'auto'
-  const v = conn?.extra?.commitMode
-  if (v === 'auto' || v === 'manual') return v
   return globalDefault
 }

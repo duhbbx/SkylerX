@@ -57,6 +57,8 @@ const DICT: Record<string, [string, string]> = {
   'nav.title': ['导航', 'Navigator'],
   'nav.newConn': ['新建连接', 'New connection'],
   'nav.refresh': ['刷新', 'Refresh'],
+  'nav.expandAll': ['展开全部', 'Expand all'],
+  'nav.collapseAll': ['收起全部', 'Collapse all'],
   'nav.settings': ['设置', 'Settings'],
   'nav.aiChat': ['AI 聊天侧边栏（⌘⇧L）', 'AI chat sidebar (⌘⇧L)'],
   'nav.empty': ['还没有连接，点上方 + 新建', 'No connections yet — click + above to add one'],
@@ -248,11 +250,27 @@ const DICT: Record<string, [string, string]> = {
     '⚠️ Dangerous operation detected:\n\n{dangers}\n\nProceed?',
   ],
   'query.dangerTitle': ['高危操作确认', 'Dangerous operation'],
-  // ── 手动提交 ──
+  // ── 手动提交（每个 query tab 局部状态，工具栏一键切换；全局 settings 只决定新 tab 初始值） ──
   'commit.mode': ['提交模式', 'Commit mode'],
   'commit.modeAuto': ['自动提交', 'Auto commit'],
   'commit.modeManual': ['手动提交', 'Manual commit'],
-  'commit.modeInherit': ['跟随全局', 'Inherit global'],
+  'commit.toggleToAutoTitle': [
+    '切到自动提交（即时落库，每条 SQL 立即提交）',
+    'Switch to auto commit',
+  ],
+  'commit.toggleToManualTitle': [
+    '切到手动提交（开启事务，需要按「提交」才落库）',
+    'Switch to manual commit (start txn, requires Commit)',
+  ],
+  'commit.switchToAutoTitle': ['切换前先处理未提交事务', 'Resolve pending txn before switching'],
+  'commit.switchToAutoPending': [
+    '当前手动事务有未提交改动。切到自动提交前要先把它处理掉：\n\n选「提交」会 COMMIT 落库；选「回滚」会 ROLLBACK 放弃。',
+    'Pending changes in current manual txn. Before switching to auto:\n\n"Commit" runs COMMIT; "Rollback" runs ROLLBACK and discards them.',
+  ],
+  'commit.readOnlyForcedAuto': [
+    '只读连接强制自动提交，无法切换',
+    'Read-only connection is forced to auto',
+  ],
   'commit.modeAutoDesc': [
     '每条 SQL 立即提交（默认）',
     'Each statement commits immediately (default)',
@@ -640,6 +658,15 @@ const DICT: Record<string, [string, string]> = {
   'lineage.sinks': ['写入', 'Sinks'],
   'lineage.sources': ['读取', 'Sources'],
   'lineage.noHits': ['没找到', 'No hits'],
+  // ── 命令面板：新增功能入口 ──
+  'pal.idxRec': ['索引推荐', 'Index recommender'],
+  'pal.replLag': ['复制延迟', 'Replication lag'],
+  'pal.translate': ['SQL 翻译', 'SQL translate'],
+  'pal.notif': ['通知 Webhook', 'Notification webhook'],
+  'pal.keybind': ['自定义快捷键', 'Key bindings'],
+  'pal.drift': ['Schema 漂移检测', 'Schema drift detect'],
+  'pal.aiComment': ['AI 写注释', 'AI write comments'],
+  'aicmt.askTable': ['请输入要写注释的表名（schema.table）', 'Enter table name (schema.table)'],
   // ── B7 数据契约 ──
   'pal.contracts': ['数据契约', 'Data contracts'],
   'contract.title': ['数据契约', 'Data Contracts'],
@@ -1509,6 +1536,395 @@ const DICT: Record<string, [string, string]> = {
   'ws.scKey': ['快捷键', 'Shortcut'],
   'pal.groupActions': ['操作', 'Actions'],
   'pal.groupConns': ['连接', 'Connections'],
+
+  // ── 连接错误分类 + 排查步骤（categorizeConnectionError）──
+  'errSteps.title.port-unreachable': [
+    '端口连不上 / 服务未监听',
+    'Port unreachable / service not listening',
+  ],
+  'errSteps.title.host-unknown': ['主机名无法解析', 'Hostname cannot be resolved'],
+  'errSteps.title.timeout': ['连接超时', 'Connection timed out'],
+  'errSteps.title.auth-failed': ['认证失败：用户名或密码错误', 'Authentication failed'],
+  'errSteps.title.ssl-fail': ['SSL/TLS 握手失败', 'SSL/TLS handshake failed'],
+  'errSteps.title.driver-missing': ['驱动未安装或未注册', 'Driver missing or not registered'],
+  'errSteps.title.permission-denied': ['操作系统权限不足', 'Operating system permission denied'],
+  'errSteps.title.database-not-found': ['指定的数据库不存在', 'Specified database does not exist'],
+  'errSteps.title.other': ['连接失败', 'Connection failed'],
+  // port-unreachable
+  'errSteps.checkPortListen': [
+    '在服务器上执行 ss -lntp / netstat -an 确认目标端口在监听',
+    'On the server, run ss -lntp / netstat -an to confirm the port is listening',
+  ],
+  'errSteps.checkFirewall': [
+    '检查本机和服务器的防火墙 / 安全组，是否放通该端口',
+    'Check local firewall and server security group / firewall rules for the port',
+  ],
+  'errSteps.checkDbHostBind': [
+    '数据库 bind-address 是否绑死在 127.0.0.1（需要改成 0.0.0.0 或具体网卡）',
+    'Check DB bind-address — if locked to 127.0.0.1, change to 0.0.0.0 or the actual NIC',
+  ],
+  'errSteps.checkPortNumber': [
+    '确认填写的端口号与实例真实端口一致（默认值不一定对）',
+    'Verify the port matches the actual instance port (the default may differ)',
+  ],
+  // host-unknown
+  'errSteps.checkHostSpelling': [
+    '检查主机名 / IP 是否拼写正确',
+    'Double-check the host name / IP for typos',
+  ],
+  'errSteps.checkDns': [
+    '在本机执行 nslookup / dig 确认 DNS 能解析',
+    'Run nslookup / dig locally to confirm DNS resolution works',
+  ],
+  'errSteps.checkHostsFile': [
+    '如果使用了自定义域名，检查 /etc/hosts 是否配置',
+    'If using a custom domain, check /etc/hosts for the mapping',
+  ],
+  'errSteps.checkVpn': [
+    '是否需要先连上 VPN / 跳板机才能解析内网域名',
+    'Check whether VPN / bastion is required to resolve internal hostnames',
+  ],
+  // timeout
+  'errSteps.checkNetworkReachable': [
+    'ping / traceroute 目标 IP，确认网络可达',
+    'ping / traceroute the target IP to confirm network reachability',
+  ],
+  'errSteps.checkServerLoad': [
+    '服务器负载是否过高，导致 TCP 握手响应慢',
+    'Check whether server load is too high to respond to TCP handshake',
+  ],
+  'errSteps.checkSshTunnel': [
+    '如果走 SSH 隧道，确认隧道本身没有断',
+    'If using an SSH tunnel, ensure the tunnel itself is still alive',
+  ],
+  'errSteps.increaseTimeout': [
+    '在驱动配置里适当调大超时阈值（connectTimeout / socketTimeout）',
+    'Increase connectTimeout / socketTimeout in the driver options',
+  ],
+  // auth-failed
+  'errSteps.checkPassword': [
+    '确认用户名 / 密码（包括大小写、特殊字符是否需要转义）',
+    'Verify username / password (case sensitivity, escaping for special chars)',
+  ],
+  'errSteps.checkUserGrants': [
+    '在数据库里检查该账号是否存在、是否被禁用 / 锁定',
+    'Inside the DB, check if the account exists and is not disabled / locked',
+  ],
+  'errSteps.checkAuthPlugin': [
+    'MySQL 8 默认 caching_sha2_password，老驱动可能要切到 mysql_native_password',
+    'MySQL 8 defaults to caching_sha2_password — older drivers may need mysql_native_password',
+  ],
+  'errSteps.checkHostWhitelist': [
+    '检查账号的 host 白名单（如 root@%），客户端 IP 是否被允许',
+    'Check the account host whitelist (e.g. root@%) and whether the client IP is allowed',
+  ],
+  // ssl-fail
+  'errSteps.checkSslToggle': [
+    '服务端是否真的开启 SSL/TLS？没开就把 SSL 关掉',
+    'Is SSL/TLS actually enabled on the server? If not, disable SSL here',
+  ],
+  'errSteps.checkSslCert': [
+    '检查 CA / 证书 / 私钥三段是否正确粘贴（PEM 格式，含 BEGIN/END 行）',
+    'Verify CA / cert / key are pasted correctly (PEM format with BEGIN/END lines)',
+  ],
+  'errSteps.disableRejectUnauthorized': [
+    '自签证书可临时关闭「验证证书」(rejectUnauthorized=false) 排查',
+    'For self-signed certs, temporarily turn off "Verify certificate" (rejectUnauthorized=false)',
+  ],
+  'errSteps.checkSslVersion': [
+    '部分老服务器只支持 TLS 1.0/1.1，检查 minVersion 设置',
+    'Some old servers only support TLS 1.0/1.1 — check the minVersion setting',
+  ],
+  // driver-missing
+  'errSteps.installDriver': [
+    '按提示安装/启用对应方言的驱动包（如 oracledb、@mongodb-js/...）',
+    'Install / enable the driver package for the dialect (e.g. oracledb, @mongodb-js/...)',
+  ],
+  'errSteps.checkDialectSupported': [
+    '确认方言在当前发行版中受支持',
+    'Confirm the dialect is supported in the current build',
+  ],
+  'errSteps.restartApp': [
+    '安装驱动后需要重启应用让驱动注册生效',
+    'After installing a driver, restart the app so it can register',
+  ],
+  // permission-denied
+  'errSteps.checkOsPermission': [
+    'SQLite/DuckDB 等文件型数据库：检查文件 / 目录读写权限',
+    'For file DBs (SQLite/DuckDB): verify read/write permission on the file & directory',
+  ],
+  'errSteps.checkFileOwnership': [
+    '检查文件 owner 是否与当前进程用户一致',
+    'Check whether file owner matches the current process user',
+  ],
+  'errSteps.checkSelinux': [
+    'Linux 上检查 SELinux / AppArmor 是否拦截了访问',
+    'On Linux, check whether SELinux / AppArmor is blocking the access',
+  ],
+  // database-not-found
+  'errSteps.checkDatabaseName': [
+    '确认 database 名拼写（注意大小写敏感的数据库）',
+    'Verify the database name spelling (mind case sensitivity)',
+  ],
+  'errSteps.createDatabase': [
+    '如果库还没建：CREATE DATABASE xxx 后再连',
+    'If the DB does not exist yet: run CREATE DATABASE xxx first',
+  ],
+  'errSteps.checkCurrentSchema': [
+    'PostgreSQL 等：检查默认 search_path / schema 是否正确',
+    'For PostgreSQL etc.: check the default search_path / schema',
+  ],
+  // other
+  'errSteps.checkRawMessage': [
+    '展开下方原始错误，关键字搜索官方文档',
+    'Expand the raw error below and search the keywords in official docs',
+  ],
+  'errSteps.checkServerLogs': [
+    '查看数据库服务端的错误日志（更具体的失败原因通常在那里）',
+    'Check the database server error log — the real cause is usually there',
+  ],
+  'errSteps.checkDocs': [
+    '参考对应数据库 / 驱动的连接故障排查文档',
+    'Refer to the connection troubleshooting docs of the DB / driver',
+  ],
+  // 原始错误折叠按钮
+  'errSteps.showRaw': ['查看原始错误', 'Show raw error'],
+  'errSteps.hideRaw': ['隐藏原始错误', 'Hide raw error'],
+  // G1 AI 数据库体检
+  'pal.aiHealth': ['AI 体检', 'AI Health Check'],
+  'health.title': ['AI 数据库体检', 'AI Database Health Check'],
+  'health.collecting': ['正在收集库结构…', 'Collecting schema metadata…'],
+  'health.loading': ['正在分析…', 'Analyzing…'],
+  'health.loadingHint': [
+    '把表/列/索引/外键打包后交给 AI 分析常见反模式，通常 10~30 秒。',
+    'Sending tables / columns / indexes / FKs to the AI to spot common anti-patterns. Usually 10–30s.',
+  ],
+  'health.copyReport': ['复制报告', 'Copy report'],
+  'health.copied': ['已复制', 'Copied'],
+  'health.empty': ['AI 没有返回内容。', 'No content returned by AI.'],
+  'health.failed': ['体检失败', 'Health check failed'],
+  'health.unsupported': [
+    '当前方言暂不支持自动体检（仅支持 MySQL / PostgreSQL 家族）。',
+    'Health check is only supported for MySQL / PostgreSQL family dialects.',
+  ],
+  'health.rerun': ['重新体检', 'Re-run'],
+  'health.cancelled': ['已取消', 'Cancelled'],
+  'health.scanned': [
+    '扫描 {tables} 张表 / {columns} 个列',
+    'Scanned {tables} tables / {columns} columns',
+  ],
+  // G4 AI SQL 跨方言翻译
+  'xlate.title': ['AI SQL 跨方言翻译', 'AI SQL Dialect Translate'],
+  'xlate.from': ['源方言', 'From'],
+  'xlate.to': ['目标方言', 'To'],
+  'xlate.sourcePh': ['粘贴源方言 SQL…', 'Paste source SQL here…'],
+  'xlate.translate': ['翻译', 'Translate'],
+  'xlate.translating': ['翻译中…', 'Translating…'],
+  'xlate.result': ['译后 SQL', 'Translated SQL'],
+  'xlate.warnings': ['警告 / 建议', 'Warnings / Suggestions'],
+  'xlate.copy': ['复制', 'Copy'],
+  'xlate.copied': ['已复制', 'Copied'],
+  'xlate.swap': ['交换', 'Swap'],
+  // ── K1 自定义键盘快捷键 ──
+  'kbd.title': ['键盘快捷键', 'Keyboard Shortcuts'],
+  'kbd.cmd': ['命令', 'Command'],
+  'kbd.shortcut': ['快捷键', 'Shortcut'],
+  'kbd.record': ['录制', 'Record'],
+  'kbd.recording': ['按下新快捷键…', 'Press new shortcut…'],
+  'kbd.recordHint': [
+    'Enter 保存 · Esc 取消 · Backspace 清空（禁用此命令）',
+    'Enter to save · Esc to cancel · Backspace to clear (disable)',
+  ],
+  'kbd.resetAll': ['恢复默认', 'Reset to defaults'],
+  'kbd.resetAllConfirm': [
+    '确定把所有快捷键还原到默认？已有的自定义会被清空。',
+    'Reset all shortcuts to defaults? Your customisations will be cleared.',
+  ],
+  'kbd.reset': ['还原', 'Reset'],
+  'kbd.unbound': ['（未绑定）', '(unbound)'],
+  'kbd.conflict': ['⚠ 与「{cmd}」冲突', '⚠ Conflicts with "{cmd}"'],
+  'kbd.note': [
+    '快捷键改动实时生效；mac 上 ⌘ = Cmd，其它平台对应 Ctrl。',
+    'Changes apply instantly; ⌘ = Cmd on macOS, Ctrl on other platforms.',
+  ],
+  'kbd.cmdRunSql': ['执行 SQL', 'Run SQL'],
+  'kbd.cmdPalette': ['命令面板', 'Command palette'],
+  'kbd.cmdObjectSearch': ['对象搜索', 'Object search'],
+  'kbd.cmdAiChat': ['AI 聊天侧边栏', 'AI chat sidebar'],
+  'kbd.cmdNewConn': ['新建连接', 'New connection'],
+  'kbd.cmdNewQuery': ['新建查询页', 'New query tab'],
+  'kbd.cmdCloseTab': ['关闭当前页', 'Close current tab'],
+  'kbd.cmdFind': ['查找', 'Find'],
+  'kbd.cmdReplace': ['替换', 'Replace'],
+  'kbd.cmdFormatSql': ['格式化 SQL', 'Format SQL'],
+  'kbd.cmdSaveSnippet': ['保存为片段', 'Save snippet'],
+  'kbd.cmdSettings': ['打开设置', 'Open settings'],
+  // ── F2 导出加密 ──
+  'enc.password': ['密码', 'Password'],
+  'enc.confirmPassword': ['确认密码', 'Confirm password'],
+  'enc.passwordMismatch': ['两次密码不一致', 'Passwords do not match'],
+  'enc.wrongPassword': ['密码错误或文件已损坏', 'Wrong password or file corrupted'],
+  'enc.exportEncrypted': ['加密导出', 'Export encrypted'],
+  'enc.encrypting': ['加密中…', 'Encrypting…'],
+  // ── G2 AI 写表/列注释 ──
+  'aicmt.title': ['AI 写注释 · {table}', 'AI Comments · {table}'],
+  'aicmt.loading': ['AI 正在思考…', 'AI is thinking…'],
+  'aicmt.colName': ['列名', 'Column'],
+  'aicmt.type': ['类型', 'Type'],
+  'aicmt.currentComment': ['现状', 'Current'],
+  'aicmt.suggested': ['AI 建议', 'AI suggestion'],
+  'aicmt.adopt': ['采用', 'Adopt'],
+  'aicmt.apply': ['应用所选', 'Apply selected'],
+  'aicmt.generateForTable': ['为表本身写一段', 'Write table comment'],
+  'aicmt.empty': ['AI 没返回内容，请重试', 'AI returned nothing; try again'],
+  'aicmt.parseFailed': ['解析 AI 输出失败', 'Failed to parse AI output'],
+
+  // ── C5 索引推荐器 ──
+  'idxrec.title': ['索引推荐器', 'Index Recommender'],
+  'idxrec.scanning': ['正在扫描历史 SQL…', 'Scanning query history…'],
+  'idxrec.rescan': ['重新扫描', 'Re-scan'],
+  'idxrec.noHistory': [
+    '没有可用的查询历史。先在查询窗口执行几条 SELECT，再来推荐。',
+    'No query history yet. Run some SELECT queries first, then come back.',
+  ],
+  'idxrec.empty': [
+    '没有发现明显需要补的索引（现有索引已经覆盖热点列）。',
+    'No obvious missing indexes found (existing indexes already cover hot columns).',
+  ],
+  'idxrec.unsupported': [
+    '当前方言暂不支持索引推荐（仅支持 MySQL / PostgreSQL 家族）。',
+    'Index recommendation only supports MySQL / PostgreSQL family dialects.',
+  ],
+  'idxrec.scanned': [
+    '基于 {patterns} 条 SQL 模式 / {known} 个现有索引',
+    'Based on {patterns} SQL patterns / {known} existing indexes',
+  ],
+  'idxrec.adopt': ['采用', 'Adopt'],
+  'idxrec.adopted': ['已采用', 'Adopted'],
+  'idxrec.reason': ['推断依据', 'Reason'],
+  'idxrec.score': ['估算分', 'Score'],
+  'idxrec.copyAll': ['复制全部 DDL', 'Copy all DDL'],
+  'idxrec.copied': ['已复制', 'Copied'],
+  'idxrec.col.table': ['表', 'Table'],
+  'idxrec.col.columns': ['列', 'Columns'],
+  'idxrec.col.ddl': ['DDL', 'DDL'],
+
+  // ── I1 通知 Webhook ──
+  'notif.title': ['通知 Webhook', 'Notification webhooks'],
+  'notif.listTitle': ['通道列表', 'Channels'],
+  'notif.add': ['新建', 'Add'],
+  'notif.delete': ['删除', 'Delete'],
+  'notif.empty': ['还没有配置通道，点 + 新建', 'No channels yet — click + to add one'],
+  'notif.unnamed': ['(未命名)', '(unnamed)'],
+  'notif.defaultName': ['新通知', 'New notification'],
+  'notif.selectHint': ['从左侧选择一个通道，或新建', 'Select a channel on the left, or add one'],
+  'notif.nameLabel': ['名称', 'Name'],
+  'notif.channel': ['渠道', 'Channel'],
+  'notif.channelDingtalk': ['钉钉', 'DingTalk'],
+  'notif.channelFeishu': ['飞书', 'Feishu / Lark'],
+  'notif.channelSlack': ['Slack', 'Slack'],
+  'notif.channelWebhook': ['通用 Webhook', 'Generic webhook'],
+  'notif.webhookUrl': ['Webhook 地址', 'Webhook URL'],
+  'notif.webhookUrlPlaceholder': ['https://…', 'https://…'],
+  'notif.secret': ['签名密钥（可选）', 'Signing secret (optional)'],
+  'notif.secretPlaceholder': ['钉钉/飞书加签时填写', 'Required only if signing is enabled'],
+  'notif.enabled': ['启用', 'Enabled'],
+  'notif.disabledTag': ['已停用', 'off'],
+  'notif.subscribe': ['订阅事件', 'Subscribed events'],
+  'notif.eventQueryError': ['查询错误', 'Query error'],
+  'notif.eventSlowQuery': ['慢查询', 'Slow query'],
+  'notif.eventManual': ['手动 / 测试', 'Manual / test'],
+  'notif.test': ['测试发送', 'Send test'],
+  'notif.sending': ['发送中…', 'Sending…'],
+  'notif.sent': ['已发送', 'Sent'],
+  'notif.failed': ['发送失败', 'Send failed'],
+  'notif.testTitle': ['测试通知', 'Test notification'],
+  'notif.testBody': [
+    '这是来自 {name} 的一条测试通知。',
+    'This is a test notification from {name}.',
+  ],
+  'notif.testDisabledHint': [
+    '当前通道未启用，先勾选「启用」再测试',
+    'Channel is disabled — enable it before testing',
+  ],
+  'notif.testNoUrl': ['请先填写 Webhook 地址', 'Please fill in the webhook URL first'],
+  'notif.testNoManualSub': [
+    '当前通道未订阅「手动 / 测试」事件',
+    'This channel is not subscribed to the manual/test event',
+  ],
+  'notif.confirmDelete': ['确定删除「{name}」？', 'Delete "{name}"?'],
+
+  // ── Schema 漂移检测（D6）──
+  'drift.title': ['Schema 漂移检测（源 → 目标）', 'Schema Drift (source → target)'],
+  'drift.sourceConn': ['源连接（基准 / 预期）', 'Source connection (baseline / expected)'],
+  'drift.targetConn': ['目标连接（怀疑漂移）', 'Target connection (suspected drift)'],
+  'drift.scan': ['扫描', 'Scan'],
+  'drift.scanning': ['扫描中…', 'Scanning…'],
+  'drift.unsupported': [
+    '仅支持 MySQL 家族或 PostgreSQL 家族内部对比（且源/目标需同家族）',
+    'Only MySQL-family or PostgreSQL-family intra-family comparison is supported',
+  ],
+  'drift.onlyInSource': ['仅源有（目标缺）', 'Only in source (missing in target)'],
+  'drift.onlyInTarget': ['仅目标有（多余）', 'Only in target (extra)'],
+  'drift.different': ['内容不同', 'Different'],
+  'drift.alignBtn': ['对齐 SQL', 'Align SQL'],
+  'drift.alignFor': ['对齐表', 'Align table'],
+  'drift.alignScript': ['对齐脚本预览（追加式）', 'Alignment script (appended)'],
+  'drift.scriptEmpty': [
+    '点上方差异行的「+ 对齐 SQL」追加到此',
+    'Click "+ Align SQL" on a drift row to append here',
+  ],
+  'drift.execScript': ['执行对齐脚本', 'Execute alignment script'],
+  'drift.execConfirm': [
+    '将对目标库执行对齐脚本，可能修改/删除数据。继续？',
+    'About to run the alignment script on the target. This may modify/drop data. Continue?',
+  ],
+  'drift.execDone': ['对齐脚本执行完成', 'Alignment script executed'],
+  'drift.noDrift': ['未发现漂移：两边 Schema 一致 ✓', 'No drift detected: schemas are identical ✓'],
+  'drift.tables': ['张表', 'tables'],
+  'drift.sourceDdl': ['源 DDL', 'Source DDL'],
+  'drift.targetDdl': ['目标 DDL', 'Target DDL'],
+  'drift.dropHint': [
+    '默认注释，确认要删请手动去掉注释',
+    'Commented out by default — uncomment to actually drop',
+  ],
+  'drift.dropColHint': [
+    '删列默认注释，确认无业务依赖再启用',
+    'Drop column commented by default — confirm no consumer depends on it',
+  ],
+  'drift.noSrcDdl': ['未抓到源端 DDL', 'Source DDL unavailable'],
+  'drift.clear': ['清空', 'Clear'],
+
+  // ── C1 主从复制延迟监控 ──
+  'repl.title': ['主从复制延迟 · {conn}', 'Replication Lag · {conn}'],
+  'repl.role': ['角色', 'Role'],
+  'repl.roleSource': ['主库', 'Source'],
+  'repl.roleReplica': ['从库', 'Replica'],
+  'repl.roleStandalone': ['独立（无复制）', 'Standalone'],
+  'repl.lag': ['延迟（秒）', 'Lag (s)'],
+  'repl.replayLag': ['replay 延迟（秒）', 'replay lag (s)'],
+  'repl.writeLag': ['write 延迟（秒）', 'write lag (s)'],
+  'repl.flushLag': ['flush 延迟（秒）', 'flush lag (s)'],
+  'repl.status': ['状态', 'Status'],
+  'repl.ioStatus': ['IO 线程', 'IO thread'],
+  'repl.sqlStatus': ['SQL 线程', 'SQL thread'],
+  'repl.syncState': ['同步模式', 'Sync state'],
+  'repl.refresh': ['刷新', 'Refresh'],
+  'repl.autoRefresh': ['自动刷新', 'Auto refresh'],
+  'repl.refreshOff': ['不刷新', 'Off'],
+  'repl.unsupported': [
+    '当前方言不支持复制状态查询',
+    'Replication status is not supported for this dialect',
+  ],
+  'repl.noReplication': [
+    '当前实例未开启复制，或当前账号无权限读取复制状态',
+    'No replication on this instance, or the current account lacks privileges to read replication state',
+  ],
+  'repl.noReplicas': [
+    '未发现从库（仅主库 binlog 可用）',
+    'No replicas reported (only binary log status available)',
+  ],
+  'repl.lastError': ['最近错误', 'Last error'],
 }
 
 /** 翻译：取当前语言文案，缺失回退 key；支持 {name} 插值。 */

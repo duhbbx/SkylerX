@@ -19,6 +19,24 @@ export enum DbDialect {
   KingbaseES = 'kingbase',
   /** OceanBase（MySQL 协议兼容） */
   OceanBase = 'oceanbase',
+  /** TiDB（MySQL 协议兼容，分布式 NewSQL） */
+  TiDB = 'tidb',
+  /** CockroachDB（PG 协议兼容，分布式 NewSQL） */
+  CockroachDB = 'cockroachdb',
+  /** Greenplum（PG 协议兼容，MPP 分析数据库） */
+  Greenplum = 'greenplum',
+  /** openGauss（PG 协议兼容，华为信创） */
+  OpenGauss = 'opengauss',
+  /** SQLite（本地文件 SQL，better-sqlite3） */
+  SQLite = 'sqlite',
+  /** DuckDB（本地文件 OLAP SQL） */
+  DuckDB = 'duckdb',
+  /** ClickHouse（列存 OLAP，事务/UPDATE 受限） */
+  ClickHouse = 'clickhouse',
+  /** Snowflake（云 DW，需要 account/warehouse/role） */
+  Snowflake = 'snowflake',
+  /** H2（仅支持 PG-server 模式:H2 启动加 -pg 参数监听 5435 端口;Embedded/原生 TCP 不支持） */
+  H2 = 'h2',
   /** MongoDB（文档型，走 executeCommand 通道，不走 SQL） */
   MongoDB = 'mongodb',
   /** Redis（KV/数据结构型，走 executeCommand 通道，不走 SQL） */
@@ -129,6 +147,12 @@ export interface QueryColumn {
   /** 数据库原始类型名，如 VARCHAR / int8 / NUMBER */
   dataType: string
   nullable?: boolean
+  /**
+   * 该列的值在驱动层被有损转换的标记,UI 据此可在表头/单元格加提示。
+   *  - 'bigint':原值是 BigInt(DuckDB BIGINT/HUGEINT / SQLite INTEGER 超 Number.MAX_SAFE_INTEGER),
+   *             已字符串化以保留精度,显示与排序需注意按字符串处理。
+   */
+  lossy?: 'bigint'
 }
 
 /** SQL 执行选项。 */
@@ -401,10 +425,22 @@ export interface DataClient {
     openText(
       filters?: { name: string; extensions: string[] }[],
     ): Promise<{ name: string; content: string } | null>
+    /** 仅选文件路径，不读内容。用于 SQLite/DuckDB 等本地文件型数据库选库;
+     *  allowCreate=true 允许选不存在的文件名(新建库)。Web 端可不实现。 */
+    selectFile?(req?: {
+      filters?: { name: string; extensions: string[] }[]
+      allowCreate?: boolean
+      defaultPath?: string
+    }): Promise<string | null>
   }
   /** 窗口管理（桌面专属；Web 端 noop） */
   window?: {
     /** 复制 SPA 到新 BrowserWindow（用于跨连接 / 双 SQL 并排查看） */
     newSession?: () => Promise<void>
+  }
+  /** 应用菜单 → 渲染层命令路由（桌面专属） */
+  menu?: {
+    /** 主进程菜单点击时 push key，渲染层据此路由 */
+    onCommand?: (handler: (key: string) => void) => () => void
   }
 }

@@ -913,7 +913,11 @@ const summaryRow = computed<Record<string, string>>(() => {
                 @drop="onColDrop(c.name)"
                 @dragend="dragCol = null"
               >
-                {{ c.name }}<span class="th-type">{{ c.dataType }}</span>
+                {{ c.name }}<span class="th-type">{{ c.dataType }}</span><span
+                  v-if="c.lossy === 'bigint'"
+                  class="lossy-tag"
+                  title="BigInt 值已字符串化以保留精度"
+                >ⓘ</span>
                 <span v-if="sortCol === c.name" class="sort-ind">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 <button
                   v-if="filterable"
@@ -1880,5 +1884,11 @@ td.rownum:hover {
 }
 .col-item:hover {
   background: var(--bg);
+}
+.lossy-tag {
+  font-size: 0.75em;
+  color: var(--text-2, #888);
+  margin-left: 4px;
+  cursor: help;
 }
 </style>

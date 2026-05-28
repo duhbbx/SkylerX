@@ -1,12 +1,16 @@
 import { DbDialect } from '@db-tool/shared-types'
 import { registerDriver } from '../registry.js'
+import { createClickhouseDriver } from './clickhouse.js'
 import { createDmDriver } from './dm.js'
+import { createDuckdbDriver } from './duckdb.js'
 import { createElasticsearchDriver } from './elasticsearch.js'
 import { createMongoDriver } from './mongo.js'
 import { createMysqlFamilyDriver } from './mysql.js'
 import { createOracleDriver } from './oracle.js'
 import { createPostgresDriver } from './postgres.js'
 import { createRedisDriver } from './redis.js'
+import { createSnowflakeDriver } from './snowflake.js'
+import { createSqliteDriver } from './sqlite.js'
 import { createSqlServerDriver } from './sqlserver.js'
 
 /**
@@ -19,14 +23,19 @@ import { createSqlServerDriver } from './sqlserver.js'
  * 而是实现 executeCommand(payload),由上层按 dialect 分流。
  */
 export function registerBuiltinDrivers(): void {
-  // MySQL 系（mysql2）
+  // MySQL 系（mysql2）— 含协议兼容的 MariaDB / OceanBase / TiDB
   registerDriver(createMysqlFamilyDriver(DbDialect.MySQL))
   registerDriver(createMysqlFamilyDriver(DbDialect.MariaDB))
   registerDriver(createMysqlFamilyDriver(DbDialect.OceanBase))
+  registerDriver(createMysqlFamilyDriver(DbDialect.TiDB))
 
-  // PostgreSQL 系（pg，金仓协议兼容）
+  // PostgreSQL 系（pg）— 含金仓 / CockroachDB / Greenplum / openGauss / H2(PG 兼容模式) 协议兼容
   registerDriver(createPostgresDriver(DbDialect.PostgreSQL))
   registerDriver(createPostgresDriver(DbDialect.KingbaseES))
+  registerDriver(createPostgresDriver(DbDialect.CockroachDB))
+  registerDriver(createPostgresDriver(DbDialect.Greenplum))
+  registerDriver(createPostgresDriver(DbDialect.OpenGauss))
+  registerDriver(createPostgresDriver(DbDialect.H2))
 
   // SQL Server（mssql，纯 JS）
   registerDriver(createSqlServerDriver(DbDialect.SqlServer))
@@ -45,4 +54,12 @@ export function registerBuiltinDrivers(): void {
 
   // NoSQL：Elasticsearch（@elastic/elasticsearch 包，惰性，REST/HTTP）
   registerDriver(createElasticsearchDriver(DbDialect.Elasticsearch))
+
+  // 本地文件型 SQL（占位 → 子代理填充）
+  registerDriver(createSqliteDriver(DbDialect.SQLite))
+  registerDriver(createDuckdbDriver(DbDialect.DuckDB))
+
+  // 云/列存 SQL（占位 → 子代理填充）
+  registerDriver(createClickhouseDriver(DbDialect.ClickHouse))
+  registerDriver(createSnowflakeDriver(DbDialect.Snowflake))
 }

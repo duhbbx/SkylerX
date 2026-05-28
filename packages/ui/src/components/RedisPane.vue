@@ -24,6 +24,29 @@ interface KeyItem {
   type: RedisType | null // null = 还在查询中 / 未查
 }
 
+/**
+ * 一条 stream entry：id + 多对 field/value（保留顺序）。
+ *
+ * 注意 XRANGE 返回顺序：从老到新。
+ */
+interface StreamEntry {
+  id: string
+  fields: [string, string][]
+}
+
+/** GEOPOS 拆解结果：成员名 + 经纬度（nil → null，例如成员不存在）。 */
+interface GeoEntry {
+  member: string
+  lng: number | null
+  lat: number | null
+}
+
+/**
+ * "view as ..." 切换：HLL / Bitmap 在 TYPE 上都是 string，Geo 在 TYPE 上是 zset，
+ * 仅靠 TYPE 无法区分，给用户手动指定的入口。stream 由 TYPE 自动识别，不进切换。
+ */
+type ExtraView = 'hll' | 'bitmap' | 'geo' | null
+
 const keys = ref<KeyItem[]>([])
 const cursor = ref<string>('0')
 const loadingKeys = ref(false)
@@ -48,10 +71,34 @@ interface ValueState {
   array?: string[]
   /** zset：[member, score] */
   zset?: { member: string; score: string }[]
+  /** stream：XRANGE 拉回的最近 N 条 entry */
+  stream?: StreamEntry[]
+  /** HyperLogLog：PFCOUNT 估算基数 */
+  hll?: number
+  /** Bitmap：BITCOUNT 总数 + 局部 BITCOUNT + GETBIT 查询结果 */
+  bitmap?: {
+    total: number
+    range: { start: number; end: number; count: number } | null
+    getBit: { offset: number; bit: 0 | 1 } | null
+  }
+  /** Geo：成员 + 经纬度 */
+  geo?: GeoEntry[]
   loading: boolean
   error: string | null
 }
 const valueState = ref<ValueState | null>(null)
+
+// "view as ..." — 当前 key 上用户选的额外视图（string → HLL/Bitmap，zset → Geo）
+const extraView = ref<ExtraView>(null)
+
+// Bitmap 子查询输入：start/end byte offset；GETBIT 单 bit offset
+const bitmapStart = ref<number>(0)
+const bitmapEnd = ref<number>(-1)
+const bitmapGetOffset = ref<number>(0)
+const bitmapBusy = ref(false)
+
+// Stream 拉取条数（XRANGE COUNT）— 给个上限避免一次性拉爆
+const STREAM_COUNT = 50
 
 // 命令执行器
 const cmdText = ref('')
@@ -137,6 +184,7 @@ function onResetMatch(): void {
 
 async function selectKey(k: KeyItem): Promise<void> {
   selected.value = k
+  extraView.value = null
   let typ = k.type
   if (!typ) {
     try {
@@ -187,12 +235,135 @@ async function selectKey(k: KeyItem): Promise<void> {
         pairs.push({ member: String(a[i]), score: String(a[i + 1]) })
       }
       if (valueState.value) valueState.value.zset = pairs
+    } else if (typ === 'stream') {
+      // XRANGE key - + COUNT N — 从老到新，限 STREAM_COUNT 条
+      const r = await call('XRANGE', [k.name, '-', '+', 'COUNT', String(STREAM_COUNT)])
+      const raw = (r.data as unknown[]) ?? []
+      const entries: StreamEntry[] = []
+      for (const item of raw) {
+        // 每条 entry：[id, [field, value, field, value, ...]]
+        if (!Array.isArray(item) || item.length < 2) continue
+        const id = String(item[0])
+        const flat = Array.isArray(item[1]) ? (item[1] as unknown[]) : []
+        const fields: [string, string][] = []
+        for (let i = 0; i + 1 < flat.length; i += 2) {
+          fields.push([String(flat[i]), String(flat[i + 1] ?? '')])
+        }
+        entries.push({ id, fields })
+      }
+      if (valueState.value) valueState.value.stream = entries
     }
-    // stream / 其它类型暂留空
+    // HLL / Bitmap / Geo 不靠 TYPE 自动进入（TYPE 上分别是 string / string / zset），
+    // 用户在右上 "view as ..." 切换；逻辑下沉到 loadExtraView()
   } catch (e) {
     if (valueState.value) valueState.value.error = e instanceof Error ? e.message : String(e)
   } finally {
     if (valueState.value) valueState.value.loading = false
+  }
+}
+
+/**
+ * 切换到 extra 视图（HLL / Bitmap / Geo），按需拉数据。
+ *
+ * 这些视图都依赖底层类型仍然成立（HLL/Bitmap 是 string；Geo 是 zset）；
+ * 错用的话 Redis 会回 WRONGTYPE，错误信息会显示在 err-banner 里。
+ */
+async function setExtraView(v: ExtraView): Promise<void> {
+  extraView.value = v
+  const k = selected.value
+  if (!k || !valueState.value || !v) return
+  valueState.value.loading = true
+  valueState.value.error = null
+  try {
+    if (v === 'hll') {
+      const r = await call('PFCOUNT', [k.name])
+      const n = Number(r.data ?? 0)
+      valueState.value.hll = Number.isFinite(n) ? n : 0
+    } else if (v === 'bitmap') {
+      const r = await call('BITCOUNT', [k.name])
+      const total = Number(r.data ?? 0)
+      valueState.value.bitmap = {
+        total: Number.isFinite(total) ? total : 0,
+        range: null,
+        getBit: null,
+      }
+      // start/end 默认值复位为合理值
+      bitmapStart.value = 0
+      bitmapEnd.value = -1
+      bitmapGetOffset.value = 0
+    } else if (v === 'geo') {
+      // 先拿成员列表（zset 形态），再逐个 GEOPOS。空集合直接给空数组。
+      const r = await call('ZRANGE', [k.name, '0', '-1'])
+      const members = ((r.data as unknown[]) ?? []).map((x) => String(x))
+      const list: GeoEntry[] = []
+      // GEOPOS key m1 m2 ... — 单次调用即可拿到所有；驱动 args 支持变参
+      if (members.length) {
+        const gr = await call('GEOPOS', [k.name, ...members])
+        const arr = (gr.data as unknown[]) ?? []
+        for (let i = 0; i < members.length; i++) {
+          const pos = arr[i] as unknown
+          if (Array.isArray(pos) && pos.length >= 2) {
+            const lng = Number(pos[0])
+            const lat = Number(pos[1])
+            list.push({
+              member: members[i],
+              lng: Number.isFinite(lng) ? lng : null,
+              lat: Number.isFinite(lat) ? lat : null,
+            })
+          } else {
+            // GEOPOS 对不存在 / 非 geo 成员会返回 nil
+            list.push({ member: members[i], lng: null, lat: null })
+          }
+        }
+      }
+      valueState.value.geo = list
+    }
+  } catch (e) {
+    valueState.value.error = e instanceof Error ? e.message : String(e)
+  } finally {
+    valueState.value.loading = false
+  }
+}
+
+/**
+ * Bitmap：BITCOUNT key start end — 给定 byte 偏移区间统计 1-bit 数。
+ * Redis 默认按 BYTE 计；负数从末尾算（-1 = 最后一字节）。
+ */
+async function runBitmapRange(): Promise<void> {
+  const k = selected.value
+  if (!k || !valueState.value?.bitmap) return
+  bitmapBusy.value = true
+  try {
+    const s = Math.trunc(bitmapStart.value)
+    const e = Math.trunc(bitmapEnd.value)
+    const r = await call('BITCOUNT', [k.name, String(s), String(e)])
+    const count = Number(r.data ?? 0)
+    valueState.value.bitmap.range = {
+      start: s,
+      end: e,
+      count: Number.isFinite(count) ? count : 0,
+    }
+  } catch (err) {
+    valueState.value.error = err instanceof Error ? err.message : String(err)
+  } finally {
+    bitmapBusy.value = false
+  }
+}
+
+/** Bitmap：GETBIT key offset — 单 bit 读取。 */
+async function runBitmapGetBit(): Promise<void> {
+  const k = selected.value
+  if (!k || !valueState.value?.bitmap) return
+  bitmapBusy.value = true
+  try {
+    const off = Math.max(0, Math.trunc(bitmapGetOffset.value))
+    const r = await call('GETBIT', [k.name, String(off)])
+    const bit = Number(r.data ?? 0) === 1 ? 1 : 0
+    valueState.value.bitmap.getBit = { offset: off, bit }
+  } catch (err) {
+    valueState.value.error = err instanceof Error ? err.message : String(err)
+  } finally {
+    bitmapBusy.value = false
   }
 }
 
@@ -250,6 +421,30 @@ const hashEntries = computed<[string, string][]>(() =>
 const arrayValues = computed<string[]>(() => valueState.value?.array ?? [])
 const zsetValues = computed<{ member: string; score: string }[]>(() => valueState.value?.zset ?? [])
 const stringValue = computed<string>(() => valueState.value?.text ?? '')
+const streamEntries = computed<StreamEntry[]>(() => valueState.value?.stream ?? [])
+const geoEntries = computed<GeoEntry[]>(() => valueState.value?.geo ?? [])
+const hllCount = computed<number | null>(() => valueState.value?.hll ?? null)
+const bitmapState = computed(() => valueState.value?.bitmap ?? null)
+
+/**
+ * 当前底层 TYPE 上能切换的额外视图：
+ *  - string → HLL / Bitmap
+ *  - zset   → Geo
+ *  - 其它   → 没有
+ */
+const extraViewOptions = computed<{ key: ExtraView; label: string }[]>(() => {
+  switch (selectedType.value) {
+    case 'string':
+      return [
+        { key: 'hll', label: 'HyperLogLog' },
+        { key: 'bitmap', label: 'Bitmap' },
+      ]
+    case 'zset':
+      return [{ key: 'geo', label: 'Geo' }]
+    default:
+      return []
+  }
+})
 
 // 切换 dbIndex / conn 时自动刷新
 watch(
@@ -343,36 +538,130 @@ watch(
           <div class="value-head">
             <span class="vh-name">{{ selected.name }}</span>
             <span class="vh-type" :style="{ color: typeTagColor(selectedType) }">{{ selectedType }}</span>
+            <span v-if="extraViewOptions.length" class="vh-extra">
+              <button
+                class="ev-btn"
+                :class="{ on: extraView === null }"
+                @click="setExtraView(null)"
+              >原始</button>
+              <button
+                v-for="opt in extraViewOptions"
+                :key="String(opt.key)"
+                class="ev-btn"
+                :class="{ on: extraView === opt.key }"
+                @click="setExtraView(opt.key)"
+              >{{ opt.label }}</button>
+            </span>
           </div>
           <div v-if="valueState.loading" class="empty">加载中…</div>
           <div v-else-if="valueState.error" class="err-banner">✗ {{ valueState.error }}</div>
           <template v-else>
-            <pre v-if="selectedType === 'string'" class="val-text">{{ stringValue }}</pre>
-            <table v-else-if="selectedType === 'hash'" class="grid">
-              <thead><tr><th>field</th><th>value</th></tr></thead>
-              <tbody>
-                <tr v-for="[kk, vv] in hashEntries" :key="kk">
-                  <td>{{ kk }}</td><td>{{ vv }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <table v-else-if="selectedType === 'list' || selectedType === 'set'" class="grid">
-              <thead><tr><th style="width: 60px">#</th><th>value</th></tr></thead>
-              <tbody>
-                <tr v-for="(v, i) in arrayValues" :key="i">
-                  <td>{{ i }}</td><td>{{ v }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <table v-else-if="selectedType === 'zset'" class="grid">
-              <thead><tr><th>member</th><th style="width: 100px">score</th></tr></thead>
-              <tbody>
-                <tr v-for="(p, i) in zsetValues" :key="i">
-                  <td>{{ p.member }}</td><td>{{ p.score }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="empty">类型「{{ selectedType }}」尚未支持可视化</div>
+            <!-- HLL / Bitmap / Geo：用户显式切换的视图优先 -->
+            <template v-if="extraView === 'hll'">
+              <div class="metric">
+                <div class="metric-label">PFCOUNT — 估算基数</div>
+                <div class="metric-val">{{ hllCount ?? '—' }}</div>
+                <div class="metric-hint">
+                  HyperLogLog 估算值，标准误差约 0.81%。键的底层 TYPE 仍是 string。
+                </div>
+              </div>
+            </template>
+            <template v-else-if="extraView === 'bitmap' && bitmapState">
+              <div class="metric">
+                <div class="metric-label">BITCOUNT — 总 1-bit 数</div>
+                <div class="metric-val">{{ bitmapState.total }}</div>
+              </div>
+              <div class="bm-section">
+                <div class="bm-title">区间统计 — BITCOUNT key start end</div>
+                <div class="bm-row">
+                  <label>start
+                    <input v-model.number="bitmapStart" type="number" />
+                  </label>
+                  <label>end
+                    <input v-model.number="bitmapEnd" type="number" />
+                  </label>
+                  <button class="btn" :disabled="bitmapBusy" @click="runBitmapRange">查询</button>
+                  <span v-if="bitmapState.range" class="bm-out">
+                    [{{ bitmapState.range.start }}..{{ bitmapState.range.end }}]
+                    = <b>{{ bitmapState.range.count }}</b>
+                  </span>
+                </div>
+                <div class="bm-hint">单位默认是 BYTE，负数从末尾算（-1 = 最后一字节）。</div>
+              </div>
+              <div class="bm-section">
+                <div class="bm-title">单 bit 查询 — GETBIT key offset</div>
+                <div class="bm-row">
+                  <label>offset
+                    <input v-model.number="bitmapGetOffset" type="number" min="0" />
+                  </label>
+                  <button class="btn" :disabled="bitmapBusy" @click="runBitmapGetBit">查询</button>
+                  <span v-if="bitmapState.getBit" class="bm-out">
+                    offset={{ bitmapState.getBit.offset }}
+                    → bit=<b>{{ bitmapState.getBit.bit }}</b>
+                  </span>
+                </div>
+              </div>
+            </template>
+            <template v-else-if="extraView === 'geo'">
+              <table class="grid">
+                <thead><tr><th>member</th><th style="width: 140px">latitude</th><th style="width: 140px">longitude</th></tr></thead>
+                <tbody>
+                  <tr v-for="(g, i) in geoEntries" :key="i">
+                    <td>{{ g.member }}</td>
+                    <td>{{ g.lat == null ? '—' : g.lat }}</td>
+                    <td>{{ g.lng == null ? '—' : g.lng }}</td>
+                  </tr>
+                  <tr v-if="!geoEntries.length"><td colspan="3" class="empty-row">无成员</td></tr>
+                </tbody>
+              </table>
+            </template>
+            <!-- 默认按 TYPE 走 -->
+            <template v-else>
+              <pre v-if="selectedType === 'string'" class="val-text">{{ stringValue }}</pre>
+              <table v-else-if="selectedType === 'hash'" class="grid">
+                <thead><tr><th>field</th><th>value</th></tr></thead>
+                <tbody>
+                  <tr v-for="[kk, vv] in hashEntries" :key="kk">
+                    <td>{{ kk }}</td><td>{{ vv }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <table v-else-if="selectedType === 'list' || selectedType === 'set'" class="grid">
+                <thead><tr><th style="width: 60px">#</th><th>value</th></tr></thead>
+                <tbody>
+                  <tr v-for="(v, i) in arrayValues" :key="i">
+                    <td>{{ i }}</td><td>{{ v }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <table v-else-if="selectedType === 'zset'" class="grid">
+                <thead><tr><th>member</th><th style="width: 100px">score</th></tr></thead>
+                <tbody>
+                  <tr v-for="(p, i) in zsetValues" :key="i">
+                    <td>{{ p.member }}</td><td>{{ p.score }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <table v-else-if="selectedType === 'stream'" class="grid stream-grid">
+                <thead><tr><th style="width: 200px">id</th><th>fields</th></tr></thead>
+                <tbody>
+                  <tr v-for="(e, i) in streamEntries" :key="i">
+                    <td class="mono">{{ e.id }}</td>
+                    <td>
+                      <span v-for="([fk, fv], j) in e.fields" :key="j" class="stream-pair">
+                        <span class="sp-key">{{ fk }}</span>
+                        <span class="sp-eq">=</span>
+                        <span class="sp-val">{{ fv }}</span>
+                      </span>
+                    </td>
+                  </tr>
+                  <tr v-if="!streamEntries.length">
+                    <td colspan="2" class="empty-row">空 stream</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="empty">类型「{{ selectedType }}」尚未支持可视化</div>
+            </template>
           </template>
         </template>
       </div>
@@ -630,5 +919,131 @@ watch(
 }
 .grid tr:hover td {
   background: rgba(124, 108, 255, 0.08);
+}
+.empty-row {
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+}
+.vh-extra {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
+.ev-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+}
+.ev-btn:hover {
+  background: rgba(124, 108, 255, 0.14);
+}
+.ev-btn.on {
+  background: rgba(124, 108, 255, 0.22);
+  color: var(--text);
+  border-color: var(--accent);
+}
+.metric {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.metric-val {
+  margin-top: 4px;
+  font-size: 22px;
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+  font-weight: 600;
+}
+.metric-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.bm-section {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.bm-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-family: ui-monospace, monospace;
+}
+.bm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bm-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.bm-row input[type='number'] {
+  width: 90px;
+  padding: 3px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+.bm-out {
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  color: var(--text);
+}
+.bm-out b {
+  color: var(--accent);
+}
+.bm-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.stream-grid .mono {
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.stream-pair {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 10px;
+  padding: 1px 6px;
+  background: rgba(124, 108, 255, 0.10);
+  border-radius: 3px;
+  font-size: 11px;
+}
+.sp-key {
+  color: var(--muted);
+}
+.sp-eq {
+  margin: 0 3px;
+  color: var(--muted);
+}
+.sp-val {
+  color: var(--text);
 }
 </style>
