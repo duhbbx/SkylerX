@@ -59,6 +59,20 @@ export interface ForeignKeyDef {
   refColumns: string
   onDelete: string
   onUpdate: string
+  /** PG：MATCH FULL/PARTIAL/SIMPLE */
+  match?: string
+  /** PG：可延迟约束 DEFERRABLE INITIALLY DEFERRED */
+  deferrable?: boolean
+}
+
+/** 外键尾缀：MATCH / ON DELETE / ON UPDATE / DEFERRABLE（MATCH·DEFERRABLE 仅 PG）。 */
+function fkSuffix(fk: ForeignKeyDef, fam: Family): string {
+  let s = ''
+  if (fam === 'pg' && fk.match?.trim()) s += ` MATCH ${fk.match.trim()}`
+  if (fk.onDelete) s += ` ON DELETE ${fk.onDelete}`
+  if (fk.onUpdate) s += ` ON UPDATE ${fk.onUpdate}`
+  if (fam === 'pg' && fk.deferrable) s += ' DEFERRABLE INITIALLY DEFERRED'
+  return s
 }
 export interface UniqueDef {
   name: string
@@ -588,9 +602,7 @@ export function buildCreateTable(
     const lc = splitCols(fk.columns)
     const rc = splitCols(fk.refColumns)
     if (!lc.length || !fk.refTable.trim() || !rc.length) continue
-    let s = `  ${fk.name.trim() ? `CONSTRAINT ${q(fk.name.trim())} ` : ''}FOREIGN KEY (${lc.map(q).join(', ')}) REFERENCES ${q(fk.refTable.trim())} (${rc.map(q).join(', ')})`
-    if (fk.onDelete) s += ` ON DELETE ${fk.onDelete}`
-    if (fk.onUpdate) s += ` ON UPDATE ${fk.onUpdate}`
+    const s = `  ${fk.name.trim() ? `CONSTRAINT ${q(fk.name.trim())} ` : ''}FOREIGN KEY (${lc.map(q).join(', ')}) REFERENCES ${q(fk.refTable.trim())} (${rc.map(q).join(', ')})${fkSuffix(fk, fam)}`
     lines.push(s)
   }
   // MySQL 索引可内联
@@ -741,9 +753,7 @@ export function buildAlterTable(
     if (!lc.length || !fk.refTable.trim() || !rc.length) continue
     const o = fk.name.trim() ? origFkByName.get(fk.name.trim()) : undefined
     if (o && fkSig(o) === fkSig(fk)) continue // 未变化，跳过
-    let s = `ALTER TABLE ${tableRef} ADD ${fk.name.trim() ? `CONSTRAINT ${q(fk.name.trim())} ` : ''}FOREIGN KEY (${lc.map(q).join(', ')}) REFERENCES ${q(fk.refTable.trim())} (${rc.map(q).join(', ')})`
-    if (fk.onDelete) s += ` ON DELETE ${fk.onDelete}`
-    if (fk.onUpdate) s += ` ON UPDATE ${fk.onUpdate}`
+    const s = `ALTER TABLE ${tableRef} ADD ${fk.name.trim() ? `CONSTRAINT ${q(fk.name.trim())} ` : ''}FOREIGN KEY (${lc.map(q).join(', ')}) REFERENCES ${q(fk.refTable.trim())} (${rc.map(q).join(', ')})${fkSuffix(fk, fam)}`
     stmts.push(s)
   }
 

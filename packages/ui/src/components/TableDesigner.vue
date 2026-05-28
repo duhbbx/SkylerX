@@ -373,9 +373,9 @@ function saveAs(): void {
 
       <!-- 外键 -->
       <div v-else-if="inner === 'fk'" class="sub">
-        <button class="ghost sm" @click="spec.foreignKeys.push({ name: '', columns: '', refTable: '', refColumns: '', onDelete: '', onUpdate: '' })">{{ t('designer.addFk') }}</button>
+        <button class="ghost sm" @click="spec.foreignKeys.push({ name: '', columns: '', refTable: '', refColumns: '', onDelete: '', onUpdate: '', match: '', deferrable: false })">{{ t('designer.addFk') }}</button>
         <table class="grid">
-          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.cols') }}</th><th>{{ t('designer.h.refTable') }}</th><th>{{ t('designer.h.refCols') }}</th><th>ON DELETE</th><th>ON UPDATE</th><th></th></tr></thead>
+          <thead><tr><th>{{ t('designer.h.name') }}</th><th>{{ t('designer.h.cols') }}</th><th>{{ t('designer.h.refTable') }}</th><th>{{ t('designer.h.refCols') }}</th><th>ON DELETE</th><th>ON UPDATE</th><th v-if="isPg">MATCH</th><th v-if="isPg">DEFER</th><th></th></tr></thead>
           <tbody>
             <tr v-for="(fk, i) in spec.foreignKeys" :key="i">
               <td><input v-model="fk.name" /></td>
@@ -394,6 +394,13 @@ function saveAs(): void {
                   <option>CASCADE</option><option>SET NULL</option><option>RESTRICT</option><option>NO ACTION</option>
                 </select>
               </td>
+              <td v-if="isPg">
+                <select v-model="fk.match">
+                  <option value="">—</option>
+                  <option>FULL</option><option>PARTIAL</option><option>SIMPLE</option>
+                </select>
+              </td>
+              <td v-if="isPg" class="c"><input v-model="fk.deferrable" type="checkbox" /></td>
               <td class="c"><button class="x" @click="spec.foreignKeys.splice(i, 1)">×</button></td>
             </tr>
           </tbody>
