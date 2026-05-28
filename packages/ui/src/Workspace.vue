@@ -21,6 +21,7 @@ import type { TreeNode } from './components/treeNode'
 import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { buildCreateFromColumns, buildDataDictMarkdown, buildTableDump } from './dump'
 import { type Favorite, favorites, removeFavorite, toggleFavorite } from './favorites'
+import { zoomIn, zoomOut, zoomReset } from './settings'
 import { buildMockInserts } from './mockgen'
 import {
   type ObjectKind,
@@ -650,6 +651,7 @@ const SHORTCUTS: { k: string; label: string }[] = [
   { k: '⌘/Ctrl + /', label: '注释 / Comment' },
   { k: '⌘/Ctrl + F / H', label: '查找 / 替换' },
   { k: 'F11', label: '全屏 / Full screen' },
+  { k: '⌘/Ctrl + + / − / 0', label: t('settings.zoom') },
 ]
 function toggleFullscreen(): void {
   if (document.fullscreenElement) void document.exitFullscreen()
@@ -764,6 +766,15 @@ function onKeydown(e: KeyboardEvent): void {
   } else if (e.key === 'F11') {
     e.preventDefault()
     toggleFullscreen()
+  } else if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+')) {
+    e.preventDefault()
+    zoomIn()
+  } else if ((e.metaKey || e.ctrlKey) && e.key === '-') {
+    e.preventDefault()
+    zoomOut()
+  } else if ((e.metaKey || e.ctrlKey) && e.key === '0') {
+    e.preventDefault()
+    zoomReset()
   }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))

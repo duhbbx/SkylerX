@@ -67,6 +67,8 @@ const DICT: Record<string, [string, string]> = {
   'settings.theme.light': ['浅色', 'Light'],
   'settings.pageSize': ['默认每页条数', 'Default rows per page'],
   'settings.fontSize': ['编辑器字号', 'Editor font size'],
+  'settings.zoom': ['界面缩放', 'UI zoom'],
+  'settings.zoomReset': ['重置', 'Reset'],
   'settings.keywordCase': ['SQL 格式化关键字', 'SQL keyword case'],
   'settings.keywordCase.upper': ['大写 UPPER', 'UPPER'],
   'settings.keywordCase.lower': ['小写 lower', 'lower'],

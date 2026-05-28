@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
-import { resetSettings, settings } from '../settings'
+import { resetSettings, settings, zoomIn, zoomOut, zoomReset } from '../settings'
 import Modal from './Modal.vue'
 
 const emit = defineEmits<{ close: [] }>()
@@ -37,6 +37,14 @@ const LOCALES: Locale[] = ['zh', 'en']
         <span class="lbl">{{ t('settings.fontSize') }}</span>
         <input v-model.number="settings.fontSize" type="number" min="10" max="24" />
         <span class="unit">px</span>
+      </label>
+
+      <label class="row">
+        <span class="lbl">{{ t('settings.zoom') }}</span>
+        <button class="step" @click="zoomOut">−</button>
+        <span class="zoomval">{{ Math.round(settings.uiZoom * 100) }}%</span>
+        <button class="step" @click="zoomIn">+</button>
+        <button class="ghost reset-zoom" @click="zoomReset">{{ t('settings.zoomReset') }}</button>
       </label>
 
       <label class="row">
@@ -87,6 +95,28 @@ const LOCALES: Locale[] = ['zh', 'en']
 .unit {
   font-size: 12px;
   color: var(--muted);
+}
+.step {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.zoomval {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.reset-zoom {
+  margin-left: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
 }
 .actions {
   display: flex;

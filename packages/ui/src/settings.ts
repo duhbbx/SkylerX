@@ -9,10 +9,12 @@ export interface Settings {
   keywordCase: 'upper' | 'lower' | 'preserve'
   /** 主题 */
   theme: 'dark' | 'light'
+  /** 全局界面缩放（CSS zoom，1 = 100%） */
+  uiZoom: number
 }
 
 const KEY = 'skylerx.settings'
-const DEFAULTS: Settings = { pageSize: 200, fontSize: 13, keywordCase: 'upper', theme: 'dark' }
+const DEFAULTS: Settings = { pageSize: 200, fontSize: 13, keywordCase: 'upper', theme: 'dark', uiZoom: 1 }
 
 function load(): Settings {
   try {
@@ -44,6 +46,28 @@ function applyTheme(): void {
 }
 applyTheme()
 watch(() => settings.theme, applyTheme)
+
+// 全局缩放：CSS zoom 作用于根元素（Chromium/Electron 渲染层支持）
+const ZOOM_MIN = 0.6
+const ZOOM_MAX = 1.6
+function applyZoom(): void {
+  ;(document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom = String(settings.uiZoom)
+}
+applyZoom()
+watch(() => settings.uiZoom, applyZoom)
+
+function clampZoom(z: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
+}
+export function zoomIn(): void {
+  settings.uiZoom = clampZoom(settings.uiZoom + 0.1)
+}
+export function zoomOut(): void {
+  settings.uiZoom = clampZoom(settings.uiZoom - 0.1)
+}
+export function zoomReset(): void {
+  settings.uiZoom = 1
+}
 
 export function resetSettings(): void {
   Object.assign(settings, DEFAULTS)
