@@ -51,6 +51,17 @@ const api = {
     ): Promise<{ name: string; content: string } | null> =>
       ipcRenderer.invoke('files:openText', filters),
   },
+  ai: {
+    /** 经主进程做 HTTP；避开渲染层 CORS（DeepSeek/OpenAI/Grok 直发会被预检卡） */
+    fetch: (req: {
+      url: string
+      method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+      headers?: Record<string, string>
+      body?: string
+      timeoutMs?: number
+    }): Promise<{ ok: boolean; status: number; body: string; error?: string }> =>
+      ipcRenderer.invoke('ai:fetch', req),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

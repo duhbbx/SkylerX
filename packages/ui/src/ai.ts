@@ -1,5 +1,65 @@
 import type { DbDialect } from '@db-tool/shared-types'
+import { locale } from './i18n'
 import { type AiProvider, settings } from './settings'
+
+/** 根据当前 UI 语言生成「请用对应语言回答」的提示，让 AI 回复跟着我们的 i18n 走。 */
+function langPrompt(): string {
+  return locale.value === 'zh'
+    ? 'Always respond in 简体中文. Code blocks (SQL/code) stay in their natural language.'
+    : 'Always respond in English. Code blocks (SQL/code) stay in their natural language.'
+}
+
+/**
+ * 经主进程 IPC 做 fetch（绕过浏览器 CORS）。桌面端 preload 暴露 window.api.ai.fetch；
+ * Web 端没有，fallback 到原生 fetch（Web 部署一般在自家域名下，由后端代理就够了）。
+ */
+interface AiBridge {
+  fetch(req: {
+    url: string
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+    headers?: Record<string, string>
+    body?: string
+    timeoutMs?: number
+  }): Promise<{ ok: boolean; status: number; body: string; error?: string }>
+}
+function aiBridge(): AiBridge | null {
+  const w = globalThis as { api?: { ai?: AiBridge } }
+  return w.api?.ai ?? null
+}
+
+interface BridgeResponse {
+  ok: boolean
+  status: number
+  body: string
+}
+
+/** 统一发请求：优先走 IPC（避 CORS）；否则原生 fetch。返回统一形如 Response 的对象（带 text() / json()）。 */
+async function aiHttp(
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
+): Promise<BridgeResponse & { text(): Promise<string>; json(): Promise<unknown> }> {
+  const bridge = aiBridge()
+  if (bridge) {
+    const r = await bridge.fetch({ url, method: init.method as 'POST', headers: init.headers, body: init.body })
+    if (r.error) throw new Error(r.error)
+    return {
+      ok: r.ok,
+      status: r.status,
+      body: r.body,
+      text: async () => r.body,
+      json: async () => JSON.parse(r.body),
+    }
+  }
+  const res = await fetch(url, init as RequestInit)
+  const body = await res.text()
+  return {
+    ok: res.ok,
+    status: res.status,
+    body,
+    text: async () => body,
+    json: async () => JSON.parse(body),
+  }
+}
 
 export type AiMode = 'nl2sql' | 'explain' | 'optimize' | 'diagnose'
 
@@ -47,9 +107,9 @@ function buildUserMessage(o: AskOptions): string {
   return parts.join('\n\n')
 }
 
-/** Anthropic Messages API（claude-*）。浏览器/Electron 渲染层直连需 dangerous-direct-browser-access。 */
+/** Anthropic Messages API（claude-*）。 */
 async function callAnthropic(o: AskOptions, key: string, base: string, model: string): Promise<string> {
-  const res = await fetch(`${base}/v1/messages`, {
+  const res = await aiHttp(`${base}/v1/messages`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -60,7 +120,7 @@ async function callAnthropic(o: AskOptions, key: string, base: string, model: st
     body: JSON.stringify({
       model,
       max_tokens: 1500,
-      system: SYSTEM[o.mode],
+      system: `${SYSTEM[o.mode]}\n${langPrompt()}`,
       messages: [{ role: 'user', content: buildUserMessage(o) }],
     }),
     signal: o.signal,
@@ -76,7 +136,7 @@ async function callAnthropic(o: AskOptions, key: string, base: string, model: st
 
 /** OpenAI 兼容的 chat/completions（OpenAI / DeepSeek / Codex / Grok / 其他兼容代理）。 */
 async function callOpenAiCompat(o: AskOptions, key: string, base: string, model: string): Promise<string> {
-  const res = await fetch(`${base}/v1/chat/completions`, {
+  const res = await aiHttp(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -86,7 +146,7 @@ async function callOpenAiCompat(o: AskOptions, key: string, base: string, model:
       model,
       max_tokens: 1500,
       messages: [
-        { role: 'system', content: SYSTEM[o.mode] },
+        { role: 'system', content: `${SYSTEM[o.mode]}\n${langPrompt()}` },
         { role: 'user', content: buildUserMessage(o) },
       ],
     }),
@@ -97,7 +157,7 @@ async function callOpenAiCompat(o: AskOptions, key: string, base: string, model:
   return (data.choices?.[0]?.message?.content ?? '').trim()
 }
 
-async function throwIfNotOk(res: Response): Promise<void> {
+async function throwIfNotOk(res: BridgeResponse & { json(): Promise<unknown> }): Promise<void> {
   if (res.ok) return
   let detail = ''
   try {
@@ -126,6 +186,93 @@ export async function askAi(o: AskOptions): Promise<string> {
 
 /** 旧导出名兼容（早期组件 import askClaude）。 */
 export const askClaude = askAi
+
+// ── 多轮对话（chat panel 用）────────────────────────────────────────────
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatOptions {
+  messages: ChatMessage[]
+  /** 数据库方言（拼进 system prompt） */
+  dialect?: DbDialect
+  /** 库结构上下文（用户可开关） */
+  schema?: string
+  /** 用户额外的系统提示词（追加在内置系统提示词之后） */
+  extraSystem?: string
+  signal?: AbortSignal
+}
+
+const CHAT_SYSTEM =
+  'You are SkylerX, an expert SQL assistant embedded inside a database management tool. ' +
+  'You can read provided schema context, write SQL for the given dialect, explain queries, ' +
+  'suggest optimizations, and diagnose errors. When you output SQL, wrap it in ```sql code fences ' +
+  'so the UI can offer one-click insert/run buttons. Be concise.'
+
+function buildSystem(o: ChatOptions): string {
+  const parts = [CHAT_SYSTEM, langPrompt()]
+  if (o.dialect) parts.push(`SQL dialect: ${o.dialect}`)
+  if (o.schema) parts.push(`Database schema (read-only context):\n${o.schema}`)
+  if (o.extraSystem) parts.push(o.extraSystem)
+  return parts.join('\n\n')
+}
+
+export async function askAiChat(o: ChatOptions): Promise<string> {
+  const provider = settings.aiProvider
+  const cfg = settings.aiProviders[provider]
+  if (!cfg?.apiKey?.trim()) throw new Error('NO_API_KEY')
+  const base = (cfg.baseUrl || '').replace(/\/$/, '')
+  if (!base) throw new Error('NO_BASE_URL')
+  const model = cfg.model || 'default'
+  const system = buildSystem(o)
+  if (provider === 'anthropic') {
+    const res = await aiHttp(`${base}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': cfg.apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model, max_tokens: 2000, system, messages: o.messages }),
+      signal: o.signal,
+    })
+    await throwIfNotOk(res)
+    const data = (await res.json()) as { content?: { type: string; text?: string }[] }
+    return (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('').trim()
+  }
+  // OpenAI 兼容
+  const res = await aiHttp(`${base}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${cfg.apiKey.trim()}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2000,
+      messages: [{ role: 'system', content: system }, ...o.messages],
+    }),
+    signal: o.signal,
+  })
+  await throwIfNotOk(res)
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+  return (data.choices?.[0]?.message?.content ?? '').trim()
+}
+
+/** 把 markdown 形式回复里所有 ```sql code block 抽出来。 */
+export function extractAllSql(text: string): string[] {
+  const out: string[] = []
+  const re = /```(?:sql)?\s*([\s\S]*?)```/gi
+  for (;;) {
+    const m = re.exec(text)
+    if (!m) break
+    const s = m[1].trim()
+    if (s) out.push(s)
+  }
+  return out
+}
 
 /** 从模型回复中提取首个 ```sql 代码块（无则返回整段去除围栏）。 */
 export function extractSql(text: string): string {

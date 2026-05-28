@@ -1,27 +1,39 @@
 /*
- * 替代 `monaco-editor/esm/vs/nls.js` 的 shim（通过 Vite resolve.alias 注入）。
+ * 替代 `monaco-editor/esm/vs/nls.js` 的 shim（通过 Vite 自定义插件 resolveId 注入）。
  *
- * 背景：Monaco 0.52 的 ESM 源码里所有内置菜单都是 `localize('keyStr', 'Fallback')` 字符串 key 形态，
- * 它原版 nls.js 的 localize 只对 *数字* key 走 `_VSCODE_NLS_MESSAGES` 查表，字符串 key 直接返回英文 fallback。
- * 我们在运行时 monkey-patch 这个导出失败（ESM 导出是不可重新定义的 getter，Object.defineProperty 抛
- * "Cannot redefine property: localize"）。
+ *   - 数字 idx → 走 _VSCODE_NLS_MESSAGES 查表；
+ *   - 字符串 key / { key, comment } 对象 key → 用「英文 fallback → 中文」字典查；
+ *   - 其它情况 → 原样英文 fallback。
  *
- * 这里改成在 *resolver 层* 取代它：当 Monaco 内部 `import { localize } from '../nls.js'` 时拿到的就是
- * 我们的 shim。shim：
- *   - 数字 key → 走 _VSCODE_NLS_MESSAGES 查表（仍兼容数字索引形态）；
- *   - 字符串 key + 当前语言 zh-cn → 在 fallback→中文 字典里查；
- *   - 否则 → 原样返回英文 fallback。
+ * 重要：shim 自己负责把翻译数组与语言标签塞进 `globalThis`（如果还没设的话），
+ * 这样在 Monaco Worker 等独立 globalThis 上下文中（bootstrap 模块没在那里执行过）
+ * 仍能正确工作。
  */
 // monaco-editor 内部模块，未在 package exports 暴露类型；运行时是 ESM 文件存在的。
 // @ts-expect-error monaco-editor internal subpath
 import { getNLSLanguage, getNLSMessages } from 'monaco-editor/esm/vs/nls.messages.js'
+import { ZH_CN_MESSAGES } from './monaco-nls-zh-cn'
 import { ZH_CN_FALLBACK_MAP } from './monaco-nls-zh-cn-fallback-map'
 
 export { getNLSLanguage, getNLSMessages }
 
-if (typeof console !== 'undefined') {
-  // biome-ignore lint/suspicious/noConsole: 启动诊断 —— 验证 alias 真的把 nls.js 换成了我们的 shim
-  console.log('[skylerx monaco-nls-shim] loaded; lang =', getNLSLanguage(), 'msgs =', getNLSMessages()?.length ?? 0)
+interface NlsGlobal {
+  _VSCODE_NLS_MESSAGES?: (string | null)[]
+  _VSCODE_NLS_LANGUAGE?: string
+  _SKYLERX_NLS_DISABLED?: boolean
+}
+const G = globalThis as unknown as NlsGlobal
+
+// 在任何上下文（主线程 / worker）里：如果当前还没装 NLS 翻译，shim 自己装上。
+// 主线程的 bootstrap 模块也会装，重复装也是同样的值，无害。
+if (!G._VSCODE_NLS_MESSAGES) {
+  G._VSCODE_NLS_MESSAGES = ZH_CN_MESSAGES
+  G._VSCODE_NLS_LANGUAGE = 'zh-cn'
+}
+
+// 用户在 i18n.setLocale('en') 后会把 _SKYLERX_NLS_DISABLED 置 true，shim 据此让所有字符串 key 走英文 fallback。
+function fallbackMapEnabled(): boolean {
+  return G._SKYLERX_NLS_DISABLED !== true
 }
 
 function format(message: string, args: unknown[]): string {
@@ -42,13 +54,24 @@ function lookupByIndex(idx: number, fallback: string): string {
 }
 
 function lookupByFallback(fallback: string): string | undefined {
-  if (getNLSLanguage() !== 'zh-cn') return undefined
+  if (!fallbackMapEnabled()) return undefined
   return ZH_CN_FALLBACK_MAP[fallback]
+}
+
+// 调试：所有 localize 调用全打印（不截断）；对 Cut/Copy/Paste 等高亮关键 key 单独 warn
+function _dlog(data: unknown, message: string, zh: string | undefined): void {
+  if (typeof console === 'undefined') return
+  const critical = /^(Cut|Copy|Paste|Change All Occurrences|Command Palette|Open Command Palette|Find|Replace)$/.test(message)
+  if (critical) {
+    // biome-ignore lint/suspicious/noConsole: 启动诊断
+    console.warn(`[shim.localize CRITICAL] msg=${JSON.stringify(message)} lang=${getNLSLanguage()} zh=${JSON.stringify(zh)} data=${JSON.stringify(data)}`)
+  }
 }
 
 export function localize(data: unknown, message: string, ...args: unknown[]): string {
   if (typeof data === 'number') return format(lookupByIndex(data, message), args)
   const zh = lookupByFallback(message)
+  _dlog(data, message, zh)
   return format(zh ?? message, args)
 }
 
@@ -61,4 +84,14 @@ export function localize2(
     typeof data === 'number' ? lookupByIndex(data, message) : (lookupByFallback(message) ?? message)
   const value = format(resolved, args)
   return { value, original: resolved === message ? value : format(message, args) }
+}
+
+if (typeof console !== 'undefined') {
+  // biome-ignore lint/suspicious/noConsole: 启动诊断 —— 验证 alias 真的把 nls.js 换成了我们的 shim
+  console.warn(
+    '[skylerx monaco-nls-shim] LOADED · lang =',
+    getNLSLanguage(),
+    '· msgCount =',
+    getNLSMessages()?.length ?? 0,
+  )
 }

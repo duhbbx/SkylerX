@@ -4,6 +4,11 @@ import { t } from '../i18n'
 
 type Width = 'normal' | 'medium' | 'wide' | 'xl'
 
+// 全局自增 z-index：每次新 Modal 挂载时拿一个比之前都高的层级，
+// 这样后打开的 modal 自动盖在前面的之上（比如从 AI 助手里打开「配置」时不被反盖）。
+const modalZBase = 2000
+let modalZSeq = 0
+
 const props = defineProps<{
   title?: string
   /** 'normal' 600 / 'medium' 720 / 'wide' 880 / 'xl' 1100；缺省 = normal */
@@ -45,6 +50,7 @@ function onKey(e: KeyboardEvent): void {
 
 const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
 const modalEl = ref<HTMLDivElement>()
+const myZ = ref(modalZBase + ++modalZSeq)
 
 /** 持久化的尺寸（仅 fixedHeight + storageKey 时启用）。 */
 function loadSize(): { width?: number; height?: number } {
@@ -104,7 +110,7 @@ onBeforeUnmount(() => {
     关闭路径仅剩三条：① 标题栏 ✕ 按钮、② Esc 键、③ 调用方主动设为 null。
     每条都会走 beforeClose 钩子，脏表单可以拦截。
   -->
-  <div class="modal-backdrop">
+  <div class="modal-backdrop" :style="{ zIndex: myZ }">
     <div ref="modalEl" class="modal" :class="[widthClass, { fixed: fixedHeight }]">
       <div class="modal-head">
         <span>{{ title }}</span>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useDataClient } from './data-client'
 import { t } from './i18n'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
@@ -14,6 +14,7 @@ import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import AiAssistantDialog from './components/AiAssistantDialog.vue'
+import AiChatPanel from './components/AiChatPanel.vue'
 import type { AiMode } from './ai'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
@@ -854,6 +855,28 @@ const opLogOpen = ref(false)
 const monitorOpen = ref(false)
 const aiState = ref<{ mode: AiMode; sql?: string; connId?: string; error?: string } | null>(null)
 const aboutOpen = ref(false)
+// 右侧 AI 聊天侧边栏（持久化开关）
+const aiChatOpen = ref(localStorage.getItem('skylerx.aiChat.open') === '1')
+watch(aiChatOpen, (v) => {
+  try {
+    localStorage.setItem('skylerx.aiChat.open', v ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+})
+// 当前活跃 query tab 的连接 id（给侧边栏选默认连接用）
+const activeChatConnId = computed(() => {
+  const cur = (tabsRef.value as { active?: { conn: { id: string } } } | null)?.active?.conn?.id
+  return cur ?? ''
+})
+async function onAiChatInsert(sql: string, connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  tabsRef.value?.openDraft(conn, sql, t('aichat.draftTitle'))
+}
+async function onAiChatRun(sql: string, connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  tabsRef.value?.runSql(conn, sql)
+}
 const APP_VERSION = '0.1.0'
 const updateState = ref<{ checking: boolean; latest?: string; error?: string }>({ checking: false })
 async function checkForUpdate(): Promise<void> {
@@ -938,6 +961,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:oplog', label: t('pal.oplog'), group: t('pal.groupActions') },
   { id: 'act:monitor', label: t('pal.monitor'), group: t('pal.groupActions') },
   { id: 'act:ai', label: t('pal.ai'), group: t('pal.groupActions') },
+  { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
   { id: 'act:about', label: t('pal.about'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
   ...paletteConns.value.map((c) => ({
@@ -968,6 +992,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:oplog') opLogOpen.value = true
   else if (item.id === 'act:monitor') monitorOpen.value = true
   else if (item.id === 'act:ai') aiState.value = { mode: 'nl2sql' }
+  else if (item.id === 'act:ai-chat') aiChatOpen.value = !aiChatOpen.value
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
@@ -1012,6 +1037,10 @@ function onKeydown(e: KeyboardEvent): void {
     // ⌘/Ctrl+Shift+O：全局对象搜索
     e.preventDefault()
     objectSearchOpen.value = true
+  } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+    // ⌘/Ctrl+Shift+L：开/关右侧 AI 聊天侧边栏
+    e.preventDefault()
+    aiChatOpen.value = !aiChatOpen.value
   } else if (e.key === 'F11') {
     e.preventDefault()
     toggleFullscreen()
@@ -1074,6 +1103,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   <main class="main">
     <QueryTabs ref="tabsRef" @conn-error="onConnError" @refresh="onTreeRefresh" @ai="onAiFromPane" />
   </main>
+
+  <!-- 右侧 AI 聊天侧边栏（类 Cursor）；点 ⌘K → AI 聊天 或 ⌘⇧A 唤起 -->
+  <AiChatPanel
+    v-if="aiChatOpen"
+    :active-conn-id="activeChatConnId"
+    @close="aiChatOpen = false"
+    @insert-sql="onAiChatInsert"
+    @run-sql="onAiChatRun"
+  />
 
   <Modal
     v-if="editing"

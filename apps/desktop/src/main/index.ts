@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow, app, shell } from 'electron'
 import { closeDb } from './db/sqlite.js'
+import { registerAiIpc } from './ipc/ai.js'
 import { registerConnectionIpc } from './ipc/connections.js'
 import { registerFileIpc } from './ipc/files.js'
 import { setupMenu } from './menu.js'
@@ -53,6 +54,7 @@ app.whenReady().then(() => {
   setupMenu()
   registerConnectionIpc()
   registerFileIpc()
+  registerAiIpc()
   createWindow()
   setupAutoUpdate()
 

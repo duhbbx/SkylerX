@@ -95,6 +95,13 @@ const DICT: Record<string, [string, string]> = {
   'settings.cat.watermark': ['生产水印', 'Production watermark'],
   'settings.cat.ai': ['AI 助手', 'AI Assistant'],
   'settings.ai.active': ['激活的 Provider', 'Active provider'],
+  'settings.ai.tabsHint': [
+    '点击 provider 标签 = 同时切换为「当前激活」并编辑该 provider 的配置。',
+    'Clicking a provider tab activates it and lets you edit its config.',
+  ],
+  'settings.ai.activeNote': ['{name} 已是当前激活的 provider', '{name} is the currently active provider'],
+  'settings.ai.notActive': ['你在编辑 {name} 的配置，但当前激活的不是它。', 'You are editing {name} but it is not the active provider.'],
+  'settings.ai.setActive': ['设为当前激活', 'Set as active'],
   'settings.watermark.note': [
     '为标记为「生产环境」的连接，在所有查询页平铺斜向水印（仅 UI，不影响 SQL）。',
     'For connections marked as production, tile a diagonal watermark across all query panes (UI-only).',
@@ -470,7 +477,7 @@ const DICT: Record<string, [string, string]> = {
   'ai.schemaUnsupported': ['库结构上下文仅支持 MySQL/PG 系连接', 'Schema context only supports MySQL/PG connections'],
   'ai.schemaEmpty': ['未拉取到库结构（请确认连接默认库已设置）', 'No schema fetched (check connection default database)'],
   'ai.tabTitle': ['AI 草稿', 'AI draft'],
-  'ai.foot': ['请求直发 Anthropic（或自定义 Base URL）；模型回答仅供参考，执行前请人工核查。', 'Requests go directly to Anthropic (or your custom Base URL); always review SQL before running.'],
+  'ai.foot': ['请求按「设置 → AI 助手」里激活的 provider 直发；模型回答仅供参考，执行前请人工核查。', 'Requests go directly to the active provider configured in Settings → AI Assistant; always review SQL before running.'],
 
   // ── 查询页 AI 按钮 ──
   'query.ai': ['AI', 'AI'],
@@ -856,7 +863,30 @@ const DICT: Record<string, [string, string]> = {
   'pal.oplog': ['操作日志', 'Operation log'],
   'pal.monitor': ['服务器监控', 'Server monitor'],
   'pal.ai': ['AI 助手', 'AI Assistant'],
+  'pal.aiChat': ['AI 聊天侧边栏（开/关）', 'AI chat sidebar (toggle)'],
   'pal.about': ['关于 SkylerX', 'About SkylerX'],
+
+  // ── 右侧 AI 聊天侧边栏 AiChatPanel ──
+  'aichat.title': ['AI 聊天', 'AI Chat'],
+  'aichat.connFor': ['关联的连接（决定生成 SQL 的方言 + 可拉取库结构）', 'Linked connection (decides SQL dialect + schema source)'],
+  'aichat.useSchema': ['附带库结构', 'Include schema'],
+  'aichat.useSchemaTitle': ['勾选后会把当前连接 information_schema 里的表/列汇总发给 AI 作为上下文（压缩后最多 6KB）', 'When checked, sends a compact list of tables/columns from the current connection as context (capped at ~6KB)'],
+  'aichat.clear': ['清空对话', 'Clear chat'],
+  'aichat.clearConfirm': ['确定清空当前对话历史吗？', 'Clear the chat history?'],
+  'aichat.welcomeTitle': ['你的 SQL 副驾', 'Your SQL copilot'],
+  'aichat.welcomeTip': [
+    '可以问我：「最近 7 天新增用户怎么查」「这条 SQL 为啥慢」「帮我加个索引」…\n勾上「附带库结构」我就知道你的表名和字段了。',
+    'Ask me: "how to find users created in the last 7 days", "why is this SQL slow", "add an index for me"…\nCheck "Include schema" so I can see your tables and columns.',
+  ],
+  'aichat.inputPh': ['问点什么…（Enter 发送，Shift+Enter 换行）', 'Ask anything… (Enter to send, Shift+Enter for newline)'],
+  'aichat.send': ['发送', 'Send'],
+  'aichat.stop': ['停止', 'Stop'],
+  'aichat.thinking': ['思考中…', 'Thinking…'],
+  'aichat.insertDraft': ['插入查询页', 'Insert as draft'],
+  'aichat.run': ['运行', 'Run'],
+  'aichat.runConfirm': ['确定在所选连接上执行这条 SQL 吗？', 'Run this SQL on the selected connection?'],
+  'aichat.lastSqlHint': ['本轮有 {n} 段 SQL 可一键操作', '{n} SQL block(s) ready for one-click action'],
+  'aichat.draftTitle': ['AI 草稿', 'AI draft'],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
   'ws.favoritesEmpty': ['暂无收藏。右键表/视图 →「收藏 / 取消收藏」。', 'No favorites yet. Right-click a table/view → "Favorite / Unfavorite".'],

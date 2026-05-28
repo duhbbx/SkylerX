@@ -19,17 +19,21 @@ import { ZH_CN_MESSAGES } from './vendor/monaco-nls-zh-cn'
 interface NlsGlobal {
   _VSCODE_NLS_MESSAGES?: (string | null)[]
   _VSCODE_NLS_LANGUAGE?: string
+  /** shim 检查的"显式英文模式"标记：true 时所有字符串 key 走英文 fallback。 */
+  _SKYLERX_NLS_DISABLED?: boolean
 }
 const G = globalThis as unknown as NlsGlobal
 
 function loadZhCn(): void {
   G._VSCODE_NLS_MESSAGES = ZH_CN_MESSAGES
   G._VSCODE_NLS_LANGUAGE = 'zh-cn'
+  G._SKYLERX_NLS_DISABLED = false
 }
 
 function clearLocale(): void {
   G._VSCODE_NLS_MESSAGES = undefined
   G._VSCODE_NLS_LANGUAGE = 'en'
+  G._SKYLERX_NLS_DISABLED = true
 }
 
 /** 按 i18n 当前语言切换 Monaco NLS 状态（shim 通过 getNLSLanguage() 判断是否走中文 fallback）。 */

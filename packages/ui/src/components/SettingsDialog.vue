@@ -21,6 +21,11 @@ const active = ref<SectionId>(props.initialSection ?? 'general')
 const PAGE_SIZES = [50, 100, 200, 500, 1000]
 const LOCALES: Locale[] = ['zh', 'en']
 const aiTab = ref<AiProvider>(settings.aiProvider)
+// 点 tab 同时设为「正在编辑」与「当前激活」—— 避免用户切了 tab 以为已激活
+function onPickProvider(p: AiProvider): void {
+  aiTab.value = p
+  settings.aiProvider = p
+}
 
 // 水印实时预览（同 Watermark 组件使用的 SVG data URL 生成方式）
 function watermarkPreviewSvg(): string {
@@ -155,20 +160,17 @@ function watermarkPreviewSvg(): string {
         <!-- AI 助手（左侧分类的 AI 节点 → 右侧顶部 provider tabs + 表单） -->
         <template v-else-if="active === 'ai'">
           <h3>{{ t('settings.cat.ai') }}</h3>
-          <label class="row">
-            <span class="lbl">{{ t('settings.ai.active') }}</span>
-            <select v-model="settings.aiProvider">
-              <option v-for="p in AI_PROVIDER_ORDER" :key="p" :value="p">{{ AI_PROVIDER_LABEL[p] }}</option>
-            </select>
-          </label>
+          <p class="note">{{ t('settings.ai.tabsHint') }}</p>
 
+          <!-- 点击 provider tab = 既切换为编辑视图，也设为当前激活 provider；
+               避免「选了 tab 没激活」的歧义。当前激活的有粗描边 + ● 标记。 -->
           <div class="ai-tabs">
             <button
               v-for="p in AI_PROVIDER_ORDER"
               :key="p"
               class="ai-tab"
               :class="{ on: aiTab === p, active: settings.aiProvider === p }"
-              @click="aiTab = p"
+              @click="onPickProvider(p)"
             >
               <span v-if="settings.aiProvider === p" class="dot">●</span>
               {{ AI_PROVIDER_LABEL[p] }}
@@ -176,6 +178,15 @@ function watermarkPreviewSvg(): string {
           </div>
 
           <div class="ai-form">
+            <div class="active-banner" :class="{ ok: settings.aiProvider === aiTab }">
+              <template v-if="settings.aiProvider === aiTab">
+                ✓ {{ t('settings.ai.activeNote', { name: AI_PROVIDER_LABEL[aiTab] }) }}
+              </template>
+              <template v-else>
+                <span>{{ t('settings.ai.notActive', { name: AI_PROVIDER_LABEL[aiTab] }) }}</span>
+                <button class="link" @click="settings.aiProvider = aiTab">{{ t('settings.ai.setActive') }}</button>
+              </template>
+            </div>
             <label class="row">
               <span class="lbl">API Key</span>
               <input v-model="settings.aiProviders[aiTab].apiKey" type="password" class="grow" :placeholder="t('settings.aiApiKeyPh')" />
@@ -349,6 +360,23 @@ function watermarkPreviewSvg(): string {
   flex-direction: column;
   gap: 10px;
   padding: 10px 2px;
+}
+.active-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(124, 108, 255, 0.10);
+  color: var(--muted);
+}
+.active-banner.ok {
+  background: rgba(76, 175, 80, 0.14);
+  color: var(--text);
+}
+.active-banner .link {
+  margin-left: auto;
 }
 .note {
   margin: 0;

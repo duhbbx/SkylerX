@@ -141,7 +141,7 @@ onUnmounted(() => controller?.abort())
 </script>
 
 <template>
-  <Modal :title="t('ai.title')" @close="emit('close')">
+  <Modal :title="t('ai.title')" width="wide" fixed-height storage-key="ai-assistant" @close="emit('close')">
     <div class="ai">
       <div class="modes">
         <button
@@ -204,8 +204,8 @@ onUnmounted(() => controller?.abort())
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 640px;
-  max-width: 88vw;
+  height: 100%;
+  min-height: 0;
 }
 .modes {
   display: flex;
@@ -297,11 +297,16 @@ onUnmounted(() => controller?.abort())
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .answer pre {
   margin: 0;
   padding: 12px;
-  max-height: 320px;
+  flex: 1 1 auto;
+  min-height: 120px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
