@@ -299,6 +299,12 @@ const DICT: Record<string, [string, string]> = {
     'Tablespace / storage parameters (dialect-specific, no UI yet).',
   ],
   'designer.commentPh': ['表注释', 'Table comment'],
+  'designer.fieldProps': ['字段属性：{name}', 'Field properties: {name}'],
+  'designer.unsigned': ['无符号 UNSIGNED', 'UNSIGNED'],
+  'designer.autoInc': ['自增 AUTO_INCREMENT', 'AUTO_INCREMENT'],
+  'designer.onUpdateNow': ['ON UPDATE CURRENT_TIMESTAMP', 'ON UPDATE CURRENT_TIMESTAMP'],
+  'designer.generated': ['生成列表达式', 'Generated expression'],
+  'designer.generatedPh': ['如 price * qty（留空=普通列）', 'e.g. price * qty (empty = normal column)'],
 
   // ── 通用补充 ──
   'common.close': ['关闭', 'Close'],

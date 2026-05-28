@@ -62,6 +62,7 @@ const INNER = [
 ] as const
 const inner = ref<(typeof INNER)[number]>('fields')
 const selected = ref(0)
+const selCol = computed(() => spec.columns[selected.value])
 
 const busy = ref(false)
 const error = ref<string | null>(null)
@@ -332,6 +333,15 @@ function saveAs(): void {
           </tr>
         </tbody>
       </table>
+      <div v-if="inner === 'fields' && selCol" class="field-props">
+        <div class="fp-title">{{ t('designer.fieldProps', { name: selCol.name || '—' }) }}</div>
+        <label v-if="isMysql" class="fp"><input v-model="selCol.unsigned" type="checkbox" /> {{ t('designer.unsigned') }}</label>
+        <label v-if="isMysql" class="fp"><input v-model="selCol.autoIncrement" type="checkbox" /> {{ t('designer.autoInc') }}</label>
+        <label v-if="isMysql" class="fp"><input v-model="selCol.onUpdateNow" type="checkbox" /> {{ t('designer.onUpdateNow') }}</label>
+        <label class="fp fp-gen">{{ t('designer.generated') }}
+          <input v-model="selCol.generated" :placeholder="t('designer.generatedPh')" />
+        </label>
+      </div>
 
       <!-- 索引 -->
       <div v-else-if="inner === 'indexes'" class="sub">
@@ -627,6 +637,39 @@ function saveAs(): void {
   color: var(--muted);
   font-size: 13px;
   padding: 10px 4px;
+}
+.field-props {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 8px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.field-props .fp-title {
+  width: 100%;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.field-props .fp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+}
+.field-props .fp-gen {
+  flex: 1;
+  min-width: 240px;
+}
+.field-props .fp-gen input {
+  flex: 1;
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
 }
 .preview-wrap {
   height: 100%;

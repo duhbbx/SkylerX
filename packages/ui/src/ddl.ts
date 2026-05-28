@@ -12,6 +12,14 @@ export interface ColumnDef {
   primaryKey: boolean
   defaultValue: string
   comment: string
+  /** MySQL：无符号数值 */
+  unsigned?: boolean
+  /** MySQL：自增 */
+  autoIncrement?: boolean
+  /** MySQL：时间戳列 ON UPDATE CURRENT_TIMESTAMP */
+  onUpdateNow?: boolean
+  /** 生成列表达式（MySQL/PG：GENERATED ALWAYS AS (expr) STORED）；空=普通列 */
+  generated?: string
   /** 改表模式：该列加载时的原始名（用于识别改名/删除/修改）；新增列为 undefined */
   originalName?: string
 }
@@ -546,9 +554,18 @@ export function buildCreateTable(
 
   const cols = spec.columns.filter((c) => c.name.trim() && c.type.trim())
   const lines = cols.map((c) => {
+    // 生成列：GENERATED ALWAYS AS (expr) STORED（不带 NULL/DEFAULT）
+    if (c.generated?.trim()) {
+      let g = `  ${q(c.name)} ${colType(c)} GENERATED ALWAYS AS (${c.generated.trim()}) STORED`
+      if (c.comment.trim() && fam === 'mysql') g += ` COMMENT '${esc(c.comment.trim())}'`
+      return g
+    }
     let s = `  ${q(c.name)} ${colType(c)}`
+    if (fam === 'mysql' && c.unsigned) s += ' UNSIGNED'
     s += c.nullable ? ' NULL' : ' NOT NULL'
+    if (fam === 'mysql' && c.autoIncrement) s += ' AUTO_INCREMENT'
     if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
+    if (fam === 'mysql' && c.onUpdateNow) s += ' ON UPDATE CURRENT_TIMESTAMP'
     if (c.comment.trim() && fam === 'mysql') s += ` COMMENT '${esc(c.comment.trim())}'`
     return s
   })
