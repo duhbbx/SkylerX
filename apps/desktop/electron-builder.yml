@@ -63,26 +63,28 @@ linux:
         - arm64
   category: Development
   artifactName: ${productName}-${version}-${arch}.${ext}
-  # deb 兼容：Ubuntu 24.04 起部分包名加 t64 后缀（time_t 64-bit 迁移）；
-  # `pkg | pkg-t64` 写法表示「任一可满足」，覆盖 Ubuntu 20.04-24.04 + 麒麟 + 统信。
-  # libsecret 是 Electron safeStorage 必需（密码加密落盘）。
-  deb:
-    depends:
-      - libgtk-3-0 | libgtk-3-0t64
-      - libnotify4
-      - libnss3
-      - libxss1
-      - libxtst6
-      - libatspi2.0-0 | libatspi2.0-0t64
-      - libuuid1
-      - libsecret-1-0
-      - libappindicator3-1 | libayatana-appindicator3-1
-  rpm:
-    depends:
-      - libnotify
-      - libXScrnSaver
-      - libXtst
-      - libsecret
+
+# ── deb / rpm 必须放顶层（不能嵌在 linux: 下，electron-builder 25.x 会 ValidationError）──
+# deb 兼容：Ubuntu 24.04 起部分包名加 t64 后缀（time_t 64-bit 迁移）；
+# `pkg | pkg-t64` 写法表示「任一可满足」，覆盖 Ubuntu 20.04-24.04 + 麒麟 + 统信。
+# libsecret 是 Electron safeStorage 必需（密码加密落盘）。
+deb:
+  depends:
+    - libgtk-3-0 | libgtk-3-0t64
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - libatspi2.0-0 | libatspi2.0-0t64
+    - libuuid1
+    - libsecret-1-0
+    - libappindicator3-1 | libayatana-appindicator3-1
+rpm:
+  depends:
+    - libnotify
+    - libXScrnSaver
+    - libXtst
+    - libsecret
 
 nsis:
   oneClick: false
