@@ -244,6 +244,7 @@ watch(tabs, saveLayout, { deep: true })
             :initial-ctx="t.ctx"
             @conn-error="(id, msg) => emit('connError', id, msg)"
             @ai="(sql, cid, errMsg) => emit('ai', sql, cid, errMsg)"
+            @new-draft="(sql, title) => openDraft(t.conn, sql, title)"
           />
           <TableDesigner
             v-else-if="t.kind === 'table'"

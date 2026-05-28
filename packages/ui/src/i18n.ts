@@ -195,6 +195,8 @@ const DICT: Record<string, [string, string]> = {
   'grid.apply': ['应用', 'Apply'],
   'grid.setNull': ['设为 NULL', 'Set NULL'],
   'grid.setDefault': ['设为 DEFAULT', 'Set DEFAULT'],
+  'grid.fkJump': ['→ {tbl}', '→ {tbl}'],
+  'grid.fkJumpTitle': ['打开新查询页：{tbl}.{col} = 当前值', 'Open new query: {tbl}.{col} = current value'],
   'grid.copyAsSql': ['复制为 SQL', 'Copy as SQL'],
   'grid.prevRow': ['‹ 上一行', '‹ Prev row'],
   'grid.nextRow': ['下一行 ›', 'Next row ›'],
@@ -421,6 +423,7 @@ const DICT: Record<string, [string, string]> = {
   // ── 查询页 AI 按钮 ──
   'query.ai': ['AI', 'AI'],
   'query.ai.title': ['用 AI 解释 / 诊断 / 优化当前 SQL（有错误自动切到诊断）', 'Explain / diagnose / optimize current SQL with AI (diagnose mode if error present)'],
+  'query.fkTabTitle': ['→ {tbl} (FK)', '→ {tbl} (FK)'],
 
   // ── 结构对比 SchemaDiffDialog ──
   'sdiff.status.added': ['新增表', 'New table'],

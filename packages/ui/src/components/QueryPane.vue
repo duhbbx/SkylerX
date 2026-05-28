@@ -9,7 +9,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { isConnectionError } from '../connError'
 import { ENV_META, connEnv, connReadOnly, isReadOnlyStatement } from '../connEnv'
-import { type TableContext, explainSql } from '../ddl'
+import { type TableContext, existingForeignKeysQuery, explainSql, familyOf, quoteId } from '../ddl'
 import { t } from '../i18n'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import type { Suggestion } from '../monaco-setup'
@@ -55,7 +55,11 @@ const props = defineProps<{
   initialCtx?: TableContext
 }>()
 
-const emit = defineEmits<{ connError: [string, string]; ai: [string, string, string] }>()
+const emit = defineEmits<{
+  connError: [string, string]
+  ai: [string, string, string]
+  newDraft: [string, string]
+}>()
 
 const sql = ref('SELECT 1;')
 const editorRef = ref<InstanceType<typeof SqlEditor> | null>(null)
@@ -73,6 +77,62 @@ let runToken = 0 // 软取消令牌：停止后丢弃在途结果
 
 const cur = computed<ResultTab | undefined>(() => tabs.value[activeTab.value])
 const paginatable = PAGINATABLE.includes(props.conn.dialect)
+// 当前 editTable 的单列外键（{column, refTable, refColumn}），用于结果集「跳到关联行」
+const currentFks = ref<{ column: string; refTable: string; refColumn: string }[]>([])
+const fkCache = new Map<string, typeof currentFks.value>()
+
+function parseTableRef(ref: string): { schema?: string; table: string } {
+  const parts = ref.split('.').map((p) => p.replace(/^["`[]/, '').replace(/["`\]]$/, ''))
+  if (parts.length >= 2) return { schema: parts[parts.length - 2], table: parts[parts.length - 1] }
+  return { table: parts[0] }
+}
+async function loadFks(editTable: string): Promise<void> {
+  const cached = fkCache.get(editTable)
+  if (cached) { currentFks.value = cached; return }
+  currentFks.value = []
+  const fam = familyOf(props.conn.dialect)
+  if (fam !== 'mysql' && fam !== 'pg') return
+  const ref = parseTableRef(editTable)
+  const ctx: TableContext =
+    fam === 'mysql' ? { database: ref.schema ?? props.conn.database } : { schema: ref.schema ?? 'public' }
+  const sql = existingForeignKeysQuery(props.conn.dialect, ctx, ref.table)
+  if (!sql) return
+  try {
+    const res = await client.connections.execute(props.conn.id, sql, [], ctx)
+    const out: typeof currentFks.value = []
+    for (const r of res.rows as Record<string, unknown>[]) {
+      const cols = String(r.cols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+      const refcols = String(r.refcols ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+      const refTab = String(r.reftab ?? '')
+      if (cols.length === 1 && refcols.length === 1 && refTab) {
+        out.push({ column: cols[0], refTable: refTab, refColumn: refcols[0] })
+      }
+    }
+    fkCache.set(editTable, out)
+    currentFks.value = out
+  } catch {
+    /* 元数据查询失败：静默 */
+  }
+}
+watch(
+  () => cur.value?.editTable,
+  (v) => {
+    if (v) void loadFks(v)
+    else currentFks.value = []
+  },
+)
+
+function onFkNavigate(fk: { refTable: string; refColumn: string; value: unknown }): void {
+  const fam = familyOf(props.conn.dialect)
+  const tbl = quoteId(props.conn.dialect, fk.refTable)
+  const col = quoteId(props.conn.dialect, fk.refColumn)
+  const v = fk.value
+  const lit = v == null ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`
+  const where = v == null ? `${col} IS NULL` : `${col} = ${lit}`
+  const ctxSchema = fam === 'pg' ? 'public' : undefined
+  const full = `SELECT * FROM ${ctxSchema ? `${quoteId(props.conn.dialect, ctxSchema)}.${tbl}` : tbl} WHERE ${where} LIMIT 200`
+  emit('newDraft', full, t('query.fkTabTitle', { tbl: fk.refTable }))
+}
 const env = connEnv(props.conn) // 环境标记（生产库高危操作加强确认 + 工具栏标识）
 const readOnly = connReadOnly(props.conn) // 只读连接：整连接禁写
 
@@ -772,10 +832,12 @@ onMounted(() => {
         :editable="!!cur?.editTable"
         :dialect="conn.dialect"
         :filterable="!!cur?.editTable"
+        :foreign-keys="currentFks"
         @change-page="(p) => gotoPage(cur, p)"
         @change-page-size="(s) => changePageSize(cur, s)"
         @commit="onCommit"
         @filter="(w) => applyServerFilter(cur, w)"
+        @navigate-fk="onFkNavigate"
       />
     </div>
 

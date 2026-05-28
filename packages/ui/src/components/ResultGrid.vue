@@ -25,12 +25,15 @@ const props = defineProps<{
   dialect?: DbDialect
   /** 可服务端筛选（浏览单表时）：列头出现漏斗，生成 WHERE 重查 */
   filterable?: boolean
+  /** 该表的外键（仅 MySQL/PG 单表 SELECT 时由 QueryPane 注入），用于「跳到关联行」 */
+  foreignKeys?: { column: string; refTable: string; refColumn: string }[]
 }>()
 const emit = defineEmits<{
   changePage: [number]
   changePageSize: [number]
   commit: [EditChanges]
   filter: [string]
+  navigateFk: [{ refTable: string; refColumn: string; value: unknown }]
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -433,6 +436,19 @@ function applyCellEdit(): void {
   editing.value = null
   viewer.value = null
 }
+// 当前查看的单元格是否为外键（用于「跳到关联行」按钮）
+const cellFk = computed(() => {
+  if (!viewer.value?.col || !props.foreignKeys?.length) return null
+  return props.foreignKeys.find((f) => f.column === viewer.value?.col) ?? null
+})
+function navigateFk(): void {
+  const fk = cellFk.value
+  const v = viewerRow.value?.[viewer.value?.col ?? '']
+  if (!fk || v == null) return
+  emit('navigateFk', { refTable: fk.refTable, refColumn: fk.refColumn, value: v })
+  viewer.value = null
+}
+
 // 把当前查看的单元格设为 NULL（编辑态）
 function setCellNull(): void {
   if (!viewer.value?.col) return
@@ -720,6 +736,9 @@ const summaryRow = computed<Record<string, string>>(() => {
             <button v-if="editable" @click="setCellDefault">{{ t('grid.setDefault') }}</button>
             <button @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
             <button @click="copyCellAsSql">{{ t('grid.copyAsSql') }}</button>
+            <button v-if="cellFk" :title="t('grid.fkJumpTitle', { tbl: cellFk.refTable, col: cellFk.refColumn })" @click="navigateFk">
+              {{ t('grid.fkJump', { tbl: cellFk.refTable }) }}
+            </button>
           </div>
         </template>
         <template v-else-if="viewerRow">

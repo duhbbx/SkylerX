@@ -124,7 +124,7 @@ export function emptyTableSpec(): TableSpec {
 
 type Family = 'mysql' | 'pg' | 'sqlserver' | 'oracle'
 
-function familyOf(dialect: DbDialect): Family {
+export function familyOf(dialect: DbDialect): Family {
   switch (dialect) {
     case DbDialect.MySQL:
     case DbDialect.MariaDB:
