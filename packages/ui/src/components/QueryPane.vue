@@ -368,6 +368,20 @@ function runToCursor(): void {
   if (before) runText(before)
 }
 
+// SQL 文本工具（去注释/压缩）。注释剥离为启发式，够日常用。
+function stripSqlComments(s: string): string {
+  return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
+}
+function compressSql(): void {
+  sql.value = stripSqlComments(sql.value).replace(/\s+/g, ' ').trim()
+}
+function removeComments(): void {
+  sql.value = stripSqlComments(sql.value)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function runText(text: string): void {
   const names = paramNames(text)
   if (names.length) {
@@ -647,6 +661,8 @@ onMounted(() => {
       <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭ {{ t('query.runToCursor') }}</button>
       <button :disabled="running" :title="t('query.explain.title')" @click="explain">{{ t('query.explain') }}</button>
       <button :title="t('query.format.title')" @click="formatSql">{{ t('query.format') }}</button>
+      <button :title="t('query.compress.title')" @click="compressSql">{{ t('query.compress') }}</button>
+      <button :title="t('query.stripComments.title')" @click="removeComments">{{ t('query.stripComments') }}</button>
       <button :disabled="!running" @click="cancel">■ {{ t('query.stop') }}</button>
       <button class="ghost" @click="clearEditor">{{ t('query.clear') }}</button>
       <button class="ghost" :title="t('query.saveSnippet.title')" @click="saveCurrentSnippet">
