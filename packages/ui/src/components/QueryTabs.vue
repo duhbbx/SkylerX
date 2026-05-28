@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ConnectionConfig } from '@db-tool/shared-types'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useDataClient } from '../data-client'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
 import { t as tr } from '../i18n'
 import DdlEditor from './DdlEditor.vue'
@@ -163,6 +164,47 @@ function onCreated(tab: Tab): void {
 }
 
 defineExpose({ openConnection, newQuery, runSql, newForCurrent, newObject, openStructure, editTable, editObject, openErd, openDraft, closeConnTabs })
+
+// ── 布局持久化：仅记录查询页（connId + pinned），下次启动自动重开 ──
+const LAYOUT_KEY = 'skylerx.workspace.tabs'
+interface SavedTab { connId: string; pinned?: boolean }
+const client = useDataClient()
+let restored = false
+
+function saveLayout(): void {
+  if (!restored) return
+  const items: SavedTab[] = tabs.value
+    .filter((t) => t.kind === 'query')
+    .map((t) => ({ connId: t.conn.id, pinned: t.pinned }))
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(items))
+  } catch {
+    /* 忽略 */
+  }
+}
+
+async function restoreLayout(): Promise<void> {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY)
+    if (!raw) return
+    const items = JSON.parse(raw) as SavedTab[]
+    for (const it of items) {
+      try {
+        const conn = await client.connections.get(it.connId)
+        push({ kind: 'query', conn, title: `${conn.name || conn.dialect} #${tabSeq + 1}`, pending: null, pinned: it.pinned })
+      } catch {
+        /* 连接已删除 → 跳过 */
+      }
+    }
+  } catch {
+    /* 忽略损坏的布局 */
+  } finally {
+    restored = true
+  }
+}
+
+onMounted(restoreLayout)
+watch(tabs, saveLayout, { deep: true })
 </script>
 
 <template>
