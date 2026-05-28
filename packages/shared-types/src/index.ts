@@ -82,6 +82,17 @@ export interface ConnectionConfig {
 /** 连接环境标记：用于导航树着色与生产库误操作防护（存于 ConnectionConfig.extra.env）。 */
 export type ConnectionEnv = 'dev' | 'test' | 'prod'
 
+/**
+ * 事务提交模式：
+ *  - 'auto'   每条 SQL 立即提交（默认；行为同现网）
+ *  - 'manual' 用户须显式按「提交 / 回滚」；执行层会钉一个长连接做 session
+ *
+ * 全局默认放 `Settings.commitMode`；每连接可覆盖：
+ *  - `ConnectionConfig.extra.commitMode = 'inherit' | 'auto' | 'manual'`
+ *  - `inherit` 跟随全局；其余强制本连接行为
+ */
+export type CommitMode = 'auto' | 'manual'
+
 /** 传给执行层的轻量连接引用（不一定携带明文密码，可由执行层按 id 解析）。 */
 export interface ConnectionRef {
   id: string
@@ -289,6 +300,21 @@ export interface DataClient {
     cancel(connId: string): Promise<void>
     history(connId: string, limit?: number): Promise<QueryHistoryEntry[]>
     historyClear(connId: string): Promise<void>
+    // ── 手动提交会话 API ───────────────────────────────────────────
+    // session 钉一个长连接，开个 txn；executeInSession 复用之；
+    // commitSession 提交并自动开下一个 txn；rollbackSession 同理；
+    // endSession 还连接给池。未支持的方言会抛 'COMMIT_MODE_UNSUPPORTED'。
+    /** 返回 sessionId（不透明字符串） */
+    beginSession(connId: string, options?: ExecuteOptions): Promise<string>
+    executeInSession(
+      sessionId: string,
+      sql: string,
+      params?: unknown[],
+      options?: ExecuteOptions,
+    ): Promise<QueryResult>
+    commitSession(sessionId: string): Promise<void>
+    rollbackSession(sessionId: string): Promise<void>
+    endSession(sessionId: string): Promise<void>
   }
   files: {
     saveText(req: {

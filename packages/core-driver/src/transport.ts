@@ -2,8 +2,8 @@ import type {
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
-  MetadataNode,
   MetaScope,
+  MetadataNode,
   QueryResult,
   TestResult,
 } from '@db-tool/shared-types'
@@ -42,6 +42,19 @@ export interface SqlTransport {
 
   /** 主动断开某连接并清理其资源（如池）。 */
   disconnect(connId: string): Promise<void>
+
+  // ── 手动提交会话 ──
+  /** 钉连接、进入事务；返回 sessionId。方言不支持时抛 'COMMIT_MODE_UNSUPPORTED' */
+  beginSession(conn: ConnectionRef, options?: ExecuteOptions): Promise<string>
+  executeInSession(
+    sessionId: string,
+    sql: string,
+    params?: unknown[],
+    options?: ExecuteOptions,
+  ): Promise<QueryResult>
+  commitSession(sessionId: string): Promise<void>
+  rollbackSession(sessionId: string): Promise<void>
+  endSession(sessionId: string): Promise<void>
 }
 
 /**

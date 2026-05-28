@@ -190,10 +190,15 @@ function editTable(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): v
  * 关闭 tab 之前的脏检查：表设计器 / DDL 编辑器 tab 都对外 expose 了 isDirty()，
  * 若有未保存改动，先弹 confirm（同连接表单/设置弹窗的一致体验）。
  */
-const dirtyRefs = new Map<number, { isDirty?: () => boolean }>()
+interface TabRefShape {
+  isDirty?: () => boolean
+  /** QueryPane 暴露：未提交事务 flush 用 */
+  flushSession?: (decision: 'commit' | 'rollback') => Promise<void>
+}
+const dirtyRefs = new Map<number, TabRefShape>()
 function setDirtyRef(id: number, el: unknown): void {
-  if (el && typeof (el as { isDirty?: unknown }).isDirty === 'function') {
-    dirtyRefs.set(id, el as { isDirty: () => boolean })
+  if (el && typeof (el as TabRefShape).isDirty === 'function') {
+    dirtyRefs.set(id, el as TabRefShape)
   } else {
     dirtyRefs.delete(id)
   }
@@ -201,15 +206,35 @@ function setDirtyRef(id: number, el: unknown): void {
 async function close(id: number): Promise<void> {
   const tab = tabs.value.find((t) => t.id === id)
   if (!tab) return
-  // 仅设计器 / DDL 编辑器需要检查；查询页/结构页/ER 图 无未保存概念，直接关
-  const checkable =
-    tab.kind === 'table' ||
-    tab.kind === 'view' ||
-    tab.kind === 'function' ||
-    tab.kind === 'procedure' ||
-    tab.kind === 'trigger'
-  if (checkable && dirtyRefs.get(id)?.isDirty?.()) {
-    if (!(await appConfirm({ message: tr('common.unsavedConfirm'), variant: 'warn' }))) return
+  const ref = dirtyRefs.get(id)
+  if (tab.kind === 'query') {
+    // 手动提交模式下 QueryPane 暴露 isDirty + flushSession：让用户选「提交 / 回滚 / 取消关闭」
+    if (ref?.isDirty?.() && ref.flushSession) {
+      // 三选一：提交 / 回滚 / 取消（取消用户用 Esc 即可，confirm 只给"提交/回滚"两选项）
+      const doCommit = await appConfirm({
+        title: tr('commit.closePendingTitle'),
+        message: tr('commit.closePending'),
+        confirmText: tr('commit.commit'),
+        cancelText: tr('commit.rollback'),
+        variant: 'warn',
+      })
+      try {
+        await ref.flushSession(doCommit ? 'commit' : 'rollback')
+      } catch {
+        /* flush 失败也仍允许关 tab；endSession 会兜底 ROLLBACK */
+      }
+    }
+  } else {
+    // 设计器 / DDL 编辑器：原有的「未保存改动」拦截
+    const checkable =
+      tab.kind === 'table' ||
+      tab.kind === 'view' ||
+      tab.kind === 'function' ||
+      tab.kind === 'procedure' ||
+      tab.kind === 'trigger'
+    if (checkable && ref?.isDirty?.()) {
+      if (!(await appConfirm({ message: tr('common.unsavedConfirm'), variant: 'warn' }))) return
+    }
   }
   const i = tabs.value.findIndex((t) => t.id === id)
   if (i < 0) return
@@ -332,6 +357,7 @@ watch(tabs, saveLayout, { deep: true })
             :pending="t.pending"
             :initial-sql="t.draft"
             :initial-ctx="t.ctx"
+            :ref="(el) => setDirtyRef(t.id, el)"
             @conn-error="(id, msg) => emit('connError', id, msg)"
             @ai="(sql, cid, errMsg) => emit('ai', sql, cid, errMsg)"
             @new-draft="(sql, title) => openDraft(t.conn, sql, title)"

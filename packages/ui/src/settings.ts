@@ -38,6 +38,13 @@ export interface Settings {
   theme: 'dark' | 'light'
   /** 全局界面缩放（CSS zoom，1 = 100%） */
   uiZoom: number
+  /**
+   * 事务提交模式（全局默认）：
+   *  - 'auto'：每条 SQL 立即提交（默认）
+   *  - 'manual'：手动「提交/回滚」，QueryPane 走 session
+   * 每个连接可在 extra.commitMode 里以 'inherit' / 'auto' / 'manual' 单独覆盖
+   */
+  commitMode: 'auto' | 'manual'
 
   // ── AI 助手（多 provider）──
   /** 当前激活的 AI provider */
@@ -93,6 +100,7 @@ const DEFAULTS: Settings = {
   keywordCase: 'upper',
   theme: 'dark',
   uiZoom: 1,
+  commitMode: 'auto',
   aiProvider: 'anthropic',
   aiProviders: defaultProviders(),
   tabSize: 2,
@@ -178,7 +186,9 @@ const ZOOM_MIN = 0.6
 const ZOOM_MAX = 1.6
 function applyZoom(): void {
   if (hasDom) {
-    ;(document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom = String(settings.uiZoom)
+    ;(document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom = String(
+      settings.uiZoom,
+    )
   }
 }
 applyZoom()

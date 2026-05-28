@@ -1,8 +1,8 @@
 import type {
   ConnectionConfig,
   ExecuteOptions,
-  MetadataNode,
   MetaScope,
+  MetadataNode,
   QueryHistoryEntry,
   QueryResult,
   TestResult,
@@ -37,6 +37,22 @@ const api = {
       ipcRenderer.invoke('connections:history', connId, limit),
     historyClear: (connId: string): Promise<void> =>
       ipcRenderer.invoke('connections:historyClear', connId),
+    // ── 手动提交会话 ──
+    beginSession: (connId: string, options?: ExecuteOptions): Promise<string> =>
+      ipcRenderer.invoke('connections:beginSession', connId, options),
+    executeInSession: (
+      sessionId: string,
+      sql: string,
+      params?: unknown[],
+      options?: ExecuteOptions,
+    ): Promise<QueryResult> =>
+      ipcRenderer.invoke('connections:executeInSession', sessionId, sql, params, options),
+    commitSession: (sessionId: string): Promise<void> =>
+      ipcRenderer.invoke('connections:commitSession', sessionId),
+    rollbackSession: (sessionId: string): Promise<void> =>
+      ipcRenderer.invoke('connections:rollbackSession', sessionId),
+    endSession: (sessionId: string): Promise<void> =>
+      ipcRenderer.invoke('connections:endSession', sessionId),
   },
   files: {
     /** 弹保存对话框写入文本；返回路径，取消返回 null */

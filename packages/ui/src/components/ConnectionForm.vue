@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { type ConnectionConfig, type ConnectionEnv, DbDialect, type TestResult } from '@db-tool/shared-types'
+import {
+  type ConnectionConfig,
+  type ConnectionEnv,
+  DbDialect,
+  type TestResult,
+} from '@db-tool/shared-types'
 import { reactive, ref, watch } from 'vue'
-import { useDataClient } from '../data-client'
 import { ENV_OPTIONS, connEnv, connReadOnly } from '../connEnv'
+import { useDataClient } from '../data-client'
 import { t } from '../i18n'
 
 const client = useDataClient()
@@ -35,6 +40,7 @@ const defaultPorts: Record<string, number> = {
 const form = reactive<ConnectionConfig>(blankForm())
 const env = ref<ConnectionEnv | ''>('') // 环境标记，存于 extra.env
 const readOnly = ref(false) // 只读连接，存于 extra.readOnly
+const commitMode = ref<'inherit' | 'auto' | 'manual'>('inherit') // 提交模式，存于 extra.commitMode
 const testResult = ref<TestResult | null>(null)
 const busy = ref(false)
 const section = ref<'general' | 'ssl' | 'ssh'>('general')
@@ -71,10 +77,13 @@ async function load(): Promise<void> {
     Object.assign(form, { ...full, password: full.password ?? '' })
     env.value = connEnv(full) ?? ''
     readOnly.value = connReadOnly(full)
+    const cm = (full.extra as Record<string, unknown> | undefined)?.commitMode
+    commitMode.value = cm === 'auto' || cm === 'manual' ? cm : 'inherit'
   } else {
     Object.assign(form, blankForm())
     env.value = ''
     readOnly.value = false
+    commitMode.value = 'inherit'
   }
   normalize()
   // 收集已有分组用于输入提示
@@ -91,7 +100,12 @@ async function load(): Promise<void> {
 /** 表单脏检查：与载入/上一次保存时的快照做 JSON 对比。 */
 const dirtyBaseline = ref('')
 function snapshot(): string {
-  return JSON.stringify({ form, env: env.value, readOnly: readOnly.value })
+  return JSON.stringify({
+    form,
+    env: env.value,
+    readOnly: readOnly.value,
+    commitMode: commitMode.value,
+  })
 }
 function resetDirtyBaseline(): void {
   dirtyBaseline.value = snapshot()
@@ -115,11 +129,17 @@ function buildConfig(): ConnectionConfig {
   cfg.ssl = form.ssl?.enabled ? cfg.ssl : undefined
   cfg.ssh = form.ssh?.enabled ? cfg.ssh : undefined
   cfg.group = form.group?.trim() || undefined
-  // 环境标记 / 只读并入 extra（无则移除：先剔除旧值，再按需加回）
-  const { env: _e, readOnly: _r, ...restExtra } = (form.extra ?? {}) as Record<string, unknown>
+  // 环境标记 / 只读 / 提交模式 并入 extra（无则移除：先剔除旧值，再按需加回）
+  const {
+    env: _e,
+    readOnly: _r,
+    commitMode: _cm,
+    ...restExtra
+  } = (form.extra ?? {}) as Record<string, unknown>
   const extra: Record<string, unknown> = { ...restExtra }
   if (env.value) extra.env = env.value
   if (readOnly.value) extra.readOnly = true
+  if (commitMode.value !== 'inherit') extra.commitMode = commitMode.value
   cfg.extra = Object.keys(extra).length ? extra : undefined
   return cfg
 }
@@ -208,6 +228,13 @@ async function remove(): Promise<void> {
 
       <label>{{ t('conn.readOnly') }}</label>
       <input v-model="readOnly" type="checkbox" class="chk" :title="t('conn.readOnlyTitle')" />
+
+      <label>{{ t('commit.mode') }}</label>
+      <select v-model="commitMode" :disabled="readOnly" :title="t('commit.mode')">
+        <option value="inherit">{{ t('commit.modeInherit') }}</option>
+        <option value="auto">{{ t('commit.modeAuto') }}</option>
+        <option value="manual">{{ t('commit.modeManual') }}</option>
+      </select>
     </div>
 
     <div v-show="section === 'ssl'" class="form-grid">

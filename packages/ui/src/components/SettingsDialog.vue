@@ -110,6 +110,16 @@ function watermarkPreviewSvg(): string {
             <button class="step" @click="zoomIn">+</button>
             <button class="ghost reset-zoom" @click="zoomReset">{{ t('settings.zoomReset') }}</button>
           </label>
+          <label class="row">
+            <span class="lbl">{{ t('commit.mode') }}</span>
+            <select v-model="settings.commitMode">
+              <option value="auto">{{ t('commit.modeAuto') }}</option>
+              <option value="manual">{{ t('commit.modeManual') }}</option>
+            </select>
+          </label>
+          <p class="hint">
+            {{ settings.commitMode === 'manual' ? t('commit.modeManualDesc') : t('commit.modeAutoDesc') }}
+          </p>
         </template>
 
         <!-- 编辑器 -->
@@ -379,6 +389,12 @@ function watermarkPreviewSvg(): string {
   width: 130px;
   font-size: 13px;
   color: var(--muted);
+}
+.hint {
+  margin: 4px 0 8px 140px; /* 跟 .lbl 宽度对齐 */
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
 }
 .row select,
 .row input[type='text'],

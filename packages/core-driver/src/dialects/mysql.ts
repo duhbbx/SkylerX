@@ -2,9 +2,9 @@ import {
   type ConnectionConfig,
   type DbDialect,
   type ExecuteOptions,
-  type MetadataNode,
   MetaNodeKind,
   type MetaScope,
+  type MetadataNode,
   type QueryColumn,
   type QueryResult,
   type TestResult,
@@ -118,6 +118,9 @@ function buildConnectionOptions(config: ConnectionConfig): ConnectionOptions {
 
 class MysqlConnection implements DriverConnection {
   private activeThreadId: number | null = null
+  /** 手动提交模式下钉住的 PoolConnLike：sessionId → conn */
+  private readonly sessions = new Map<string, PoolConnLike>()
+  private sessionSeq = 0
 
   constructor(private readonly pool: PoolLike) {}
 
@@ -236,11 +239,46 @@ class MysqlConnection implements DriverConnection {
       this.scalar('SELECT COUNT(*) c FROM information_schema.events WHERE event_schema=?', [db]),
     ])
     return [
-      { kind: MetaNodeKind.Group, name: '表', path: [db], group: 'tables', hasChildren: true, count: tables },
-      { kind: MetaNodeKind.Group, name: '视图', path: [db], group: 'views', hasChildren: true, count: views },
-      { kind: MetaNodeKind.Group, name: '函数', path: [db], group: 'functions', hasChildren: true, count: funcs },
-      { kind: MetaNodeKind.Group, name: '存储过程', path: [db], group: 'procedures', hasChildren: true, count: procs },
-      { kind: MetaNodeKind.Group, name: '事件', path: [db], group: 'events', hasChildren: true, count: events },
+      {
+        kind: MetaNodeKind.Group,
+        name: '表',
+        path: [db],
+        group: 'tables',
+        hasChildren: true,
+        count: tables,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '视图',
+        path: [db],
+        group: 'views',
+        hasChildren: true,
+        count: views,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '函数',
+        path: [db],
+        group: 'functions',
+        hasChildren: true,
+        count: funcs,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '存储过程',
+        path: [db],
+        group: 'procedures',
+        hasChildren: true,
+        count: procs,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '事件',
+        path: [db],
+        group: 'events',
+        hasChildren: true,
+        count: events,
+      },
     ]
   }
 
@@ -265,10 +303,38 @@ class MysqlConnection implements DriverConnection {
     ])
     const p = [db, table]
     return [
-      { kind: MetaNodeKind.Group, name: '列', path: p, group: 'columns', hasChildren: true, count: cols },
-      { kind: MetaNodeKind.Group, name: '索引', path: p, group: 'indexes', hasChildren: true, count: idx },
-      { kind: MetaNodeKind.Group, name: '键', path: p, group: 'keys', hasChildren: true, count: keys },
-      { kind: MetaNodeKind.Group, name: '触发器', path: p, group: 'triggers', hasChildren: true, count: trgs },
+      {
+        kind: MetaNodeKind.Group,
+        name: '列',
+        path: p,
+        group: 'columns',
+        hasChildren: true,
+        count: cols,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '索引',
+        path: p,
+        group: 'indexes',
+        hasChildren: true,
+        count: idx,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '键',
+        path: p,
+        group: 'keys',
+        hasChildren: true,
+        count: keys,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '触发器',
+        path: p,
+        group: 'triggers',
+        hasChildren: true,
+        count: trgs,
+      },
     ]
   }
 
@@ -401,6 +467,89 @@ class MysqlConnection implements DriverConnection {
     } finally {
       conn.release()
     }
+  }
+
+  // ── 手动提交会话 ─────────────────────────────────────────────────
+  // 一个 session 钉一条 PoolConnLike，期间 START TRANSACTION → 执行 → COMMIT/ROLLBACK
+  // → 再 START TRANSACTION（让用户继续编辑无需再 begin）。endSession 才真正 release。
+  async beginSession(options?: ExecuteOptions): Promise<string> {
+    const conn = await this.pool.getConnection()
+    try {
+      const useDb = options?.database ?? options?.schema
+      if (useDb) await conn.query(`USE ${mysqlFamilyHelpers.quoteIdentifier(useDb)}`)
+      await conn.query('START TRANSACTION')
+    } catch (e) {
+      conn.release()
+      throw e
+    }
+    const sid = `mysql-s${++this.sessionSeq}-${Date.now()}`
+    this.sessions.set(sid, conn)
+    return sid
+  }
+
+  async executeInSession(
+    sessionId: string,
+    sql: string,
+    params: unknown[] = [],
+    options?: ExecuteOptions,
+  ): Promise<QueryResult> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) throw new Error('SESSION_NOT_FOUND')
+    // 注意：session 期间不再 USE db 切库（START TRANSACTION 已经发出，
+    // 中途切库语义不清晰）。db 在 beginSession 时已经设过。
+    const start = Date.now()
+    const queryOptions: QueryOptions = { sql: applyPaging(sql, options), values: params }
+    if (options?.timeoutMs) queryOptions.timeout = options.timeoutMs
+    const [raw, fields] = await conn.query(queryOptions)
+    const executionTimeMs = Date.now() - start
+    if (Array.isArray(raw)) {
+      const all = raw as RowDataPacket[]
+      const max = options?.maxRows
+      const truncated = typeof max === 'number' && all.length > max
+      const rows = truncated ? all.slice(0, max) : all
+      return {
+        columns: mapColumns(fields),
+        rows: rows as Array<Record<string, unknown>>,
+        rowCount: rows.length,
+        executionTimeMs,
+        truncated,
+      }
+    }
+    const header = raw as ResultSetHeader
+    return {
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      affectedRows: header.affectedRows,
+      executionTimeMs,
+    }
+  }
+
+  async commitSession(sessionId: string): Promise<void> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) throw new Error('SESSION_NOT_FOUND')
+    await conn.query('COMMIT')
+    await conn.query('START TRANSACTION') // 自动开下一段
+  }
+
+  async rollbackSession(sessionId: string): Promise<void> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) throw new Error('SESSION_NOT_FOUND')
+    await conn.query('ROLLBACK')
+    await conn.query('START TRANSACTION')
+  }
+
+  async endSession(sessionId: string): Promise<void> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) return // 幂等
+    this.sessions.delete(sessionId)
+    // 未显式 commit 的事务视为放弃 → ROLLBACK 然后归还
+    try {
+      await conn.query('ROLLBACK')
+    } catch {
+      /* 已经被外部提交/回滚也无所谓 */
+    }
+    conn.release()
   }
 
   async ping(): Promise<void> {

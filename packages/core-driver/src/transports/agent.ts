@@ -2,8 +2,8 @@ import type {
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
-  MetadataNode,
   MetaScope,
+  MetadataNode,
   QueryResult,
   TestResult,
 } from '@db-tool/shared-types'
@@ -27,6 +27,8 @@ export interface AgentClient {
 export class AgentTransport implements SqlTransport {
   /** connId → agentId 路由表（随请求逐步填充，供 disconnect 路由用） */
   private readonly routes = new Map<string, string>()
+  /** sessionId → agentId（session 创建时记录，后续 commit/rollback/end/execute 全路由回这台） */
+  private readonly sessionRoutes = new Map<string, string>()
 
   constructor(private readonly client: AgentClient) {}
 
@@ -73,6 +75,45 @@ export class AgentTransport implements SqlTransport {
     if (!agentId) return // 该连接从未经本 transport 路由过，无需远端断开
     this.routes.delete(connId)
     await this.client.call<void>(agentId, 'disconnect', { connId })
+  }
+
+  // ── 手动提交会话路由：begin 记录 connId→agentId 映射；session 操作按 sessionId 找回 ──
+  async beginSession(conn: ConnectionRef, options?: ExecuteOptions): Promise<string> {
+    const agentId = this.agentOf(conn)
+    const sid = await this.client.call<string>(agentId, 'beginSession', { conn, options })
+    this.sessionRoutes.set(sid, agentId)
+    return sid
+  }
+  async executeInSession(
+    sessionId: string,
+    sql: string,
+    params?: unknown[],
+    options?: ExecuteOptions,
+  ): Promise<QueryResult> {
+    const agentId = this.sessionRoutes.get(sessionId)
+    if (!agentId) throw new Error('SESSION_NOT_FOUND')
+    return this.client.call<QueryResult>(agentId, 'executeInSession', {
+      sessionId,
+      sql,
+      params,
+      options,
+    })
+  }
+  async commitSession(sessionId: string): Promise<void> {
+    const agentId = this.sessionRoutes.get(sessionId)
+    if (!agentId) throw new Error('SESSION_NOT_FOUND')
+    await this.client.call<void>(agentId, 'commitSession', { sessionId })
+  }
+  async rollbackSession(sessionId: string): Promise<void> {
+    const agentId = this.sessionRoutes.get(sessionId)
+    if (!agentId) throw new Error('SESSION_NOT_FOUND')
+    await this.client.call<void>(agentId, 'rollbackSession', { sessionId })
+  }
+  async endSession(sessionId: string): Promise<void> {
+    const agentId = this.sessionRoutes.get(sessionId)
+    if (!agentId) return // 幂等
+    this.sessionRoutes.delete(sessionId)
+    await this.client.call<void>(agentId, 'endSession', { sessionId })
   }
 
   private agentOf(conn: ConnectionRef): string {

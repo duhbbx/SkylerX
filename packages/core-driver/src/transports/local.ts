@@ -2,8 +2,8 @@ import type {
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
-  MetadataNode,
   MetaScope,
+  MetadataNode,
   QueryResult,
   TestResult,
 } from '@db-tool/shared-types'
@@ -19,6 +19,8 @@ import type { ConnectionConfigStore, SqlTransport } from '../transport.js'
  */
 export class LocalTransport implements SqlTransport {
   private readonly connections = new Map<string, DriverConnection>()
+  /** sessionId → 持有 session 的 DriverConnection（用于 commit/rollback/end 路由） */
+  private readonly sessionOwners = new Map<string, DriverConnection>()
 
   constructor(private readonly store?: ConnectionConfigStore) {}
 
@@ -62,6 +64,44 @@ export class LocalTransport implements SqlTransport {
       this.connections.delete(connId)
       await connection.close()
     }
+  }
+
+  // ── 手动提交会话路由：begin 走 acquire；其余按 sessionId 找回持有者 ──
+  async beginSession(conn: ConnectionRef, options?: ExecuteOptions): Promise<string> {
+    const connection = await this.acquire(conn)
+    if (!connection.beginSession) {
+      // 与上层约定的错误码，QueryPane 拿到就 toast 提示
+      throw new Error('COMMIT_MODE_UNSUPPORTED')
+    }
+    const sid = await connection.beginSession(options)
+    this.sessionOwners.set(sid, connection)
+    return sid
+  }
+  async executeInSession(
+    sessionId: string,
+    sql: string,
+    params?: unknown[],
+    options?: ExecuteOptions,
+  ): Promise<QueryResult> {
+    const owner = this.sessionOwners.get(sessionId)
+    if (!owner?.executeInSession) throw new Error('SESSION_NOT_FOUND')
+    return owner.executeInSession(sessionId, sql, params, options)
+  }
+  async commitSession(sessionId: string): Promise<void> {
+    const owner = this.sessionOwners.get(sessionId)
+    if (!owner?.commitSession) throw new Error('SESSION_NOT_FOUND')
+    await owner.commitSession(sessionId)
+  }
+  async rollbackSession(sessionId: string): Promise<void> {
+    const owner = this.sessionOwners.get(sessionId)
+    if (!owner?.rollbackSession) throw new Error('SESSION_NOT_FOUND')
+    await owner.rollbackSession(sessionId)
+  }
+  async endSession(sessionId: string): Promise<void> {
+    const owner = this.sessionOwners.get(sessionId)
+    if (!owner) return // 幂等：找不到当作已结束
+    this.sessionOwners.delete(sessionId)
+    if (owner.endSession) await owner.endSession(sessionId)
   }
 
   /** 关闭全部连接（进程退出时调用）。 */

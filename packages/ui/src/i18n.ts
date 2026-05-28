@@ -248,6 +248,53 @@ const DICT: Record<string, [string, string]> = {
     '⚠️ Dangerous operation detected:\n\n{dangers}\n\nProceed?',
   ],
   'query.dangerTitle': ['高危操作确认', 'Dangerous operation'],
+  // ── 手动提交 ──
+  'commit.mode': ['提交模式', 'Commit mode'],
+  'commit.modeAuto': ['自动提交', 'Auto commit'],
+  'commit.modeManual': ['手动提交', 'Manual commit'],
+  'commit.modeInherit': ['跟随全局', 'Inherit global'],
+  'commit.modeAutoDesc': [
+    '每条 SQL 立即提交（默认）',
+    'Each statement commits immediately (default)',
+  ],
+  'commit.modeManualDesc': [
+    '需要点「提交 / 回滚」才会落库；适合做批量改动前的演练',
+    'Changes require explicit Commit / Rollback; good for staged edits',
+  ],
+  'commit.commit': ['提交', 'Commit'],
+  'commit.commitTitle': [
+    '提交当前事务（COMMIT），并自动开始下一个事务',
+    'Commit current transaction (COMMIT) and begin the next one',
+  ],
+  'commit.rollback': ['回滚', 'Rollback'],
+  'commit.rollbackTitle': [
+    '回滚未提交改动（ROLLBACK），并自动开始下一个事务',
+    'Roll back pending changes (ROLLBACK) and begin the next one',
+  ],
+  'commit.rollbackConfirm': [
+    '当前事务里有未提交的改动，确定全部回滚？',
+    'Pending changes will be discarded. Roll back?',
+  ],
+  'commit.dirty': ['有未提交', 'Pending'],
+  'commit.dirtyTitle': [
+    '当前事务里有写操作但还没提交',
+    'Uncommitted writes in current transaction',
+  ],
+  'commit.clean': ['干净', 'Clean'],
+  'commit.cleanTitle': ['当前事务没有未提交的写操作', 'No uncommitted writes'],
+  'commit.committed': ['已提交', 'Committed'],
+  'commit.rolledBack': ['已回滚', 'Rolled back'],
+  'commit.commitFail': ['提交失败：{msg}', 'Commit failed: {msg}'],
+  'commit.rollbackFail': ['回滚失败：{msg}', 'Rollback failed: {msg}'],
+  'commit.unsupported': [
+    '当前方言暂不支持手动提交，已自动按"自动提交"执行。MySQL / PostgreSQL 可用。',
+    'Manual commit not supported for this dialect; falling back to auto. Available on MySQL / PostgreSQL.',
+  ],
+  'commit.closePendingTitle': ['有未提交事务', 'Uncommitted transaction'],
+  'commit.closePending': [
+    '该查询页处于手动提交模式且仍有未提交改动。\n\n选「提交」会执行 COMMIT 落库；选「回滚」会 ROLLBACK 放弃。',
+    'This tab is in manual commit mode with pending changes.\n\n"Commit" runs COMMIT; "Rollback" discards them.',
+  ],
   'query.readOnlyBlocked': [
     '🔒 该连接为只读模式，已拦截写操作：\n\n{sql}',
     '🔒 This connection is read-only; write blocked:\n\n{sql}',

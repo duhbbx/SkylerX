@@ -2,8 +2,8 @@ import type {
   ConnectionConfig,
   DbDialect,
   ExecuteOptions,
-  MetadataNode,
   MetaScope,
+  MetadataNode,
   QueryResult,
   TestResult,
 } from '@db-tool/shared-types'
@@ -21,6 +21,24 @@ export interface DriverConnection {
 
   /** 取消当前正在执行的语句（MySQL KILL QUERY / PG pg_cancel_backend）；可选实现。 */
   cancelActive?(): Promise<void>
+
+  // ── 手动提交会话（可选实现，未实现的方言会被上层 toast 拦截）──
+  // 不像 executeBatch 一次性跑完，session 让上层"开 → 多次执行 → 显式提交/回滚 → 关"，
+  // 适合 QueryPane 的"手动提交"模式。
+  /** 钉一条池里的连接、进入事务；返回不透明 sessionId */
+  beginSession?(options?: ExecuteOptions): Promise<string>
+  executeInSession?(
+    sessionId: string,
+    sql: string,
+    params?: unknown[],
+    options?: ExecuteOptions,
+  ): Promise<QueryResult>
+  /** 提交当前事务并自动开下一个（用户继续编辑，无需再次 begin） */
+  commitSession?(sessionId: string): Promise<void>
+  /** 回滚当前事务并自动开下一个 */
+  rollbackSession?(sessionId: string): Promise<void>
+  /** 关闭会话：还连接给池；若仍有未提交事务，按当前方言语义回滚 */
+  endSession?(sessionId: string): Promise<void>
 
   /** 按范围拉取元数据（库/schema/表/列/索引），支持懒加载下钻。 */
   fetchMetadata(scope: MetaScope): Promise<MetadataNode[]>
@@ -70,7 +88,7 @@ export interface SqlDialectHelpers {
  *
  * 各方言适配在拼装驱动 options 时统一用 `driverExtra(config)` 取已剥离的安全 extra。
  */
-export const APP_META_EXTRA_KEYS = ['env', 'readOnly', 'agentId'] as const
+export const APP_META_EXTRA_KEYS = ['env', 'readOnly', 'agentId', 'commitMode'] as const
 
 /**
  * 取「可以安全传给原生驱动」的 extra 子集：剥掉应用层元数据键。

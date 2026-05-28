@@ -20,6 +20,11 @@ export type AgentRpcMethod =
   | 'testConnection'
   | 'cancel'
   | 'disconnect'
+  | 'beginSession'
+  | 'executeInSession'
+  | 'commitSession'
+  | 'rollbackSession'
+  | 'endSession'
 
 export interface AgentRpcPayloads {
   execute: { conn: ConnectionRef; sql: string; params?: unknown[]; options?: ExecuteOptions }
@@ -28,6 +33,11 @@ export interface AgentRpcPayloads {
   testConnection: { config: ConnectionConfig }
   cancel: { conn: ConnectionRef }
   disconnect: { connId: string }
+  beginSession: { conn: ConnectionRef; options?: ExecuteOptions }
+  executeInSession: { sessionId: string; sql: string; params?: unknown[]; options?: ExecuteOptions }
+  commitSession: { sessionId: string }
+  rollbackSession: { sessionId: string }
+  endSession: { sessionId: string }
 }
 
 export interface AgentRpcRequest<M extends AgentRpcMethod = AgentRpcMethod> {
@@ -72,6 +82,29 @@ export async function dispatchAgentRpc(
     case 'disconnect': {
       const p = payload as AgentRpcPayloads['disconnect']
       await transport.disconnect(p.connId)
+      return null
+    }
+    case 'beginSession': {
+      const p = payload as AgentRpcPayloads['beginSession']
+      return transport.beginSession(p.conn, p.options)
+    }
+    case 'executeInSession': {
+      const p = payload as AgentRpcPayloads['executeInSession']
+      return transport.executeInSession(p.sessionId, p.sql, p.params, p.options)
+    }
+    case 'commitSession': {
+      const p = payload as AgentRpcPayloads['commitSession']
+      await transport.commitSession(p.sessionId)
+      return null
+    }
+    case 'rollbackSession': {
+      const p = payload as AgentRpcPayloads['rollbackSession']
+      await transport.rollbackSession(p.sessionId)
+      return null
+    }
+    case 'endSession': {
+      const p = payload as AgentRpcPayloads['endSession']
+      await transport.endSession(p.sessionId)
       return null
     }
     default: {

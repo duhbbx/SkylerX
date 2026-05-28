@@ -2,14 +2,14 @@ import {
   type ConnectionConfig,
   type DbDialect,
   type ExecuteOptions,
-  type MetadataNode,
   MetaNodeKind,
   type MetaScope,
+  type MetadataNode,
   type QueryColumn,
   type QueryResult,
   type TestResult,
 } from '@db-tool/shared-types'
-import { Pool, type PoolConfig } from 'pg'
+import { Pool, type PoolClient, type PoolConfig } from 'pg'
 import { type DatabaseDriver, type DriverConnection, driverExtra } from '../driver.js'
 import { pgFamilyHelpers } from './base.js'
 
@@ -76,6 +76,9 @@ function buildPoolConfig(config: ConnectionConfig): PoolConfig {
 
 class PgConnection implements DriverConnection {
   private activePid: number | null = null
+  /** 手动提交模式下钉住的 PoolClient：sessionId → client */
+  private readonly sessions = new Map<string, PoolClient>()
+  private sessionSeq = 0
 
   constructor(
     private readonly pool: Pool,
@@ -93,7 +96,11 @@ class PgConnection implements DriverConnection {
     // 始终用独占 client：既支持 search_path 会话态，也能记录 backend pid 以便取消
     const client = await this.pool.connect()
     this.activePid = (client as { processID?: number }).processID ?? null
-    let res: { fields: Array<{ name: string; dataTypeID: number }>; rows: unknown[]; rowCount: number | null }
+    let res: {
+      fields: Array<{ name: string; dataTypeID: number }>
+      rows: unknown[]
+      rowCount: number | null
+    }
     try {
       if (options?.schema) {
         await client.query(`SET search_path TO ${pgFamilyHelpers.quoteIdentifier(options.schema)}`)
@@ -181,10 +188,38 @@ class PgConnection implements DriverConnection {
       ]),
     ])
     return [
-      { kind: MetaNodeKind.Group, name: '表', path, group: 'tables', hasChildren: true, count: tables },
-      { kind: MetaNodeKind.Group, name: '视图', path, group: 'views', hasChildren: true, count: views },
-      { kind: MetaNodeKind.Group, name: '函数', path, group: 'functions', hasChildren: true, count: funcs },
-      { kind: MetaNodeKind.Group, name: '序列', path, group: 'sequences', hasChildren: true, count: seqs },
+      {
+        kind: MetaNodeKind.Group,
+        name: '表',
+        path,
+        group: 'tables',
+        hasChildren: true,
+        count: tables,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '视图',
+        path,
+        group: 'views',
+        hasChildren: true,
+        count: views,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '函数',
+        path,
+        group: 'functions',
+        hasChildren: true,
+        count: funcs,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '序列',
+        path,
+        group: 'sequences',
+        hasChildren: true,
+        count: seqs,
+      },
     ]
   }
 
@@ -209,10 +244,31 @@ class PgConnection implements DriverConnection {
       ),
     ])
     return [
-      { kind: MetaNodeKind.Group, name: '列', path, group: 'columns', hasChildren: true, count: cols },
-      { kind: MetaNodeKind.Group, name: '索引', path, group: 'indexes', hasChildren: true, count: idx },
+      {
+        kind: MetaNodeKind.Group,
+        name: '列',
+        path,
+        group: 'columns',
+        hasChildren: true,
+        count: cols,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '索引',
+        path,
+        group: 'indexes',
+        hasChildren: true,
+        count: idx,
+      },
       { kind: MetaNodeKind.Group, name: '键', path, group: 'keys', hasChildren: true, count: keys },
-      { kind: MetaNodeKind.Group, name: '触发器', path, group: 'triggers', hasChildren: true, count: trgs },
+      {
+        kind: MetaNodeKind.Group,
+        name: '触发器',
+        path,
+        group: 'triggers',
+        hasChildren: true,
+        count: trgs,
+      },
     ]
   }
 
@@ -369,6 +425,83 @@ class PgConnection implements DriverConnection {
     }
   }
 
+  // ── 手动提交会话（PG）─────────────────────────────────────────────
+  // PG 的 PoolClient 是 LIFO 的「钉一条 backend」；在它身上 BEGIN/COMMIT/ROLLBACK，
+  // 直到 endSession 才 release 回池。commit/rollback 后自动 BEGIN，匹配编辑器期望。
+  async beginSession(options?: ExecuteOptions): Promise<string> {
+    const client = await this.pool.connect()
+    try {
+      if (options?.schema) {
+        await client.query(`SET search_path TO ${pgFamilyHelpers.quoteIdentifier(options.schema)}`)
+      }
+      await client.query('BEGIN')
+    } catch (e) {
+      client.release()
+      throw e
+    }
+    const sid = `pg-s${++this.sessionSeq}-${Date.now()}`
+    this.sessions.set(sid, client)
+    return sid
+  }
+
+  async executeInSession(
+    sessionId: string,
+    sql: string,
+    params: unknown[] = [],
+    options?: ExecuteOptions,
+  ): Promise<QueryResult> {
+    const client = this.sessions.get(sessionId)
+    if (!client) throw new Error('SESSION_NOT_FOUND')
+    const start = Date.now()
+    const text = applyPaging(sql, options)
+    const res = await client.query({ text, values: params })
+    const executionTimeMs = Date.now() - start
+    const columns: QueryColumn[] = res.fields.map((f) => ({
+      name: f.name,
+      dataType: pgTypeName(f.dataTypeID),
+    }))
+    if (res.fields.length > 0) {
+      const all = res.rows as Array<Record<string, unknown>>
+      const max = options?.maxRows
+      const truncated = typeof max === 'number' && all.length > max
+      const rows = truncated ? all.slice(0, max) : all
+      return { columns, rows, rowCount: rows.length, executionTimeMs, truncated }
+    }
+    return {
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      affectedRows: res.rowCount ?? 0,
+      executionTimeMs,
+    }
+  }
+
+  async commitSession(sessionId: string): Promise<void> {
+    const client = this.sessions.get(sessionId)
+    if (!client) throw new Error('SESSION_NOT_FOUND')
+    await client.query('COMMIT')
+    await client.query('BEGIN')
+  }
+
+  async rollbackSession(sessionId: string): Promise<void> {
+    const client = this.sessions.get(sessionId)
+    if (!client) throw new Error('SESSION_NOT_FOUND')
+    await client.query('ROLLBACK')
+    await client.query('BEGIN')
+  }
+
+  async endSession(sessionId: string): Promise<void> {
+    const client = this.sessions.get(sessionId)
+    if (!client) return
+    this.sessions.delete(sessionId)
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      /* 已经被外部 commit/rollback 也无所谓 */
+    }
+    client.release()
+  }
+
   async cancelActive(): Promise<void> {
     const pid = this.activePid
     if (pid == null) return
@@ -390,7 +523,6 @@ class PgConnection implements DriverConnection {
     await this.pool.end()
   }
 }
-
 
 /** 构建 PostgreSQL 系驱动（PostgreSQL / KingbaseES 协议兼容，共用实现）。 */
 export function createPostgresDriver(dialect: DbDialect): DatabaseDriver {

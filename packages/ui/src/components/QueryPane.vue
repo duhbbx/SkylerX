@@ -8,7 +8,13 @@ import {
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { emitChatSqlExecuted } from '../chat-bus'
-import { ENV_META, connEnv, connReadOnly, isReadOnlyStatement } from '../connEnv'
+import {
+  ENV_META,
+  connEnv,
+  connReadOnly,
+  effectiveCommitMode,
+  isReadOnlyStatement,
+} from '../connEnv'
 import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
 import {
@@ -248,6 +254,75 @@ function onFkNavigate(fk: FkNavigate): void {
 }
 const env = connEnv(props.conn) // 环境标记（生产库高危操作加强确认 + 工具栏标识）
 const readOnly = connReadOnly(props.conn) // 只读连接：整连接禁写
+// 生效的提交模式（auto/manual）；用 computed 跟随 settings.commitMode 全局变更
+const commitMode = computed(() => effectiveCommitMode(props.conn, settings.commitMode))
+
+// ── 手动提交会话状态 ─────────────────────────────────────────────
+// sessionId 在首次 manual 执行时懒申请；任何非「纯读」语句执行后置 dirty
+// （SELECT/WITH 这种 PG 也算事务内，但概念上未"改东西"，UX 上不当成有未提交）
+const sessionId = ref<string | null>(null)
+const dirty = ref(false)
+// 方言不支持手动事务时，记一下"本 tab 本次会话已警告过"，避免每条 SQL 都 toast
+let sessionUnsupportedWarned = false
+
+async function ensureSession(): Promise<string | null> {
+  if (sessionId.value) return sessionId.value
+  try {
+    const sid = await client.connections.beginSession(props.conn.id, execOptions())
+    sessionId.value = sid
+    return sid
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('COMMIT_MODE_UNSUPPORTED')) {
+      if (!sessionUnsupportedWarned) {
+        sessionUnsupportedWarned = true
+        toast.warn(t('commit.unsupported'))
+      }
+      return null // 调用方走 auto fallback
+    }
+    throw e
+  }
+}
+
+async function commit(): Promise<void> {
+  const sid = sessionId.value
+  if (!sid) return
+  try {
+    await client.connections.commitSession(sid)
+    dirty.value = false
+    toast.success(t('commit.committed'))
+  } catch (e) {
+    toast.error(t('commit.commitFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
+}
+async function rollback(): Promise<void> {
+  const sid = sessionId.value
+  if (!sid) return
+  if (
+    dirty.value &&
+    !(await appConfirm({ message: t('commit.rollbackConfirm'), variant: 'warn' }))
+  ) {
+    return
+  }
+  try {
+    await client.connections.rollbackSession(sid)
+    dirty.value = false
+    toast.info(t('commit.rolledBack'))
+  } catch (e) {
+    toast.error(t('commit.rollbackFail', { msg: e instanceof Error ? e.message : String(e) }))
+  }
+}
+async function endSessionIfAny(): Promise<void> {
+  const sid = sessionId.value
+  if (!sid) return
+  sessionId.value = null
+  dirty.value = false
+  try {
+    await client.connections.endSession(sid)
+  } catch {
+    /* 池连接释放出错不致命 */
+  }
+}
 
 // ── 编辑器 / 结果区 高度可拖拽 ──
 const paneEl = ref<HTMLElement>()
@@ -732,6 +807,8 @@ async function execSql(text: string): Promise<void> {
   running.value = true
   showHistory.value = false
   const next: ResultTab[] = []
+  // 手动模式：先开 session（失败回落到 auto）；auto 模式：sid 始终是 null
+  const sid = commitMode.value === 'manual' ? await ensureSession() : null
   try {
     for (const stmt of statements) {
       const pageable = paginatable && isSelect(stmt)
@@ -749,11 +826,18 @@ async function execSql(text: string): Promise<void> {
       }
       try {
         const opts = pageable ? { ...execOptions(), limit: tab.pageSize, offset: 0 } : execOptions()
-        tab.result = await client.connections.execute(props.conn.id, stmt, [], opts)
+        tab.result = sid
+          ? await client.connections.executeInSession(sid, stmt, [], opts)
+          : await client.connections.execute(props.conn.id, stmt, [], opts)
+        // 非纯读语句执行成功 → 标记 session 有未提交改动
+        if (sid && !isReadOnlyStatement(stmt)) dirty.value = true
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         tab.error = msg
         if (isConnectionError(msg)) emit('connError', props.conn.id, msg)
+        // PG 事务报错后整段进入 aborted 状态，必须 ROLLBACK 才能继续；
+        // 我们这里不自动回滚，让用户看到 dirty + 错误，自行决定 commit/rollback。
+        // MySQL 没这个状态，单条 stmt 失败不影响后续。
       }
       if (token !== runToken) return // 已被停止，丢弃结果
       next.push(tab)
@@ -1006,7 +1090,28 @@ onMounted(() => {
   }
   window.addEventListener('mousedown', onWinClickForMore)
 })
-onBeforeUnmount(() => window.removeEventListener('mousedown', onWinClickForMore))
+onBeforeUnmount(() => {
+  window.removeEventListener('mousedown', onWinClickForMore)
+  // 关 tab 时若还有未关闭的 session，按"放弃改动"语义结束（endSession 内部会 ROLLBACK）。
+  // 这里不弹确认——确认的责任在 QueryTabs.close（它有机会先弹再卸载组件）。
+  void endSessionIfAny()
+})
+
+// 暴露给 QueryTabs.close 在卸载前检查是否有未提交（要弹挽留确认时调用）
+defineExpose({
+  isDirty: () => dirty.value && !!sessionId.value,
+  commitMode: () => commitMode.value,
+  /** 让 QueryTabs 在 close 前先决定是 commit / rollback / 取消 */
+  flushSession: async (decision: 'commit' | 'rollback'): Promise<void> => {
+    if (!sessionId.value) return
+    if (decision === 'commit') {
+      await client.connections.commitSession(sessionId.value)
+    } else {
+      await client.connections.rollbackSession(sessionId.value)
+    }
+    dirty.value = false
+  },
+})
 </script>
 
 <template>
@@ -1024,6 +1129,30 @@ onBeforeUnmount(() => window.removeEventListener('mousedown', onWinClickForMore)
       <button :disabled="!running" :title="t('query.stop')" @click="cancel">■</button>
       <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭</button>
       <button :disabled="running" :title="t('query.explain.title')" @click="explain">{{ t('query.explain') }}</button>
+      <!-- 手动提交模式专属：提交 / 回滚 / 事务状态 -->
+      <template v-if="commitMode === 'manual'">
+        <span class="tb-sep" />
+        <button
+          class="commit"
+          :disabled="!sessionId || !dirty || running"
+          :title="t('commit.commitTitle')"
+          @click="commit"
+        >✓ {{ t('commit.commit') }}</button>
+        <button
+          class="rollback"
+          :disabled="!sessionId || running"
+          :title="t('commit.rollbackTitle')"
+          @click="rollback"
+        >↺ {{ t('commit.rollback') }}</button>
+        <span
+          class="txn-badge"
+          :class="dirty ? 'dirty' : 'clean'"
+          :title="dirty ? t('commit.dirtyTitle') : t('commit.cleanTitle')"
+        >
+          <span class="txn-dot" />
+          {{ dirty ? t('commit.dirty') : t('commit.clean') }}
+        </span>
+      </template>
       <span class="tb-sep" />
       <button :title="t('query.format.title')" @click="formatSql">fx {{ t('query.format') }}</button>
       <button class="ghost" :title="t('query.ai.title')" @click="askAi">✨ AI</button>
@@ -1270,6 +1399,45 @@ onBeforeUnmount(() => window.removeEventListener('mousedown', onWinClickForMore)
   background: var(--border);
   flex: none;
   margin: 0 2px;
+}
+/* ── 手动提交模式按钮 + 状态徽章 ── */
+.toolbar button.commit {
+  color: #4caf50;
+  border-color: rgba(76, 175, 80, 0.5);
+}
+.toolbar button.commit:not(:disabled):hover {
+  background: rgba(76, 175, 80, 0.14);
+}
+.toolbar button.rollback {
+  color: var(--err, #e04050);
+  border-color: rgba(224, 64, 80, 0.5);
+}
+.toolbar button.rollback:not(:disabled):hover {
+  background: rgba(224, 64, 80, 0.14);
+}
+.toolbar .txn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  flex: none;
+}
+.toolbar .txn-badge.clean {
+  color: var(--muted);
+  background: rgba(180, 180, 180, 0.10);
+}
+.toolbar .txn-badge.dirty {
+  color: #e0a020;
+  background: rgba(224, 160, 32, 0.14);
+}
+.toolbar .txn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 /* 「⋯ 更多」下拉 */
 .more-wrap {

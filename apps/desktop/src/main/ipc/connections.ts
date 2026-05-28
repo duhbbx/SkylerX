@@ -25,6 +25,11 @@ export const IPC = {
   cancel: 'connections:cancel',
   history: 'connections:history',
   historyClear: 'connections:historyClear',
+  beginSession: 'connections:beginSession',
+  executeInSession: 'connections:executeInSession',
+  commitSession: 'connections:commitSession',
+  rollbackSession: 'connections:rollbackSession',
+  endSession: 'connections:endSession',
 } as const
 
 /** 注册连接相关的全部 IPC handler。 */
@@ -88,4 +93,24 @@ export function registerConnectionIpc(): void {
   ipcMain.handle(IPC.history, (_e, connId: string, limit?: number) => listHistory(connId, limit))
 
   ipcMain.handle(IPC.historyClear, (_e, connId: string) => clearHistory(connId))
+
+  // ── 手动提交会话 ──
+  ipcMain.handle(IPC.beginSession, (_e, connId: string, options?: ExecuteOptions) =>
+    getTransport().beginSession({ id: connId }, options),
+  )
+  ipcMain.handle(
+    IPC.executeInSession,
+    async (_e, sessionId: string, sql: string, params?: unknown[], options?: ExecuteOptions) => {
+      // session 内的执行也写历史；从 sessionId 取不到 connId，约定 sessionId 形如 `${dialect}-s${seq}-${ts}`
+      // 此处简化：不写历史（手动提交场景下一条事务里多条 stmt，记起来意义不大；后续要的话再补 connId 旁挂表）
+      return getTransport().executeInSession(sessionId, sql, params, options)
+    },
+  )
+  ipcMain.handle(IPC.commitSession, (_e, sessionId: string) =>
+    getTransport().commitSession(sessionId),
+  )
+  ipcMain.handle(IPC.rollbackSession, (_e, sessionId: string) =>
+    getTransport().rollbackSession(sessionId),
+  )
+  ipcMain.handle(IPC.endSession, (_e, sessionId: string) => getTransport().endSession(sessionId))
 }
