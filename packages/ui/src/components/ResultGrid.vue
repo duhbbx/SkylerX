@@ -235,7 +235,7 @@ async function doExport(format: ExportFormat): Promise<void> {
     tableRef = props.dialect != null ? quoteId(props.dialect, n.trim()) : n.trim()
   }
   const content = exportRows(format, cols, rows, { dialect: props.dialect, tableRef })
-  const ext = format
+  const ext = format === 'markdown' ? 'md' : format
   await client.files.saveText({
     defaultName: `export.${ext}`,
     content,
@@ -690,6 +690,8 @@ const summaryRow = computed<Record<string, string>>(() => {
               <button @click="doExport('csv')">CSV</button>
               <button @click="doExport('json')">JSON</button>
               <button @click="doExport('sql')">SQL INSERT</button>
+              <button @click="doExport('markdown')">Markdown</button>
+              <button @click="doExport('html')">HTML</button>
             </div>
           </template>
         </div>

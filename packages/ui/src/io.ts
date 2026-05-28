@@ -1,7 +1,7 @@
 import type { DbDialect } from '@db-tool/shared-types'
 import { quoteId } from './ddl'
 
-export type ExportFormat = 'csv' | 'json' | 'sql'
+export type ExportFormat = 'csv' | 'json' | 'sql' | 'markdown' | 'html'
 type Row = Record<string, unknown>
 
 // ── 导出 ──
@@ -21,6 +21,43 @@ export function toCSV(columns: string[], rows: Row[]): string {
 
 export function toJSON(rows: Row[]): string {
   return JSON.stringify(rows, (_k, v) => (v instanceof Date ? v.toISOString() : v), 2)
+}
+
+function cellText(v: unknown): string {
+  if (v === null || v === undefined) return ''
+  return v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : String(v)
+}
+
+export function toMarkdown(columns: string[], rows: Row[]): string {
+  const esc = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  const head = `| ${columns.map(esc).join(' | ')} |`
+  const sep = `| ${columns.map(() => '---').join(' | ')} |`
+  const body = rows.map((r) => `| ${columns.map((c) => esc(cellText(r[c]))).join(' | ')} |`)
+  return [head, sep, ...body].join('\n')
+}
+
+export function toHTML(columns: string[], rows: Row[]): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const th = columns.map((c) => `<th>${esc(c)}</th>`).join('')
+  const trs = rows
+    .map((r) => `<tr>${columns.map((c) => `<td>${esc(cellText(r[c]))}</td>`).join('')}</tr>`)
+    .join('\n')
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>SkylerX export</title>
+<style>
+body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;margin:24px;color:#222}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ccc;padding:6px 10px;text-align:left;vertical-align:top}
+th{background:#f3f3f5;position:sticky;top:0}
+tr:nth-child(even) td{background:#fafafa}
+</style></head>
+<body>
+<p>${rows.length} rows · exported ${new Date().toLocaleString()}</p>
+<table><thead><tr>${th}</tr></thead><tbody>
+${trs}
+</tbody></table>
+</body></html>`
 }
 
 function sqlLiteral(v: unknown): string {
@@ -62,6 +99,8 @@ export function exportRows(
 ): string {
   if (format === 'csv') return toCSV(columns, rows)
   if (format === 'json') return toJSON(rows)
+  if (format === 'markdown') return toMarkdown(columns, rows)
+  if (format === 'html') return toHTML(columns, rows)
   return toInsertSql(opts.dialect, opts.tableRef ?? 'table_name', columns, rows)
 }
 

@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { parseCSV, parseJSON } from './io'
+import { parseCSV, parseJSON, toHTML, toMarkdown } from './io'
+
+describe('toMarkdown', () => {
+  it('renders a GFM table and escapes pipes/newlines', () => {
+    const md = toMarkdown(['id', 'name'], [{ id: 1, name: 'a|b' }, { id: 2, name: 'c\nd' }])
+    const lines = md.split('\n')
+    expect(lines[0]).toBe('| id | name |')
+    expect(lines[1]).toBe('| --- | --- |')
+    expect(lines[2]).toBe('| 1 | a\\|b |')
+    expect(lines[3]).toBe('| 2 | c d |')
+  })
+  it('null/undefined render as empty cells', () => {
+    const md = toMarkdown(['a'], [{ a: null }])
+    expect(md.split('\n')[2]).toBe('|  |')
+  })
+})
+
+describe('toHTML', () => {
+  it('produces an html doc with escaped cells', () => {
+    const html = toHTML(['c'], [{ c: '<b>&x' }])
+    expect(html).toContain('<!doctype html>')
+    expect(html).toContain('<td>&lt;b&gt;&amp;x</td>')
+    expect(html).toContain('<th>c</th>')
+  })
+})
 
 describe('parseJSON', () => {
   it('array of objects → header (key union) + rows', () => {
