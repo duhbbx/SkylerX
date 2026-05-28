@@ -81,6 +81,8 @@ const dbLoading = ref(false)
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const running = ref(false)
+const elapsed = ref(0) // 思考中计时（秒），便于发现「卡住」
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
 const error = ref<string | null>(null)
 let controller: AbortController | null = null
 
@@ -252,6 +254,11 @@ async function send(): Promise<void> {
 
   error.value = null
   running.value = true
+  elapsed.value = 0
+  const startT = Date.now()
+  elapsedTimer = setInterval(() => {
+    elapsed.value = Math.round((Date.now() - startT) / 1000)
+  }, 1000)
   controller = new AbortController()
   try {
     // 注入 A/B/C 三档记忆段（A：自定义画像；B：事实清单；C：相关向量记忆 top-K）
@@ -270,10 +277,18 @@ async function send(): Promise<void> {
     void autoExtractFacts({ user: text, assistant: reply })
     void rememberVector(`Q: ${text}\nA: ${reply}`)
   } catch (e) {
-    if ((e as Error).name === 'AbortError') return
-    const msg = e instanceof Error ? e.message : String(e)
-    error.value = msg === 'NO_API_KEY' ? t('ai.noKey') : msg
+    const err = e as Error & { aiAborted?: boolean }
+    // 用户主动取消 vs 网络/超时 abort 分流；主动取消静默退出
+    if (err.name === 'AbortError' || (err.aiAborted && controller?.signal.aborted)) return
+    const msg = err.message || String(e)
+    if (msg === 'NO_API_KEY') error.value = t('ai.noKey')
+    else if (/abort|timeout/i.test(msg)) error.value = t('aichat.timeoutHint', { secs: elapsed.value })
+    else error.value = msg
   } finally {
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer)
+      elapsedTimer = null
+    }
     running.value = false
     controller = null
   }
@@ -406,7 +421,10 @@ function onKeydown(e: KeyboardEvent): void {
           </template>
         </template>
       </div>
-      <div v-if="running" class="thinking">{{ t('aichat.thinking') }}</div>
+      <div v-if="running" class="thinking">
+        {{ t('aichat.thinking') }} <span class="elapsed">{{ elapsed }}s</span>
+        <span v-if="elapsed >= 20" class="hint-stuck">{{ t('aichat.maybeStuck') }}</span>
+      </div>
     </div>
 
     <div v-if="error" class="err">{{ error }}</div>
@@ -641,6 +659,20 @@ function onKeydown(e: KeyboardEvent): void {
   color: var(--muted);
   font-size: 12px;
   font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.elapsed {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--accent, #7c6cff);
+}
+.hint-stuck {
+  font-size: 11px;
+  color: var(--err, #e04050);
+  font-style: normal;
 }
 .err {
   background: rgba(224, 64, 80, 0.14);

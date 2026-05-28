@@ -923,6 +923,11 @@ const DICT: Record<string, [string, string]> = {
   'aichat.send': ['发送', 'Send'],
   'aichat.stop': ['停止', 'Stop'],
   'aichat.thinking': ['思考中…', 'Thinking…'],
+  'aichat.maybeStuck': ['（卡住了？点停止试试，或换个 provider）', '(stuck? click stop or try another provider)'],
+  'aichat.timeoutHint': [
+    '请求 {secs} 秒未返回。可能：① provider 限流 / 不可达 ② 本机代理（Privoxy 等）拦了出口 ③ Base URL 错。试试切到「设置 → AI 助手」其它 provider，或检查网络。',
+    'No response for {secs}s. Likely: 1) provider throttled / unreachable, 2) local proxy (Privoxy) blocking egress, 3) wrong Base URL. Try another provider in Settings or check your network.',
+  ],
   'aichat.insertDraft': ['插入查询页', 'Insert as draft'],
   'aichat.run': ['运行', 'Run'],
   'aichat.runConfirm': ['确定在所选连接上执行这条 SQL 吗？', 'Run this SQL on the selected connection?'],

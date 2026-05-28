@@ -20,7 +20,9 @@ interface AiBridge {
     headers?: Record<string, string>
     body?: string
     timeoutMs?: number
+    reqId?: string
   }): Promise<{ ok: boolean; status: number; body: string; error?: string }>
+  cancel?(reqId: string): Promise<boolean>
 }
 function aiBridge(): AiBridge | null {
   const w = globalThis as { api?: { ai?: AiBridge } }
@@ -36,18 +38,43 @@ interface BridgeResponse {
 /** 统一发请求：优先走 IPC（避 CORS）；否则原生 fetch。返回统一形如 Response 的对象（带 text() / json()）。 */
 async function aiHttp(
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal; timeoutMs?: number },
 ): Promise<BridgeResponse & { text(): Promise<string>; json(): Promise<unknown> }> {
   const bridge = aiBridge()
   if (bridge) {
-    const r = await bridge.fetch({ url, method: init.method as 'POST', headers: init.headers, body: init.body })
-    if (r.error) throw new Error(r.error)
-    return {
-      ok: r.ok,
-      status: r.status,
-      body: r.body,
-      text: async () => r.body,
-      json: async () => JSON.parse(r.body),
+    // 生成请求 id，并把渲染层的 AbortSignal 链到主进程的 ai:cancel
+    const reqId = `r${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const onAbort = (): void => {
+      void bridge.cancel?.(reqId)
+    }
+    if (init.signal) {
+      if (init.signal.aborted) onAbort()
+      else init.signal.addEventListener('abort', onAbort, { once: true })
+    }
+    try {
+      const r = await bridge.fetch({
+        url,
+        method: init.method as 'POST',
+        headers: init.headers,
+        body: init.body,
+        timeoutMs: init.timeoutMs,
+        reqId,
+      })
+      if (r.error) {
+        // 用户主动 abort vs 主进程超时分流：保留原始 error.name 语义
+        const err = new Error(r.error) as Error & { aiAborted?: boolean }
+        if (/abort/i.test(r.error)) err.aiAborted = true
+        throw err
+      }
+      return {
+        ok: r.ok,
+        status: r.status,
+        body: r.body,
+        text: async () => r.body,
+        json: async () => JSON.parse(r.body),
+      }
+    } finally {
+      init.signal?.removeEventListener('abort', onAbort)
     }
   }
   const res = await fetch(url, init as RequestInit)

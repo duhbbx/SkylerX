@@ -52,15 +52,19 @@ const api = {
       ipcRenderer.invoke('files:openText', filters),
   },
   ai: {
-    /** 经主进程做 HTTP；避开渲染层 CORS（DeepSeek/OpenAI/Grok 直发会被预检卡） */
+    /** 经主进程做 HTTP；避开渲染层 CORS（DeepSeek/OpenAI/Grok 直发会被预检卡）；
+     *  请求 id 可选，传了之后可通过 ai.cancel(id) 真正中止主进程的 fetch。 */
     fetch: (req: {
       url: string
       method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
       headers?: Record<string, string>
       body?: string
       timeoutMs?: number
+      reqId?: string
     }): Promise<{ ok: boolean; status: number; body: string; error?: string }> =>
       ipcRenderer.invoke('ai:fetch', req),
+    /** 终止还在飞的请求；返回 true 表示找到并取消了 */
+    cancel: (reqId: string): Promise<boolean> => ipcRenderer.invoke('ai:cancel', reqId),
   },
 }
 

@@ -27,7 +27,8 @@ function aiBridge(): AiBridge | null {
 async function bridgePost(url: string, headers: Record<string, string>, body: string): Promise<{ ok: boolean; status: number; body: string }> {
   const bridge = aiBridge()
   if (bridge) {
-    const r = await bridge.fetch({ url, method: 'POST', headers, body })
+    // embedding 类短请求超时给短一点（15s），避免拖垮聊天主流程
+    const r = await bridge.fetch({ url, method: 'POST', headers, body, timeoutMs: 15_000 })
     if (r.error) throw new Error(r.error)
     return { ok: r.ok, status: r.status, body: r.body }
   }
