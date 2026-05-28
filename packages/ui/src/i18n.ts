@@ -399,6 +399,11 @@ const DICT: Record<string, [string, string]> = {
   'about.repo': ['仓库', 'Repository'],
   'about.issues': ['反馈', 'Feedback'],
   'about.fileIssue': ['提交 Issue', 'File an issue'],
+  'about.update': ['更新', 'Update'],
+  'about.check': ['检查更新', 'Check for updates'],
+  'about.checking': ['检查中…', 'Checking…'],
+  'about.upToDate': ['已是最新', 'Up to date'],
+  'about.newer': ['有新版本 v{v}', 'Newer version v{v} available'],
 
   // ── AI 助手 AiAssistantDialog ──
   'ai.title': ['AI 助手', 'AI Assistant'],

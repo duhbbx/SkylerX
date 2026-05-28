@@ -649,6 +649,22 @@ const opLogOpen = ref(false)
 const monitorOpen = ref(false)
 const aiState = ref<{ mode: AiMode; sql?: string; connId?: string; error?: string } | null>(null)
 const aboutOpen = ref(false)
+const APP_VERSION = '0.1.0'
+const updateState = ref<{ checking: boolean; latest?: string; error?: string }>({ checking: false })
+async function checkForUpdate(): Promise<void> {
+  updateState.value = { checking: true }
+  try {
+    const res = await fetch('https://api.github.com/repos/duhbbx/SkylerX/releases/latest', {
+      headers: { accept: 'application/vnd.github+json' },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = (await res.json()) as { tag_name?: string; name?: string }
+    const latest = (data.tag_name ?? data.name ?? '').replace(/^v/, '')
+    updateState.value = { checking: false, latest }
+  } catch (e) {
+    updateState.value = { checking: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
 // 快捷键参考表
 const SHORTCUTS: { k: string; label: string }[] = [
   { k: '⌘/Ctrl + K', label: t('pal.objectSearch') },
@@ -1043,7 +1059,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       <div class="about-brand">SkylerX</div>
       <div class="about-tag">{{ t('about.tag') }}</div>
       <div class="about-rows">
-        <div class="about-row"><span>{{ t('about.version') }}</span><b>0.1.0</b></div>
+        <div class="about-row"><span>{{ t('about.version') }}</span><b>{{ APP_VERSION }}</b></div>
         <div class="about-row"><span>{{ t('about.license') }}</span><b>Apache-2.0</b></div>
         <div class="about-row">
           <span>{{ t('about.repo') }}</span>
@@ -1052,6 +1068,26 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <div class="about-row">
           <span>{{ t('about.issues') }}</span>
           <a href="https://github.com/duhbbx/SkylerX/issues" target="_blank" rel="noopener">{{ t('about.fileIssue') }}</a>
+        </div>
+        <div class="about-row">
+          <span>{{ t('about.update') }}</span>
+          <span class="upd-cell">
+            <button class="ghost" :disabled="updateState.checking" @click="checkForUpdate">
+              {{ updateState.checking ? t('about.checking') : t('about.check') }}
+            </button>
+            <template v-if="updateState.error">
+              <span class="upd-err">{{ updateState.error }}</span>
+            </template>
+            <template v-else-if="updateState.latest">
+              <span v-if="updateState.latest === APP_VERSION" class="upd-ok">{{ t('about.upToDate') }}</span>
+              <a
+                v-else
+                :href="`https://github.com/duhbbx/SkylerX/releases/tag/v${updateState.latest}`"
+                target="_blank"
+                rel="noopener"
+              >{{ t('about.newer', { v: updateState.latest }) }}</a>
+            </template>
+          </span>
         </div>
       </div>
     </div>
@@ -1240,6 +1276,23 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 .about a:hover {
   text-decoration: underline;
+}
+.upd-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.upd-cell button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.upd-ok {
+  color: #4caf50;
+  font-size: 12px;
+}
+.upd-err {
+  color: var(--err, #e04050);
+  font-size: 12px;
 }
 .dep-sec {
   font-size: 12px;
