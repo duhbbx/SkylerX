@@ -344,6 +344,12 @@ function saveAs(): void {
         <label v-if="isMysql" class="fp"><input v-model="selCol.unsigned" type="checkbox" /> {{ t('designer.unsigned') }}</label>
         <label v-if="isMysql" class="fp"><input v-model="selCol.autoIncrement" type="checkbox" /> {{ t('designer.autoInc') }}</label>
         <label v-if="isMysql" class="fp"><input v-model="selCol.onUpdateNow" type="checkbox" /> {{ t('designer.onUpdateNow') }}</label>
+        <label v-if="isMysql" class="fp fp-gen">{{ t('designer.colCharset') }}
+          <input v-model="selCol.charset" :placeholder="t('designer.colCharsetPh')" />
+        </label>
+        <label v-if="isMysql" class="fp fp-gen">{{ t('designer.colCollation') }}
+          <input v-model="selCol.collation" :placeholder="t('designer.colCollationPh')" />
+        </label>
         <label class="fp fp-gen">{{ t('designer.generated') }}
           <input v-model="selCol.generated" :placeholder="t('designer.generatedPh')" />
         </label>

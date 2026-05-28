@@ -2,6 +2,7 @@ import { DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { describe, expect, it } from 'vitest'
 import {
   buildAlterTable,
+  buildCreateTable,
   buildDrop,
   buildSqlTemplate,
   emptyColumn,
@@ -119,6 +120,27 @@ describe('buildAlterTable index/FK diff', () => {
     expect(my.join('\n')).toContain('DROP FOREIGN KEY `fk1`')
     const pg = buildAlterTable(DbDialect.PostgreSQL, '"t"', [{ ...col }], baseSpec(), { foreignKeys: [orig] })
     expect(pg.join('\n')).toContain('DROP CONSTRAINT "fk1"')
+  })
+})
+
+describe('MySQL charset / collation', () => {
+  const baseCol = { ...emptyColumn(), name: 'name', type: 'varchar', length: '100', nullable: false }
+  it('buildCreateTable emits CHARACTER SET / COLLATE for MySQL columns', () => {
+    const spec = { ...emptyTableSpec(), columns: [{ ...baseCol, charset: 'utf8mb4', collation: 'utf8mb4_unicode_ci' }] }
+    const out = buildCreateTable(DbDialect.MySQL, { database: 'd' }, 't', spec)
+    expect(out).toContain('CHARACTER SET utf8mb4')
+    expect(out).toContain('COLLATE utf8mb4_unicode_ci')
+  })
+  it('buildAlterTable CHANGE picks up charset/collation diffs', () => {
+    const orig = { ...baseCol, originalName: 'name', charset: 'utf8', collation: 'utf8_general_ci' }
+    const cur = { ...orig, charset: 'utf8mb4', collation: 'utf8mb4_unicode_ci' }
+    const out = buildAlterTable(DbDialect.MySQL, '`t`', [orig], { ...emptyTableSpec(), columns: [cur] }).join('\n')
+    expect(out).toMatch(/CHANGE `name` `name`.*CHARACTER SET utf8mb4.*COLLATE utf8mb4_unicode_ci/)
+  })
+  it('PG ignores charset/collation (MySQL-only)', () => {
+    const spec = { ...emptyTableSpec(), columns: [{ ...baseCol, charset: 'utf8mb4' }] }
+    const out = buildCreateTable(DbDialect.PostgreSQL, { database: 'd', schema: 'public' }, 't', spec)
+    expect(out).not.toContain('CHARACTER SET')
   })
 })
 

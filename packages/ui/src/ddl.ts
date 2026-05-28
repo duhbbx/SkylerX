@@ -18,6 +18,10 @@ export interface ColumnDef {
   autoIncrement?: boolean
   /** MySQL：时间戳列 ON UPDATE CURRENT_TIMESTAMP */
   onUpdateNow?: boolean
+  /** MySQL：字段级字符集（如 utf8mb4） */
+  charset?: string
+  /** MySQL：字段级排序规则（如 utf8mb4_unicode_ci） */
+  collation?: string
   /** 生成列表达式（MySQL/PG：GENERATED ALWAYS AS (expr) STORED）；空=普通列 */
   generated?: string
   /** 改表模式：该列加载时的原始名（用于识别改名/删除/修改）；新增列为 undefined */
@@ -578,6 +582,8 @@ export function buildCreateTable(
     }
     let s = `  ${q(c.name)} ${colType(c)}`
     if (fam === 'mysql' && c.unsigned) s += ' UNSIGNED'
+    if (fam === 'mysql' && c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
+    if (fam === 'mysql' && c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
     s += c.nullable ? ' NULL' : ' NOT NULL'
     if (fam === 'mysql' && c.autoIncrement) s += ' AUTO_INCREMENT'
     if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
@@ -684,7 +690,11 @@ export function buildAlterTable(
     if (!c.originalName) {
       // 新增列
       if (fam === 'mysql') {
-        let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}${c.nullable ? ' NULL' : ' NOT NULL'}`
+        let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}`
+        if (c.unsigned) s += ' UNSIGNED'
+        if (c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
+        if (c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
+        s += c.nullable ? ' NULL' : ' NOT NULL'
         if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
         if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
         stmts.push(s)
@@ -704,10 +714,16 @@ export function buildAlterTable(
     const nullChanged = o.nullable !== c.nullable
     const defChanged = o.defaultValue.trim() !== c.defaultValue.trim()
     const commentChanged = o.comment.trim() !== c.comment.trim()
+    const charsetChanged = (o.charset ?? '').trim() !== (c.charset ?? '').trim()
+    const collationChanged = (o.collation ?? '').trim() !== (c.collation ?? '').trim()
     if (fam === 'mysql') {
       // CHANGE 一步完成改名 + 重定义
-      if (renamed || typeChanged || nullChanged || defChanged || commentChanged) {
-        let s = `ALTER TABLE ${tableRef} CHANGE ${q(c.originalName)} ${q(c.name)} ${t}${c.nullable ? ' NULL' : ' NOT NULL'}`
+      if (renamed || typeChanged || nullChanged || defChanged || commentChanged || charsetChanged || collationChanged) {
+        let s = `ALTER TABLE ${tableRef} CHANGE ${q(c.originalName)} ${q(c.name)} ${t}`
+        if (c.unsigned) s += ' UNSIGNED'
+        if (c.charset?.trim()) s += ` CHARACTER SET ${c.charset.trim()}`
+        if (c.collation?.trim()) s += ` COLLATE ${c.collation.trim()}`
+        s += c.nullable ? ' NULL' : ' NOT NULL'
         if (c.defaultValue.trim()) s += ` DEFAULT ${c.defaultValue.trim()}`
         if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
         stmts.push(s)

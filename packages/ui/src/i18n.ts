@@ -320,6 +320,10 @@ const DICT: Record<string, [string, string]> = {
   'designer.unsigned': ['无符号 UNSIGNED', 'UNSIGNED'],
   'designer.autoInc': ['自增 AUTO_INCREMENT', 'AUTO_INCREMENT'],
   'designer.onUpdateNow': ['ON UPDATE CURRENT_TIMESTAMP', 'ON UPDATE CURRENT_TIMESTAMP'],
+  'designer.colCharset': ['字符集', 'Charset'],
+  'designer.colCharsetPh': ['utf8mb4', 'utf8mb4'],
+  'designer.colCollation': ['排序规则', 'Collation'],
+  'designer.colCollationPh': ['utf8mb4_unicode_ci', 'utf8mb4_unicode_ci'],
   'designer.generated': ['生成列表达式', 'Generated expression'],
   'designer.generatedPh': ['如 price * qty（留空=普通列）', 'e.g. price * qty (empty = normal column)'],
 
