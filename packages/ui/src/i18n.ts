@@ -310,6 +310,8 @@ const DICT: Record<string, [string, string]> = {
   ],
   'designer.engine': ['引擎', 'Engine'],
   'designer.charset': ['字符集', 'Charset'],
+  'designer.rowFormat': ['行格式', 'Row format'],
+  'designer.autoIncStart': ['AUTO_INCREMENT 起始', 'AUTO_INCREMENT start'],
   'designer.noOptions': ['当前方言无额外表选项。', 'No extra table options for this dialect.'],
   'designer.storageNote': [
     '表空间 / 存储参数（方言相关，暂未提供 UI）。',

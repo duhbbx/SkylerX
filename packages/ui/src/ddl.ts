@@ -98,6 +98,12 @@ export interface TableSpec {
   /** MySQL 选项 */
   engine: string
   charset: string
+  /** MySQL 默认排序规则 */
+  collation: string
+  /** MySQL：行格式（DYNAMIC / COMPRESSED / COMPACT / REDUNDANT） */
+  rowFormat: string
+  /** MySQL：自增起始值（写入 AUTO_INCREMENT=N） */
+  autoIncStart: string
 }
 
 export function emptyTableSpec(): TableSpec {
@@ -110,6 +116,9 @@ export function emptyTableSpec(): TableSpec {
     comment: '',
     engine: '',
     charset: '',
+    collation: '',
+    rowFormat: '',
+    autoIncStart: '',
   }
 }
 
@@ -629,6 +638,9 @@ export function buildCreateTable(
     const opts: string[] = []
     if (spec.engine.trim()) opts.push(`ENGINE=${spec.engine.trim()}`)
     if (spec.charset.trim()) opts.push(`DEFAULT CHARSET=${spec.charset.trim()}`)
+    if (spec.collation.trim()) opts.push(`COLLATE=${spec.collation.trim()}`)
+    if (spec.rowFormat.trim()) opts.push(`ROW_FORMAT=${spec.rowFormat.trim()}`)
+    if (spec.autoIncStart.trim()) opts.push(`AUTO_INCREMENT=${spec.autoIncStart.trim()}`)
     if (spec.comment.trim()) opts.push(`COMMENT='${esc(spec.comment.trim())}'`)
     if (opts.length) create += ` ${opts.join(' ')}`
   }

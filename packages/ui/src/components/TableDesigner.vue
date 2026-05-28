@@ -453,6 +453,18 @@ function saveAs(): void {
         <template v-if="isMysql">
           <div class="opt-row"><label>{{ t('designer.engine') }}</label><input v-model="spec.engine" placeholder="InnoDB" /></div>
           <div class="opt-row"><label>{{ t('designer.charset') }}</label><input v-model="spec.charset" placeholder="utf8mb4" /></div>
+          <div class="opt-row"><label>{{ t('designer.colCollation') }}</label><input v-model="spec.collation" placeholder="utf8mb4_unicode_ci" /></div>
+          <div class="opt-row">
+            <label>{{ t('designer.rowFormat') }}</label>
+            <select v-model="spec.rowFormat">
+              <option value="">(default)</option>
+              <option value="DYNAMIC">DYNAMIC</option>
+              <option value="COMPRESSED">COMPRESSED</option>
+              <option value="COMPACT">COMPACT</option>
+              <option value="REDUNDANT">REDUNDANT</option>
+            </select>
+          </div>
+          <div class="opt-row"><label>{{ t('designer.autoIncStart') }}</label><input v-model="spec.autoIncStart" placeholder="1" type="text" /></div>
         </template>
         <div v-else class="hint-pane">{{ t('designer.noOptions') }}</div>
       </div>
