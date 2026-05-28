@@ -109,7 +109,37 @@ async function askAboutError(p: {
   if (!schemaText.value) await loadSchema().catch(() => {})
   await send()
 }
-defineExpose({ notifyExecuted, askAboutError })
+/**
+ * 通用 AI 入口（#9 写 migration / #10 优化 SQL / #17 解读 EXPLAIN / #18 测试数据 /
+ * #19 NL→SQL / #20 文档化 / #21 解释表）。
+ *
+ * 流程跟 askAboutError 一样：abort 当前 → 切连接 → 启用 schema → 等 schema → send。
+ * 调用方负责把已经拼好的 prompt 传进来，本面板只负责"打开 + 发"。
+ */
+async function askPredefined(p: {
+  /** 完整用户消息，Markdown 形式（含表名/SQL/EXPLAIN 等上下文都拼在 prompt 里） */
+  prompt: string
+  /** 目标连接（缺省 → 不切，用当前的） */
+  connId?: string
+  connName?: string
+  /** 是否要把 information_schema 表/列一起送出去，默认 true */
+  withSchema?: boolean
+}): Promise<void> {
+  controller?.abort()
+  for (let i = 0; i < 30 && running.value; i++) {
+    await new Promise<void>((r) => setTimeout(r, 50))
+  }
+  const switching = p.connId && connId.value !== p.connId
+  if (p.connId) connId.value = p.connId
+  if (p.withSchema !== false) useSchema.value = true
+  saveToStorage()
+  input.value = p.prompt
+  toast.info(t('aichat.askingAi'))
+  if (switching) await new Promise<void>((r) => setTimeout(r, 200))
+  if (useSchema.value && !schemaText.value) await loadSchema().catch(() => {})
+  await send()
+}
+defineExpose({ notifyExecuted, askAboutError, askPredefined })
 
 function runMarkLabel(m: RunMark): string {
   const dt = new Date(m.at)

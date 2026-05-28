@@ -8,7 +8,8 @@ type Row = Record<string, unknown>
 
 function csvCell(v: unknown): string {
   if (v === null || v === undefined) return ''
-  const s = v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : String(v)
+  const s =
+    v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : String(v)
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
@@ -21,6 +22,32 @@ export function toCSV(columns: string[], rows: Row[]): string {
 
 export function toJSON(rows: Row[]): string {
   return JSON.stringify(rows, (_k, v) => (v instanceof Date ? v.toISOString() : v), 2)
+}
+
+/**
+ * Tab-Separated Values：Excel / Notion / 飞书表格直接粘贴粘出来表格。
+ * 跟 CSV 同样的转义思路，但分隔符是 \t，引号在含 \t/换行时才用。
+ */
+export function toTSV(columns: string[], rows: Row[]): string {
+  const cell = (v: unknown): string => {
+    if (v === null || v === undefined) return ''
+    const s =
+      v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return /[\t\n\r"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const head = columns.map(cell).join('\t')
+  if (!rows.length) return `${head}\n`
+  const body = rows.map((r) => columns.map((c) => cell(r[c])).join('\t')).join('\n')
+  return `${head}\n${body}\n`
+}
+
+/**
+ * 只输出 SQL VALUES 列表（不含 INSERT INTO 头），方便粘进 INSERT...VALUES、
+ * VALUES (...) 子查询、或 ON CONFLICT...EXCLUDED 这类场景。
+ * 形如 `(1, 'a'), (2, 'b'), (3, NULL)`。
+ */
+export function toSqlValuesList(columns: string[], rows: Row[]): string {
+  return rows.map((r) => `(${columns.map((c) => sqlLiteral(r[c])).join(', ')})`).join(',\n')
 }
 
 function cellText(v: unknown): string {
@@ -37,8 +64,7 @@ export function toMarkdown(columns: string[], rows: Row[]): string {
 }
 
 export function toHTML(columns: string[], rows: Row[]): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const th = columns.map((c) => `<th>${esc(c)}</th>`).join('')
   const trs = rows
     .map((r) => `<tr>${columns.map((c) => `<td>${esc(cellText(r[c]))}</td>`).join('')}</tr>`)
@@ -78,7 +104,8 @@ export function rowInserts(
 ): string[] {
   const colList = columns.map((c) => (dialect != null ? quoteId(dialect, c) : `"${c}"`)).join(', ')
   return rows.map(
-    (r) => `INSERT INTO ${tableRef} (${colList}) VALUES (${columns.map((c) => sqlLiteral(r[c])).join(', ')});`,
+    (r) =>
+      `INSERT INTO ${tableRef} (${colList}) VALUES (${columns.map((c) => sqlLiteral(r[c])).join(', ')});`,
   )
 }
 
@@ -202,7 +229,8 @@ export function buildInsertStatements(
   chunkSize = 200,
 ): string[] {
   const colList = columns.map((c) => quoteId(dialect, c)).join(', ')
-  const lit = (s: string | undefined) => (s == null || s === '' ? 'NULL' : `'${s.replace(/'/g, "''")}'`)
+  const lit = (s: string | undefined) =>
+    s == null || s === '' ? 'NULL' : `'${s.replace(/'/g, "''")}'`
   const out: string[] = []
   for (let i = 0; i < dataRows.length; i += chunkSize) {
     const values = dataRows

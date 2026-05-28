@@ -6,8 +6,18 @@ import { quoteId } from '../ddl'
 import { prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, SQL_DEFAULT, isSqlSentinel } from '../editable'
 import { t } from '../i18n'
-import { type ExportFormat, exportRows, toCSV, toJSON } from '../io'
+import {
+  type ExportFormat,
+  exportRows,
+  toCSV,
+  toJSON,
+  toMarkdown,
+  toSqlValuesList,
+  toTSV,
+} from '../io'
+import { applyMask, ruleFor } from '../masking'
 import { settings } from '../settings'
+import ChartDialog from './ChartDialog.vue'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
@@ -69,6 +79,7 @@ const filterText = ref('')
 const hiddenCols = ref<Set<string>>(new Set())
 const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
+const chartOpen = ref(false)
 const viewMode = ref<'grid' | 'json' | 'form'>('grid') // 视图：网格 / JSON / 单行表单（适合宽表）
 const formIndex = ref(0)
 const freezeFirst = ref(false) // 冻结首数据列
@@ -127,15 +138,27 @@ function toggleCol(name: string): void {
   hiddenCols.value = s
 }
 
-/** 复制选中行（无选中则全部当前视图行）为 CSV / JSON。 */
-function copyRows(format: 'csv' | 'json'): void {
+type CopyFormat = 'csv' | 'json' | 'tsv' | 'markdown' | 'sqlValues'
+/** 复制选中行（无选中则全部当前视图行）为多种格式。 */
+function copyRows(format: CopyFormat): void {
   showCopyMenu.value = false
   const cols = columnNames.value
   const idx = [...selected.value].filter((k) => k[0] === 'r').map((k) => Number(k.slice(1)))
   const rows = (
     idx.length ? idx.sort((a, b) => a - b).map((i) => viewRows.value[i]) : viewRows.value
   ).filter(Boolean) as Row[]
-  copyText(format === 'csv' ? toCSV(cols, rows) : toJSON(rows))
+  const text =
+    format === 'csv'
+      ? toCSV(cols, rows)
+      : format === 'tsv'
+        ? toTSV(cols, rows)
+        : format === 'markdown'
+          ? toMarkdown(cols, rows)
+          : format === 'sqlValues'
+            ? toSqlValuesList(cols, rows)
+            : toJSON(rows)
+  copyText(text)
+  toast.success(t('aichat.copied'))
 }
 
 /** 实际渲染的行：编辑态用 localRows（保持索引对齐）；只读态可按列排序。 */
@@ -376,11 +399,103 @@ function doJump(): void {
 function isNull(v: unknown): boolean {
   return v === null || v === undefined
 }
-function fmt(v: unknown): string {
+function fmt(v: unknown, colName?: string): string {
   if (v === null || v === undefined) return settings.nullDisplay
   if (isSqlSentinel(v)) return v.__sql
+  if (isBlob(v)) return `<BLOB ${blobSize(v)} bytes>`
+  // #13 数据脱敏：编辑态不脱敏（要改原值）；只读态按列名规则遮罩
+  if (!props.editable && colName && settings.maskingEnabled) {
+    const rule = ruleFor(colName, settings.maskingRules)
+    if (rule) {
+      const masked = applyMask(typeof v === 'object' ? JSON.stringify(v) : v, rule.kind)
+      return typeof masked === 'string' ? masked : String(masked)
+    }
+  }
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)
+}
+
+// ── #7 单元格视觉分类：null / 空串 / 大文本 / JSON / blob ──
+// 给 <td class="cell-{kind}"> 用，CSS 里区分颜色 / 背景 / 字体样式。
+type CellKind = 'null' | 'empty' | 'large' | 'json' | 'blob' | 'normal'
+const LARGE_THRESHOLD = 200 // 超过这么多字符视为「大文本」，淡黄背景提示
+function cellKind(v: unknown): CellKind {
+  if (v === null || v === undefined) return 'null'
+  if (isBlob(v)) return 'blob'
+  if (typeof v === 'object') return 'json'
+  if (typeof v === 'string') {
+    if (v === '') return 'empty'
+    if (v.length > LARGE_THRESHOLD) return 'large'
+    // 看起来像 JSON 字符串：首字符 [ 或 { + 末字符 ] 或 } → 也视为 JSON 用 monaco 编辑
+    const trimmed = v.trim()
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        JSON.parse(trimmed)
+        return 'json'
+      } catch {
+        /* 不是合法 JSON，按 normal 走 */
+      }
+    }
+  }
+  return 'normal'
+}
+
+// ── #5 BLOB 识别：mysql2/pg 返回的 Buffer / Uint8Array ──
+function isBlob(v: unknown): v is Uint8Array | { type: 'Buffer'; data: number[] } {
+  if (v instanceof Uint8Array) return true
+  // mysql2 序列化过 IPC 后可能变 { type: 'Buffer', data: [...] } 形态
+  if (
+    typeof v === 'object' &&
+    v !== null &&
+    (v as { type?: unknown }).type === 'Buffer' &&
+    Array.isArray((v as { data?: unknown }).data)
+  ) {
+    return true
+  }
+  return false
+}
+function blobSize(v: unknown): number {
+  if (v instanceof Uint8Array) return v.byteLength
+  if (typeof v === 'object' && v !== null && Array.isArray((v as { data?: unknown[] }).data)) {
+    return (v as { data: unknown[] }).data.length
+  }
+  return 0
+}
+/** 嗅探 BLOB 的真实 mime：识别常见图片签名，否则视作字节流。 */
+function sniffBlobMime(
+  bytes: Uint8Array,
+): 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | null {
+  if (bytes.length < 4) return null
+  // PNG: 89 50 4E 47
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)
+    return 'image/png'
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  // GIF: 47 49 46 38
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38)
+    return 'image/gif'
+  // WEBP: 'RIFF' .... 'WEBP'
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return 'image/webp'
+  return null
+}
+function blobToDataUrl(bytes: Uint8Array, mime: string): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return `data:${mime};base64,${btoa(bin)}`
 }
 
 // ── 查看器 ──
@@ -522,6 +637,54 @@ const cellBytes = computed(() => {
   if (!viewer.value?.col) return null
   return asBytes(viewerRow.value?.[viewer.value.col])
 })
+// #5 BLOB 图片预览：BLOB 头部嗅 PNG/JPEG/GIF/WEBP 签名，命中就当图片直显
+const cellImageDataUrl = computed(() => {
+  const bytes = cellBytes.value
+  if (!bytes) return null
+  const mime = sniffBlobMime(bytes)
+  if (!mime) return null
+  return blobToDataUrl(bytes, mime)
+})
+// #5 JSON 视图：单元格是 JSON（object / array / 像 JSON 的字符串）时进入此模式
+const cellIsJson = computed(() => {
+  if (!viewer.value?.col || cellBytes.value) return false
+  const v = viewerRow.value?.[viewer.value.col]
+  return cellKind(v) === 'json'
+})
+const cellJsonText = computed(() => {
+  const v = viewerRow.value?.[viewer.value?.col ?? '']
+  if (v == null) return ''
+  if (typeof v === 'object') return JSON.stringify(v, null, 2)
+  try {
+    return JSON.stringify(JSON.parse(String(v)), null, 2)
+  } catch {
+    return String(v)
+  }
+})
+/** #5：把当前 BLOB 当文件下载到本地（图片用嗅到的 mime，其余 application/octet-stream）。 */
+function downloadBlob(): void {
+  const bytes = cellBytes.value
+  if (!bytes) return
+  const mime = sniffBlobMime(bytes) ?? 'application/octet-stream'
+  const ext =
+    mime === 'image/png'
+      ? 'png'
+      : mime === 'image/jpeg'
+        ? 'jpg'
+        : mime === 'image/gif'
+          ? 'gif'
+          : mime === 'image/webp'
+            ? 'webp'
+            : 'bin'
+  const blob = new Blob([bytes as BlobPart], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${viewer.value?.col ?? 'blob'}.${ext}`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function hexDump(bytes: Uint8Array, maxBytes = 4096): string {
   const lines: string[] = []
   const n = Math.min(bytes.length, maxBytes)
@@ -632,10 +795,15 @@ const summaryRow = computed<Record<string, string>>(() => {
             <div class="exp-overlay" @click="showCopyMenu = false" />
             <div class="exp-menu" @click.stop>
               <button @click="copyRows('csv')">{{ selected.size ? t('grid.selRows') : t('grid.all') }} → CSV</button>
+              <button @click="copyRows('tsv')">{{ selected.size ? t('grid.selRows') : t('grid.all') }} → TSV</button>
               <button @click="copyRows('json')">{{ selected.size ? t('grid.selRows') : t('grid.all') }} → JSON</button>
+              <button @click="copyRows('markdown')">{{ selected.size ? t('grid.selRows') : t('grid.all') }} → Markdown</button>
+              <button @click="copyRows('sqlValues')">{{ selected.size ? t('grid.selRows') : t('grid.all') }} → SQL VALUES</button>
             </div>
           </template>
         </div>
+        <!-- #2 图表化：选两列出柱/折线/饼图 -->
+        <button :disabled="!result?.rows.length" :title="t('chart.openTitle')" @click="chartOpen = true">📊 {{ t('chart.btn') }}</button>
         <div class="menu-box">
           <button @click.stop="showColsMenu = !showColsMenu">{{ t('grid.cols') }}</button>
           <template v-if="showColsMenu">
@@ -689,7 +857,7 @@ const summaryRow = computed<Record<string, string>>(() => {
               :value="(viewRows[formIndex] as Row)[c.name] ?? ''"
               @input="(e) => ((viewRows[formIndex] as Row)[c.name] = (e.target as HTMLInputElement).value)"
             />
-            <span v-else :class="{ nullcell: isNull((viewRows[formIndex] as Row)[c.name]) }">{{ fmt((viewRows[formIndex] as Row)[c.name]) }}</span>
+            <span v-else :class="{ nullcell: isNull((viewRows[formIndex] as Row)[c.name]) }">{{ fmt((viewRows[formIndex] as Row)[c.name], c.name) }}</span>
           </div>
         </div>
       </div>
@@ -744,11 +912,14 @@ const summaryRow = computed<Record<string, string>>(() => {
               <td
                 v-for="c in visibleColumns"
                 :key="c.name"
-                :class="{
-                  nullcell: isNull(row[c.name]),
-                  modified: isModified(i, c.name),
-                  editing: isEditing('r', i, c.name),
-                }"
+                :class="[
+                  `cell-${cellKind(row[c.name])}`,
+                  {
+                    nullcell: isNull(row[c.name]),
+                    modified: isModified(i, c.name),
+                    editing: isEditing('r', i, c.name),
+                  },
+                ]"
                 @dblclick="onCellDblClick('r', i, c.name)"
               >
                 <span v-if="editable && isEditing('r', i, c.name)" class="edit-cell">
@@ -767,7 +938,7 @@ const summaryRow = computed<Record<string, string>>(() => {
                     ⤢
                   </button>
                 </span>
-                <template v-else>{{ fmt(row[c.name]) }}</template>
+                <template v-else>{{ fmt(row[c.name], c.name) }}</template>
               </td>
             </tr>
             <tr v-if="padBottom" class="spacer"><td :colspan="visibleColumns.length + 1" :style="{ height: padBottom + 'px' }" /></tr>
@@ -793,7 +964,7 @@ const summaryRow = computed<Record<string, string>>(() => {
                   @keyup.enter="editing = null"
                   @click.stop
                 />
-                <template v-else>{{ row[c.name] === '' ? '' : fmt(row[c.name]) }}</template>
+                <template v-else>{{ row[c.name] === '' ? '' : fmt(row[c.name], c.name) }}</template>
               </td>
             </tr>
           </tbody>
@@ -863,16 +1034,26 @@ const summaryRow = computed<Record<string, string>>(() => {
         @close="viewer = null"
       >
         <template v-if="viewer.col">
-          <!-- 二进制：以 hex dump 渲染（左偏移 / 中部 hex / 右 ASCII），可复制 -->
-          <pre v-if="cellBytes" class="cell-view hex-view">{{ hexDump(cellBytes) }}</pre>
+          <!-- BLOB 图片：嗅到 PNG/JPEG/GIF/WEBP 签名 → 直接以 data URL 内嵌图片 -->
+          <div v-if="cellImageDataUrl" class="cell-image-wrap">
+            <img :src="cellImageDataUrl" class="cell-image" :alt="viewer.col" />
+            <div class="cell-image-meta">{{ blobSize(viewerRow?.[viewer.col]) }} bytes</div>
+          </div>
+          <!-- BLOB（非图片）：以 hex dump 渲染（左偏移 / 中部 hex / 右 ASCII），可复制 -->
+          <pre v-else-if="cellBytes" class="cell-view hex-view">{{ hexDump(cellBytes) }}</pre>
+          <!-- JSON 单元格：编辑态用 textarea（保留原编辑能力）；只读态显示美化后的 JSON -->
+          <textarea v-else-if="editable && cellIsJson" v-model="editBuf" class="cell-edit json-edit" spellcheck="false" />
+          <pre v-else-if="cellIsJson" class="cell-view cell-json-view">{{ cellJsonText }}</pre>
           <textarea v-else-if="editable" v-model="editBuf" class="cell-edit" spellcheck="false" />
           <pre v-else class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
           <div class="viewer-actions">
             <button v-if="editable && !cellBytes" class="primary" @click="applyCellEdit">{{ t('grid.apply') }}</button>
             <button v-if="editable && !cellBytes" @click="setCellNull">{{ t('grid.setNull') }}</button>
             <button v-if="editable && !cellBytes" @click="setCellDefault">{{ t('grid.setDefault') }}</button>
+            <button v-if="cellImageDataUrl" @click="downloadBlob">{{ t('grid.downloadBlob') }}</button>
             <button v-if="cellBytes" @click="copyText(hexDump(cellBytes))">{{ t('grid.copyHex') }}</button>
-            <button v-else @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
+            <button v-if="cellIsJson && !cellBytes" @click="copyText(cellJsonText)">{{ t('grid.copyJson') }}</button>
+            <button v-if="!cellBytes && !cellIsJson" @click="copyText(editable ? editBuf : pretty(viewerRow?.[viewer.col]))">{{ t('common.copy') }}</button>
             <button v-if="!cellBytes" @click="copyCellAsSql">{{ t('grid.copyAsSql') }}</button>
             <button
               v-if="cellFk"
@@ -896,7 +1077,7 @@ const summaryRow = computed<Record<string, string>>(() => {
             <tbody>
               <tr v-for="c in result.columns" :key="c.name">
                 <th>{{ c.name }}</th>
-                <td :class="{ nullcell: isNull(viewerRow[c.name]) }">{{ fmt(viewerRow[c.name]) }}</td>
+                <td :class="{ nullcell: isNull(viewerRow[c.name]) }">{{ fmt(viewerRow[c.name], c.name) }}</td>
               </tr>
             </tbody>
           </table>
@@ -907,6 +1088,9 @@ const summaryRow = computed<Record<string, string>>(() => {
           </div>
         </template>
       </Modal>
+
+      <!-- #2 结果集图表化（选两列出柱/折线/饼图） -->
+      <ChartDialog v-if="chartOpen && result" :result="result" @close="chartOpen = false" />
     </template>
   </div>
 </template>
@@ -1202,6 +1386,38 @@ thead th {
   color: var(--muted);
   font-style: italic;
 }
+/* ── 单元格视觉分类（#7）：让 NULL / 空串 / 大文本 / JSON / BLOB 一眼区分 ── */
+td.cell-null { color: var(--muted); font-style: italic; }
+td.cell-empty {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(150, 150, 150, 0.05),
+      rgba(150, 150, 150, 0.05) 5px,
+      rgba(150, 150, 150, 0.10) 5px,
+      rgba(150, 150, 150, 0.10) 10px
+    );
+}
+td.cell-large {
+  background: rgba(224, 160, 32, 0.08);
+  color: var(--text);
+}
+td.cell-large::after {
+  content: ' …';
+  color: #e0a020;
+  font-weight: 600;
+}
+td.cell-json {
+  color: #b48cff;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+td.cell-blob {
+  color: #4caf50;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-style: italic;
+}
 .modified {
   background: rgba(124, 108, 255, 0.18);
 }
@@ -1465,6 +1681,41 @@ td.rownum:hover {
   line-height: 1.4;
   letter-spacing: 0;
   background: var(--bg);
+}
+/* ── #5 BLOB 图片预览 + JSON 美化 ── */
+.cell-image-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-height: 60vh;
+}
+.cell-image {
+  max-width: 100%;
+  max-height: 55vh;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background:
+    linear-gradient(45deg, rgba(128,128,128,.1) 25%, transparent 25%, transparent 75%, rgba(128,128,128,.1) 75%),
+    linear-gradient(45deg, rgba(128,128,128,.1) 25%, transparent 25%, transparent 75%, rgba(128,128,128,.1) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+.cell-image-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+.cell-json-view {
+  color: #b48cff;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.json-edit {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
 }
 .rev-fks {
   margin-top: 12px;

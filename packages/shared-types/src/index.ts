@@ -19,6 +19,25 @@ export enum DbDialect {
   KingbaseES = 'kingbase',
   /** OceanBase（MySQL 协议兼容） */
   OceanBase = 'oceanbase',
+  /** MongoDB（文档型，走 executeCommand 通道，不走 SQL） */
+  MongoDB = 'mongodb',
+  /** Redis（KV/数据结构型，走 executeCommand 通道，不走 SQL） */
+  Redis = 'redis',
+}
+
+/**
+ * 数据库类别：SQL 走 execute(sql, params)+矩形结果；
+ * NoSQL 走 executeCommand(payload)+原生形状结果。
+ * 上层 UI 据此分流到 SQL 面板或 NoSQL 面板。
+ */
+export enum DbKind {
+  Sql = 'sql',
+  NoSql = 'nosql',
+}
+
+/** 给定方言归到 SQL 还是 NoSQL（前端/驱动通用判定）。 */
+export function dialectKind(d: DbDialect): DbKind {
+  return d === DbDialect.MongoDB || d === DbDialect.Redis ? DbKind.NoSql : DbKind.Sql
 }
 
 /** 连接的传输/通道模式：进程内直连 vs 内网 agent 转发。 */
@@ -134,6 +153,55 @@ export interface QueryResult {
   rowCount: number
   /** DML 影响行数 */
   affectedRows?: number
+  /** 执行耗时（毫秒） */
+  executionTimeMs: number
+  /** 是否因 maxRows 被截断 */
+  truncated?: boolean
+}
+
+// ── NoSQL 平行通道：命令请求 / 命令结果 ────────────────────────────
+// SQL 方言走 execute(sql, params)+QueryResult；MongoDB/Redis 走
+// executeCommand(payload)+CommandResult，避免把 JSON/命令塞进 sql 字符串。
+// 形状刻意保持 plain JSON，以穿越 IPC 边界。
+
+/**
+ * NoSQL 命令请求。
+ *
+ * 形态由 op + args 决定，方言侧负责解释（Mongo: find/aggregate/...; Redis: GET/SET/...）。
+ * context 携带库/集合/DB-index 等执行上下文，避免每次都塞在 args 里。
+ */
+export interface CommandRequest {
+  /** 命令名：Mongo 用 collection 方法名或 db 命令（find / aggregate / insertOne / runCommand …）；Redis 用命令名（GET / SET / HGETALL / SCAN …） */
+  op: string
+  /** 命令参数（方言特定）。Mongo: { filter, options, pipeline, document, ... }；Redis: string[] 参数列表 */
+  args?: unknown
+  /** 执行上下文 */
+  context?: {
+    /** Mongo 库名 / Redis 不用 */
+    database?: string
+    /** Mongo 集合名 */
+    collection?: string
+    /** Redis 逻辑库索引 0..15 */
+    dbIndex?: number
+  }
+  /** 超时毫秒 */
+  timeoutMs?: number
+  /** 返回行数上限（驱动按方言截断；Mongo 应用到游标，Redis 应用到 SCAN 总数） */
+  maxRows?: number
+}
+
+/** NoSQL 命令结果。 */
+export interface CommandResult {
+  /**
+   * 原生形状结果（JSON 可序列化）：
+   * - Mongo find/aggregate: Array<Document>
+   * - Mongo runCommand:     Document
+   * - Mongo DML:            { acknowledged, insertedCount, modifiedCount, ... }
+   * - Redis:                string | number | null | Array | Record
+   */
+  data: unknown
+  /** 影响的文档/键数（DML 类） */
+  affected?: number
   /** 执行耗时（毫秒） */
   executionTimeMs: number
   /** 是否因 maxRows 被截断 */
@@ -315,6 +383,10 @@ export interface DataClient {
     commitSession(sessionId: string): Promise<void>
     rollbackSession(sessionId: string): Promise<void>
     endSession(sessionId: string): Promise<void>
+    // ── NoSQL 平行通道 ────────────────────────────────────────────
+    // MongoDB / Redis 等非 SQL 方言走此通道；SQL 方言驱动未实现时
+    // 主进程会抛错 'COMMAND_CHANNEL_UNSUPPORTED'。
+    executeCommand(connId: string, command: CommandRequest): Promise<CommandResult>
   }
   files: {
     saveText(req: {
@@ -325,5 +397,10 @@ export interface DataClient {
     openText(
       filters?: { name: string; extensions: string[] }[],
     ): Promise<{ name: string; content: string } | null>
+  }
+  /** 窗口管理（桌面专属；Web 端 noop） */
+  window?: {
+    /** 复制 SPA 到新 BrowserWindow（用于跨连接 / 双 SQL 并排查看） */
+    newSession?: () => Promise<void>
   }
 }

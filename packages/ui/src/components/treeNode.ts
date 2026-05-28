@@ -1,4 +1,4 @@
-import { type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
+import { MetaNodeKind, type MetadataNode } from '@db-tool/shared-types'
 
 /** UI 侧的树节点：元数据 + 展开/加载状态 + 已取子节点。 */
 export interface TreeNode {

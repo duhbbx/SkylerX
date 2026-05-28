@@ -35,10 +35,12 @@ export function buildDataDictHtml(
   title: string,
   tables: { name: string; columns: MetadataNode[] }[],
 ): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const toc = tables
-    .map((tbl) => `<li><a href="#t-${encodeURIComponent(tbl.name)}">${esc(tbl.name)}</a> <span class="muted">(${tbl.columns.length})</span></li>`)
+    .map(
+      (tbl) =>
+        `<li><a href="#t-${encodeURIComponent(tbl.name)}">${esc(tbl.name)}</a> <span class="muted">(${tbl.columns.length})</span></li>`,
+    )
     .join('')
   const sections = tables
     .map((tbl) => {
@@ -99,7 +101,9 @@ export function buildCreateFromColumns(
     if (d.defaultValue != null && String(d.defaultValue) !== '') s += ` DEFAULT ${d.defaultValue}`
     return s
   })
-  const pks = cols.filter((c) => (c.detail as { primaryKey?: boolean })?.primaryKey).map((c) => q(c.name))
+  const pks = cols
+    .filter((c) => (c.detail as { primaryKey?: boolean })?.primaryKey)
+    .map((c) => q(c.name))
   if (pks.length) lines.push(`  PRIMARY KEY (${pks.join(', ')})`)
   return `CREATE TABLE ${tableRef} (\n${lines.join(',\n')}\n);`
 }

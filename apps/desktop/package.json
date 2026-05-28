@@ -27,6 +27,8 @@
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "electron-updater": "^6.3.9",
+    "ioredis": "^5.4.1",
+    "mongodb": "^6.10.0",
     "mssql": "^11.0.1",
     "mysql2": "^3.11.5",
     "pg": "^8.13.1",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
+import { type DbDialect, MetaNodeKind, type MetadataNode } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
@@ -26,7 +26,9 @@ const STEPS: { id: StepId; key: string }[] = [
   { id: 'map', key: 'import.step.map' },
   { id: 'run', key: 'import.step.run' },
 ]
-function stepIdx(s: StepId): number { return STEPS.findIndex((x) => x.id === s) }
+function stepIdx(s: StepId): number {
+  return STEPS.findIndex((x) => x.id === s)
+}
 
 const tableCols = ref<string[]>([])
 const fileName = ref('')
@@ -43,7 +45,9 @@ const header = computed<string[]>(() => {
   const first = csvRows.value[0] ?? []
   return hasHeader.value ? first : first.map((_c, i) => t('import.colN', { n: i + 1 }))
 })
-const dataRows = computed<string[][]>(() => (hasHeader.value ? csvRows.value.slice(1) : csvRows.value))
+const dataRows = computed<string[][]>(() =>
+  hasHeader.value ? csvRows.value.slice(1) : csvRows.value,
+)
 const preview = computed(() => dataRows.value.slice(0, 5))
 const mappedCols = computed(() => tableCols.value.filter((c) => (mapping.value[c] ?? -1) >= 0))
 

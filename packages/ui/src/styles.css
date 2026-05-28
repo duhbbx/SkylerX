@@ -7,11 +7,11 @@
   --accent: #7c6cff;
   --ok: #4caf50;
   --err: #ef5350;
-  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
 }
 
 /* 浅色主题（data-theme="light" 时覆盖变量） */
-:root[data-theme='light'] {
+:root[data-theme="light"] {
   --bg: #f6f7fb;
   --panel: #ffffff;
   --border: #dcdce5;
@@ -160,7 +160,7 @@ label {
   font-size: 14px;
 }
 
-input:not([type='checkbox']):not([type='radio']),
+input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
   width: 100%;
@@ -173,8 +173,8 @@ textarea {
 }
 
 /* 单选/复选用原生外观，避免被上面的输入框样式撑大 */
-input[type='checkbox'],
-input[type='radio'] {
+input[type="checkbox"],
+input[type="radio"] {
   width: auto;
   accent-color: var(--accent);
   cursor: pointer;

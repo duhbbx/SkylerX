@@ -42,7 +42,11 @@ async function pollMysql(c: ConnectionConfig): Promise<void> {
   const res = (await client.connections.execute(c.id, 'SHOW GLOBAL STATUS', [])) as QueryResult
   const s = new Map<string, string>()
   for (const r of rows(res)) s.set(String(r.Variable_name), String(r.Value))
-  const vars = (await client.connections.execute(c.id, "SHOW VARIABLES LIKE 'max_connections'", [])) as QueryResult
+  const vars = (await client.connections.execute(
+    c.id,
+    "SHOW VARIABLES LIKE 'max_connections'",
+    [],
+  )) as QueryResult
   const maxConn = num(rows(vars)[0]?.Value)
   const queries = num(s.get('Queries') ?? s.get('Questions'))
   const now = Date.now()

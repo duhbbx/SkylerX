@@ -2,10 +2,16 @@
 import type { DbDialect } from '@db-tool/shared-types'
 import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
-import { type ObjectKind, type TableContext, objectDdlQuery, objectRef, objectTemplate } from '../ddl'
+import {
+  type ObjectKind,
+  type TableContext,
+  objectDdlQuery,
+  objectRef,
+  objectTemplate,
+} from '../ddl'
 import { t } from '../i18n'
-import type { TreeNode } from './treeNode'
 import SqlEditor from './SqlEditor.vue'
+import type { TreeNode } from './treeNode'
 
 const client = useDataClient()
 

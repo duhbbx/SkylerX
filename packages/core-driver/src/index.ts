@@ -17,6 +17,8 @@
 
 // 类型（透传 shared-types，方便调用方单点导入）
 export type {
+  CommandRequest,
+  CommandResult,
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
@@ -28,7 +30,7 @@ export type {
   SslConfig,
   TestResult,
 } from '@db-tool/shared-types'
-export { DbDialect, MetaNodeKind, TransportMode } from '@db-tool/shared-types'
+export { DbDialect, DbKind, MetaNodeKind, TransportMode, dialectKind } from '@db-tool/shared-types'
 
 // 接口
 export type { DatabaseDriver, DriverConnection, SqlDialectHelpers } from './driver.js'

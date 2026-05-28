@@ -1,4 +1,9 @@
-import type { ConnectionConfig, ExecuteOptions, MetaScope } from '@db-tool/shared-types'
+import type {
+  CommandRequest,
+  ConnectionConfig,
+  ExecuteOptions,
+  MetaScope,
+} from '@db-tool/shared-types'
 import { ipcMain } from 'electron'
 import {
   createConnection,
@@ -30,6 +35,8 @@ export const IPC = {
   commitSession: 'connections:commitSession',
   rollbackSession: 'connections:rollbackSession',
   endSession: 'connections:endSession',
+  // NoSQL 平行通道
+  executeCommand: 'connections:executeCommand',
 } as const
 
 /** 注册连接相关的全部 IPC handler。 */
@@ -113,4 +120,28 @@ export function registerConnectionIpc(): void {
     getTransport().rollbackSession(sessionId),
   )
   ipcMain.handle(IPC.endSession, (_e, sessionId: string) => getTransport().endSession(sessionId))
+
+  // ── NoSQL 平行通道 ──
+  // 写历史:NoSQL 命令也记一条,sql 字段塞 `${op} ${JSON.stringify(args)}`
+  // 方便用户在历史里翻找(后续可考虑给 history 表加 kind 列)
+  ipcMain.handle(IPC.executeCommand, async (_e, connId: string, command: CommandRequest) => {
+    const start = Date.now()
+    const sqlLike = `${command.op}${command.args ? ` ${safeStringify(command.args)}` : ''}`
+    try {
+      const result = await getTransport().executeCommand({ id: connId }, command)
+      recordHistory(connId, sqlLike, Date.now() - start, true)
+      return result
+    } catch (e) {
+      recordHistory(connId, sqlLike, Date.now() - start, false)
+      throw e
+    }
+  })
+}
+
+function safeStringify(v: unknown): string {
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return String(v)
+  }
 }

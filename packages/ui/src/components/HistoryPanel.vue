@@ -7,13 +7,29 @@ const props = defineProps<{ entries: QueryHistoryEntry[] }>()
 const emit = defineEmits<{ pick: [string]; clear: []; saveSnippet: [string] }>()
 
 const q = ref('')
+// #4 慢查询面板：默认按时间倒序；可切「按耗时降序」；可设阈值过滤
+type SortBy = 'time' | 'duration'
+const sortBy = ref<SortBy>('time')
+const slowOnly = ref(false)
+const slowThresholdMs = ref<number>(500) // 阈值，单位毫秒；超过这个值标红
+
 const filtered = computed(() => {
   const k = q.value.trim().toLowerCase()
-  return k ? props.entries.filter((e) => e.sql.toLowerCase().includes(k)) : props.entries
+  let arr = k ? props.entries.filter((e) => e.sql.toLowerCase().includes(k)) : [...props.entries]
+  if (slowOnly.value) arr = arr.filter((e) => (e.durationMs ?? 0) >= slowThresholdMs.value)
+  if (sortBy.value === 'duration') {
+    arr.sort((a, b) => (b.durationMs ?? 0) - (a.durationMs ?? 0))
+  } else {
+    arr.sort((a, b) => b.executedAt - a.executedAt)
+  }
+  return arr
 })
 
 function fmtTime(ts: number): string {
   return new Date(ts).toLocaleString()
+}
+function isSlow(durationMs: number | undefined | null): boolean {
+  return (durationMs ?? 0) >= slowThresholdMs.value
 }
 </script>
 
@@ -22,6 +38,17 @@ function fmtTime(ts: number): string {
     <div class="history-bar">
       <input v-model="q" class="hist-search" :placeholder="t('hist.searchPh')" />
       <span class="cnt">{{ filtered.length }} / {{ entries.length }}</span>
+      <!-- #4：排序模式 + 慢查询过滤 + 阈值（持久化跟 settings 走） -->
+      <select v-model="sortBy" class="hist-sel" :title="t('hist.sortBy')">
+        <option value="time">{{ t('hist.sortTime') }}</option>
+        <option value="duration">{{ t('hist.sortDuration') }}</option>
+      </select>
+      <label class="hist-chk" :title="t('hist.slowOnlyTitle')">
+        <input v-model="slowOnly" type="checkbox" />
+        <span>≥</span>
+        <input v-model.number="slowThresholdMs" type="number" min="0" step="100" class="hist-num" />
+        <span>ms</span>
+      </label>
       <button class="ghost sm" :disabled="!entries.length" @click="emit('clear')">{{ t('hist.clear') }}</button>
     </div>
     <div class="history-list">
@@ -31,12 +58,17 @@ function fmtTime(ts: number): string {
         v-for="e in filtered"
         :key="e.id"
         class="history-item"
+        :class="{ slow: isSlow(e.durationMs) }"
         :title="t('hist.loadEditor')"
         @dblclick="emit('pick', e.sql)"
       >
         <span class="dot" :class="e.success ? 'ok' : 'err'"></span>
         <code class="sql">{{ e.sql }}</code>
-        <span class="ts">{{ fmtTime(e.executedAt) }}<template v-if="e.durationMs != null"> · {{ e.durationMs }}ms</template></span>
+        <span class="ts">
+          {{ fmtTime(e.executedAt) }}<template v-if="e.durationMs != null">
+            · <span :class="{ slowms: isSlow(e.durationMs) }">{{ e.durationMs }}ms</span>
+          </template>
+        </span>
         <button class="star" :title="t('hist.saveSnippet')" @click.stop="emit('saveSnippet', e.sql)">★</button>
       </div>
     </div>
@@ -119,6 +151,41 @@ function fmtTime(ts: number): string {
   font-size: 11px;
   color: var(--muted);
   flex: none;
+}
+.hist-sel {
+  padding: 2px 6px;
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+}
+.hist-chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.hist-num {
+  width: 64px;
+  padding: 2px 6px;
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+}
+.history-item.slow {
+  background: rgba(224, 64, 80, 0.06);
+}
+.history-item.slow:hover {
+  background: rgba(224, 64, 80, 0.16);
+}
+.slowms {
+  color: var(--err, #e04050);
+  font-weight: 600;
 }
 .star {
   background: transparent;

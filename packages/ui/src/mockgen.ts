@@ -27,10 +27,12 @@ function uuid(): string {
 export function mockValue(type: string, i: number, pk = false): string {
   const t = (type || '').toLowerCase()
   if (pk && /(^|\b)(int|serial|bigint|smallint|number|numeric)/.test(t)) return String(i + 1)
-  if (/serial|int(eger)?|bigint|smallint|tinyint/.test(t)) return String(Math.floor(Math.random() * 100000))
+  if (/serial|int(eger)?|bigint|smallint|tinyint/.test(t))
+    return String(Math.floor(Math.random() * 100000))
   if (/decimal|numeric|float|double|real|money/.test(t)) return (Math.random() * 1000).toFixed(2)
   if (/bool/.test(t)) return Math.random() < 0.5 ? 'TRUE' : 'FALSE'
-  if (/datetime|timestamp/.test(t)) return `'${randDate().toISOString().slice(0, 19).replace('T', ' ')}'`
+  if (/datetime|timestamp/.test(t))
+    return `'${randDate().toISOString().slice(0, 19).replace('T', ' ')}'`
   if (/date/.test(t)) return `'${randDate().toISOString().slice(0, 10)}'`
   if (/time/.test(t)) return `'${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:00:00'`
   if (/uuid|uniqueidentifier/.test(t)) return `'${uuid()}'`

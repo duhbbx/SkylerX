@@ -1,4 +1,5 @@
 import { reactive, watch } from 'vue'
+import { DEFAULT_MASK_RULES, type MaskRule } from './masking'
 
 /** AI 后端 provider 标识；anthropic 用 Messages API，其余走 OpenAI 兼容的 chat/completions。 */
 export type AiProvider = 'anthropic' | 'openai' | 'deepseek' | 'codex' | 'grok'
@@ -84,6 +85,12 @@ export interface Settings {
   aiEmbeddingModel: string
   /** C: 检索 top-K（小一点防 token 爆炸） */
   aiVectorTopK: number
+
+  // ── 数据脱敏（#13）：按列名匹配规则，结果集渲染时遮罩 ──
+  /** 总开关；关掉则所有规则不生效 */
+  maskingEnabled: boolean
+  /** 规则列表（首次启动取 DEFAULT_MASK_RULES，之后从 localStorage 读用户改过的） */
+  maskingRules: MaskRule[]
 }
 
 const KEY = 'skylerx.settings'
@@ -121,6 +128,8 @@ const DEFAULTS: Settings = {
   aiEmbeddingApiKey: '',
   aiEmbeddingModel: 'text-embedding-3-small',
   aiVectorTopK: 5,
+  maskingEnabled: false,
+  maskingRules: structuredClone(DEFAULT_MASK_RULES),
 }
 
 interface LegacySettings {

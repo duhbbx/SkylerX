@@ -54,7 +54,12 @@ monaco.languages.registerCompletionItemProvider('sql', {
     const src = sources.get(model)
     if (!src) return { suggestions: [] }
     const w = model.getWordUntilPosition(position)
-    const range = new monaco.Range(position.lineNumber, w.startColumn, position.lineNumber, w.endColumn)
+    const range = new monaco.Range(
+      position.lineNumber,
+      w.startColumn,
+      position.lineNumber,
+      w.endColumn,
+    )
     const before = model.getValueInRange(
       new monaco.Range(1, 1, position.lineNumber, position.column),
     )

@@ -30,8 +30,12 @@ describe('diffRows', () => {
     expect(d2.updates).toHaveLength(0)
   })
   it('null vs value differs; null vs null same', () => {
-    expect(diffRows([{ id: 1, v: null }], [{ id: 1, v: 1 }], ['id'], ['id', 'v']).updates).toHaveLength(1)
-    expect(diffRows([{ id: 1, v: null }], [{ id: 1, v: null }], ['id'], ['id', 'v']).updates).toHaveLength(0)
+    expect(
+      diffRows([{ id: 1, v: null }], [{ id: 1, v: 1 }], ['id'], ['id', 'v']).updates,
+    ).toHaveLength(1)
+    expect(
+      diffRows([{ id: 1, v: null }], [{ id: 1, v: null }], ['id'], ['id', 'v']).updates,
+    ).toHaveLength(0)
   })
 })
 
@@ -49,7 +53,7 @@ describe('generateDataSync', () => {
   const d = diffRows(source, target, key, cols)
   const sql = generateDataSync(d, DbDialect.MySQL, '`t`', key, cols)
   it('emits INSERT / UPDATE / DELETE sections', () => {
-    expect(sql).toContain('INSERT INTO `t` (`id`, `name`, `age`) VALUES (3, \'c\', 30);')
+    expect(sql).toContain("INSERT INTO `t` (`id`, `name`, `age`) VALUES (3, 'c', 30);")
     expect(sql).toContain('UPDATE `t` SET `age` = 20 WHERE `id` = 2;')
     expect(sql).toContain('DELETE FROM `t` WHERE `id` = 4;')
   })

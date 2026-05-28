@@ -74,7 +74,8 @@ export function diffSchemas(source: TableSnapshot[], target: TableSnapshot[]): T
     for (const sc of s.columns) {
       const tc = tCols.get(sc.name)
       if (!tc) changes.push({ kind: 'add', column: sc.name, to: sc })
-      else if (columnsDiffer(sc, tc)) changes.push({ kind: 'modify', column: sc.name, from: tc, to: sc })
+      else if (columnsDiffer(sc, tc))
+        changes.push({ kind: 'modify', column: sc.name, from: tc, to: sc })
     }
     for (const tc of t.columns) {
       if (!sCols.has(tc.name)) changes.push({ kind: 'drop', column: tc.name, from: tc })

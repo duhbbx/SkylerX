@@ -416,7 +416,12 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'refresh',
     label: 'ctx.refresh',
     section: 'misc',
-    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema, MetaNodeKind.Group],
+    kinds: [
+      MetaNodeKind.Connection,
+      MetaNodeKind.Database,
+      MetaNodeKind.Schema,
+      MetaNodeKind.Group,
+    ],
     run: ({ node, connId, ctrl }) => ctrl.refreshNode(node, connId),
   },
 

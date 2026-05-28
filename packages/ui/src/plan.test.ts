@@ -16,7 +16,9 @@ describe('planQuery', () => {
     })
   })
   it('strips trailing semicolon before wrapping', () => {
-    expect(planQuery(DbDialect.PostgreSQL, 'SELECT 1;  ')?.sql).toBe('EXPLAIN (FORMAT JSON) SELECT 1')
+    expect(planQuery(DbDialect.PostgreSQL, 'SELECT 1;  ')?.sql).toBe(
+      'EXPLAIN (FORMAT JSON) SELECT 1',
+    )
   })
   it('returns null for empty sql or unsupported dialects', () => {
     expect(planQuery(DbDialect.PostgreSQL, '   ')).toBeNull()

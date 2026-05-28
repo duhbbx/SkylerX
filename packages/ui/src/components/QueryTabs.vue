@@ -7,14 +7,16 @@ import { confirm as appConfirm } from '../dialog'
 import { t as tr } from '../i18n'
 import DdlEditor from './DdlEditor.vue'
 import ErdView from './ErdView.vue'
+import MongoPane from './MongoPane.vue'
 import QueryPane from './QueryPane.vue'
+import RedisPane from './RedisPane.vue'
 import TableDesigner from './TableDesigner.vue'
 import TableStructure from './TableStructure.vue'
 import type { TreeNode } from './treeNode'
 
 interface Tab {
   id: number
-  kind: 'query' | 'structure' | 'erd' | ObjectKind
+  kind: 'query' | 'structure' | 'erd' | ObjectKind | 'mongoCollection' | 'redisDb'
   conn: ConnectionConfig
   title: string
   pending: { sql: string; seq: number } | null // query
@@ -24,6 +26,10 @@ interface Tab {
   mode?: 'create' | 'alter' | 'edit' // table designer：新建/改表；DDL 编辑器：新建/编辑
   draft?: string // query：初始草稿 SQL（只填入不执行，如「查看定义」）
   pinned?: boolean // 固定标签：排在最前，不显示关闭按钮（双击切换）
+  /** NoSQL：Mongo 集合 tab 的库/集合 */
+  mongo?: { database: string; collection: string }
+  /** NoSQL：Redis tab 的逻辑库索引 */
+  redis?: { dbIndex: number }
 }
 
 const emit = defineEmits<{
@@ -143,6 +149,46 @@ function openErd(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): voi
     return
   }
   push({ kind: 'erd', conn, title: `ER · ${label}`, pending: null, ctx })
+}
+
+/** 打开 Mongo 集合浏览器页（同库.集合已开则聚焦）。 */
+function openMongoCollection(conn: ConnectionConfig, database: string, collection: string): void {
+  const existing = tabs.value.find(
+    (t) =>
+      t.kind === 'mongoCollection' &&
+      t.conn.id === conn.id &&
+      t.mongo?.database === database &&
+      t.mongo?.collection === collection,
+  )
+  if (existing) {
+    activeId.value = existing.id
+    return
+  }
+  push({
+    kind: 'mongoCollection',
+    conn,
+    title: `${database}.${collection}`,
+    pending: null,
+    mongo: { database, collection },
+  })
+}
+
+/** 打开 Redis 逻辑库页（同连接.dbIndex 已开则聚焦）。 */
+function openRedisDb(conn: ConnectionConfig, dbIndex: number): void {
+  const existing = tabs.value.find(
+    (t) => t.kind === 'redisDb' && t.conn.id === conn.id && t.redis?.dbIndex === dbIndex,
+  )
+  if (existing) {
+    activeId.value = existing.id
+    return
+  }
+  push({
+    kind: 'redisDb',
+    conn,
+    title: `${conn.name || conn.dialect} · db${dbIndex}`,
+    pending: null,
+    redis: { dbIndex },
+  })
 }
 
 /** 打开「编辑视图/函数/过程」页（DDL 编辑器 edit 模式）。 */
@@ -267,6 +313,8 @@ defineExpose({
   editObject,
   openErd,
   openDraft,
+  openMongoCollection,
+  openRedisDb,
   closeConnTabs,
   activeConnId,
 })
@@ -363,6 +411,17 @@ watch(tabs, saveLayout, { deep: true })
             @new-draft="(sql, title) => openDraft(t.conn, sql, title)"
             @ask-ai-about-error="(p) => emit('askAiAboutError', p)"
           />
+          <MongoPane
+            v-else-if="t.kind === 'mongoCollection' && t.mongo"
+            :conn="t.conn"
+            :database="t.mongo.database"
+            :collection="t.mongo.collection"
+          />
+          <RedisPane
+            v-else-if="t.kind === 'redisDb' && t.redis"
+            :conn="t.conn"
+            :db-index="t.redis.dbIndex"
+          />
           <TableDesigner
             v-else-if="t.kind === 'table'"
             :ref="(el) => setDirtyRef(t.id, el)"
@@ -391,7 +450,7 @@ watch(tabs, saveLayout, { deep: true })
             :ref="(el) => setDirtyRef(t.id, el)"
             :conn-id="t.conn.id"
             :dialect="t.conn.dialect"
-            :object-kind="t.kind"
+            :object-kind="(t.kind as ObjectKind)"
             :ctx="t.ctx!"
             :mode="t.mode === 'edit' ? 'edit' : 'create'"
             :node="t.node"

@@ -2,12 +2,8 @@
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
-import {
-  type TableSnapshot,
-  diffSchemas,
-  generateMigration,
-} from '../schema-diff'
 import { t } from '../i18n'
+import { type TableSnapshot, diffSchemas, generateMigration } from '../schema-diff'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
@@ -59,7 +55,11 @@ function onPickTgt(): void {
 }
 
 /** 用 information_schema 一次性取某连接某 schema 下的表+列。 */
-async function fetchSnapshot(connId: string, dialect: DbDialect, schema: string): Promise<TableSnapshot[]> {
+async function fetchSnapshot(
+  connId: string,
+  dialect: DbDialect,
+  schema: string,
+): Promise<TableSnapshot[]> {
   const esc = schema.replace(/'/g, "''")
   const sql =
     fam(dialect) === 'mysql'
@@ -120,7 +120,6 @@ function openInQuery(): void {
     emit('close')
   }
 }
-
 </script>
 
 <template>

@@ -89,7 +89,12 @@ async function search(): Promise<void> {
       })
     }
     for (const r of rows(cRes)) {
-      out.push({ schema: String(r.sch), table: String(r.obj), column: String(r.col), kind: 'column' })
+      out.push({
+        schema: String(r.sch),
+        table: String(r.obj),
+        column: String(r.col),
+        kind: 'column',
+      })
     }
     hits.value = out
   } catch (e) {

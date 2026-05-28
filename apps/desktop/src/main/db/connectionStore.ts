@@ -51,7 +51,9 @@ function decryptSsh(stored: string | null, withSecrets: boolean): SshConfig | un
   const dec = decryptPassword(stored)
   if (!dec) return undefined
   const ssh = JSON.parse(dec) as SshConfig
-  return withSecrets ? ssh : { ...ssh, password: undefined, privateKey: undefined, passphrase: undefined }
+  return withSecrets
+    ? ssh
+    : { ...ssh, password: undefined, privateKey: undefined, passphrase: undefined }
 }
 
 function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfig {
@@ -76,7 +78,9 @@ function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfi
 
 /** 列出全部连接（脱敏，不含密码）。 */
 export function listConnections(): ConnectionConfig[] {
-  const rows = getDb().prepare('SELECT * FROM connections ORDER BY updated_at DESC').all() as ConnectionRow[]
+  const rows = getDb()
+    .prepare('SELECT * FROM connections ORDER BY updated_at DESC')
+    .all() as ConnectionRow[]
   return rows.map((r) => rowToConfig(r, false))
 }
 
@@ -150,7 +154,9 @@ export function updateConnection(input: ConnectionConfig): ConnectionConfig {
     extra_json: input.extra ? JSON.stringify(input.extra) : null,
     updated_at: now,
   })
-  const updated = db.prepare('SELECT * FROM connections WHERE id = ?').get(input.id) as ConnectionRow
+  const updated = db
+    .prepare('SELECT * FROM connections WHERE id = ?')
+    .get(input.id) as ConnectionRow
   return rowToConfig(updated, false)
 }
 
@@ -158,7 +164,12 @@ export function deleteConnection(id: string): void {
   getDb().prepare('DELETE FROM connections WHERE id = ?').run(id)
 }
 
-function toRow(input: ConnectionConfig, id: string, createdAt: number, updatedAt: number): ConnectionRow {
+function toRow(
+  input: ConnectionConfig,
+  id: string,
+  createdAt: number,
+  updatedAt: number,
+): ConnectionRow {
   return {
     id,
     name: input.name,

@@ -35,33 +35,40 @@ export interface AiFetchResponse {
 const inflight = new Map<string, AbortController>()
 
 export function registerAiIpc(): void {
-  ipcMain.handle(AI_IPC.fetch, async (_e, req: AiFetchRequest & { reqId?: string }): Promise<AiFetchResponse> => {
-    const id = req.reqId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    const controller = new AbortController()
-    inflight.set(id, controller)
-    const timeoutMs = req.timeoutMs ?? 60_000
-    const to = setTimeout(() => controller.abort(), timeoutMs)
-    const started = Date.now()
-    console.log(`[ai:fetch] → ${req.method ?? 'POST'} ${req.url} (id=${id}, timeout=${timeoutMs}ms)`)
-    try {
-      const res = await fetch(req.url, {
-        method: req.method ?? 'POST',
-        headers: req.headers,
-        body: req.body,
-        signal: controller.signal,
-      })
-      const body = await res.text()
-      console.log(`[ai:fetch] ← ${res.status} ${Date.now() - started}ms (id=${id}, ${body.length}B)`)
-      return { ok: res.ok, status: res.status, body }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      console.log(`[ai:fetch] ✗ ${msg} ${Date.now() - started}ms (id=${id})`)
-      return { ok: false, status: 0, body: '', error: msg }
-    } finally {
-      clearTimeout(to)
-      inflight.delete(id)
-    }
-  })
+  ipcMain.handle(
+    AI_IPC.fetch,
+    async (_e, req: AiFetchRequest & { reqId?: string }): Promise<AiFetchResponse> => {
+      const id = req.reqId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const controller = new AbortController()
+      inflight.set(id, controller)
+      const timeoutMs = req.timeoutMs ?? 60_000
+      const to = setTimeout(() => controller.abort(), timeoutMs)
+      const started = Date.now()
+      console.log(
+        `[ai:fetch] → ${req.method ?? 'POST'} ${req.url} (id=${id}, timeout=${timeoutMs}ms)`,
+      )
+      try {
+        const res = await fetch(req.url, {
+          method: req.method ?? 'POST',
+          headers: req.headers,
+          body: req.body,
+          signal: controller.signal,
+        })
+        const body = await res.text()
+        console.log(
+          `[ai:fetch] ← ${res.status} ${Date.now() - started}ms (id=${id}, ${body.length}B)`,
+        )
+        return { ok: res.ok, status: res.status, body }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.log(`[ai:fetch] ✗ ${msg} ${Date.now() - started}ms (id=${id})`)
+        return { ok: false, status: 0, body: '', error: msg }
+      } finally {
+        clearTimeout(to)
+        inflight.delete(id)
+      }
+    },
+  )
 
   ipcMain.handle('ai:cancel', (_e, id: string): boolean => {
     const c = inflight.get(id)

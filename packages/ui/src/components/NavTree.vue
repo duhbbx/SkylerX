@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { type ConnectionConfig, type ConnectionEnv, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, nextTick, onMounted, provide, reactive, ref } from 'vue'
-import { useDataClient } from '../data-client'
 import { connEnv } from '../connEnv'
+import { isConnectionError } from '../connError'
+import { useDataClient } from '../data-client'
+import type { ObjectKind, SqlTemplateKind } from '../ddl'
 import { t } from '../i18n'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
-import { isConnectionError } from '../connError'
-import type { ObjectKind, SqlTemplateKind } from '../ddl'
 import { type MenuEntry, type TreeAction, menuEntriesFor } from './tree-actions'
 import { type TreeController, TreeControllerKey } from './tree-controller'
 import { type TreeNode, fromMetadata, rootNode } from './treeNode'
@@ -304,7 +304,8 @@ async function walkReveal(
       await ensureLoaded(c, connId)
       const nested = (c.children ?? []).some((x) => x.kind === MetaNodeKind.Schema)
       if (nested ? await walkReveal(c, connId, schema, table, false) : false) return true
-      if (!nested && c.name === schema && (await walkReveal(c, connId, schema, table, true))) return true
+      if (!nested && c.name === schema && (await walkReveal(c, connId, schema, table, true)))
+        return true
     }
   }
   return false

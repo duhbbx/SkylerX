@@ -66,7 +66,9 @@ async function loadSchema(): Promise<void> {
            WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION LIMIT 2000`
         : `SELECT table_name tbl, column_name col, data_type ty FROM information_schema.columns
            WHERE table_schema = 'public' ORDER BY table_name, ordinal_position LIMIT 2000`
-    const res = (await client.connections.execute(c.id, sql, [], { database: c.database })) as QueryResult
+    const res = (await client.connections.execute(c.id, sql, [], {
+      database: c.database,
+    })) as QueryResult
     const byTable = new Map<string, string[]>()
     for (const r of res.rows as Record<string, unknown>[]) {
       const tbl = String(r.tbl)

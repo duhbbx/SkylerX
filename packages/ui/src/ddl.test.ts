@@ -1,5 +1,6 @@
 import { DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { describe, expect, it } from 'vitest'
+import type { TreeNode } from './components/treeNode'
 import {
   buildAlterTable,
   buildCreateTable,
@@ -11,9 +12,13 @@ import {
   previewSql,
   quoteId,
 } from './ddl'
-import type { TreeNode } from './components/treeNode'
 
-function node(kind: MetaNodeKind, name: string, sqlName?: string, path: string[] = [name]): TreeNode {
+function node(
+  kind: MetaNodeKind,
+  name: string,
+  sqlName?: string,
+  path: string[] = [name],
+): TreeNode {
   return {
     kind,
     name,
@@ -73,9 +78,15 @@ describe('buildSqlTemplate', () => {
 
   it('createlike differs per dialect', () => {
     expect(buildSqlTemplate(DbDialect.MySQL, 'createlike', 't', cols)).toContain('LIKE t')
-    expect(buildSqlTemplate(DbDialect.PostgreSQL, 'createlike', 't', cols)).toContain('INCLUDING ALL')
-    expect(buildSqlTemplate(DbDialect.SqlServer, 'createlike', 't', cols)).toContain('SELECT * INTO')
-    expect(buildSqlTemplate(DbDialect.Oracle, 'createlike', 't', cols)).toContain('AS SELECT * FROM t')
+    expect(buildSqlTemplate(DbDialect.PostgreSQL, 'createlike', 't', cols)).toContain(
+      'INCLUDING ALL',
+    )
+    expect(buildSqlTemplate(DbDialect.SqlServer, 'createlike', 't', cols)).toContain(
+      'SELECT * INTO',
+    )
+    expect(buildSqlTemplate(DbDialect.Oracle, 'createlike', 't', cols)).toContain(
+      'AS SELECT * FROM t',
+    )
   })
 
   it('createindex names index + first column', () => {
@@ -86,11 +97,15 @@ describe('buildSqlTemplate', () => {
   })
 
   it('comment uses dialect-correct syntax', () => {
-    expect(buildSqlTemplate(DbDialect.MySQL, 'comment', 't', cols)).toContain('ALTER TABLE t COMMENT =')
+    expect(buildSqlTemplate(DbDialect.MySQL, 'comment', 't', cols)).toContain(
+      'ALTER TABLE t COMMENT =',
+    )
     const pg = buildSqlTemplate(DbDialect.PostgreSQL, 'comment', 't', cols)
     expect(pg).toContain('COMMENT ON TABLE t')
     expect(pg).toContain('COMMENT ON COLUMN t."id"')
-    expect(buildSqlTemplate(DbDialect.SqlServer, 'comment', 't', cols)).toContain('sp_addextendedproperty')
+    expect(buildSqlTemplate(DbDialect.SqlServer, 'comment', 't', cols)).toContain(
+      'sp_addextendedproperty',
+    )
   })
 })
 
@@ -110,15 +125,28 @@ describe('buildAlterTable index/FK diff', () => {
   it('leaves unchanged indexes alone', () => {
     const idx = { name: 'idx_a', columns: 'a', unique: false }
     const spec = { ...baseSpec(), indexes: [{ ...idx }] }
-    const out = buildAlterTable(DbDialect.MySQL, '`t`', [{ ...col }], spec, { indexes: [{ ...idx }] })
+    const out = buildAlterTable(DbDialect.MySQL, '`t`', [{ ...col }], spec, {
+      indexes: [{ ...idx }],
+    })
     expect(out.join('\n')).not.toMatch(/INDEX/)
   })
 
   it('drops a removed FK with dialect-correct syntax', () => {
-    const orig = { name: 'fk1', columns: 'a', refTable: 'r', refColumns: 'id', onDelete: '', onUpdate: '' }
-    const my = buildAlterTable(DbDialect.MySQL, '`t`', [{ ...col }], baseSpec(), { foreignKeys: [orig] })
+    const orig = {
+      name: 'fk1',
+      columns: 'a',
+      refTable: 'r',
+      refColumns: 'id',
+      onDelete: '',
+      onUpdate: '',
+    }
+    const my = buildAlterTable(DbDialect.MySQL, '`t`', [{ ...col }], baseSpec(), {
+      foreignKeys: [orig],
+    })
     expect(my.join('\n')).toContain('DROP FOREIGN KEY `fk1`')
-    const pg = buildAlterTable(DbDialect.PostgreSQL, '"t"', [{ ...col }], baseSpec(), { foreignKeys: [orig] })
+    const pg = buildAlterTable(DbDialect.PostgreSQL, '"t"', [{ ...col }], baseSpec(), {
+      foreignKeys: [orig],
+    })
     expect(pg.join('\n')).toContain('DROP CONSTRAINT "fk1"')
   })
 })
@@ -142,7 +170,10 @@ describe('DEFAULT value quoting (bug: bare 张三 → unquoted)', () => {
       col('u', 'UUID()'),
       col('lit', "'hello'"),
     ]
-    const out = buildCreateTable(DbDialect.MySQL, { database: 'd' }, 't', { ...emptyTableSpec(), columns: cols })
+    const out = buildCreateTable(DbDialect.MySQL, { database: 'd' }, 't', {
+      ...emptyTableSpec(),
+      columns: cols,
+    })
     expect(out).toContain("DEFAULT '张三'")
     expect(out).toContain('DEFAULT 18')
     expect(out).toContain('DEFAULT NULL')
@@ -153,21 +184,36 @@ describe('DEFAULT value quoting (bug: bare 张三 → unquoted)', () => {
   it('ALTER CHANGE column quotes the same way', () => {
     const orig = col('name', '', 'name')
     const cur = col('name', '张三', 'name')
-    const out = buildAlterTable(DbDialect.MySQL, '`t`', [orig], { ...emptyTableSpec(), columns: [cur] }).join('\n')
+    const out = buildAlterTable(DbDialect.MySQL, '`t`', [orig], {
+      ...emptyTableSpec(),
+      columns: [cur],
+    }).join('\n')
     expect(out).toContain("DEFAULT '张三'")
   })
   it('PG SET DEFAULT also quoted', () => {
     const orig = col('city', '', 'city')
     const cur = col('city', '北京', 'city')
-    const out = buildAlterTable(DbDialect.PostgreSQL, '"t"', [orig], { ...emptyTableSpec(), columns: [cur] }).join('\n')
+    const out = buildAlterTable(DbDialect.PostgreSQL, '"t"', [orig], {
+      ...emptyTableSpec(),
+      columns: [cur],
+    }).join('\n')
     expect(out).toContain(`SET DEFAULT '北京'`)
   })
 })
 
 describe('MySQL charset / collation', () => {
-  const baseCol = { ...emptyColumn(), name: 'name', type: 'varchar', length: '100', nullable: false }
+  const baseCol = {
+    ...emptyColumn(),
+    name: 'name',
+    type: 'varchar',
+    length: '100',
+    nullable: false,
+  }
   it('buildCreateTable emits CHARACTER SET / COLLATE for MySQL columns', () => {
-    const spec = { ...emptyTableSpec(), columns: [{ ...baseCol, charset: 'utf8mb4', collation: 'utf8mb4_unicode_ci' }] }
+    const spec = {
+      ...emptyTableSpec(),
+      columns: [{ ...baseCol, charset: 'utf8mb4', collation: 'utf8mb4_unicode_ci' }],
+    }
     const out = buildCreateTable(DbDialect.MySQL, { database: 'd' }, 't', spec)
     expect(out).toContain('CHARACTER SET utf8mb4')
     expect(out).toContain('COLLATE utf8mb4_unicode_ci')
@@ -175,12 +221,20 @@ describe('MySQL charset / collation', () => {
   it('buildAlterTable CHANGE picks up charset/collation diffs', () => {
     const orig = { ...baseCol, originalName: 'name', charset: 'utf8', collation: 'utf8_general_ci' }
     const cur = { ...orig, charset: 'utf8mb4', collation: 'utf8mb4_unicode_ci' }
-    const out = buildAlterTable(DbDialect.MySQL, '`t`', [orig], { ...emptyTableSpec(), columns: [cur] }).join('\n')
+    const out = buildAlterTable(DbDialect.MySQL, '`t`', [orig], {
+      ...emptyTableSpec(),
+      columns: [cur],
+    }).join('\n')
     expect(out).toMatch(/CHANGE `name` `name`.*CHARACTER SET utf8mb4.*COLLATE utf8mb4_unicode_ci/)
   })
   it('PG ignores charset/collation (MySQL-only)', () => {
     const spec = { ...emptyTableSpec(), columns: [{ ...baseCol, charset: 'utf8mb4' }] }
-    const out = buildCreateTable(DbDialect.PostgreSQL, { database: 'd', schema: 'public' }, 't', spec)
+    const out = buildCreateTable(
+      DbDialect.PostgreSQL,
+      { database: 'd', schema: 'public' },
+      't',
+      spec,
+    )
     expect(out).not.toContain('CHARACTER SET')
   })
 })
@@ -202,7 +256,12 @@ describe('index column syntax (prefix / order)', () => {
       columns: [{ ...baseCol }],
       indexes: [{ name: 'idx_a', columns: 'a desc', unique: false }],
     }
-    const out = buildCreateTable(DbDialect.PostgreSQL, { database: 'd', schema: 'public' }, 't', spec)
+    const out = buildCreateTable(
+      DbDialect.PostgreSQL,
+      { database: 'd', schema: 'public' },
+      't',
+      spec,
+    )
     expect(out).toContain('CREATE INDEX "idx_a" ON "t" ("a" DESC);')
   })
 })
@@ -224,10 +283,16 @@ describe('buildDrop', () => {
   })
 
   it('appends CASCADE only where the dialect supports it', () => {
-    expect(buildDrop(DbDialect.PostgreSQL, node(MetaNodeKind.Table, 't'), true)?.sql).toContain('CASCADE')
+    expect(buildDrop(DbDialect.PostgreSQL, node(MetaNodeKind.Table, 't'), true)?.sql).toContain(
+      'CASCADE',
+    )
     // MySQL 不支持 DROP TABLE ... CASCADE → 不应附加
-    expect(buildDrop(DbDialect.MySQL, node(MetaNodeKind.Table, 't'), true)?.sql).not.toContain('CASCADE')
-    expect(buildDrop(DbDialect.Oracle, node(MetaNodeKind.Table, 't'), true)?.sql).toContain('CASCADE CONSTRAINTS')
+    expect(buildDrop(DbDialect.MySQL, node(MetaNodeKind.Table, 't'), true)?.sql).not.toContain(
+      'CASCADE',
+    )
+    expect(buildDrop(DbDialect.Oracle, node(MetaNodeKind.Table, 't'), true)?.sql).toContain(
+      'CASCADE CONSTRAINTS',
+    )
   })
 
   it('returns null for non-droppable kinds', () => {
@@ -235,8 +300,13 @@ describe('buildDrop', () => {
   })
 
   it('drops MySQL trigger by name, PG trigger needs the table', () => {
-    expect(buildDrop(DbDialect.MySQL, node(MetaNodeKind.Trigger, 'trg'))?.sql).toBe('DROP TRIGGER `trg`')
-    const pg = buildDrop(DbDialect.PostgreSQL, node(MetaNodeKind.Trigger, 'trg', undefined, ['public', 'orders', 'trg']))
+    expect(buildDrop(DbDialect.MySQL, node(MetaNodeKind.Trigger, 'trg'))?.sql).toBe(
+      'DROP TRIGGER `trg`',
+    )
+    const pg = buildDrop(
+      DbDialect.PostgreSQL,
+      node(MetaNodeKind.Trigger, 'trg', undefined, ['public', 'orders', 'trg']),
+    )
     expect(pg?.sql).toBe('DROP TRIGGER "trg" ON "orders"')
   })
 })

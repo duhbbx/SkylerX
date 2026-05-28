@@ -24,12 +24,28 @@ describe('connReadOnly', () => {
 
 describe('isReadOnlyStatement', () => {
   it('allows read statements', () => {
-    for (const s of ['SELECT 1', '  with x as (select 1) select * from x', 'SHOW TABLES', 'EXPLAIN SELECT 1', 'DESC users', 'DESCRIBE users', 'PRAGMA table_info(t)']) {
+    for (const s of [
+      'SELECT 1',
+      '  with x as (select 1) select * from x',
+      'SHOW TABLES',
+      'EXPLAIN SELECT 1',
+      'DESC users',
+      'DESCRIBE users',
+      'PRAGMA table_info(t)',
+    ]) {
       expect(isReadOnlyStatement(s)).toBe(true)
     }
   })
   it('rejects write statements', () => {
-    for (const s of ['INSERT INTO t VALUES (1)', 'UPDATE t SET a=1', 'DELETE FROM t', 'DROP TABLE t', 'CREATE TABLE t (a int)', 'TRUNCATE t', 'ALTER TABLE t ADD c int']) {
+    for (const s of [
+      'INSERT INTO t VALUES (1)',
+      'UPDATE t SET a=1',
+      'DELETE FROM t',
+      'DROP TABLE t',
+      'CREATE TABLE t (a int)',
+      'TRUNCATE t',
+      'ALTER TABLE t ADD c int',
+    ]) {
       expect(isReadOnlyStatement(s)).toBe(false)
     }
   })

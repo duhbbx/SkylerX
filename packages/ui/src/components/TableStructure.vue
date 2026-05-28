@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type DbDialect, type MetadataNode, MetaNodeKind } from '@db-tool/shared-types'
+import { type DbDialect, MetaNodeKind, type MetadataNode } from '@db-tool/shared-types'
 import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { deriveContext } from '../ddl'

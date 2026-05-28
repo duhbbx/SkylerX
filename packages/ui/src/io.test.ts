@@ -3,7 +3,13 @@ import { parseCSV, parseJSON, toHTML, toMarkdown } from './io'
 
 describe('toMarkdown', () => {
   it('renders a GFM table and escapes pipes/newlines', () => {
-    const md = toMarkdown(['id', 'name'], [{ id: 1, name: 'a|b' }, { id: 2, name: 'c\nd' }])
+    const md = toMarkdown(
+      ['id', 'name'],
+      [
+        { id: 1, name: 'a|b' },
+        { id: 2, name: 'c\nd' },
+      ],
+    )
     const lines = md.split('\n')
     expect(lines[0]).toBe('| id | name |')
     expect(lines[1]).toBe('| --- | --- |')

@@ -27,9 +27,10 @@ export function dialectEditable(dialect: DbDialect): boolean {
 export function parseEditableTable(sql: string): string | null {
   const s = sql.trim().replace(/;\s*$/, '')
   if (/\bjoin\b/i.test(s)) return null
-  const m = /^select\s+\*\s+from\s+([^\s,()]+)\s*(where\b|order\s+by\b|group\s+by\b|limit\b|fetch\b|$)/i.exec(
-    s,
-  )
+  const m =
+    /^select\s+\*\s+from\s+([^\s,()]+)\s*(where\b|order\s+by\b|group\s+by\b|limit\b|fetch\b|$)/i.exec(
+      s,
+    )
   if (!m) return null
   // FROM 与下一关键字之间若还有逗号（多表）已被 [^\s,()]+ 排除
   return m[1]
@@ -47,7 +48,13 @@ function lit(v: unknown, dialect: DbDialect): string {
   if (typeof v === 'number') return String(v)
   // MySQL 系与 SQL Server(bit) 用 1/0；PG 系用 TRUE/FALSE
   if (typeof v === 'boolean') {
-    return MYSQL.includes(dialect) || dialect === 'sqlserver' ? (v ? '1' : '0') : v ? 'TRUE' : 'FALSE'
+    return MYSQL.includes(dialect) || dialect === 'sqlserver'
+      ? v
+        ? '1'
+        : '0'
+      : v
+        ? 'TRUE'
+        : 'FALSE'
   }
   if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, "''")}'`
   return `'${String(v).replace(/'/g, "''")}'`
@@ -82,7 +89,9 @@ export function buildEditDml(
   for (const up of changes.updates) {
     const cols = Object.keys(up.changed)
     if (!cols.length) continue
-    const set = cols.map((c) => `${quoteId(dialect, c)} = ${lit(up.changed[c], dialect)}`).join(', ')
+    const set = cols
+      .map((c) => `${quoteId(dialect, c)} = ${lit(up.changed[c], dialect)}`)
+      .join(', ')
     stmts.push(`UPDATE ${table} SET ${set} WHERE ${whereClause(columns, up.original, dialect)}`)
   }
   for (const ins of changes.inserts) {

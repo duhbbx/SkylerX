@@ -1,4 +1,6 @@
 import type {
+  CommandRequest,
+  CommandResult,
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
@@ -55,6 +57,12 @@ export interface SqlTransport {
   commitSession(sessionId: string): Promise<void>
   rollbackSession(sessionId: string): Promise<void>
   endSession(sessionId: string): Promise<void>
+
+  // ── NoSQL 平行通道 ──
+  // 上层(IPC handler / Web HTTP route)直接调本方法;
+  // Local 实现里若驱动未实现则抛 'COMMAND_CHANNEL_UNSUPPORTED'。
+  /** 执行 NoSQL 命令(Mongo / Redis 等)。 */
+  executeCommand(conn: ConnectionRef, command: CommandRequest): Promise<CommandResult>
 }
 
 /**

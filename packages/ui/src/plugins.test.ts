@@ -2,7 +2,12 @@ import { MetaNodeKind } from '@db-tool/shared-types'
 import { describe, expect, it } from 'vitest'
 import { actionsFor } from './components/tree-actions'
 import type { TreeNode } from './components/treeNode'
-import { pluginTreeActions, registerBuiltinSnippet, registerTreeAction, pluginBuiltinSnippets } from './plugins'
+import {
+  pluginBuiltinSnippets,
+  pluginTreeActions,
+  registerBuiltinSnippet,
+  registerTreeAction,
+} from './plugins'
 
 const tableNode: TreeNode = {
   kind: MetaNodeKind.Table,

@@ -1,4 +1,6 @@
 import type {
+  CommandRequest,
+  CommandResult,
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
@@ -102,6 +104,16 @@ export class LocalTransport implements SqlTransport {
     if (!owner) return // 幂等：找不到当作已结束
     this.sessionOwners.delete(sessionId)
     if (owner.endSession) await owner.endSession(sessionId)
+  }
+
+  // ── NoSQL 命令通道:按 connId 取连接(底层是 Mongo/Redis 驱动)后转发 ──
+  async executeCommand(conn: ConnectionRef, command: CommandRequest): Promise<CommandResult> {
+    const connection = await this.acquire(conn)
+    if (!connection.executeCommand) {
+      // 与上层约定的错误码,前端拿到就提示"此方言不支持命令通道"
+      throw new Error('COMMAND_CHANNEL_UNSUPPORTED')
+    }
+    return connection.executeCommand(command)
   }
 
   /** 关闭全部连接（进程退出时调用）。 */

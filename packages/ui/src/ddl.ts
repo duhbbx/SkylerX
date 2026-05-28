@@ -139,6 +139,12 @@ export function emptyTableSpec(): TableSpec {
 
 type Family = 'mysql' | 'pg' | 'sqlserver' | 'oracle'
 
+/**
+ * 把方言归到一个 SQL 家族（共享 DDL/查询模板）；NoSQL 方言（Mongo/Redis）
+ * 不属于任何 SQL 家族，调用方在调本函数前应当先 dialectKind() 分流。
+ * 出于实用兼容，遇到 NoSQL 也回退到 'mysql'（语法最常见），避免崩；
+ * 实际不应该走到这里。
+ */
 export function familyOf(dialect: DbDialect): Family {
   switch (dialect) {
     case DbDialect.MySQL:
@@ -153,6 +159,9 @@ export function familyOf(dialect: DbDialect): Family {
     case DbDialect.Oracle:
     case DbDialect.DM:
       return 'oracle'
+    default:
+      // NoSQL（Mongo/Redis）等：本不该走到 SQL 家族里，退而求其次
+      return 'mysql'
   }
 }
 
@@ -188,16 +197,24 @@ export function objectDdlQuery(
   const fam = familyOf(dialect)
   if (fam === 'mysql') {
     const kw =
-      kind === 'view' ? 'VIEW'
-      : kind === 'function' ? 'FUNCTION'
-      : kind === 'procedure' ? 'PROCEDURE'
-      : kind === 'trigger' ? 'TRIGGER'
-      : null
+      kind === 'view'
+        ? 'VIEW'
+        : kind === 'function'
+          ? 'FUNCTION'
+          : kind === 'procedure'
+            ? 'PROCEDURE'
+            : kind === 'trigger'
+              ? 'TRIGGER'
+              : null
     return kw ? { sql: `SHOW CREATE ${kw} ${ref}`, mode: 'showCreate' } : null
   }
   if (fam === 'pg') {
     if (kind === 'view')
-      return { sql: `SELECT pg_get_viewdef('${ref}'::regclass, true) AS ddl`, mode: 'viewdef', prefix: `CREATE OR REPLACE VIEW ${ref} AS\n` }
+      return {
+        sql: `SELECT pg_get_viewdef('${ref}'::regclass, true) AS ddl`,
+        mode: 'viewdef',
+        prefix: `CREATE OR REPLACE VIEW ${ref} AS\n`,
+      }
     if (kind === 'function' || kind === 'procedure')
       return { sql: `SELECT pg_get_functiondef('${ref}'::regproc) AS ddl`, mode: 'funcdef' }
     return null
@@ -217,7 +234,8 @@ export function definitionQuery(dialect: DbDialect, node: TreeNode): DefinitionF
   const name = p[p.length - 1]
   const esc = (s: string) => s.replace(/'/g, "''")
   if (node.kind === MetaNodeKind.Trigger) {
-    if (fam === 'mysql') return { sql: `SHOW CREATE TRIGGER ${quoteId(dialect, name)}`, mode: 'mysql-trigger' }
+    if (fam === 'mysql')
+      return { sql: `SHOW CREATE TRIGGER ${quoteId(dialect, name)}`, mode: 'mysql-trigger' }
     if (fam === 'pg') {
       const schema = p[p.length - 3]
       const table = p[p.length - 2]
@@ -330,9 +348,7 @@ export function buildSqlTemplate(
       // 新建索引模板：把列、索引名按需改写后执行；唯一索引去掉行首注释。
       const firstCol = names[0] ?? q('column_name')
       const idxName = `idx_${tableRef.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}_${cols[0]?.name ?? 'col'}`
-      return (
-        `CREATE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n-- 唯一索引：CREATE UNIQUE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n-- 复合索引：在括号内追加更多列，逗号分隔。`
-      )
+      return `CREATE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n-- 唯一索引：CREATE UNIQUE INDEX ${q(idxName)} ON ${tableRef} (${firstCol});\n-- 复合索引：在括号内追加更多列，逗号分隔。`
     }
     case 'comment': {
       // 表/列注释模板（方言写法差异较大）。
@@ -374,7 +390,11 @@ export interface TableStats {
 }
 
 /** 表统计查询（行数 + 数据/索引占用）；仅 MySQL / PG 系，其余返回 null。 */
-export function tableStatsQuery(dialect: DbDialect, ctx: TableContext, table: string): string | null {
+export function tableStatsQuery(
+  dialect: DbDialect,
+  ctx: TableContext,
+  table: string,
+): string | null {
   const esc = (s: string) => s.replace(/'/g, "''")
   switch (familyOf(dialect)) {
     case 'mysql':
@@ -415,9 +435,50 @@ export function quoteId(dialect: DbDialect, id: string): string {
 }
 
 const TYPES: Record<Family, string[]> = {
-  mysql: ['INT', 'BIGINT', 'TINYINT', 'VARCHAR', 'CHAR', 'TEXT', 'DECIMAL', 'DOUBLE', 'FLOAT', 'DATE', 'DATETIME', 'TIMESTAMP', 'JSON', 'BLOB'],
-  pg: ['int4', 'int8', 'serial', 'varchar', 'char', 'text', 'numeric', 'float8', 'boolean', 'date', 'timestamp', 'timestamptz', 'uuid', 'jsonb'],
-  sqlserver: ['INT', 'BIGINT', 'BIT', 'NVARCHAR', 'VARCHAR', 'DECIMAL', 'FLOAT', 'DATE', 'DATETIME2', 'UNIQUEIDENTIFIER'],
+  mysql: [
+    'INT',
+    'BIGINT',
+    'TINYINT',
+    'VARCHAR',
+    'CHAR',
+    'TEXT',
+    'DECIMAL',
+    'DOUBLE',
+    'FLOAT',
+    'DATE',
+    'DATETIME',
+    'TIMESTAMP',
+    'JSON',
+    'BLOB',
+  ],
+  pg: [
+    'int4',
+    'int8',
+    'serial',
+    'varchar',
+    'char',
+    'text',
+    'numeric',
+    'float8',
+    'boolean',
+    'date',
+    'timestamp',
+    'timestamptz',
+    'uuid',
+    'jsonb',
+  ],
+  sqlserver: [
+    'INT',
+    'BIGINT',
+    'BIT',
+    'NVARCHAR',
+    'VARCHAR',
+    'DECIMAL',
+    'FLOAT',
+    'DATE',
+    'DATETIME2',
+    'UNIQUEIDENTIFIER',
+  ],
   oracle: ['NUMBER', 'VARCHAR2', 'CHAR', 'CLOB', 'DATE', 'TIMESTAMP', 'FLOAT', 'BLOB'],
 }
 
@@ -532,7 +593,11 @@ export function objectTemplate(dialect: DbDialect, kind: ObjectKind, _ctx: Table
 }
 
 const esc = (s: string) => s.replace(/'/g, "''")
-const splitCols = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
+const splitCols = (s: string) =>
+  s
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
 
 /**
  * DEFAULT 值的智能引号：数字、布尔、NULL、CURRENT_TIMESTAMP / NOW() 等保持原样；
@@ -544,7 +609,8 @@ export function quoteDefaultValue(raw: string): string {
   if (!s) return ''
   if (/^['"`]/.test(s)) return s
   if (/^-?\d+(\.\d+)?$/.test(s)) return s
-  if (/^(NULL|TRUE|FALSE|CURRENT_TIMESTAMP|CURRENT_DATE|CURRENT_TIME|LOCALTIMESTAMP)$/i.test(s)) return s
+  if (/^(NULL|TRUE|FALSE|CURRENT_TIMESTAMP|CURRENT_DATE|CURRENT_TIME|LOCALTIMESTAMP)$/i.test(s))
+    return s
   // 函数调用形式（NOW() / UUID() / gen_random_uuid() / GETDATE() …）保持原样
   if (/^[A-Za-z_][\w]*\s*\([^)]*\)$/.test(s)) return s
   return `'${s.replace(/'/g, "''")}'`
@@ -684,11 +750,15 @@ export function buildCreateTable(
   for (const u of spec.uniques) {
     const c = splitCols(u.columns)
     if (!c.length) continue
-    lines.push(`  ${u.name.trim() ? `CONSTRAINT ${q(u.name.trim())} ` : ''}UNIQUE (${c.map(q).join(', ')})`)
+    lines.push(
+      `  ${u.name.trim() ? `CONSTRAINT ${q(u.name.trim())} ` : ''}UNIQUE (${c.map(q).join(', ')})`,
+    )
   }
   for (const ck of spec.checks) {
     if (!ck.expression.trim()) continue
-    lines.push(`  ${ck.name.trim() ? `CONSTRAINT ${q(ck.name.trim())} ` : ''}CHECK (${ck.expression.trim()})`)
+    lines.push(
+      `  ${ck.name.trim() ? `CONSTRAINT ${q(ck.name.trim())} ` : ''}CHECK (${ck.expression.trim()})`,
+    )
   }
   for (const fk of spec.foreignKeys) {
     const lc = splitCols(fk.columns)
@@ -750,9 +820,11 @@ export function buildCreateTable(
   }
   // PG / Oracle：表与列注释用 COMMENT ON
   if (fam === 'pg' || fam === 'oracle') {
-    if (spec.comment.trim()) statements.push(`COMMENT ON TABLE ${name} IS '${esc(spec.comment.trim())}';`)
+    if (spec.comment.trim())
+      statements.push(`COMMENT ON TABLE ${name} IS '${esc(spec.comment.trim())}';`)
     for (const c of cols) {
-      if (c.comment.trim()) statements.push(`COMMENT ON COLUMN ${name}.${q(c.name)} IS '${esc(c.comment.trim())}';`)
+      if (c.comment.trim())
+        statements.push(`COMMENT ON COLUMN ${name}.${q(c.name)} IS '${esc(c.comment.trim())}';`)
     }
   }
 
@@ -804,7 +876,8 @@ export function buildAlterTable(
         let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}${c.nullable ? '' : ' NOT NULL'}`
         if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
         stmts.push(s)
-        if (c.comment.trim()) stmts.push(`COMMENT ON COLUMN ${tableRef}.${q(c.name)} IS '${esc(c.comment.trim())}'`)
+        if (c.comment.trim())
+          stmts.push(`COMMENT ON COLUMN ${tableRef}.${q(c.name)} IS '${esc(c.comment.trim())}'`)
       }
       continue
     }
@@ -820,7 +893,15 @@ export function buildAlterTable(
     const collationChanged = (o.collation ?? '').trim() !== (c.collation ?? '').trim()
     if (fam === 'mysql') {
       // CHANGE 一步完成改名 + 重定义
-      if (renamed || typeChanged || nullChanged || defChanged || commentChanged || charsetChanged || collationChanged) {
+      if (
+        renamed ||
+        typeChanged ||
+        nullChanged ||
+        defChanged ||
+        commentChanged ||
+        charsetChanged ||
+        collationChanged
+      ) {
         let s = `ALTER TABLE ${tableRef} CHANGE ${q(c.originalName)} ${q(c.name)} ${t}`
         if (c.unsigned) s += ' UNSIGNED'
         if (c.zerofill) s += ' ZEROFILL'
@@ -832,13 +913,20 @@ export function buildAlterTable(
         stmts.push(s)
       }
     } else {
-      if (renamed) stmts.push(`ALTER TABLE ${tableRef} RENAME COLUMN ${q(c.originalName)} TO ${q(c.name)}`)
+      if (renamed)
+        stmts.push(`ALTER TABLE ${tableRef} RENAME COLUMN ${q(c.originalName)} TO ${q(c.name)}`)
       const col = q(c.name)
       if (typeChanged) stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} TYPE ${t}`)
-      if (nullChanged) stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.nullable ? 'DROP NOT NULL' : 'SET NOT NULL'}`)
+      if (nullChanged)
+        stmts.push(
+          `ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.nullable ? 'DROP NOT NULL' : 'SET NOT NULL'}`,
+        )
       if (defChanged)
-        stmts.push(`ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.defaultValue.trim() ? `SET DEFAULT ${quoteDefaultValue(c.defaultValue)}` : 'DROP DEFAULT'}`)
-      if (commentChanged) stmts.push(`COMMENT ON COLUMN ${tableRef}.${col} IS '${esc(c.comment.trim())}'`)
+        stmts.push(
+          `ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${c.defaultValue.trim() ? `SET DEFAULT ${quoteDefaultValue(c.defaultValue)}` : 'DROP DEFAULT'}`,
+        )
+      if (commentChanged)
+        stmts.push(`COMMENT ON COLUMN ${tableRef}.${col} IS '${esc(c.comment.trim())}'`)
     }
   }
 
@@ -846,17 +934,23 @@ export function buildAlterTable(
   for (const u of spec.uniques) {
     const cols = splitCols(u.columns)
     if (!cols.length) continue
-    stmts.push(`ALTER TABLE ${tableRef} ADD ${u.name.trim() ? `CONSTRAINT ${q(u.name.trim())} ` : ''}UNIQUE (${cols.map(q).join(', ')})`)
+    stmts.push(
+      `ALTER TABLE ${tableRef} ADD ${u.name.trim() ? `CONSTRAINT ${q(u.name.trim())} ` : ''}UNIQUE (${cols.map(q).join(', ')})`,
+    )
   }
   for (const ck of spec.checks) {
     if (!ck.expression.trim()) continue
-    stmts.push(`ALTER TABLE ${tableRef} ADD ${ck.name.trim() ? `CONSTRAINT ${q(ck.name.trim())} ` : ''}CHECK (${ck.expression.trim()})`)
+    stmts.push(
+      `ALTER TABLE ${tableRef} ADD ${ck.name.trim() ? `CONSTRAINT ${q(ck.name.trim())} ` : ''}CHECK (${ck.expression.trim()})`,
+    )
   }
   // ── 外键：diff 出新增 / 删除（按名字；定义变化 = 先删后加）──
   const fkSig = (f: ForeignKeyDef) =>
     `${splitCols(f.columns).join(',')}>${f.refTable.trim()}(${splitCols(f.refColumns).join(',')})|${f.onDelete}|${f.onUpdate}`
   const origFks = originalExtras.foreignKeys ?? []
-  const specFkByName = new Map(spec.foreignKeys.filter((f) => f.name.trim()).map((f) => [f.name.trim(), f]))
+  const specFkByName = new Map(
+    spec.foreignKeys.filter((f) => f.name.trim()).map((f) => [f.name.trim(), f]),
+  )
   const dropFk = (name: string) =>
     fam === 'mysql'
       ? `ALTER TABLE ${tableRef} DROP FOREIGN KEY ${q(name)}`
@@ -877,11 +971,16 @@ export function buildAlterTable(
   }
 
   // ── 索引：diff 出新增 / 删除（按名字；列或唯一性变化 = 先删后建）──
-  const idxSig = (ix: IndexDef) => `${splitCols(ix.columns).join(',')}|${ix.unique ? 1 : 0}|${ix.type ?? ''}|${(ix.where ?? '').trim()}|${ix.concurrent ? 1 : 0}`
+  const idxSig = (ix: IndexDef) =>
+    `${splitCols(ix.columns).join(',')}|${ix.unique ? 1 : 0}|${ix.type ?? ''}|${(ix.where ?? '').trim()}|${ix.concurrent ? 1 : 0}`
   const origIdx = originalExtras.indexes ?? []
-  const specIdxByName = new Map(spec.indexes.filter((i) => i.name.trim()).map((i) => [i.name.trim(), i]))
+  const specIdxByName = new Map(
+    spec.indexes.filter((i) => i.name.trim()).map((i) => [i.name.trim(), i]),
+  )
   const dropIdx = (name: string) =>
-    fam === 'mysql' ? `ALTER TABLE ${tableRef} DROP INDEX ${q(name)}` : `DROP INDEX IF EXISTS ${q(name)}`
+    fam === 'mysql'
+      ? `ALTER TABLE ${tableRef} DROP INDEX ${q(name)}`
+      : `DROP INDEX IF EXISTS ${q(name)}`
   for (const o of origIdx) {
     const s = o.name ? specIdxByName.get(o.name) : undefined
     if (!s || idxSig(s) !== idxSig(o)) stmts.push(dropIdx(o.name))
@@ -907,7 +1006,11 @@ export function buildAlterTable(
 }
 
 /** 现有索引查询（排除主键）；MySQL / PG，返回 {name, columns(逗号), unique}。其余 null。 */
-export function existingIndexesQuery(dialect: DbDialect, ctx: TableContext, table: string): string | null {
+export function existingIndexesQuery(
+  dialect: DbDialect,
+  ctx: TableContext,
+  table: string,
+): string | null {
   const esc = (s: string) => s.replace(/'/g, "''")
   switch (familyOf(dialect)) {
     case 'mysql':

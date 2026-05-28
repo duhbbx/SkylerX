@@ -38,7 +38,13 @@ interface BridgeResponse {
 /** 统一发请求：优先走 IPC（避 CORS）；否则原生 fetch。返回统一形如 Response 的对象（带 text() / json()）。 */
 async function aiHttp(
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal; timeoutMs?: number },
+  init: {
+    method: string
+    headers: Record<string, string>
+    body: string
+    signal?: AbortSignal
+    timeoutMs?: number
+  },
 ): Promise<BridgeResponse & { text(): Promise<string>; json(): Promise<unknown> }> {
   const bridge = aiBridge()
   if (bridge) {
@@ -135,7 +141,12 @@ function buildUserMessage(o: AskOptions): string {
 }
 
 /** Anthropic Messages API（claude-*）。 */
-async function callAnthropic(o: AskOptions, key: string, base: string, model: string): Promise<string> {
+async function callAnthropic(
+  o: AskOptions,
+  key: string,
+  base: string,
+  model: string,
+): Promise<string> {
   const res = await aiHttp(`${base}/v1/messages`, {
     method: 'POST',
     headers: {
@@ -162,7 +173,12 @@ async function callAnthropic(o: AskOptions, key: string, base: string, model: st
 }
 
 /** OpenAI 兼容的 chat/completions（OpenAI / DeepSeek / Codex / Grok / 其他兼容代理）。 */
-async function callOpenAiCompat(o: AskOptions, key: string, base: string, model: string): Promise<string> {
+async function callOpenAiCompat(
+  o: AskOptions,
+  key: string,
+  base: string,
+  model: string,
+): Promise<string> {
   const res = await aiHttp(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers: {
@@ -271,7 +287,11 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
     })
     await throwIfNotOk(res)
     const data = (await res.json()) as { content?: { type: string; text?: string }[] }
-    return (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('').trim()
+    return (data.content ?? [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text ?? '')
+      .join('')
+      .trim()
   }
   // OpenAI 兼容
   const res = await aiHttp(`${base}/v1/chat/completions`, {

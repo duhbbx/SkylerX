@@ -55,7 +55,12 @@ try {
   applyMonacoLocale(pick)
   if (typeof console !== 'undefined') {
     // biome-ignore lint/suspicious/noConsole: 启动诊断（可在确认无误后删）
-    console.log('[skylerx monaco-nls] init', { saved, nav, pick, msgCount: G._VSCODE_NLS_MESSAGES?.length ?? 0 })
+    console.log('[skylerx monaco-nls] init', {
+      saved,
+      nav,
+      pick,
+      msgCount: G._VSCODE_NLS_MESSAGES?.length ?? 0,
+    })
   }
 } catch (e) {
   if (typeof console !== 'undefined') {

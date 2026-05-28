@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { t, locale } from '../i18n'
-import { type Suggestion, clearCompletionSource, monaco, setCompletionSource } from '../monaco-setup'
+import { locale, t } from '../i18n'
+import {
+  type Suggestion,
+  clearCompletionSource,
+  monaco,
+  setCompletionSource,
+} from '../monaco-setup'
 import { settings } from '../settings'
 
 const props = defineProps<{
@@ -67,7 +72,8 @@ onMounted(() => {
   })
 
   model = editor.getModel()
-  if (model && props.completion && settings.enableCompletion) setCompletionSource(model, props.completion)
+  if (model && props.completion && settings.enableCompletion)
+    setCompletionSource(model, props.completion)
   registerCustomActions()
 })
 
@@ -113,7 +119,9 @@ function registerCustomActions(): void {
   // 工具类
   add('skylerx.format', t('editor.action.formatAll'), G_TOOLS, 1, () => emit('format'))
   add('skylerx.compress', t('editor.action.compress'), G_TOOLS, 2, () => emit('compress'))
-  add('skylerx.strip-comments', t('editor.action.stripComments'), G_TOOLS, 3, () => emit('stripComments'))
+  add('skylerx.strip-comments', t('editor.action.stripComments'), G_TOOLS, 3, () =>
+    emit('stripComments'),
+  )
   // 保存 / AI
   add('skylerx.save-snippet', t('editor.action.saveSnippet'), G_SAVE, 1, () => emit('saveSnippet'))
   add('skylerx.favorite', t('editor.action.favorite'), G_SAVE, 2, () => emit('favorite'))
@@ -165,7 +173,12 @@ function getTextBeforeCursor(): string {
   const pos = editor?.getPosition()
   const model = editor?.getModel()
   if (!editor || !pos || !model) return ''
-  return model.getValueInRange({ startLineNumber: 1, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column })
+  return model.getValueInRange({
+    startLineNumber: 1,
+    startColumn: 1,
+    endLineNumber: pos.lineNumber,
+    endColumn: pos.column,
+  })
 }
 
 defineExpose({ getSelectedText, getTextBeforeCursor })

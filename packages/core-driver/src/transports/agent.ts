@@ -1,4 +1,6 @@
 import type {
+  CommandRequest,
+  CommandResult,
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
@@ -114,6 +116,11 @@ export class AgentTransport implements SqlTransport {
     if (!agentId) return // 幂等
     this.sessionRoutes.delete(sessionId)
     await this.client.call<void>(agentId, 'endSession', { sessionId })
+  }
+
+  // ── NoSQL 命令通道:转发到对应 agent ──
+  async executeCommand(conn: ConnectionRef, command: CommandRequest): Promise<CommandResult> {
+    return this.client.call<CommandResult>(this.agentOf(conn), 'executeCommand', { conn, command })
   }
 
   private agentOf(conn: ConnectionRef): string {

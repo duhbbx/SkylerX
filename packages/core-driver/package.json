@@ -23,6 +23,14 @@
     "mysql2": "^3.11.5",
     "pg": "^8.13.1"
   },
+  "peerDependencies": {
+    "ioredis": "^5",
+    "mongodb": "^6"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": { "optional": true },
+    "mongodb": { "optional": true }
+  },
   "devDependencies": {
     "@types/mssql": "^9.1.7",
     "@types/pg": "^8.11.10",

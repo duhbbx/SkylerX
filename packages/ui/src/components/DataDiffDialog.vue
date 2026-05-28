@@ -42,7 +42,11 @@ const supported = computed(() => {
 })
 const summary = computed(() =>
   diff.value
-    ? { ins: diff.value.inserts.length, upd: diff.value.updates.length, del: diff.value.deletes.length }
+    ? {
+        ins: diff.value.inserts.length,
+        upd: diff.value.updates.length,
+        del: diff.value.deletes.length,
+      }
     : null,
 )
 

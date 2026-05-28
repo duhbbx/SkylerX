@@ -3,9 +3,11 @@ import {
   type ConnectionConfig,
   type ConnectionEnv,
   DbDialect,
+  DbKind,
   type TestResult,
+  dialectKind,
 } from '@db-tool/shared-types'
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ENV_OPTIONS, connEnv, connReadOnly } from '../connEnv'
 import { useDataClient } from '../data-client'
 import { t } from '../i18n'
@@ -24,6 +26,8 @@ const dialectOptions = [
   { value: DbDialect.DM, label: '达梦 DM' },
   { value: DbDialect.KingbaseES, label: '人大金仓' },
   { value: DbDialect.OceanBase, label: 'OceanBase' },
+  { value: DbDialect.MongoDB, label: 'MongoDB' },
+  { value: DbDialect.Redis, label: 'Redis' },
 ]
 
 const defaultPorts: Record<string, number> = {
@@ -35,6 +39,8 @@ const defaultPorts: Record<string, number> = {
   [DbDialect.Oracle]: 1521,
   [DbDialect.DM]: 5236,
   [DbDialect.SqlServer]: 1433,
+  [DbDialect.MongoDB]: 27017,
+  [DbDialect.Redis]: 6379,
 }
 
 const form = reactive<ConnectionConfig>(blankForm())
@@ -122,6 +128,25 @@ function onDialectChange(): void {
   form.port = defaultPorts[form.dialect] ?? form.port
 }
 
+const isNoSql = computed(() => dialectKind(form.dialect) === DbKind.NoSql)
+const isMongo = computed(() => form.dialect === DbDialect.MongoDB)
+
+/** MongoDB URI 直填（读写 form.extra.uri，按需创建 / 清空 extra）。 */
+const mongoUri = computed<string>({
+  get: () => {
+    const v = (form.extra as Record<string, unknown> | undefined)?.uri
+    return typeof v === 'string' ? v : ''
+  },
+  set: (v: string) => {
+    const trimmed = v ?? ''
+    const extra = { ...((form.extra as Record<string, unknown> | undefined) ?? {}) }
+    if (trimmed) extra.uri = trimmed
+    else delete extra.uri
+    form.extra = Object.keys(extra).length ? extra : undefined
+  },
+})
+const mongoUriActive = computed(() => isMongo.value && mongoUri.value.trim().length > 0)
+
 // 过 IPC 前转成纯对象，避免 Vue 响应式 Proxy 触发结构化克隆错误；
 // 未启用的 SSL/SSH 不持久化，空分组归一为 undefined。
 function buildConfig(): ConnectionConfig {
@@ -139,7 +164,8 @@ function buildConfig(): ConnectionConfig {
   const extra: Record<string, unknown> = { ...restExtra }
   if (env.value) extra.env = env.value
   if (readOnly.value) extra.readOnly = true
-  if (commitMode.value !== 'inherit') extra.commitMode = commitMode.value
+  // NoSQL（Mongo/Redis）没有事务概念，不写 commitMode
+  if (!isNoSql.value && commitMode.value !== 'inherit') extra.commitMode = commitMode.value
   cfg.extra = Object.keys(extra).length ? extra : undefined
   return cfg
 }
@@ -199,20 +225,31 @@ async function remove(): Promise<void> {
         <option v-for="d in dialectOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
       </select>
 
+      <template v-if="isMongo">
+        <label>URI</label>
+        <textarea
+          v-model="mongoUri"
+          rows="2"
+          placeholder="mongodb://user:pass@host:27017/dbname?options..."
+        />
+        <span />
+        <small class="hint">填写 URI 时会忽略 Host/Port/User/Password/Database</small>
+      </template>
+
       <label>{{ t('conn.host') }}</label>
-      <input v-model="form.host" />
+      <input v-model="form.host" :disabled="mongoUriActive" />
 
       <label>{{ t('conn.port') }}</label>
-      <input v-model.number="form.port" type="number" />
+      <input v-model.number="form.port" type="number" :disabled="mongoUriActive" />
 
       <label>{{ t('conn.user') }}</label>
-      <input v-model="form.user" />
+      <input v-model="form.user" :disabled="mongoUriActive" />
 
       <label>{{ t('conn.password') }}</label>
-      <input v-model="form.password" type="password" placeholder="" />
+      <input v-model="form.password" type="password" placeholder="" :disabled="mongoUriActive" />
 
       <label>{{ t('conn.database') }}</label>
-      <input v-model="form.database" :placeholder="t('conn.optional')" />
+      <input v-model="form.database" :placeholder="t('conn.optional')" :disabled="mongoUriActive" />
 
       <label>{{ t('conn.group') }}</label>
       <input v-model="form.group" list="conn-groups" :placeholder="t('conn.group.ph')" />
@@ -229,12 +266,14 @@ async function remove(): Promise<void> {
       <label>{{ t('conn.readOnly') }}</label>
       <input v-model="readOnly" type="checkbox" class="chk" :title="t('conn.readOnlyTitle')" />
 
-      <label>{{ t('commit.mode') }}</label>
-      <select v-model="commitMode" :disabled="readOnly" :title="t('commit.mode')">
-        <option value="inherit">{{ t('commit.modeInherit') }}</option>
-        <option value="auto">{{ t('commit.modeAuto') }}</option>
-        <option value="manual">{{ t('commit.modeManual') }}</option>
-      </select>
+      <template v-if="!isNoSql">
+        <label>{{ t('commit.mode') }}</label>
+        <select v-model="commitMode" :disabled="readOnly" :title="t('commit.mode')">
+          <option value="inherit">{{ t('commit.modeInherit') }}</option>
+          <option value="auto">{{ t('commit.modeAuto') }}</option>
+          <option value="manual">{{ t('commit.modeManual') }}</option>
+        </select>
+      </template>
     </div>
 
     <div v-show="section === 'ssl'" class="form-grid">
@@ -367,5 +406,15 @@ async function remove(): Promise<void> {
   justify-self: start;
   width: 16px;
   height: 16px;
+}
+.form-grid .hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.form-grid input:disabled,
+.form-grid select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 </style>

@@ -39,6 +39,16 @@ function onPickProvider(p: AiProvider): void {
 }
 
 // ── 记忆与画像 ──
+/** #13 加一行空白脱敏规则 */
+function addMaskRule(): void {
+  settings.maskingRules.push({
+    name: '',
+    columnPattern: '',
+    kind: 'default',
+    enabled: true,
+  })
+}
+
 const newFact = ref('')
 function onAddFact(): void {
   const v = newFact.value.trim()
@@ -120,6 +130,32 @@ function watermarkPreviewSvg(): string {
           <p class="hint">
             {{ settings.commitMode === 'manual' ? t('commit.modeManualDesc') : t('commit.modeAutoDesc') }}
           </p>
+          <!-- #13 数据脱敏：列名匹配 → 结果集渲染遮罩 -->
+          <label class="row">
+            <span class="lbl">{{ t('mask.enabled') }}</span>
+            <input v-model="settings.maskingEnabled" type="checkbox" class="chk" :title="t('mask.enabledTitle')" />
+          </label>
+          <div v-if="settings.maskingEnabled" class="mask-rules">
+            <div class="mask-head">
+              <span>{{ t('mask.rulesTitle') }}</span>
+              <button class="ghost sm" @click="addMaskRule">+ {{ t('mask.addRule') }}</button>
+            </div>
+            <div v-for="(r, i) in settings.maskingRules" :key="i" class="mask-row">
+              <input v-model="r.enabled" type="checkbox" class="chk" :title="t('mask.toggleRule')" />
+              <input v-model="r.name" class="m-name" :placeholder="t('mask.ruleName')" />
+              <input v-model="r.columnPattern" class="m-pat" :placeholder="t('mask.patternPh')" />
+              <select v-model="r.kind" class="m-kind">
+                <option value="phone">phone</option>
+                <option value="email">email</option>
+                <option value="idCard">idCard</option>
+                <option value="bankCard">bankCard</option>
+                <option value="name">name</option>
+                <option value="address">address</option>
+                <option value="default">default</option>
+              </select>
+              <button class="ghost sm" :title="t('common.remove')" @click="settings.maskingRules.splice(i, 1)">×</button>
+            </div>
+          </div>
         </template>
 
         <!-- 编辑器 -->
@@ -396,6 +432,40 @@ function watermarkPreviewSvg(): string {
   color: var(--muted);
   line-height: 1.5;
 }
+/* ── #13 数据脱敏规则编辑 ── */
+.mask-rules {
+  margin-left: 140px;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.mask-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.mask-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.mask-row .m-name { width: 90px; }
+.mask-row .m-pat { flex: 1; font-family: ui-monospace, monospace; font-size: 12px; }
+.mask-row .m-kind { width: 90px; }
+.mask-row input, .mask-row select {
+  padding: 3px 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+}
+.chk { transform: scale(1.05); }
 .row select,
 .row input[type='text'],
 .row input[type='password'],

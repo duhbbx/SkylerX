@@ -61,10 +61,15 @@ function lookupByFallback(fallback: string): string | undefined {
 // 调试：所有 localize 调用全打印（不截断）；对 Cut/Copy/Paste 等高亮关键 key 单独 warn
 function _dlog(data: unknown, message: string, zh: string | undefined): void {
   if (typeof console === 'undefined') return
-  const critical = /^(Cut|Copy|Paste|Change All Occurrences|Command Palette|Open Command Palette|Find|Replace)$/.test(message)
+  const critical =
+    /^(Cut|Copy|Paste|Change All Occurrences|Command Palette|Open Command Palette|Find|Replace)$/.test(
+      message,
+    )
   if (critical) {
     // biome-ignore lint/suspicious/noConsole: 启动诊断
-    console.warn(`[shim.localize CRITICAL] msg=${JSON.stringify(message)} lang=${getNLSLanguage()} zh=${JSON.stringify(zh)} data=${JSON.stringify(data)}`)
+    console.warn(
+      `[shim.localize CRITICAL] msg=${JSON.stringify(message)} lang=${getNLSLanguage()} zh=${JSON.stringify(zh)} data=${JSON.stringify(data)}`,
+    )
   }
 }
 

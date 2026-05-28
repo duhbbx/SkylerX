@@ -1,4 +1,5 @@
 import type {
+  CommandRequest,
   ConnectionConfig,
   ConnectionRef,
   ExecuteOptions,
@@ -25,6 +26,7 @@ export type AgentRpcMethod =
   | 'commitSession'
   | 'rollbackSession'
   | 'endSession'
+  | 'executeCommand'
 
 export interface AgentRpcPayloads {
   execute: { conn: ConnectionRef; sql: string; params?: unknown[]; options?: ExecuteOptions }
@@ -38,6 +40,7 @@ export interface AgentRpcPayloads {
   commitSession: { sessionId: string }
   rollbackSession: { sessionId: string }
   endSession: { sessionId: string }
+  executeCommand: { conn: ConnectionRef; command: CommandRequest }
 }
 
 export interface AgentRpcRequest<M extends AgentRpcMethod = AgentRpcMethod> {
@@ -106,6 +109,10 @@ export async function dispatchAgentRpc(
       const p = payload as AgentRpcPayloads['endSession']
       await transport.endSession(p.sessionId)
       return null
+    }
+    case 'executeCommand': {
+      const p = payload as AgentRpcPayloads['executeCommand']
+      return transport.executeCommand(p.conn, p.command)
     }
     default: {
       throw new Error(`未知 agent RPC 方法：${String(method)}`)

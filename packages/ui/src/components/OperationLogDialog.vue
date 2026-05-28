@@ -65,7 +65,13 @@ async function exportCsv(): Promise<void> {
   const esc = (s: string) => `"${s.replace(/"/g, '""')}"`
   const header = 'time,connection,status,duration_ms,sql'
   const lines = filtered.value.map((r) =>
-    [esc(fmtTime(r.executedAt)), esc(r.connName), r.success ? 'ok' : 'error', r.durationMs ?? '', esc(oneLine(r.sql))].join(','),
+    [
+      esc(fmtTime(r.executedAt)),
+      esc(r.connName),
+      r.success ? 'ok' : 'error',
+      r.durationMs ?? '',
+      esc(oneLine(r.sql)),
+    ].join(','),
   )
   await client.files.saveText({
     defaultName: 'skylerx-operation-log.csv',

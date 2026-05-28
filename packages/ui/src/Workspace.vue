@@ -1,12 +1,21 @@
 <script setup lang="ts">
-import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/shared-types'
+import {
+  type ConnectionConfig,
+  DbDialect,
+  DbKind,
+  MetaNodeKind,
+  dialectKind,
+} from '@db-tool/shared-types'
 import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import type { AiMode } from './ai'
 import AiAssistantDialog from './components/AiAssistantDialog.vue'
 import AiChatPanel from './components/AiChatPanel.vue'
+import AiToolboxDialog from './components/AiToolboxDialog.vue'
 import AppDialogs from './components/AppDialogs.vue'
+import BackupRestoreDialog from './components/BackupRestoreDialog.vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
+import DashboardDialog from './components/DashboardDialog.vue'
 import DataDiffDialog from './components/DataDiffDialog.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
 import ExportOptionsDialog from './components/ExportOptionsDialog.vue'
@@ -18,6 +27,8 @@ import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
+import SchemaSnapshotsDialog from './components/SchemaSnapshotsDialog.vue'
+import ServerActivityDialog from './components/ServerActivityDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import type { TreeNode } from './components/treeNode'
@@ -134,6 +145,23 @@ async function onSelectConn(id: string): Promise<void> {
 
 async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
   const conn = await client.connections.get(id)
+  // NoSQL：没有「SQL 查询页」概念，按方言路由到 Mongo/Redis 浏览器
+  if (dialectKind(conn.dialect) === DbKind.NoSql) {
+    if (conn.dialect === DbDialect.Redis && node?.kind === MetaNodeKind.Database) {
+      tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
+      return
+    }
+    if (
+      conn.dialect === DbDialect.MongoDB &&
+      node?.kind === MetaNodeKind.Table &&
+      node.path.length >= 1
+    ) {
+      tabsRef.value?.openMongoCollection(conn, node.path[0], node.name)
+      return
+    }
+    toast.warn(t('ws.noSqlUnsupported') || '该方言不支持 SQL 查询')
+    return
+  }
   // 用触发节点所在的库/schema 作为查询上下文（找不到则查询页落默认库）
   const ctx = node ? contextOfNode(conn.dialect, node) : undefined
   tabsRef.value?.newQuery(conn, ctx)
@@ -174,18 +202,56 @@ function onTreeRefresh(node: TreeNode, connId: string): void {
 // 查看表/视图结构 → 开结构页签
 async function onViewStructure(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
+  // NoSQL 无关系型「结构」概念，Mongo collection 直接落到 MongoPane
+  if (dialectKind(conn.dialect) === DbKind.NoSql) {
+    if (
+      conn.dialect === DbDialect.MongoDB &&
+      node.kind === MetaNodeKind.Table &&
+      node.path.length >= 1
+    ) {
+      tabsRef.value?.openMongoCollection(conn, node.path[0], node.name)
+      return
+    }
+    if (conn.dialect === DbDialect.Redis && node.kind === MetaNodeKind.Database) {
+      tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
+      return
+    }
+    toast.warn('该方言不支持「查看结构」')
+    return
+  }
   tabsRef.value?.openStructure(conn, node)
 }
 
 // 查询前 200 行 → 按方言生成限行 SQL 并在查询页执行
 async function onPreviewTable(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
+  // NoSQL 没有「SELECT ... LIMIT」概念：Mongo 当 collection 节点 → 开 MongoPane；其它 NoSQL 提示不支持
+  if (dialectKind(conn.dialect) === DbKind.NoSql) {
+    if (
+      conn.dialect === DbDialect.MongoDB &&
+      node.kind === MetaNodeKind.Table &&
+      node.path.length >= 1
+    ) {
+      tabsRef.value?.openMongoCollection(conn, node.path[0], node.name)
+      return
+    }
+    if (conn.dialect === DbDialect.Redis && node.kind === MetaNodeKind.Database) {
+      tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
+      return
+    }
+    toast.warn('该方言不支持「查询前 200 行」')
+    return
+  }
   tabsRef.value?.runSql(conn, previewSql(conn.dialect, node.sqlName ?? node.name, 200))
 }
 
 // 设计表（修改现有表）→ 开设计器 Tab（alter 模式，载入现有结构）
 async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
+  if (dialectKind(conn.dialect) === DbKind.NoSql) {
+    toast.warn('该方言不支持「设计表」')
+    return
+  }
   const ctx = deriveContext(conn.dialect, node)
   tabsRef.value?.editTable(conn, ctx, node)
 }
@@ -608,6 +674,10 @@ async function onToggleProdMark(connId: string): Promise<void> {
 // ER 图 → 开 ER 图 Tab（按库/schema 节点推断目标）
 async function onOpenErd(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
+  if (dialectKind(conn.dialect) === DbKind.NoSql) {
+    toast.warn('该方言不支持「ER 图」')
+    return
+  }
   tabsRef.value?.openErd(conn, erdContext(conn.dialect, node), node)
 }
 
@@ -931,6 +1001,41 @@ async function editFavTag(f: Favorite): Promise<void> {
 }
 const opLogOpen = ref(false)
 const monitorOpen = ref(false)
+/** 「服务器活动」（进程 / 长事务 / 锁等待）：右键连接 → 服务器活动 */
+const activityOpen = ref<{ conn: ConnectionConfig } | null>(null)
+/** #16 Schema 快照面板 */
+const snapshotsOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openSnapshots(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  snapshotsOpen.value = { conn }
+}
+/** #14 备份/还原面板 */
+const backupOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openBackup(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  backupOpen.value = { conn }
+}
+/** #12 Dashboard */
+const dashboardOpen = ref(false)
+// #9-#21 AI 工具箱：选任务 → 填上下文 → 推到右侧聊天面板
+const aiToolboxOpen = ref<{
+  task?:
+    | 'migration'
+    | 'optimize'
+    | 'explain-analysis'
+    | 'test-data'
+    | 'nl2sql'
+    | 'doc'
+    | 'explain-table'
+  sql?: string
+  explain?: string
+  connId?: string
+  table?: string
+} | null>(null)
+async function openActivity(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  activityOpen.value = { conn }
+}
 const aiState = ref<{ mode: AiMode; sql?: string; connId?: string; error?: string } | null>(null)
 const aboutOpen = ref(false)
 // 右侧 AI 聊天侧边栏（持久化开关）
@@ -1036,6 +1141,22 @@ async function onAskAiAboutError(p: AskAiErrorPayload): Promise<void> {
   ref?.askAboutError?.(p)
 }
 
+/**
+ * 通用 AI 入口：把已经拼好的 prompt 发到 AI 聊天面板（#9-#21 共用此通道）。
+ */
+interface AskAiPredefinedPayload {
+  prompt: string
+  connId?: string
+  connName?: string
+  withSchema?: boolean
+}
+async function askAiPredefined(p: AskAiPredefinedPayload): Promise<void> {
+  aiChatOpen.value = true
+  await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  const ref = aiChatRef.value as { askPredefined?: (p: AskAiPredefinedPayload) => void } | null
+  ref?.askPredefined?.(p)
+}
+
 // ── ⌘K 命令面板 ──
 const paletteOpen = ref(false)
 const paletteConns = ref<ConnectionConfig[]>([])
@@ -1053,7 +1174,32 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:favorites', label: t('pal.favorites'), group: t('pal.groupActions') },
   { id: 'act:oplog', label: t('pal.oplog'), group: t('pal.groupActions') },
   { id: 'act:monitor', label: t('pal.monitor'), group: t('pal.groupActions') },
+  // 服务器活动需要先选连接，所以为每条连接生成一条 act:activity:<id>
+  ...paletteConns.value.map((c) => ({
+    id: `act:activity:${c.id}`,
+    label: `${t('pal.activity')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
+  // schema 快照 同上
+  ...paletteConns.value.map((c) => ({
+    id: `act:snapshots:${c.id}`,
+    label: `${t('pal.snapshots')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
+  // 备份/还原
+  ...paletteConns.value.map((c) => ({
+    id: `act:backup:${c.id}`,
+    label: `${t('pal.backup')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
   { id: 'act:ai', label: t('pal.ai'), group: t('pal.groupActions') },
+  { id: 'act:ai-toolbox', label: t('pal.aiToolbox'), group: t('pal.groupActions') },
+  // #15 新窗口（仅桌面端有 window.newSession）
+  ...(client.window?.newSession
+    ? [{ id: 'act:new-window', label: t('pal.newWindow'), group: t('pal.groupActions') }]
+    : []),
+  // #12 Dashboard
+  { id: 'act:dashboard', label: t('pal.dashboard'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
   { id: 'act:about', label: t('pal.about'), group: t('pal.groupActions') },
   { id: 'act:shortcuts', label: t('pal.shortcuts'), group: t('pal.groupActions') },
@@ -1084,8 +1230,20 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:favorites') favoritesOpen.value = true
   else if (item.id === 'act:oplog') opLogOpen.value = true
   else if (item.id === 'act:monitor') monitorOpen.value = true
-  else if (item.id === 'act:ai') aiState.value = { mode: 'nl2sql' }
+  else if (item.id.startsWith('act:activity:')) {
+    const cid = item.id.slice('act:activity:'.length)
+    void openActivity(cid)
+  } else if (item.id.startsWith('act:snapshots:')) {
+    const cid = item.id.slice('act:snapshots:'.length)
+    void openSnapshots(cid)
+  } else if (item.id.startsWith('act:backup:')) {
+    const cid = item.id.slice('act:backup:'.length)
+    void openBackup(cid)
+  } else if (item.id === 'act:ai') aiState.value = { mode: 'nl2sql' }
   else if (item.id === 'act:ai-chat') aiChatOpen.value = !aiChatOpen.value
+  else if (item.id === 'act:ai-toolbox') aiToolboxOpen.value = {}
+  else if (item.id === 'act:new-window') void client.window?.newSession?.()
+  else if (item.id === 'act:dashboard') dashboardOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
   else if (item.id.startsWith('conn:')) await onSelectConn(item.id.slice(5))
@@ -1433,6 +1591,42 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   />
 
   <ServerMonitorDialog v-if="monitorOpen" @close="monitorOpen = false" />
+
+  <!-- #1 + #8：服务器活动（进程 / 长事务 / 锁等待） -->
+  <ServerActivityDialog
+    v-if="activityOpen"
+    :conn="activityOpen.conn"
+    @close="activityOpen = null"
+  />
+
+  <!-- #16 Schema 快照（一键拍/对比） -->
+  <SchemaSnapshotsDialog
+    v-if="snapshotsOpen"
+    :conn="snapshotsOpen.conn"
+    @close="snapshotsOpen = null"
+  />
+
+  <!-- #14 备份 / 还原 -->
+  <BackupRestoreDialog
+    v-if="backupOpen"
+    :conn="backupOpen.conn"
+    @close="backupOpen = null"
+  />
+
+  <!-- #12 Dashboard：多 SQL 多卡片小盘子 -->
+  <DashboardDialog v-if="dashboardOpen" @close="dashboardOpen = false" />
+
+  <!-- #9-#21 AI 工具箱：选任务 → 拼 prompt → 推到右侧聊天面板 -->
+  <AiToolboxDialog
+    v-if="aiToolboxOpen"
+    :initial-task="aiToolboxOpen.task"
+    :initial-sql="aiToolboxOpen.sql"
+    :initial-explain="aiToolboxOpen.explain"
+    :initial-conn-id="aiToolboxOpen.connId"
+    :initial-table="aiToolboxOpen.table"
+    @close="aiToolboxOpen = null"
+    @submit="(p) => askAiPredefined(p)"
+  />
 
   <Modal v-if="aboutOpen" :title="t('about.title')" @close="aboutOpen = false">
     <div class="about">

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { BrowserWindow, app, shell } from 'electron'
+import { BrowserWindow, app, ipcMain, shell } from 'electron'
 import { closeDb } from './db/sqlite.js'
 import { registerAiIpc } from './ipc/ai.js'
 import { registerConnectionIpc } from './ipc/connections.js'
@@ -9,6 +9,28 @@ import { disposeTransport } from './transport.js'
 import { setupAutoUpdate } from './updater.js'
 
 const isDev = !app.isPackaged
+
+/** #15 第二窗口：复用同一 renderer URL，开一个全新的 BrowserWindow，跟主窗口完全独立 */
+function spawnExtraWindow(): void {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 750,
+    minWidth: 940,
+    minHeight: 600,
+    show: false,
+    title: 'SkylerX',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  win.on('ready-to-show', () => win.show())
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  if (isDev && rendererUrl) void win.loadURL(rendererUrl)
+  else void win.loadFile(join(__dirname, '../renderer/index.html'))
+}
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -55,6 +77,8 @@ app.whenReady().then(() => {
   registerConnectionIpc()
   registerFileIpc()
   registerAiIpc()
+  // #15 让渲染层能开新窗口；新窗口跟主窗口共享 sqlite 数据 + 各自独立的 Vue 状态
+  ipcMain.handle('window:newSession', () => spawnExtraWindow())
   createWindow()
   setupAutoUpdate()
 

@@ -855,13 +855,26 @@ async function execSql(text: string): Promise<void> {
   }
 }
 
-/** 解释执行计划：PG→JSON 节点树、MySQL→TREE 文本，渲染在「计划」面板；其余回退表格 EXPLAIN。 */
-async function explain(): Promise<void> {
+/** 解释执行计划：PG→JSON 节点树、MySQL→TREE 文本，渲染在「计划」面板；其余回退表格 EXPLAIN。
+ *  withAnalyze=true 时走 EXPLAIN ANALYZE（PG）/ ANALYZE FORMAT=JSON（MySQL 8.0+），
+ *  会**真正执行**查询拿真实行数和耗时，因此 DML 会有副作用，调用方须二次确认。 */
+async function explain(withAnalyze = false): Promise<void> {
   const selected = editorRef.value?.getSelectedText()?.trim()
   const statements = splitStatements(selected || sql.value)
   if (!statements.length) return
   const stmt = statements[0]
-  const pq = planQuery(props.conn.dialect, stmt)
+  // ANALYZE 会跑 DML 修改数据，强制二次确认（看 dangerOf 一致逻辑）
+  if (withAnalyze && /^\s*(insert|update|delete|truncate|drop|alter|create)\b/i.test(stmt)) {
+    if (
+      !(await appConfirm({
+        title: t('query.dangerTitle'),
+        message: t('plan.analyzeDmlWarn'),
+        variant: 'danger',
+      }))
+    )
+      return
+  }
+  const pq = planQuery(props.conn.dialect, stmt, { analyze: withAnalyze })
   running.value = true
   try {
     if (pq) {
@@ -1128,7 +1141,8 @@ defineExpose({
       </button>
       <button :disabled="!running" :title="t('query.stop')" @click="cancel">■</button>
       <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭</button>
-      <button :disabled="running" :title="t('query.explain.title')" @click="explain">{{ t('query.explain') }}</button>
+      <button :disabled="running" :title="t('query.explain.title')" @click="explain(false)">{{ t('query.explain') }}</button>
+      <button :disabled="running" :title="t('query.explainAnalyzeTitle')" @click="explain(true)">{{ t('query.explainAnalyze') }}</button>
       <!-- 手动提交模式专属：提交 / 回滚 / 事务状态 -->
       <template v-if="commitMode === 'manual'">
         <span class="tb-sep" />

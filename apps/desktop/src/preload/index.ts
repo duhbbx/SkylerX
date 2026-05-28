@@ -1,4 +1,6 @@
 import type {
+  CommandRequest,
+  CommandResult,
   ConnectionConfig,
   ExecuteOptions,
   MetaScope,
@@ -53,6 +55,9 @@ const api = {
       ipcRenderer.invoke('connections:rollbackSession', sessionId),
     endSession: (sessionId: string): Promise<void> =>
       ipcRenderer.invoke('connections:endSession', sessionId),
+    // ── NoSQL 平行通道(MongoDB / Redis) ──
+    executeCommand: (connId: string, command: CommandRequest): Promise<CommandResult> =>
+      ipcRenderer.invoke('connections:executeCommand', connId, command),
   },
   files: {
     /** 弹保存对话框写入文本；返回路径，取消返回 null */
@@ -81,6 +86,11 @@ const api = {
       ipcRenderer.invoke('ai:fetch', req),
     /** 终止还在飞的请求；返回 true 表示找到并取消了 */
     cancel: (reqId: string): Promise<boolean> => ipcRenderer.invoke('ai:cancel', reqId),
+  },
+  window: {
+    /** #15 复制当前 SPA 到新 BrowserWindow，跟主窗口完全独立；
+     *  常用于在两个连接 / 两条 SQL 之间做侧对照 */
+    newSession: (): Promise<void> => ipcRenderer.invoke('window:newSession'),
   },
 }
 

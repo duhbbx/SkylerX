@@ -13,7 +13,13 @@ import { settings } from './settings'
 
 // ── 共享的 HTTP 桥（与 ai.ts 同源；走主进程 IPC 绕开 CORS）────────────────────
 interface AiBridge {
-  fetch(req: { url: string; method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number }): Promise<{
+  fetch(req: {
+    url: string
+    method?: string
+    headers?: Record<string, string>
+    body?: string
+    timeoutMs?: number
+  }): Promise<{
     ok: boolean
     status: number
     body: string
@@ -24,7 +30,11 @@ function aiBridge(): AiBridge | null {
   const w = globalThis as { api?: { ai?: AiBridge } }
   return w.api?.ai ?? null
 }
-async function bridgePost(url: string, headers: Record<string, string>, body: string): Promise<{ ok: boolean; status: number; body: string }> {
+async function bridgePost(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
   const bridge = aiBridge()
   if (bridge) {
     // embedding 类短请求超时给短一点（15s），避免拖垮聊天主流程
@@ -118,7 +128,10 @@ export async function rememberVector(text: string): Promise<void> {
 }
 
 /** 给 query 嵌入后，从本地向量库取 top-K 相似项（按相似度降序）。 */
-export async function recallRelevant(query: string, k = settings.aiVectorTopK): Promise<{ text: string; score: number }[]> {
+export async function recallRelevant(
+  query: string,
+  k = settings.aiVectorTopK,
+): Promise<{ text: string; score: number }[]> {
   if (!settings.aiVectorMemory || !settings.aiVectorMemories.length) return []
   let qv: number[]
   try {
@@ -126,7 +139,10 @@ export async function recallRelevant(query: string, k = settings.aiVectorTopK): 
   } catch {
     return []
   }
-  const scored = settings.aiVectorMemories.map((m) => ({ text: m.text, score: cosineSim(qv, m.vec) }))
+  const scored = settings.aiVectorMemories.map((m) => ({
+    text: m.text,
+    score: cosineSim(qv, m.vec),
+  }))
   scored.sort((a, b) => b.score - a.score)
   return scored.slice(0, k).filter((x) => x.score > 0.3) // 阈值过低就当不相关，避免污染
 }
@@ -178,8 +194,7 @@ export async function autoExtractFacts(turn: { user: string; assistant: string }
       messages: [
         {
           role: 'user',
-          content:
-            `Below is one exchange between user and assistant. Extract at most 3 *durable* facts about the user or their project that are worth remembering across future sessions (e.g. "uses MySQL 8", "works on 'orders' schema", "prefers snake_case"). Skip ephemeral content. Reply ONLY as a bullet list ("- fact"), or the literal string "none".\n\n[User]\n${turn.user}\n\n[Assistant]\n${turn.assistant}`,
+          content: `Below is one exchange between user and assistant. Extract at most 3 *durable* facts about the user or their project that are worth remembering across future sessions (e.g. "uses MySQL 8", "works on 'orders' schema", "prefers snake_case"). Skip ephemeral content. Reply ONLY as a bullet list ("- fact"), or the literal string "none".\n\n[User]\n${turn.user}\n\n[Assistant]\n${turn.assistant}`,
         },
       ],
       extraSystem: 'You are a memory curator. Output bullet list of durable facts only.',

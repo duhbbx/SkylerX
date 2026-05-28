@@ -1,4 +1,6 @@
 import type {
+  CommandRequest,
+  CommandResult,
   ConnectionConfig,
   DbDialect,
   ExecuteOptions,
@@ -39,6 +41,15 @@ export interface DriverConnection {
   rollbackSession?(sessionId: string): Promise<void>
   /** 关闭会话：还连接给池；若仍有未提交事务，按当前方言语义回滚 */
   endSession?(sessionId: string): Promise<void>
+
+  // ── NoSQL 平行通道（MongoDB / Redis） ──
+  // SQL 方言驱动留空；NoSQL 方言驱动实现此方法,上层 LocalTransport 会按 dialect 路由。
+  // 让 SQL 与 NoSQL 共享同一条 DriverConnection 抽象,但避免相互渗漏:
+  //   - SQL 驱动调用方走 execute()/executeBatch()/session
+  //   - NoSQL 驱动调用方走 executeCommand()
+  // 反向调用(对 NoSQL 驱动调 execute、对 SQL 驱动调 executeCommand)由 Transport 层拦截抛错。
+  /** 执行 NoSQL 命令(Mongo 文档操作 / Redis 命令)。 */
+  executeCommand?(command: CommandRequest): Promise<CommandResult>
 
   /** 按范围拉取元数据（库/schema/表/列/索引），支持懒加载下钻。 */
   fetchMetadata(scope: MetaScope): Promise<MetadataNode[]>
