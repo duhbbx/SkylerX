@@ -6,7 +6,8 @@
   "description": "SkylerX 共享 UI（Vue 组件 + 纯逻辑），桌面与 Web 复用",
   "exports": {
     ".": "./src/index.ts",
-    "./styles.css": "./src/styles.css"
+    "./styles.css": "./src/styles.css",
+    "./monaco-nls": "./src/monaco-nls.ts"
   },
   "scripts": {
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
