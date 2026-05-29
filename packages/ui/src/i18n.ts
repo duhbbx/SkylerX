@@ -586,6 +586,7 @@ const DICT: Record<string, [string, string]> = {
   ],
   // ── #12 Dashboard ──
   'pal.dashboard': ['Dashboard', 'Dashboard'],
+  'pal.compliance': ['等保 2.0 合规检查', 'Compliance check (China L2.0)'],
   // #6 可视化查询构建器（参考 dbgate Query Designer）
   'pal.vqd': ['可视化查询构建器', 'Visual Query Builder'],
   'vqd.title': ['可视化查询构建器 · {conn}', 'Visual Query Builder · {conn}'],

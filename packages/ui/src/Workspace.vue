@@ -39,6 +39,7 @@ import NotificationSettingsDialog from './components/NotificationSettingsDialog.
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import MockDataDialog from './components/MockDataDialog.vue'
 import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
+import ComplianceDialog from './components/ComplianceDialog.vue'
 import OracleToDmWizard from './components/OracleToDmWizard.vue'
 import SlowQueryDialog from './components/SlowQueryDialog.vue'
 import VisualQueryDialog from './components/VisualQueryDialog.vue'
@@ -331,6 +332,13 @@ async function onMockData(connId: string, node: TreeNode): Promise<void> {
 
 /** Oracle → DM 迁移向导（独立工具，自带连接选择步骤） */
 const o2dmRef = useTemplateRef<{ open: () => void } | null>('o2dmRef')
+
+/** 等保 2.0 合规检查（按连接打开） */
+const complianceOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openCompliance(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  complianceOpen.value = { conn }
+}
 
 /** 慢查询日志分析（按连接打开） */
 const slowOpen = ref<{ conn: ConnectionConfig } | null>(null)
@@ -1423,6 +1431,12 @@ const paletteItems = computed<PaletteItem[]>(() => [
     label: `${t('slowq.title')} · ${c.name || c.dialect}`,
     group: t('pal.groupActions'),
   })),
+  // 等保 2.0 合规检查（按连接）
+  ...paletteConns.value.map((c) => ({
+    id: `act:compliance:${c.id}`,
+    label: `${t('pal.compliance')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
   // A2 跨表全文搜索
   ...paletteConns.value.map((c) => ({
     id: `act:search-value:${c.id}`,
@@ -1512,6 +1526,9 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id.startsWith('act:slowq:')) {
     const cid = item.id.slice('act:slowq:'.length)
     void openSlowQuery(cid)
+  } else if (item.id.startsWith('act:compliance:')) {
+    const cid = item.id.slice('act:compliance:'.length)
+    void openCompliance(cid)
   }
   else if (item.id.startsWith('act:vqd:')) {
     const cid = item.id.slice('act:vqd:'.length)
@@ -2059,6 +2076,14 @@ onUnmounted(() => unsubMenu?.())
 
   <!-- Oracle → DM 迁移向导（信创外包） -->
   <OracleToDmWizard ref="o2dmRef" />
+
+  <!-- 等保 2.0 合规检查（按连接） -->
+  <ComplianceDialog
+    v-if="complianceOpen"
+    :conn="complianceOpen.conn"
+    :open="true"
+    @close="complianceOpen = null"
+  />
 
   <!-- 慢查询日志分析（按连接） -->
   <SlowQueryDialog
