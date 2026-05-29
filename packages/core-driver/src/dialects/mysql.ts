@@ -125,8 +125,27 @@ class MysqlConnection implements DriverConnection {
   /** 手动提交模式下钉住的 PoolConnLike：sessionId → conn */
   private readonly sessions = new Map<string, PoolConnLike>()
   private sessionSeq = 0
+  /**
+   * 用户上一次成功的 `USE xxx` 目标库，持久化在驱动实例上。
+   * 因为 mysql2 是连接池：每次 execute() 从池里随机拿一条连接，`USE` 在原生协议里
+   * 是「当前连接级别」的状态——release 回池后，下一次 execute() 拿到的可能是另一条
+   * 仍指向初始 database 的连接。如果不缓存重放，用户写「USE x; SELECT…」会一半看不见表。
+   * 这里在每次 execute 前重放，并在用户 SQL 成功后检测捕获新的 USE。
+   */
+  private currentDb: string | null = null
 
   constructor(private readonly pool: PoolLike) {}
+
+  /**
+   * 提取 SQL 是否是「单语句 USE xxx」，是则返回目标库名（去掉转义），否则 null。
+   * 支持 `USE x` / `` USE `x` `` / `USE "x"`，允许 trailing 分号与空白。
+   * 多语句已由上层 sqlSplit 拆开，单条 execute 只会看到一句。
+   */
+  private extractUseTarget(sql: string): string | null {
+    const m = /^\s*use\s+(?:`([^`]+)`|"([^"]+)"|([A-Za-z0-9_$]+))\s*;?\s*$/i.exec(sql)
+    if (!m) return null
+    return m[1] || m[2] || m[3] || null
+  }
 
   async execute(
     sql: string,
@@ -137,7 +156,8 @@ class MysqlConnection implements DriverConnection {
     this.activeThreadId = conn.threadId
     const start = Date.now()
     try {
-      const useDb = options?.database ?? options?.schema
+      // 优先 options 指定，其次回放缓存的 currentDb。两者都没就保持连接初始库。
+      const useDb = options?.database ?? options?.schema ?? this.currentDb ?? undefined
       if (useDb) {
         await conn.query(`USE ${mysqlFamilyHelpers.quoteIdentifier(useDb)}`)
       }
@@ -145,6 +165,9 @@ class MysqlConnection implements DriverConnection {
       if (options?.timeoutMs) queryOptions.timeout = options.timeoutMs
 
       const [raw, fields] = await conn.query(queryOptions)
+      // 用户 SQL 成功执行——若是 USE xxx 则把目标库记下来，下次 execute 自动续上
+      const useTarget = this.extractUseTarget(sql)
+      if (useTarget) this.currentDb = useTarget
       const executionTimeMs = Date.now() - start
 
       if (Array.isArray(raw)) {
@@ -458,11 +481,16 @@ class MysqlConnection implements DriverConnection {
   async executeBatch(statements: string[], options?: ExecuteOptions): Promise<void> {
     const conn = await this.pool.getConnection()
     try {
-      const useDb = options?.database ?? options?.schema
+      const useDb = options?.database ?? options?.schema ?? this.currentDb ?? undefined
       if (useDb) await conn.query(`USE ${mysqlFamilyHelpers.quoteIdentifier(useDb)}`)
       await conn.query('START TRANSACTION')
       try {
-        for (const s of statements) await conn.query(s)
+        for (const s of statements) {
+          await conn.query(s)
+          // 批中遇到 USE xxx 持续更新缓存，让批后续语句 + 后续 execute 都看得见
+          const useTarget = this.extractUseTarget(s)
+          if (useTarget) this.currentDb = useTarget
+        }
         await conn.query('COMMIT')
       } catch (e) {
         await conn.query('ROLLBACK')
@@ -479,7 +507,8 @@ class MysqlConnection implements DriverConnection {
   async beginSession(options?: ExecuteOptions): Promise<string> {
     const conn = await this.pool.getConnection()
     try {
-      const useDb = options?.database ?? options?.schema
+      // session 起手也回放 currentDb：用户已经 USE 过的库不希望开 session 后又回到初始库
+      const useDb = options?.database ?? options?.schema ?? this.currentDb ?? undefined
       if (useDb) await conn.query(`USE ${mysqlFamilyHelpers.quoteIdentifier(useDb)}`)
       await conn.query('START TRANSACTION')
     } catch (e) {
@@ -499,8 +528,9 @@ class MysqlConnection implements DriverConnection {
   ): Promise<QueryResult> {
     const conn = this.sessions.get(sessionId)
     if (!conn) throw new Error('SESSION_NOT_FOUND')
-    // 注意：session 期间不再 USE db 切库（START TRANSACTION 已经发出，
-    // 中途切库语义不清晰）。db 在 beginSession 时已经设过。
+    // 注意：session 期间用户自己 USE xxx 只作用于这条钉住的连接（mysql2 协议级），
+    // 不同步到 driver.currentDb——避免「在 session 里临时切库」污染 session 之外的 execute。
+    // 这是有意为之的隔离：session 是局部上下文（事务 + 临时切库），结束后回到原状态。
     const start = Date.now()
     const queryOptions: QueryOptions = { sql: applyPaging(sql, options), values: params }
     if (options?.timeoutMs) queryOptions.timeout = options.timeoutMs
@@ -566,6 +596,30 @@ class MysqlConnection implements DriverConnection {
 }
 
 /**
+ * 取服务端版本(best-effort):优先 MySQL 风格的 `VERSION()`,失败回退 OceanBase Oracle 租户 / Oracle 风格。
+ * 都失败返 undefined(不阻断连接判定)。
+ */
+async function detectMysqlFamilyVersion(conn: ConnLike): Promise<string | undefined> {
+  // MySQL / MariaDB / TiDB / Doris / StarRocks / OB MySQL 租户:VERSION() 都返回字符串
+  try {
+    const [raw] = await conn.query('SELECT VERSION() AS server_version')
+    const v = (raw as RowDataPacket[])[0]?.server_version
+    if (v) return String(v)
+  } catch {
+    /* fallthrough */
+  }
+  // OceanBase Oracle 租户:用 Oracle 风格的 v$version
+  try {
+    const [raw] = await conn.query('SELECT BANNER AS server_version FROM v$version WHERE ROWNUM = 1')
+    const v = (raw as RowDataPacket[])[0]?.server_version
+    if (v) return String(v)
+  } catch {
+    /* fallthrough */
+  }
+  return undefined
+}
+
+/**
  * 构建 MySQL 系驱动（MySQL / MariaDB / OceanBase 共用同一实现，仅 dialect 标识不同）。
  */
 export function createMysqlFamilyDriver(dialect: DbDialect): DatabaseDriver {
@@ -591,13 +645,13 @@ export function createMysqlFamilyDriver(dialect: DbDialect): DatabaseDriver {
       let conn: ConnLike | undefined
       try {
         conn = (await createConnection(buildConnectionOptions(config))) as unknown as ConnLike
-        const [raw] = await conn.query('SELECT VERSION() AS v')
-        const rows = raw as RowDataPacket[]
-        return {
-          ok: true,
-          serverVersion: rows[0]?.v ? String(rows[0].v) : undefined,
-          latencyMs: Date.now() - start,
-        }
+        // 探活:`SELECT 1 FROM DUAL` 在 MySQL / MariaDB / OB MySQL租户 / OB Oracle租户 / TiDB / Doris / StarRocks 都支持。
+        // 早期版本用 `SELECT VERSION() AS v` 在 OceanBase Oracle 租户报 ORA-00900(无 VERSION() 函数,且单字符
+        // 别名 `v` 与 v$xxx 系统视图易冲突)。
+        await conn.query('SELECT 1 FROM DUAL')
+        // 取版本:best-effort,失败不影响连接成功判定。优先 MySQL 风格,失败回退 OB Oracle 风格。
+        const serverVersion = await detectMysqlFamilyVersion(conn)
+        return { ok: true, serverVersion, latencyMs: Date.now() - start }
       } catch (e) {
         return { ok: false, message: e instanceof Error ? e.message : String(e) }
       } finally {
