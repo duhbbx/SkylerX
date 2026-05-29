@@ -15,6 +15,7 @@ import { ENV_OPTIONS, connEnv, connReadOnly } from '../connEnv'
 import { categorizeConnectionError, extractDbErrorCode } from '../connError'
 import { useDataClient } from '../data-client'
 import { t } from '../i18n'
+import DialectSelect from './DialectSelect.vue'
 
 const client = useDataClient()
 
@@ -347,9 +348,12 @@ async function remove(): Promise<void> {
       <input v-model="form.name" :placeholder="t('conn.name.ph')" />
 
       <label>{{ t('conn.dialect') }}</label>
-      <select v-model="form.dialect" @change="onDialectChange">
-        <option v-for="d in dialectOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
-      </select>
+      <!-- 自定义下拉：native <select> 无法内嵌 SVG，换成 DialectSelect 后每个方言都带品牌 logo -->
+      <DialectSelect
+        v-model="form.dialect"
+        :options="dialectOptions"
+        @change="onDialectChange"
+      />
 
       <template v-if="isMongo">
         <label>URI</label>
