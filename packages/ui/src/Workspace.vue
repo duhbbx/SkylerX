@@ -12,7 +12,6 @@ import {
 } from '@db-tool/shared-types'
 import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import type { AiMode } from './ai'
-import { onChatErrorAsk } from './chat-bus'
 import AiAssistantDialog from './components/AiAssistantDialog.vue'
 import AiChatPanel from './components/AiChatPanel.vue'
 import AiCommentDialog from './components/AiCommentDialog.vue'
@@ -1247,31 +1246,6 @@ async function onAskAiAboutError(p: AskAiErrorPayload): Promise<void> {
   const ref = aiChatRef.value as { askAboutError?: (p: AskAiErrorPayload) => void } | null
   ref?.askAboutError?.(p)
 }
-
-/**
- * 通用错误「✨ 问 AI」总线:任意 appAlert({ askAi }) 弹框点击按钮都会到这里,
- * 复用 onAskAiAboutError 把上下文打到右侧聊天面板。
- *
- * 把 errorCode 拼进 error 文本(而不是分字段传)的原因:AiChatPanel.askAboutError
- * 现有签名只认 { connId, connName?, sql, error },改它会牵动 ResultGrid 的对接,
- * 这里把错误码当成 error 前缀更省事 —— AI 模型也吃得下「[MySQL 1062] Duplicate entry」这种格式。
- */
-let chatErrorAskOff: (() => void) | null = null
-onMounted(() => {
-  chatErrorAskOff = onChatErrorAsk((e) => {
-    const errText = e.errorCode ? `[${e.errorCode}] ${e.error}` : e.error
-    void onAskAiAboutError({
-      connId: e.connId ?? '',
-      connName: e.connName,
-      sql: e.sql ?? '',
-      error: errText,
-    })
-  })
-})
-onUnmounted(() => {
-  chatErrorAskOff?.()
-  chatErrorAskOff = null
-})
 
 /**
  * 通用 AI 入口：把已经拼好的 prompt 发到 AI 聊天面板（#9-#21 共用此通道）。
