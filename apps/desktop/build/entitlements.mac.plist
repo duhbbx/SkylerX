@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+    SPDX-License-Identifier: Apache-2.0
+
+    Electron / Chromium 必备 entitlements（hardenedRuntime 开启后这几项是「能不能跑起来」的硬要求）：
+      - allow-jit / allow-unsigned-executable-memory：V8 JIT
+      - disable-library-validation：Electron framework 子库 / 用户自带原生模块（better-sqlite3 等）
+      - network.client / network.server：连数据库、电子更新、SSH 隧道
+      - files.user-selected.read-write：用户选文件导入 / 导出（dump SQL、CSV / Excel）
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.network.server</key>
+  <true/>
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+</dict>
+</plist>

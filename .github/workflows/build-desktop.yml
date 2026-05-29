@@ -81,8 +81,59 @@ jobs:
       - name: Rebuild native modules for Electron ABI
         run: pnpm --filter @db-tool/desktop exec electron-builder install-app-deps --arch=${{ matrix.npm_arch }}
 
+      # macOS 签名 & 公证：5 个 APPLE_* secret 齐全时启用，缺任何一个就降级为「不签」（仍出 dmg）。
+      # 这样未来配 secret 不用改 workflow，直接生效；OSS 贡献者 PR 跑 fork 也不会因缺 secret 失败。
+      #
+      # 启用条件：CSC_LINK + CSC_KEY_PASSWORD + APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+      #   - CSC_LINK / CSC_KEY_PASSWORD：开发者证书 .p12 base64 + 密码
+      #   - APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID：notarytool 上传公证用
+      # 这 5 个 secret 的来源 / 申请步骤见 db-tool-private/SIGNING-SETUP.md
       - name: Package installers
-        run: pnpm --filter @db-tool/desktop exec electron-builder ${{ matrix.eb_args }} --publish never
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          EXTRA=""
+          if [[ "$RUNNER_OS" == "macOS" && -n "$CSC_LINK" && -n "$APPLE_ID" && -n "$APPLE_TEAM_ID" ]]; then
+            echo "::notice::mac signing & notarize enabled (teamId=$APPLE_TEAM_ID)"
+            # 覆盖 yml 里 identity: null，让 electron-builder 用 CSC_LINK 拿到的证书签
+            # notarize.teamId 设上之后 electron-builder 会自动调 notarytool（需 APPLE_ID/APP_SPECIFIC_PASSWORD env）
+            EXTRA="-c.mac.identity= -c.mac.notarize.teamId=$APPLE_TEAM_ID"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "::warning::mac secrets not set, building unsigned dmg (Gatekeeper will warn on install)"
+          fi
+          pnpm --filter @db-tool/desktop exec electron-builder ${{ matrix.eb_args }} $EXTRA --publish never
+
+      # Windows 走 SignPath.io 后签（OSS 免费）：electron-builder 出未签 .exe，
+      # 由 SignPath 收单签名后覆盖回 release/。完整步骤（含申请账号 / 4 个 secret 配置）见
+      # db-tool-private/SIGNING-SETUP.md「Windows 段」。
+      # 申请通过后取消下方注释，3 个 step 替换占位：
+      #
+      # - name: Upload unsigned Windows installers (for SignPath)
+      #   if: runner.os == 'Windows'
+      #   id: upload-unsigned-win
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: unsigned-${{ matrix.name }}
+      #     path: apps/desktop/release/*.exe
+      #     if-no-files-found: error
+      #
+      # - name: Submit Windows installers to SignPath
+      #   if: runner.os == 'Windows'
+      #   uses: signpath/github-action-submit-signing-request@v1
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: ${{ secrets.SIGNPATH_ORG_ID }}
+      #     project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+      #     signing-policy-slug: ${{ secrets.SIGNPATH_POLICY_SLUG }}
+      #     artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_SLUG }}
+      #     github-artifact-id: ${{ steps.upload-unsigned-win.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: apps/desktop/release
 
       # 手动/分支触发：产物存为 Actions artifact，可在 run 页面下载（按 matrix.name 分开）
       # actions/upload-artifact：v4 是当前 stable。等 v5 stable 再升。

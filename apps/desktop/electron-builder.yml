@@ -14,6 +14,10 @@ asarUnpack:
 
 # ── Windows：x64 + arm64 双架构 NSIS 安装包 ──
 # arm64 走交叉编译（GH-hosted 暂无 Windows ARM runner），native modules 用上游 arm64 prebuild。
+#
+# 签名走 SignPath.io（OSS 免费）：electron-builder 本身不直接签，而是产出未签 .exe，
+# 由 CI 后续 step 上传 SignPath → 拉回签好的 .exe 覆盖。详见 .github/workflows/build-desktop.yml。
+# 这里只设元数据（publisherName 影响 UAC 弹框上的名字 + NSIS 显示）。
 win:
   target:
     - target: nsis
@@ -21,9 +25,16 @@ win:
         - x64
         - arm64
   artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  publisherName: Wuhan Skyler Network Technology Co., Ltd.
 
 # ── macOS：x64 + arm64 分两份 dmg ──
 # 不用 universal：x64 用户装 universal 多吃一倍体积。两份 dmg 各自下载更省。
+#
+# 签名 / 公证策略：
+#   - hardenedRuntime + entitlements 始终开（不签时也无害；签时 Apple 强制要求）
+#   - identity: null 是「无 CSC_LINK 时跳过签名」的兜底；CI 在 secret 齐时用 -c.mac.identity= 覆盖
+#   - notarize 由 CI 在 5 个 APPLE_* secret 齐全时用 -c.mac.notarize.teamId= 打开
+# 这样未配 secret 的本地 / 分支构建照常出 dmg（未签），配齐 secret 自动签 + 公证。
 mac:
   target:
     - target: dmg
@@ -31,7 +42,10 @@ mac:
         - x64
         - arm64
   category: public.app-category.developer-tools
-  # 本地 / 未配签名的 CI 跳过签名（正式发布再配证书）
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   identity: null
   artifactName: ${productName}-${version}-${arch}.${ext}
 
