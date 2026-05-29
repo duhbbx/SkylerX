@@ -16,6 +16,7 @@ import { createRedisDriver } from './redis.js'
 import { createSnowflakeDriver } from './snowflake.js'
 import { createSqliteDriver } from './sqlite.js'
 import { createSqlServerDriver } from './sqlserver.js'
+import { createTDengineDriver } from './tdengine.js'
 
 /**
  * 注册所有方言驱动。
@@ -27,19 +28,22 @@ import { createSqlServerDriver } from './sqlserver.js'
  * 而是实现 executeCommand(payload),由上层按 dialect 分流。
  */
 export function registerBuiltinDrivers(): void {
-  // MySQL 系（mysql2）— 含协议兼容的 MariaDB / OceanBase / TiDB
+  // MySQL 系（mysql2）— 含协议兼容的 MariaDB / OceanBase / TiDB / Doris / StarRocks
   registerDriver(createMysqlFamilyDriver(DbDialect.MySQL))
   registerDriver(createMysqlFamilyDriver(DbDialect.MariaDB))
   registerDriver(createMysqlFamilyDriver(DbDialect.OceanBase))
   registerDriver(createMysqlFamilyDriver(DbDialect.TiDB))
+  registerDriver(createMysqlFamilyDriver(DbDialect.Doris))
+  registerDriver(createMysqlFamilyDriver(DbDialect.StarRocks))
 
-  // PostgreSQL 系（pg）— 含金仓 / CockroachDB / Greenplum / openGauss / H2(PG 兼容模式) 协议兼容
+  // PostgreSQL 系（pg）— 含金仓 / CockroachDB / Greenplum / openGauss / H2(PG 兼容) / Redshift
   registerDriver(createPostgresDriver(DbDialect.PostgreSQL))
   registerDriver(createPostgresDriver(DbDialect.KingbaseES))
   registerDriver(createPostgresDriver(DbDialect.CockroachDB))
   registerDriver(createPostgresDriver(DbDialect.Greenplum))
   registerDriver(createPostgresDriver(DbDialect.OpenGauss))
   registerDriver(createPostgresDriver(DbDialect.H2))
+  registerDriver(createPostgresDriver(DbDialect.Redshift))
 
   // SQL Server（mssql，纯 JS）
   registerDriver(createSqlServerDriver(DbDialect.SqlServer))
@@ -66,4 +70,7 @@ export function registerBuiltinDrivers(): void {
   // 云/列存 SQL（占位 → 子代理填充）
   registerDriver(createClickhouseDriver(DbDialect.ClickHouse))
   registerDriver(createSnowflakeDriver(DbDialect.Snowflake))
+
+  // 信创时序:TDengine(@tdengine/websocket,SQL,占位 → 子代理填充)
+  registerDriver(createTDengineDriver(DbDialect.TDengine))
 }

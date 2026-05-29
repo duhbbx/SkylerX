@@ -41,6 +41,14 @@ export enum DbDialect {
   Snowflake = 'snowflake',
   /** H2（仅支持 PG-server 模式:H2 启动加 -pg 参数监听 5435 端口;Embedded/原生 TCP 不支持） */
   H2 = 'h2',
+  /** Apache Doris（MySQL 协议兼容，列存 MPP） */
+  Doris = 'doris',
+  /** StarRocks（MySQL 协议兼容，Doris fork） */
+  StarRocks = 'starrocks',
+  /** Amazon Redshift（PG 协议兼容，云 DW） */
+  Redshift = 'redshift',
+  /** TDengine（涛思，信创时序，REST/WebSocket SQL） */
+  TDengine = 'tdengine',
   /** MongoDB（文档型，走 executeCommand 通道，不走 SQL） */
   MongoDB = 'mongodb',
   /** Redis（KV/数据结构型，走 executeCommand 通道，不走 SQL） */
