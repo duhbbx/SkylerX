@@ -83,7 +83,7 @@ async function refresh(): Promise<void> {
     const [z, s, te, u] = await Promise.all([
       client.connections.execute(
         props.conn.id,
-        `SELECT zone, status, idc, region FROM oceanbase.DBA_OB_ZONES ORDER BY zone`,
+        'SELECT zone, status, idc, region FROM oceanbase.DBA_OB_ZONES ORDER BY zone',
       ),
       client.connections.execute(
         props.conn.id,
