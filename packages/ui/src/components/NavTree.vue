@@ -314,12 +314,24 @@ async function walkReveal(
       c.expanded = true
       if (await walkReveal(c, connId, schema, table, true)) return true
     } else if (c.kind === MetaNodeKind.Database) {
-      c.expanded = true
+      // 用户报告：之前每个 db 都 expand + ensureLoaded → 触发 5 个 group count(*) 查询，
+      // MySQL 系（无独立 schema 层 / database 即 schema）下相当于「定位一个表就把所有库都打开」。
+      // 修法：先轻量探测 db 的下级判断是 MySQL 系还是 PG 系：
+      //   - MySQL 系：name === schema 才展开（其他 db 完全不动，省 N-1 倍 IO）
+      //   - PG 系：单连接通常只挂 1 个 db，原样展开找 schema（多 db 场景下也只 expand
+      //     候选 db，因为外层 selectReveal 命中就 return true 提前止损）
       await ensureLoaded(c, connId)
       const nested = (c.children ?? []).some((x) => x.kind === MetaNodeKind.Schema)
-      if (nested ? await walkReveal(c, connId, schema, table, false) : false) return true
-      if (!nested && c.name === schema && (await walkReveal(c, connId, schema, table, true)))
-        return true
+      if (!nested) {
+        // MySQL 系：跳过名字不匹配的 db
+        if (c.name !== schema) continue
+        c.expanded = true
+        if (await walkReveal(c, connId, schema, table, true)) return true
+      } else {
+        // PG 系：保留递归找 schema
+        c.expanded = true
+        if (await walkReveal(c, connId, schema, table, false)) return true
+      }
     }
   }
   return false
