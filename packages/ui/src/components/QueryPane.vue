@@ -150,6 +150,40 @@ function parseTableRef(ref: string): { schema?: string; table: string } {
   return { table: parts[0] }
 }
 
+/**
+ * 用户报告：「除了表之外，其他查询出来的结果集只能只读，不能 update/delete」。
+ *
+ * parseEditableTable 已经拦截了 JOIN / GROUP BY / 聚合 / 多表 / 子查询等复杂结构
+ * （返回 null → editable=false）。剩下唯一漏的是「SELECT * FROM view」：视图名和
+ * 表名长得一样，parseEditableTable 把它当真表，用户能双击改单元格、但 INSERT/UPDATE/DELETE
+ * 在视图上多数会被 DB 拒绝。
+ *
+ * 这里通过 information_schema.tables.TABLE_TYPE 做一次异步校验（fire-and-forget），
+ * 结果为 'VIEW' 就清空 editTable 让结果集变只读。information_schema 在 SQL 系方言
+ * 通用（MySQL / PG / MariaDB / OB / TiDB），不通用的（SQLite / DuckDB / ClickHouse）
+ * 查询会失败、catch 后保留原值，不阻断。
+ */
+async function verifyEditableIsTable(tab: ResultTab): Promise<void> {
+  if (!tab.editTable) return
+  const ref = parseTableRef(tab.editTable)
+  if (!ref.table) return
+  try {
+    const r = await client.connections.execute(
+      props.conn.id,
+      `SELECT table_type FROM information_schema.tables
+        WHERE table_name = ? AND (? = '' OR table_schema = ?)
+        LIMIT 1`,
+      [ref.table, ref.schema ?? '', ref.schema ?? ''],
+    )
+    const tt = (r.rows[0] as Record<string, unknown> | undefined)?.table_type
+    if (typeof tt === 'string' && /view/i.test(tt)) {
+      tab.editTable = null
+    }
+  } catch {
+    /* information_schema 查不到 → 静默保留原值 */
+  }
+}
+
 function parseFkRows(rows: Record<string, unknown>[], srcKey: 'reftab' | 'srctab'): FkPair[] {
   const out: FkPair[] = []
   for (const r of rows) {
@@ -877,6 +911,9 @@ async function execSql(text: string): Promise<void> {
     }
     tabs.value = next
     activeTab.value = 0
+    // 异步校验每个 tab 的 editTable 是真表（不是视图）：是视图就清空 editTable
+    // 让结果集变只读。fire-and-forget，不阻塞结果集渲染。
+    for (const tab of next) void verifyEditableIsTable(tab)
     // AI 聊天面板：以原文 SQL 为 key 广播执行结果，更新代码块旁的执行徽章
     const firstErr = next.find((t) => t.error)?.error ?? null
     emitChatSqlExecuted({ sql: text, ok: !firstErr, error: firstErr })
