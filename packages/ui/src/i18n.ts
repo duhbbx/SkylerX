@@ -586,6 +586,25 @@ const DICT: Record<string, [string, string]> = {
   ],
   // ── #12 Dashboard ──
   'pal.dashboard': ['Dashboard', 'Dashboard'],
+  // #6 可视化查询构建器（参考 dbgate Query Designer）
+  'pal.vqd': ['可视化查询构建器', 'Visual Query Builder'],
+  'vqd.title': ['可视化查询构建器 · {conn}', 'Visual Query Builder · {conn}'],
+  'vqd.tabTitle': ['Visual Query', 'Visual Query'],
+  'vqd.openSql': ['📋 打开为新查询', '📋 Open as new query'],
+  'vqd.searchPh': ['搜索表…', 'Search tables…'],
+  'vqd.loading': ['载入表…', 'Loading tables…'],
+  'vqd.loadingCols': ['载入列…', 'Loading columns…'],
+  'vqd.empty': ['没有结果', 'Empty'],
+  'vqd.canvasHint': [
+    '从左侧勾选表 → 这里显示列卡片 → 勾选要 SELECT 的列',
+    'Pick tables from left → cards appear → check columns to SELECT',
+  ],
+  'vqd.hintStar': ['未勾任何列时使用 *', 'Using * (no columns selected)'],
+  'vqd.autoJoins': ['自动 JOIN ({n}): 基于列名约定推断', 'Auto JOIN ({n}): inferred from column naming'],
+  'vqd.wherePh': ['WHERE 条件，如 t.status = paid', 'WHERE clause, e.g. t.status = paid'],
+  'vqd.orderPh': ['ORDER BY 列，如 created_at DESC', 'ORDER BY clause, e.g. created_at DESC'],
+  'vqd.preview': ['SQL 预览', 'SQL preview'],
+  'vqd.noTables': ['请先勾选至少一张表', 'Pick at least one table first'],
   // #8 NDJSON 文件查看器（参考 dbgate）
   'pal.ndjsonViewer': ['打开 NDJSON 文件…', 'Open NDJSON file…'],
   'ws.noFilesApi': ['Web 端暂不支持本地文件 API', 'Local file API not available in web'],

@@ -39,6 +39,7 @@ import NotificationSettingsDialog from './components/NotificationSettingsDialog.
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import MockDataDialog from './components/MockDataDialog.vue'
 import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
+import VisualQueryDialog from './components/VisualQueryDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
@@ -324,6 +325,17 @@ async function onMockData(connId: string, node: TreeNode): Promise<void> {
     tableName: node.name,
     baseColumns,
   }
+}
+
+/** #6 可视化查询构建器：按连接打开 */
+const vqdState = ref<{ conn: ConnectionConfig } | null>(null)
+async function openVqd(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  vqdState.value = { conn }
+}
+function onVqdOpenSql(sql: string): void {
+  if (!vqdState.value) return
+  tabsRef.value?.openDraft(vqdState.value.conn, sql, t('vqd.tabTitle'))
 }
 
 /** #8 NDJSON 查看器：通用文件选择 → 弹查看对话框（独立工具，不依赖连接） */
@@ -1379,6 +1391,12 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:dashboard', label: t('pal.dashboard'), group: t('pal.groupActions') },
   // #8 NDJSON 文件查看器（参考 dbgate）
   { id: 'act:ndjson-viewer', label: t('pal.ndjsonViewer'), group: t('pal.groupActions') },
+  // #6 可视化查询构建器（参考 dbgate Query Designer），按连接生成
+  ...paletteConns.value.map((c) => ({
+    id: `act:vqd:${c.id}`,
+    label: `${t('pal.vqd')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
   // A2 跨表全文搜索
   ...paletteConns.value.map((c) => ({
     id: `act:search-value:${c.id}`,
@@ -1464,6 +1482,10 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:new-window') void client.window?.newSession?.()
   else if (item.id === 'act:dashboard') dashboardOpen.value = true
   else if (item.id === 'act:ndjson-viewer') void openNdjsonViewer()
+  else if (item.id.startsWith('act:vqd:')) {
+    const cid = item.id.slice('act:vqd:'.length)
+    void openVqd(cid)
+  }
   else if (item.id.startsWith('act:search-value:')) {
     const cid = item.id.slice('act:search-value:'.length)
     searchValueOpen.value = { connId: cid }
@@ -2002,6 +2024,14 @@ onUnmounted(() => unsubMenu?.())
     v-if="obTopoOpen"
     :conn="obTopoOpen.conn"
     @close="obTopoOpen = null"
+  />
+
+  <!-- #6 可视化查询构建器 -->
+  <VisualQueryDialog
+    v-if="vqdState"
+    :conn="vqdState.conn"
+    @open-sql="onVqdOpenSql"
+    @close="vqdState = null"
   />
 
   <!-- #8 NDJSON 文件查看器 -->
