@@ -3,7 +3,12 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { type ConnectionConfig, type ConnectionEnv, MetaNodeKind } from '@db-tool/shared-types'
+import {
+  type ConnectionConfig,
+  type ConnectionEnv,
+  type DbDialect,
+  MetaNodeKind,
+} from '@db-tool/shared-types'
 import { computed, nextTick, onMounted, provide, reactive, ref } from 'vue'
 import { connEnv } from '../connEnv'
 import { isConnectionError } from '../connError'
@@ -62,6 +67,20 @@ const emit = defineEmits<{
   openSettings: []
   toggleAiChat: []
   bulkDrop: [{ connId: string; node: TreeNode }[]]
+  /** Redis 专属:双击 key 节点 → 打开对应 db 的 RedisPane 并定位 key */
+  openRedisKey: [connId: string, dbIndex: number, key: string]
+  /** Redis 专属:右键删除 key */
+  deleteRedisKey: [connId: string, dbIndex: number, key: string, parent: TreeNode]
+  /** Redis 专属:清空指定逻辑库 dbN */
+  flushRedisDb: [connId: string, dbIndex: number, dbNode: TreeNode]
+  /** Redis 专属:清空整个 Redis 实例(所有 16 个库) */
+  flushRedisAll: [connId: string, connNode: TreeNode]
+  /** Redis 专属:在 db 下新建 key */
+  newRedisKey: [connId: string, dbIndex: number, parent: TreeNode]
+  /** 新建数据库 */
+  newDatabase: [connId: string, parent: TreeNode]
+  /** 新建 Schema */
+  newSchema: [connId: string, parent: TreeNode]
 }>()
 
 // 批量可选的对象类型（与可删除类型一致）
@@ -175,6 +194,13 @@ const controller: TreeController = {
     // 不查询、不改编辑器。查表数据请用右键「查询前 200 行」。
     if (node.kind === MetaNodeKind.Connection) {
       emit('selectConn', connId)
+      return
+    }
+    // Redis 专属:双击 key 节点 → 打开 RedisPane 并定位
+    // path = [dbIndex, type, key],group='redis-key' 由 redis 驱动写入
+    if (node.kind === MetaNodeKind.Column && node.group === 'redis-key' && node.path.length >= 3) {
+      const dbIndex = Number(node.path[0]) || 0
+      emit('openRedisKey', connId, dbIndex, node.name)
     }
   },
   openContextMenu(x, y, node, connId) {
@@ -182,7 +208,9 @@ const controller: TreeController = {
     menu.y = y
     menu.node = node
     menu.connId = connId
-    menu.entries = menuEntriesFor(node)
+    // 查 ConnRoot 取方言,菜单按方言过滤(隐藏 NoSQL 不适用的 ER 图 / 导出 SQL / 数据字典等)
+    const root = roots.value.find((r) => r.id === connId)
+    menu.entries = menuEntriesFor(node, root?.dialect as DbDialect | undefined)
     menu.visible = true
   },
   openConnection: (connId) => emit('selectConn', connId),
@@ -234,6 +262,14 @@ const controller: TreeController = {
   aiCommentTable: (node, connId) => emit('aiCommentTable', connId, node),
   aiHealthCheck: (connId) => emit('aiHealthCheck', connId),
   indexRecommender: (connId) => emit('indexRecommender', connId),
+  openRedisKey: (connId, dbIndex, key) => emit('openRedisKey', connId, dbIndex, key),
+  deleteRedisKey: (connId, dbIndex, key, parent) =>
+    emit('deleteRedisKey', connId, dbIndex, key, parent),
+  flushRedisDb: (connId, dbIndex, dbNode) => emit('flushRedisDb', connId, dbIndex, dbNode),
+  flushRedisAll: (connId, connNode) => emit('flushRedisAll', connId, connNode),
+  newRedisKey: (connId, dbIndex, parent) => emit('newRedisKey', connId, dbIndex, parent),
+  newDatabase: (connId, parent) => emit('newDatabase', connId, parent),
+  newSchema: (connId, parent) => emit('newSchema', connId, parent),
 }
 
 provide(TreeControllerKey, controller)

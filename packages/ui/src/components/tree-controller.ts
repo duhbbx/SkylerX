@@ -105,6 +105,20 @@ export interface TreeController {
   aiHealthCheck(connId: string): void
   /** C5 索引推荐器（连接级） */
   indexRecommender(connId: string): void
+  /** Redis 专属:打开 RedisPane 并选中该 key */
+  openRedisKey(connId: string, dbIndex: number, key: string): void
+  /** Redis 专属:删除 key(DEL),删除后刷新父节点(类型组) */
+  deleteRedisKey(connId: string, dbIndex: number, key: string, parent: TreeNode): void
+  /** Redis 专属:清空指定逻辑库 dbN(FLUSHDB) */
+  flushRedisDb(connId: string, dbIndex: number, dbNode: TreeNode): void
+  /** Redis 专属:清空整个实例所有 16 个库(FLUSHALL) */
+  flushRedisAll(connId: string, connNode: TreeNode): void
+  /** Redis 专属:在 db 下新建 key(string/hash/list/set/zset,可选 TTL) */
+  newRedisKey(connId: string, dbIndex: number, parent: TreeNode): void
+  /** 新建数据库(SQL 方言) */
+  newDatabase(connId: string, parent: TreeNode): void
+  /** 新建 Schema(支持 schema 的方言:PG 系 / Oracle / MSSQL / Snowflake) */
+  newSchema(connId: string, parent: TreeNode): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

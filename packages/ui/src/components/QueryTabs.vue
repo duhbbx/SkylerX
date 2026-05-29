@@ -3,11 +3,11 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import type { ConnectionConfig } from '@db-tool/shared-types'
+import { type ConnectionConfig, DbDialect, DbKind, dialectKind } from '@db-tool/shared-types'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
-import { confirm as appConfirm } from '../dialog'
+import { confirm as appConfirm, toast } from '../dialog'
 import { t as tr } from '../i18n'
 import DdlEditor from './DdlEditor.vue'
 import DialectIcon from './DialectIcon.vue'
@@ -34,8 +34,8 @@ interface Tab {
   pinned?: boolean // 固定标签：排在最前，不显示关闭按钮（双击切换）
   /** NoSQL：Mongo 集合 tab 的库/集合 */
   mongo?: { database: string; collection: string }
-  /** NoSQL：Redis tab 的逻辑库索引 */
-  redis?: { dbIndex: number }
+  /** NoSQL：Redis tab 的逻辑库索引 + 可选待选中 key(外部双击触发) */
+  redis?: { dbIndex: number; pendingKey?: string | null }
   /** NoSQL：Elasticsearch index tab */
   es?: { index: string }
 }
@@ -74,6 +74,24 @@ function push(tab: Omit<Tab, 'id'>): void {
 
 // ── 查询页 ──
 function openConnection(conn: ConnectionConfig): void {
+  // NoSQL 没有"SQL 查询页":
+  //   - Redis  → 默认开 db0 的 key 浏览器
+  //   - Mongo  → 没有"默认集合",提示用户从树里展开选 collection
+  //   - ES     → 同上,提示选 index
+  if (dialectKind(conn.dialect) === DbKind.NoSql) {
+    if (conn.dialect === DbDialect.Redis) {
+      openRedisDb(conn, 0)
+      return
+    }
+    const hint =
+      conn.dialect === DbDialect.MongoDB
+        ? '请在左侧展开连接,双击 collection 打开数据浏览器'
+        : conn.dialect === DbDialect.Elasticsearch
+          ? '请在左侧展开连接,双击 index 打开数据浏览器'
+          : '该方言不支持 SQL 查询页'
+    toast.warn(hint)
+    return
+  }
   const existing = tabs.value.find((t) => t.kind === 'query' && t.conn.id === conn.id)
   if (existing) activeId.value = existing.id
   else
@@ -200,13 +218,18 @@ function openEsIndex(conn: ConnectionConfig, index: string): void {
   })
 }
 
-/** 打开 Redis 逻辑库页（同连接.dbIndex 已开则聚焦）。 */
-function openRedisDb(conn: ConnectionConfig, dbIndex: number): void {
+/**
+ * 打开 Redis 逻辑库页(同连接.dbIndex 已开则聚焦)。
+ * 传 pendingKey 时,RedisPane 内部会自动选中并展示该 key 的值。
+ */
+function openRedisDb(conn: ConnectionConfig, dbIndex: number, pendingKey?: string): void {
   const existing = tabs.value.find(
     (t) => t.kind === 'redisDb' && t.conn.id === conn.id && t.redis?.dbIndex === dbIndex,
   )
   if (existing) {
     activeId.value = existing.id
+    // 已有 tab 也要把 pendingKey 顶上去触发 RedisPane 重新选中
+    if (existing.redis) existing.redis = { dbIndex, pendingKey: pendingKey ?? null }
     return
   }
   push({
@@ -214,7 +237,7 @@ function openRedisDb(conn: ConnectionConfig, dbIndex: number): void {
     conn,
     title: `${conn.name || conn.dialect} · db${dbIndex}`,
     pending: null,
-    redis: { dbIndex },
+    redis: { dbIndex, pendingKey: pendingKey ?? null },
   })
 }
 
@@ -458,6 +481,7 @@ watch(tabs, saveLayout, { deep: true })
             v-else-if="t.kind === 'redisDb' && t.redis"
             :conn="t.conn"
             :db-index="t.redis.dbIndex"
+            :pending-key="t.redis.pendingKey"
           />
           <ElasticPane
             v-else-if="t.kind === 'esIndex' && t.es"

@@ -136,27 +136,78 @@ class RedisConnection implements DriverConnection {
     }
   }
 
-  private listDatabases(): MetadataNode[] {
-    // 16 个逻辑库:不提前算 dbsize(并发 SELECT 太重),全部展示为可展开。
+  /** 列 16 个逻辑库,用 `INFO keyspace` 一次性拿键数(O(1) 不用 16 次 SELECT)。 */
+  private async listDatabases(): Promise<MetadataNode[]> {
+    const counts = new Map<number, number>()
+    try {
+      const keyspace = (await this.client.call('INFO', 'keyspace')) as string
+      // 行形如:  db0:keys=12,expires=0,avg_ttl=0
+      for (const line of keyspace.split(/\r?\n/)) {
+        const m = line.match(/^db(\d+):keys=(\d+)/)
+        if (m) counts.set(Number(m[1]), Number(m[2]))
+      }
+    } catch {
+      // INFO 失败也不致命,降级为不显示键数
+    }
     const nodes: MetadataNode[] = []
     for (let i = 0; i < 16; i++) {
+      const n = counts.get(i) ?? 0
       nodes.push({
         kind: MetaNodeKind.Database,
         name: `db${i}`,
         path: [String(i)],
         hasChildren: true,
+        // 空库不挂 (0) 避免 16 行噪音;有键才显示
+        count: n > 0 ? n : undefined,
       })
     }
     return nodes
   }
 
-  private listTypeGroups(dbIndex: string): MetadataNode[] {
+  /** 类型分组节点:超大库(> TYPE_COUNT_LIMIT)不统计,避免长时间 SCAN 拖慢展开。 */
+  private static readonly TYPE_COUNT_LIMIT = 100_000
+
+  private async listTypeGroups(dbIndex: string): Promise<MetadataNode[]> {
+    const idx = Number(dbIndex)
+    if (idx !== this.currentDb) {
+      await this.client.select(idx)
+      this.currentDb = idx
+    }
+    // 先看 DBSIZE 决定是否值得整库 SCAN 统计每类
+    const dbsize = (await this.client.call('DBSIZE')) as number
+    const counts: Record<string, number> = {}
+    let countsAvailable = false
+    if (dbsize > 0 && dbsize <= RedisConnection.TYPE_COUNT_LIMIT) {
+      // 整库 SCAN + pipeline TYPE 统计,N 万级在本地 < 100ms
+      let cursor = '0'
+      do {
+        const [next, batch] = (await this.client.call('SCAN', cursor, 'COUNT', '500')) as [
+          string,
+          string[],
+        ]
+        cursor = next
+        if (batch.length > 0) {
+          const pipeline = this.client.pipeline()
+          for (const k of batch) pipeline.type(k)
+          const results = (await pipeline.exec()) as Array<[Error | null, string]> | null
+          if (results) {
+            for (let i = 0; i < batch.length; i++) {
+              const t = results[i]?.[1]
+              if (t) counts[t] = (counts[t] ?? 0) + 1
+            }
+          }
+        }
+      } while (cursor !== '0')
+      countsAvailable = true
+    }
     return TYPE_GROUPS.map((g) => ({
       kind: MetaNodeKind.Group,
       name: g.name,
       path: [dbIndex, g.group],
       group: g.group,
       hasChildren: true,
+      // 库为空也显示 (0);超大库不统计则 undefined,保持原样
+      count: countsAvailable ? (counts[g.type] ?? 0) : undefined,
     }))
   }
 
@@ -199,10 +250,14 @@ class RedisConnection implements DriverConnection {
       if (matched.length >= SCAN_SAMPLE_LIMIT) break
     } while (cursor !== '0' && scannedRounds < ROUND_CAP)
 
+    // group: 'redis-key' 是给 UI 用的"这是个 Redis key 而不是 SQL 列"标记:
+    // - 双击行为路由到 RedisPane(而非展开)
+    // - 右键菜单替换为 Redis 专属:删除 / 复制 / 查看 TTL
     const nodes: MetadataNode[] = matched.slice(0, SCAN_SAMPLE_LIMIT).map((key) => ({
       kind: MetaNodeKind.Column,
       name: key,
       path: [dbIndex, tg.group, key],
+      group: 'redis-key',
       hasChildren: false,
     }))
     // 若达到上限 或 未扫完 而抽样已满,提示用户继续 SCAN。
@@ -211,6 +266,7 @@ class RedisConnection implements DriverConnection {
         kind: MetaNodeKind.Column,
         name: '... (更多,使用 SCAN 命令)',
         path: [dbIndex, tg.group, '__more__'],
+        // 不是真 key,不挂 redis-key 标记,避免右键出现"删除"等菜单
         hasChildren: false,
       })
     }

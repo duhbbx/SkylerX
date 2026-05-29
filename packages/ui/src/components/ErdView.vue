@@ -184,14 +184,23 @@ const edges = computed(() => {
   return out
 })
 
+/**
+ * 画布尺寸:同时跟踪左/上的负坐标(节点拖出初始区域到负向时)和右/下的正坐标。
+ * - SVG.edges 用这个尺寸 + viewBox(offX, offY, w, h),让从负坐标到正向的连线不被 viewBox 裁
+ * - canvas-inner 容器同样按这个尺寸+偏移,避免连线被父容器边界遮住
+ */
 const canvasSize = computed(() => {
-  let w = 600
-  let h = 400
+  let minX = 0
+  let minY = 0
+  let maxX = 600
+  let maxY = 400
   for (const p of Object.values(pos)) {
-    w = Math.max(w, p.x + BOX_W + 60)
-    h = Math.max(h, p.y + 360)
+    minX = Math.min(minX, p.x - 60)
+    minY = Math.min(minY, p.y - 60)
+    maxX = Math.max(maxX, p.x + BOX_W + 60)
+    maxY = Math.max(maxY, p.y + 360)
   }
-  return { w, h }
+  return { w: maxX - minX, h: maxY - minY, offX: minX, offY: minY }
 })
 
 // ── 编辑：新建表 / 列 ──
@@ -390,6 +399,12 @@ async function applyChanges(): Promise<void> {
       @wheel.prevent="onWheel"
       @mousedown="panStart"
     >
+      <!--
+        canvas-inner 是节点 + 连线共享的逻辑坐标空间;
+        ▸ width/height 取的是 canvasSize.maxX/maxY,负坐标的节点 absolute 出 (0,0) 时不需要扩 canvas-inner 自身
+        ▸ canvas-inner 必须 overflow:visible(默认就是,但显式声明),不裁负方向的卡片
+        ▸ SVG 加 overflow=visible 让 line 超出 width/height 也能显示,避免 viewBox 切线
+      -->
       <div
         class="canvas-inner"
         :style="{
@@ -399,7 +414,7 @@ async function applyChanges(): Promise<void> {
           transformOrigin: '0 0',
         }"
       >
-        <svg class="edges" :width="canvasSize.w" :height="canvasSize.h">
+        <svg class="edges" :width="canvasSize.w" :height="canvasSize.h" overflow="visible">
           <line v-for="(e, i) in edges" :key="i" :x1="e.x1" :y1="e.y1" :x2="e.x2" :y2="e.y2" class="edge" />
           <line
             v-if="fkDragLine"
@@ -524,12 +539,16 @@ async function applyChanges(): Promise<void> {
 }
 .canvas-inner {
   position: relative;
+  /* 拖到负方向(左/上)的卡片必须能溢出可见;edges SVG 也靠这层不被裁 */
+  overflow: visible;
 }
 .edges {
   position: absolute;
   top: 0;
   left: 0;
   pointer-events: none;
+  /* SVG 默认 viewport 裁切自身宽高外的内容,这里关掉,保证负坐标 line 也能画 */
+  overflow: visible;
 }
 .edge {
   stroke: var(--accent);

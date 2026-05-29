@@ -35,6 +35,8 @@ import KeyBindingsDialog from './components/KeyBindingsDialog.vue'
 import LineageDialog from './components/LineageDialog.vue'
 import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
+import NewDatabaseDialog from './components/NewDatabaseDialog.vue'
+import NewSchemaDialog from './components/NewSchemaDialog.vue'
 import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import MockDataDialog from './components/MockDataDialog.vue'
@@ -47,6 +49,7 @@ import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import RedisNewKeyDialog from './components/RedisNewKeyDialog.vue'
 import ReplicationLagDialog from './components/ReplicationLagDialog.vue'
 import RowHistoryDialog from './components/RowHistoryDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
@@ -200,6 +203,136 @@ async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
 async function onRunSql(connId: string, sql: string): Promise<void> {
   const conn = await client.connections.get(connId)
   tabsRef.value?.runSql(conn, sql)
+}
+
+/** Redis 专属:左侧树双击 key → 打开 RedisPane 并把 pendingKey 传过去自动选中。 */
+async function onOpenRedisKey(connId: string, dbIndex: number, key: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  tabsRef.value?.openRedisDb(conn, dbIndex, key)
+}
+
+/** Redis 专属:右键 → 删除 key(DEL),成功后刷新对应类型组节点。 */
+async function onDeleteRedisKey(
+  connId: string,
+  dbIndex: number,
+  key: string,
+  parent: TreeNode,
+): Promise<void> {
+  if (!(await appConfirm({ message: `确认删除 key "${key}" ?`, variant: 'danger' }))) return
+  try {
+    await client.connections.executeCommand(connId, {
+      op: 'DEL',
+      args: [key],
+      context: { dbIndex },
+    })
+    // parent = 类型组节点(如 Strings),刷新后重新 SCAN 抽样
+    await navRef.value?.refreshNode(parent, connId)
+    toast.success(`已删除: ${key}`)
+  } catch (e) {
+    toast.error(`删除失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/** Redis 专属:清空指定逻辑库(FLUSHDB)。生产连接额外多一次防呆。 */
+async function onFlushRedisDb(connId: string, dbIndex: number, dbNode: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const env = conn.extra?.env as string | undefined
+  const isProd = env === 'prod'
+  if (isProd) {
+    const typed = await appPrompt({
+      message: `⚠️ 这是生产环境连接「${conn.name}」。\n要清空 db${dbIndex} 的所有 key,请输入"FLUSHDB" 二次确认:`,
+      defaultValue: '',
+    })
+    if (typed !== 'FLUSHDB') {
+      toast.warn('已取消')
+      return
+    }
+  } else {
+    if (
+      !(await appConfirm({
+        message: `确认清空「${conn.name}」的 db${dbIndex} 内所有 key ?\n此操作不可恢复。`,
+        variant: 'danger',
+      }))
+    )
+      return
+  }
+  try {
+    await client.connections.executeCommand(connId, {
+      op: 'FLUSHDB',
+      args: [],
+      context: { dbIndex },
+    })
+    await navRef.value?.refreshNode(dbNode, connId)
+    toast.success(`db${dbIndex} 已清空`)
+  } catch (e) {
+    toast.error(`清空失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/** Redis 专属:清空整个实例(FLUSHALL)。无论环境都强制 "FLUSHALL" 输入确认。 */
+async function onFlushRedisAll(connId: string, connNode: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const typed = await appPrompt({
+    message: `⚠️ 即将清空「${conn.name}」整个实例的所有 16 个逻辑库,所有 key 都会丢失,不可恢复。\n请输入"FLUSHALL"确认:`,
+    defaultValue: '',
+  })
+  if (typed !== 'FLUSHALL') {
+    toast.warn('已取消')
+    return
+  }
+  try {
+    await client.connections.executeCommand(connId, {
+      op: 'FLUSHALL',
+      args: [],
+      // 不需要 dbIndex,FLUSHALL 跨库
+    })
+    await navRef.value?.refreshNode(connNode, connId)
+    toast.success('整个实例已清空')
+  } catch (e) {
+    toast.error(`清空失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/** Redis 专属:新建 key — 打开 RedisNewKeyDialog;parent 用于成功后刷新对应类型组。 */
+async function onNewRedisKey(connId: string, dbIndex: number, parent: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  redisNewKeyOpen.value = { conn, dbIndex, parent }
+}
+
+/** Redis 新建 key 成功:刷新左侧树的"父节点"(可能是 db 节点也可能是类型组)。 */
+async function onRedisKeyCreated(): Promise<void> {
+  if (!redisNewKeyOpen.value) return
+  const { conn, parent } = redisNewKeyOpen.value
+  // db 节点要刷新整个子树才看得到新 key;类型组节点刷自身即可
+  await navRef.value?.refreshNode(parent, conn.id)
+}
+
+/** 新建数据库:打开弹窗。 */
+async function onNewDatabase(connId: string, parent: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  newDbOpen.value = { conn, parent }
+}
+
+/** 新建数据库成功:刷新连接节点(出现新库)。 */
+async function onDatabaseCreated(): Promise<void> {
+  if (!newDbOpen.value) return
+  const { conn, parent } = newDbOpen.value
+  await navRef.value?.refreshNode(parent, conn.id)
+}
+
+/** 新建 Schema:打开弹窗。父节点为 Database 时取其 name 作为 schema 所在库。 */
+async function onNewSchema(connId: string, parent: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  // Database 节点:把 name 作为父库;Connection 节点:不带 database(走默认上下文)
+  const database = parent.kind === MetaNodeKind.Database ? parent.name : undefined
+  newSchemaOpen.value = { conn, database, parent }
+}
+
+/** 新建 Schema 成功:刷新父节点(库或连接,刷出新 schema)。 */
+async function onSchemaCreated(): Promise<void> {
+  if (!newSchemaOpen.value) return
+  const { conn, parent } = newSchemaOpen.value
+  await navRef.value?.refreshNode(parent, conn.id)
 }
 
 async function onDeleteConn(id: string): Promise<void> {
@@ -1126,6 +1259,18 @@ async function openHealth(connId: string): Promise<void> {
 const dashboardOpen = ref(false)
 /** A2/A8 跨表全文搜索 */
 const searchValueOpen = ref<{ connId: string; value?: string } | null>(null)
+/** Redis 新建 key 弹窗(per db) */
+const redisNewKeyOpen = ref<{ conn: ConnectionConfig; dbIndex: number; parent: TreeNode } | null>(
+  null,
+)
+/** 新建数据库弹窗(per 连接) */
+const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
+/** 新建 Schema 弹窗(per 连接 + 可选父库) */
+const newSchemaOpen = ref<{
+  conn: ConnectionConfig
+  database?: string
+  parent: TreeNode
+} | null>(null)
 /** C5 索引推荐器（per 连接） */
 const idxRecOpen = ref<{ conn: ConnectionConfig } | null>(null)
 async function openIdxRec(connId: string): Promise<void> {
@@ -1815,6 +1960,13 @@ onUnmounted(() => unsubMenu?.())
     @export-schema-sql="onExportSchemaSql"
     @transfer-data="onTransferData"
     @bulk-drop="onBulkDrop"
+    @open-redis-key="onOpenRedisKey"
+    @delete-redis-key="onDeleteRedisKey"
+    @flush-redis-db="onFlushRedisDb"
+    @flush-redis-all="onFlushRedisAll"
+    @new-redis-key="onNewRedisKey"
+    @new-database="onNewDatabase"
+    @new-schema="onNewSchema"
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
@@ -2151,6 +2303,35 @@ onUnmounted(() => unsubMenu?.())
     :initial-conn-id="searchValueOpen.connId"
     :prefill-value="searchValueOpen.value"
     @close="searchValueOpen = null"
+  />
+
+  <!-- Redis 新建 key -->
+  <RedisNewKeyDialog
+    v-if="redisNewKeyOpen"
+    :open="!!redisNewKeyOpen"
+    :conn="redisNewKeyOpen.conn"
+    :db-index="redisNewKeyOpen.dbIndex"
+    @close="redisNewKeyOpen = null"
+    @created="onRedisKeyCreated"
+  />
+
+  <!-- 新建数据库 -->
+  <NewDatabaseDialog
+    v-if="newDbOpen"
+    :open="!!newDbOpen"
+    :conn="newDbOpen.conn"
+    @close="newDbOpen = null"
+    @created="onDatabaseCreated"
+  />
+
+  <!-- 新建 Schema -->
+  <NewSchemaDialog
+    v-if="newSchemaOpen"
+    :open="!!newSchemaOpen"
+    :conn="newSchemaOpen.conn"
+    :database="newSchemaOpen.database"
+    @close="newSchemaOpen = null"
+    @created="onSchemaCreated"
   />
 
   <!-- A3+B5+B6+B9+B10 数据检查器（连接 + 表） -->

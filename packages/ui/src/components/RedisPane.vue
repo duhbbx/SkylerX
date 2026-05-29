@@ -12,11 +12,18 @@
 import type { CommandResult, ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
-import { toast } from '../dialog'
+import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 
 const props = defineProps<{
   conn: ConnectionConfig
   dbIndex: number
+  /** 外部(如左侧树双击 key)要求选中并显示哪个 key */
+  pendingKey?: string | null
+}>()
+
+const emit = defineEmits<{
+  /** key 被删除后通知外层,以便刷新左侧树对应类型组节点 */
+  keyDeleted: [dbIndex: number, key: string]
 }>()
 
 const client = useDataClient()
@@ -109,6 +116,11 @@ const cmdText = ref('')
 const cmdRunning = ref(false)
 const cmdResult = ref<{ ok: boolean; output: string; ms?: number } | null>(null)
 
+// 当前选中 key 的 TTL(秒)。-1 = 永不过期; -2 = key 不存在; null = 未取
+const ttlSec = ref<number | null>(null)
+// 删除 / 重命名 / TTL 操作进行中标志,禁用按钮
+const keyOpBusy = ref(false)
+
 function call(op: string, args: unknown[] = []): Promise<CommandResult> {
   return client.connections.executeCommand(props.conn.id, {
     op,
@@ -189,6 +201,17 @@ function onResetMatch(): void {
 async function selectKey(k: KeyItem): Promise<void> {
   selected.value = k
   extraView.value = null
+  ttlSec.value = null
+  // TTL 跟 value 并发拉,失败不致命(权限受限的 Redis 也常见)
+  void (async () => {
+    try {
+      const r = await call('TTL', [k.name])
+      const n = Number(r.data ?? -1)
+      ttlSec.value = Number.isFinite(n) ? n : null
+    } catch {
+      ttlSec.value = null
+    }
+  })()
   let typ = k.type
   if (!typ) {
     try {
@@ -329,6 +352,96 @@ async function setExtraView(v: ExtraView): Promise<void> {
   }
 }
 
+/** 复制选中 key 名到剪贴板。 */
+async function copySelectedKey(): Promise<void> {
+  const k = selected.value
+  if (!k) return
+  try {
+    await navigator.clipboard.writeText(k.name)
+    toast.success(`已复制: ${k.name}`)
+  } catch (e) {
+    toast.error(`复制失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/** 删除选中 key(DEL),成功后从左侧列表移除并清空右侧。 */
+async function deleteSelectedKey(): Promise<void> {
+  const k = selected.value
+  if (!k) return
+  if (!(await appConfirm({ message: `确认删除 key "${k.name}" ?`, variant: 'danger' }))) return
+  keyOpBusy.value = true
+  try {
+    await call('DEL', [k.name])
+    // 列表里也撤掉
+    keys.value = keys.value.filter((x) => x.name !== k.name)
+    selected.value = null
+    valueState.value = null
+    ttlSec.value = null
+    emit('keyDeleted', props.dbIndex, k.name)
+    toast.success(`已删除: ${k.name}`)
+  } catch (e) {
+    toast.error(`删除失败: ${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    keyOpBusy.value = false
+  }
+}
+
+/** 重命名选中 key(RENAME oldKey newKey)。 */
+async function renameSelectedKey(): Promise<void> {
+  const k = selected.value
+  if (!k) return
+  const next = await appPrompt({
+    message: `重命名 key "${k.name}" 为:`,
+    defaultValue: k.name,
+  })
+  if (!next || next === k.name) return
+  keyOpBusy.value = true
+  try {
+    await call('RENAME', [k.name, next])
+    // 同步左侧列表
+    const idx = keys.value.findIndex((x) => x.name === k.name)
+    if (idx >= 0) keys.value[idx] = { name: next, type: k.type }
+    selected.value = keys.value[idx] ?? null
+    toast.success(`已重命名为: ${next}`)
+  } catch (e) {
+    toast.error(`重命名失败: ${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    keyOpBusy.value = false
+  }
+}
+
+/** 设置/取消 TTL。输入秒数:0 = 立即过期? 不,我们 -1 = PERSIST,> 0 = EXPIRE n。 */
+async function changeTtl(): Promise<void> {
+  const k = selected.value
+  if (!k) return
+  const cur = ttlSec.value
+  const hint =
+    cur != null && cur >= 0 ? `当前剩余 ${cur}s,输入新秒数(-1 = 取消过期):` : '输入过期秒数(-1 = 取消过期):'
+  const input = await appPrompt({ message: hint, defaultValue: cur != null ? String(cur) : '60' })
+  if (input == null) return
+  const sec = Number.parseInt(input, 10)
+  if (!Number.isFinite(sec)) {
+    toast.error('请输入整数')
+    return
+  }
+  keyOpBusy.value = true
+  try {
+    if (sec < 0) {
+      await call('PERSIST', [k.name])
+      ttlSec.value = -1
+      toast.success('已取消过期')
+    } else {
+      await call('EXPIRE', [k.name, String(sec)])
+      ttlSec.value = sec
+      toast.success(`TTL = ${sec}s`)
+    }
+  } catch (e) {
+    toast.error(`TTL 设置失败: ${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    keyOpBusy.value = false
+  }
+}
+
 /**
  * Bitmap：BITCOUNT key start end — 给定 byte 偏移区间统计 1-bit 数。
  * Redis 默认按 BYTE 计；负数从末尾算（-1 = 最后一字节）。
@@ -458,6 +571,28 @@ watch(
   },
   { immediate: true },
 )
+
+/**
+ * 外部要求选中某个 key(如左侧树双击)。
+ * - 若 key 已在列表里:直接 selectKey
+ * - 若不在:用 SCAN MATCH=key 兜底快速插入再选(避免要等全量加载)
+ */
+watch(
+  () => props.pendingKey,
+  async (key) => {
+    if (!key) return
+    const existing = keys.value.find((k) => k.name === key)
+    if (existing) {
+      await selectKey(existing)
+      return
+    }
+    // 不在列表:不强制全量,直接以 type:null 插入并 selectKey(内部 TYPE 拉一下)
+    const item: KeyItem = { name: key, type: null }
+    keys.value.unshift(item)
+    await selectKey(item)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -542,6 +677,15 @@ watch(
           <div class="value-head">
             <span class="vh-name">{{ selected.name }}</span>
             <span class="vh-type" :style="{ color: typeTagColor(selectedType) }">{{ selectedType }}</span>
+            <span class="vh-ttl" :title="ttlSec == null ? '未取 TTL' : ttlSec === -1 ? '永不过期' : ttlSec === -2 ? 'key 已不存在' : `剩余 ${ttlSec}s`">
+              ttl: <b>{{ ttlSec == null ? '—' : ttlSec === -1 ? '∞' : ttlSec === -2 ? 'n/a' : `${ttlSec}s` }}</b>
+            </span>
+            <span class="vh-ops">
+              <button class="ev-btn" :disabled="keyOpBusy" title="复制 key 名" @click="copySelectedKey">⧉</button>
+              <button class="ev-btn" :disabled="keyOpBusy" title="设置 TTL" @click="changeTtl">⏱</button>
+              <button class="ev-btn" :disabled="keyOpBusy" title="重命名" @click="renameSelectedKey">✎</button>
+              <button class="ev-btn danger" :disabled="keyOpBusy" title="删除 key" @click="deleteSelectedKey">✕</button>
+            </span>
             <span v-if="extraViewOptions.length" class="vh-extra">
               <button
                 class="ev-btn"
@@ -929,10 +1073,29 @@ watch(
   color: var(--muted);
   font-style: italic;
 }
+.vh-ttl {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+}
+.vh-ttl b {
+  color: var(--text);
+}
+.vh-ops {
+  display: inline-flex;
+  gap: 4px;
+}
 .vh-extra {
   margin-left: auto;
   display: inline-flex;
   gap: 4px;
+}
+.ev-btn.danger {
+  color: #e04050;
+  border-color: rgba(224, 64, 80, 0.4);
+}
+.ev-btn.danger:hover:not(:disabled) {
+  background: rgba(224, 64, 80, 0.14);
 }
 .ev-btn {
   border: 1px solid var(--border);

@@ -5,9 +5,11 @@
  */
 import {
   type ConnectionConfig,
+  DbKind,
   MetaNodeKind,
   type QueryHistoryEntry,
   type QueryResult,
+  dialectKind,
 } from '@db-tool/shared-types'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -130,6 +132,10 @@ let runToken = 0 // 软取消令牌：停止后丢弃在途结果
 
 const cur = computed<ResultTab | undefined>(() => tabs.value[activeTab.value])
 const paginatable = PAGINATABLE.includes(props.conn.dialect)
+// NoSQL(Redis/Mongo/ES)没有 EXPLAIN/事务概念,工具栏隐藏对应按钮(保险网,
+// 正常路由下 NoSQL 走 RedisPane/MongoPane/ElasticPane,不会落到 QueryPane;
+// 但万一通过插件 / 外部入口闯进来,也不出现明显悬空的按钮)。
+const isSqlDialect = computed(() => dialectKind(props.conn.dialect) === DbKind.Sql)
 
 /**
  * 外键元数据：
@@ -1384,11 +1390,13 @@ defineExpose({
       </button>
       <button :disabled="!running" :title="t('query.stop')" @click="cancel">■</button>
       <button :disabled="running" :title="t('query.runToCursor.title')" @click="runToCursor">⏭</button>
-      <button :disabled="running" :title="t('query.explain.title')" @click="explain(false)">{{ t('query.explain') }}</button>
-      <button :disabled="running" :title="t('query.explainAnalyzeTitle')" @click="explain(true)">{{ t('query.explainAnalyze') }}</button>
+      <!-- NoSQL 没有 EXPLAIN / 事务概念,隐藏对应按钮 -->
+      <button v-if="isSqlDialect" :disabled="running" :title="t('query.explain.title')" @click="explain(false)">{{ t('query.explain') }}</button>
+      <button v-if="isSqlDialect" :disabled="running" :title="t('query.explainAnalyzeTitle')" @click="explain(true)">{{ t('query.explainAnalyze') }}</button>
       <!-- 提交模式切换：点一下 auto/manual 互切；manual 时 dirty 状态点切换会先弹 commit/rollback 确认 -->
-      <span class="tb-sep" />
+      <span v-if="isSqlDialect" class="tb-sep" />
       <button
+        v-if="isSqlDialect"
         class="commit-mode-toggle"
         :class="commitMode"
         :title="commitMode === 'manual' ? t('commit.toggleToAutoTitle') : t('commit.toggleToManualTitle')"
@@ -1398,7 +1406,7 @@ defineExpose({
         {{ commitMode === 'manual' ? '⌨ ' + t('commit.modeManual') : '⚡ ' + t('commit.modeAuto') }}
       </button>
       <!-- 手动提交模式专属：提交 / 回滚 / 事务状态 -->
-      <template v-if="commitMode === 'manual'">
+      <template v-if="isSqlDialect && commitMode === 'manual'">
         <button
           class="commit"
           :disabled="!sessionId || !dirty || running"

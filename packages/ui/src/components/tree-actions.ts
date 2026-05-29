@@ -2,7 +2,7 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { MetaNodeKind } from '@db-tool/shared-types'
+import { DbDialect, DbKind, MetaNodeKind, dialectKind } from '@db-tool/shared-types'
 import { pluginTreeActions } from '../plugins'
 import type { TreeController } from './tree-controller'
 import type { TreeNode } from './treeNode'
@@ -57,6 +57,13 @@ export interface TreeAction {
   danger?: boolean
   /** 进一步的可用性判定（如表必须有 sqlName） */
   enabled?: (node: TreeNode) => boolean
+  /**
+   * 排除某个方言类别。如 ER 图 / 导出 SQL / 数据字典 / AI 体检 / 索引推荐器
+   * 对 Redis/Mongo/ES 没意义,设 `excludeKind: DbKind.NoSql` 即可隐藏。
+   */
+  excludeKind?: DbKind
+  /** 仅在这些方言出现(白名单)。空 = 所有方言。 */
+  onlyDialects?: DbDialect[]
   run: (ctx: NodeActionContext) => void
 }
 
@@ -75,6 +82,37 @@ export const TREE_ACTIONS: TreeAction[] = [
     section: 'create',
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
     run: ({ node, connId, ctrl }) => ctrl.newQuery(node, connId),
+  },
+  // 新建数据库 — 连接节点。文件型/Oracle 等不支持的方言由 dialog 内 unsupportedReason 处理
+  // NoSQL 通过 excludeKind 隐藏。
+  {
+    id: 'new-database',
+    label: 'ctx.new-database',
+    section: 'create',
+    kinds: [MetaNodeKind.Connection],
+    excludeKind: DbKind.NoSql,
+    run: ({ node, connId, ctrl }) => ctrl.newDatabase(connId, node),
+  },
+  // 新建 Schema — 只在 PG 系 / SQL Server / Snowflake / Oracle / DM 出现
+  // 挂在 Connection(Oracle 整库即 schema)或 Database(PG 系库下建 schema)节点上
+  {
+    id: 'new-schema',
+    label: 'ctx.new-schema',
+    section: 'create',
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database],
+    onlyDialects: [
+      DbDialect.PostgreSQL,
+      DbDialect.KingbaseES,
+      DbDialect.OpenGauss,
+      DbDialect.Greenplum,
+      DbDialect.CockroachDB,
+      DbDialect.Redshift,
+      DbDialect.SqlServer,
+      DbDialect.Snowflake,
+      DbDialect.Oracle,
+      DbDialect.DM,
+    ],
+    run: ({ node, connId, ctrl }) => ctrl.newSchema(connId, node),
   },
   {
     id: 'new-table',
@@ -346,11 +384,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.aiCommentTable(node, connId),
   },
   // ── G1 AI 数据库体检 / C5 索引推荐：连接级，挂 Connection 节点右键 ──
+  // 对 Redis/Mongo/ES 没有"表/索引"概念,这两个功能无意义,按方言隐藏。
   {
     id: 'ai-health-conn',
     label: 'ctx.ai-health',
     section: 'meta',
     kinds: [MetaNodeKind.Connection],
+    excludeKind: DbKind.NoSql,
     run: ({ connId, ctrl }) => ctrl.aiHealthCheck(connId),
   },
   {
@@ -358,6 +398,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     label: 'ctx.index-recommender',
     section: 'meta',
     kinds: [MetaNodeKind.Connection],
+    excludeKind: DbKind.NoSql,
     run: ({ connId, ctrl }) => ctrl.indexRecommender(connId),
   },
   {
@@ -391,6 +432,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     label: 'ctx.erd',
     section: 'meta',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    excludeKind: DbKind.NoSql,
     run: ({ node, connId, ctrl }) => ctrl.openErd(node, connId),
   },
 
@@ -416,6 +458,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     label: 'ctx.export-schema-sql',
     section: 'export',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    excludeKind: DbKind.NoSql,
     run: ({ node, connId, ctrl }) => ctrl.exportSchemaSql(node, connId),
   },
   {
@@ -423,6 +466,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     label: 'ctx.data-dict',
     section: 'export',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    excludeKind: DbKind.NoSql,
     run: ({ node, connId, ctrl }) => ctrl.dataDict(node, connId),
   },
   {
@@ -430,6 +474,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     label: 'ctx.data-dict-html',
     section: 'export',
     kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    excludeKind: DbKind.NoSql,
     run: ({ node, connId, ctrl }) => ctrl.dataDictHtml(node, connId),
   },
 
@@ -473,7 +518,85 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.refreshNode(node, connId),
   },
 
+  // ── Redis 专属:db 节点 / 连接节点 / key 节点 ──
+  // 新建 key:db 节点 或 类型组(group: 'redis-key' 不是 group;Redis 的类型组 group 在
+  // {strings|hashes|lists|sets|zsets|streams} 之一,但 group 字段在节点上是这些值)
+  {
+    id: 'redis-new-key',
+    label: 'ctx.redis-new-key',
+    section: 'create',
+    kinds: [MetaNodeKind.Database, MetaNodeKind.Group],
+    onlyDialects: [DbDialect.Redis],
+    // Group 节点限定 Redis 类型组(避免 SQL 方言的 Group 误中)
+    enabled: (n) =>
+      n.kind === MetaNodeKind.Database ||
+      ['strings', 'hashes', 'lists', 'sets', 'zsets', 'streams'].includes(n.group ?? ''),
+    run: ({ node, connId, ctrl }) => {
+      // 从节点 path[0] 解析 dbIndex(类型组 path = [db, type];db 节点 path = [db])
+      const dbIndex = Number(node.path[0]) || 0
+      ctrl.newRedisKey(connId, dbIndex, node)
+    },
+  },
+  // 清空逻辑库(FLUSHDB):放 danger 区,二次确认
+  {
+    id: 'redis-flush-db',
+    label: 'ctx.redis-flush-db',
+    section: 'danger',
+    kinds: [MetaNodeKind.Database],
+    onlyDialects: [DbDialect.Redis],
+    danger: true,
+    run: ({ node, connId, ctrl }) => {
+      const dbIndex = Number(node.path[0]) || 0
+      ctrl.flushRedisDb(connId, dbIndex, node)
+    },
+  },
+  // 清空整个 Redis 实例(FLUSHALL):连接节点上,二次+生产防呆
+  {
+    id: 'redis-flush-all',
+    label: 'ctx.redis-flush-all',
+    section: 'danger',
+    kinds: [MetaNodeKind.Connection],
+    onlyDialects: [DbDialect.Redis],
+    danger: true,
+    run: ({ node, connId, ctrl }) => ctrl.flushRedisAll(connId, node),
+  },
+
+  // ── Redis key 专属动作 ──
+  // Column kind + group='redis-key' 由 redis 驱动写入(见 redis.ts sampleKeysByType),
+  // 用来在共用 Column kind 的情况下区分"SQL 列"还是"Redis key"。
+  {
+    id: 'redis-view-key',
+    label: 'ctx.redis-view-key',
+    section: 'open',
+    kinds: [MetaNodeKind.Column],
+    enabled: (n) => n.group === 'redis-key' && n.path.length >= 3,
+    run: ({ node, connId, ctrl }) =>
+      ctrl.openRedisKey(connId, Number(node.path[0]) || 0, node.name),
+  },
+  {
+    id: 'redis-copy-key',
+    label: 'ctx.redis-copy-key',
+    section: 'export',
+    kinds: [MetaNodeKind.Column],
+    enabled: (n) => n.group === 'redis-key',
+    run: ({ node, ctrl }) => ctrl.copyText(node.name),
+  },
+
   // ── 删除（永远在最末，红色，分组 danger）──
+  {
+    id: 'redis-del-key',
+    label: 'ctx.redis-del-key',
+    section: 'danger',
+    kinds: [MetaNodeKind.Column],
+    enabled: (n) => n.group === 'redis-key' && n.path.length >= 3,
+    danger: true,
+    run: ({ node, connId, ctrl }) => {
+      // parent = 类型组节点(用于刷新),从 TreeNode.parent 取
+      const parent = node.parent
+      if (!parent) return
+      ctrl.deleteRedisKey(connId, Number(node.path[0]) || 0, node.name, parent)
+    },
+  },
   {
     id: 'drop-object',
     label: 'ctx.drop-object',
@@ -508,10 +631,20 @@ function sectionIndex(a: TreeAction): number {
   return i < 0 ? SECTION_ORDER.length : i
 }
 
-/** 取某节点适用的动作列表（不含 divider；保留旧接口给现有测试/代码）。 */
-export function actionsFor(node: TreeNode): TreeAction[] {
+/**
+ * 取某节点适用的动作列表（不含 divider）。
+ * dialect 可选:传了就过滤掉与该方言不兼容的 action(excludeKind / onlyDialects)。
+ */
+export function actionsFor(node: TreeNode, dialect?: DbDialect): TreeAction[] {
   const all = [...TREE_ACTIONS, ...pluginTreeActions()]
-  const eligible = all.filter((a) => a.kinds.includes(node.kind) && (!a.enabled || a.enabled(node)))
+  const kind = dialect ? dialectKind(dialect) : null
+  const eligible = all.filter((a) => {
+    if (!a.kinds.includes(node.kind)) return false
+    if (a.enabled && !a.enabled(node)) return false
+    if (dialect && a.onlyDialects && !a.onlyDialects.includes(dialect)) return false
+    if (kind && a.excludeKind === kind) return false
+    return true
+  })
   // 按 section 稳定排序（同 section 保留声明顺序）
   return eligible
     .map((a, i) => ({ a, i }))
@@ -520,8 +653,8 @@ export function actionsFor(node: TreeNode): TreeAction[] {
 }
 
 /** 取菜单条目（含 section 间的 divider）。 */
-export function menuEntriesFor(node: TreeNode): MenuEntry[] {
-  const list = actionsFor(node)
+export function menuEntriesFor(node: TreeNode, dialect?: DbDialect): MenuEntry[] {
+  const list = actionsFor(node, dialect)
   const out: MenuEntry[] = []
   let prevSection: Section | undefined
   let divIdx = 0

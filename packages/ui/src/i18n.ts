@@ -1340,6 +1340,14 @@ const DICT: Record<string, [string, string]> = {
   'ctx.refresh': ['刷新', 'Refresh'],
   'ctx.drop-object': ['删除', 'Drop'],
   'ctx.del-conn': ['删除连接', 'Delete connection'],
+  'ctx.redis-view-key': ['查看 value', 'View value'],
+  'ctx.redis-copy-key': ['复制 key', 'Copy key'],
+  'ctx.redis-del-key': ['删除 key', 'Delete key'],
+  'ctx.redis-new-key': ['新建 key…', 'New key…'],
+  'ctx.new-database': ['新建数据库…', 'New database…'],
+  'ctx.new-schema': ['新建 Schema…', 'New schema…'],
+  'ctx.redis-flush-db': ['清空当前库 (FLUSHDB)', 'Flush this database (FLUSHDB)'],
+  'ctx.redis-flush-all': ['清空整个实例 (FLUSHALL)', 'Flush entire instance (FLUSHALL)'],
 
   // ── ER 图 ErdView ──
   'erd.fileNotReady': [
