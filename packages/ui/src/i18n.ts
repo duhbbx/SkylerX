@@ -1489,6 +1489,49 @@ const DICT: Record<string, [string, string]> = {
   'mock.generate': ['生成 INSERT', 'Generate INSERT'],
   'mock.invalidCount': ['行数无效', 'Invalid row count'],
   'mock.empty': ['没有可生成的列', 'No generatable columns'],
+  // 慢查询日志分析（SlowQueryDialog；按连接打开）
+  'slowq.title': ['慢查询日志分析', 'Slow query analysis'],
+  'slowq.refresh': ['刷新', 'Refresh'],
+  'slowq.sortBy': ['排序', 'Sort by'],
+  'slowq.sort.totalMs': ['总耗时', 'Total ms'],
+  'slowq.sort.avgMs': ['平均耗时', 'Avg ms'],
+  'slowq.sort.execCount': ['调用次数', 'Calls'],
+  'slowq.col.sql': ['SQL 摘要', 'SQL digest'],
+  'slowq.col.calls': ['调用', 'Calls'],
+  'slowq.col.avgMs': ['平均(ms)', 'Avg ms'],
+  'slowq.col.totalMs': ['总(ms)', 'Total ms'],
+  'slowq.col.maxMs': ['最大(ms)', 'Max ms'],
+  'slowq.col.rowsExam': ['扫描行', 'Rows scanned'],
+  'slowq.copy': ['复制', 'Copy'],
+  'slowq.openSql': ['打开为查询', 'Open as query'],
+  'slowq.explain': ['EXPLAIN', 'EXPLAIN'],
+  'slowq.aiOptimize': ['AI 优化', 'AI optimize'],
+  'slowq.empty': ['暂无慢 SQL 记录', 'No slow SQL recorded'],
+  'slowq.unsupported': [
+    '当前方言无标准慢查询日志接口,请到该数据库管理界面查看',
+    'No standard slow-query interface for this dialect; check the DB console.',
+  ],
+  'slowq.notEnabledTitle': ['慢查询日志未启用', 'Slow query log not enabled'],
+  'slowq.notEnabledHint': [
+    '执行以下命令开启后再回来刷新:',
+    'Run the following to enable, then refresh:',
+  ],
+  'slowq.windowSinceStart': [
+    '统计窗口:数据库启动以来累计',
+    'Window: accumulated since DB startup',
+  ],
+
+  // ── Oracle → DM 迁移向导 ──
+  'slowq.foot': [
+    '已采样 {n} 条 · 数据源 {source} · {window}',
+    'Sampled {n} · source {source} · {window}',
+  ],
+  'slowq.explainTitle': ['EXPLAIN 结果', 'EXPLAIN result'],
+  'slowq.explainRun': ['执行 EXPLAIN', 'Run EXPLAIN'],
+  'slowq.explainErr': ['EXPLAIN 失败:{msg}', 'EXPLAIN failed: {msg}'],
+  'slowq.copied': ['已复制', 'Copied'],
+  'slowq.loadErr': ['加载失败:{msg}', 'Load failed: {msg}'],
+
   // Oracle → DM 迁移向导（信创外包高频；OracleToDmWizard）
   'o2dm.title': ['Oracle → DM 迁移向导', 'Oracle → DM Migration Wizard'],
   'o2dm.step.conn': ['连接', 'Connections'],

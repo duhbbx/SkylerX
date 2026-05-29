@@ -40,6 +40,7 @@ import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import MockDataDialog from './components/MockDataDialog.vue'
 import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
 import OracleToDmWizard from './components/OracleToDmWizard.vue'
+import SlowQueryDialog from './components/SlowQueryDialog.vue'
 import VisualQueryDialog from './components/VisualQueryDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
@@ -330,6 +331,19 @@ async function onMockData(connId: string, node: TreeNode): Promise<void> {
 
 /** Oracle → DM 迁移向导（独立工具，自带连接选择步骤） */
 const o2dmRef = useTemplateRef<{ open: () => void } | null>('o2dmRef')
+
+/** 慢查询日志分析（按连接打开） */
+const slowOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openSlowQuery(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  slowOpen.value = { conn }
+}
+function onSlowOpenSql(connId: string, sql: string): void {
+  void (async () => {
+    const conn = await client.connections.get(connId)
+    tabsRef.value?.openDraft(conn, sql, t('slowq.title'))
+  })()
+}
 
 /** #6 可视化查询构建器：按连接打开 */
 const vqdState = ref<{ conn: ConnectionConfig } | null>(null)
@@ -1403,6 +1417,12 @@ const paletteItems = computed<PaletteItem[]>(() => [
   })),
   // Oracle → DM 迁移向导（信创外包高频）
   { id: 'act:o2dm', label: t('o2dm.title'), group: t('pal.groupActions') },
+  // 慢查询日志分析（按连接）
+  ...paletteConns.value.map((c) => ({
+    id: `act:slowq:${c.id}`,
+    label: `${t('slowq.title')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
   // A2 跨表全文搜索
   ...paletteConns.value.map((c) => ({
     id: `act:search-value:${c.id}`,
@@ -1489,6 +1509,10 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:dashboard') dashboardOpen.value = true
   else if (item.id === 'act:ndjson-viewer') void openNdjsonViewer()
   else if (item.id === 'act:o2dm') o2dmRef.value?.open?.()
+  else if (item.id.startsWith('act:slowq:')) {
+    const cid = item.id.slice('act:slowq:'.length)
+    void openSlowQuery(cid)
+  }
   else if (item.id.startsWith('act:vqd:')) {
     const cid = item.id.slice('act:vqd:'.length)
     void openVqd(cid)
@@ -2035,6 +2059,15 @@ onUnmounted(() => unsubMenu?.())
 
   <!-- Oracle → DM 迁移向导（信创外包） -->
   <OracleToDmWizard ref="o2dmRef" />
+
+  <!-- 慢查询日志分析（按连接） -->
+  <SlowQueryDialog
+    v-if="slowOpen"
+    :conn="slowOpen.conn"
+    :open="true"
+    @close="slowOpen = null"
+    @open-sql="onSlowOpenSql"
+  />
 
   <!-- #6 可视化查询构建器 -->
   <VisualQueryDialog
