@@ -28,7 +28,10 @@ jobs:
           # ── Linux：x64 + arm64 双架构 ──
           # ubuntu-24.04-arm 是 GH-hosted 的 ARM Linux runner（2024 新增），native build。
           - { name: linux-x64,   os: ubuntu-latest,    eb_args: '--linux --x64',   npm_arch: x64   }
-          - { name: linux-arm64, os: ubuntu-24.04-arm, eb_args: '--linux --arm64', npm_arch: arm64 }
+          # linux-arm64 显式列出 target：deb/rpm/pacman 走 fpm，但 fpm 上游没有 arm64 二进制
+          # (electron-builder 缓存的 fpm-1.9.3-2.3.1-linux-x86 在 arm64 host 直接 Exec format error)
+          # 所以 arm64 只出 AppImage + tar.gz；--linux <targets...> 会按 yml target 各自的 arch 列表过滤
+          - { name: linux-arm64, os: ubuntu-24.04-arm, eb_args: '--linux AppImage tar.gz --arm64', npm_arch: arm64 }
     runs-on: ${{ matrix.os }}
     env:
       # electron-builder 在 pnpm monorepo 下需要 hoisted 布局：
