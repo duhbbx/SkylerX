@@ -12,6 +12,7 @@ import {
 } from '@db-tool/shared-types'
 import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import type { AiMode } from './ai'
+import { onChatErrorAsk } from './chat-bus'
 import AiAssistantDialog from './components/AiAssistantDialog.vue'
 import AiChatPanel from './components/AiChatPanel.vue'
 import AiCommentDialog from './components/AiCommentDialog.vue'
@@ -36,6 +37,7 @@ import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
 import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
+import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
@@ -1134,6 +1136,13 @@ async function openActivity(connId: string): Promise<void> {
   const conn = await client.connections.get(connId)
   activityOpen.value = { conn }
 }
+
+/** OceanBase 集群拓扑（信创差异化能力，仅 OceanBase 方言可入口）。 */
+const obTopoOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openObTopology(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  obTopoOpen.value = { conn }
+}
 const aiState = ref<{ mode: AiMode; sql?: string; connId?: string; error?: string } | null>(null)
 const aboutOpen = ref(false)
 // 右侧 AI 聊天侧边栏（持久化开关）
@@ -1240,6 +1249,31 @@ async function onAskAiAboutError(p: AskAiErrorPayload): Promise<void> {
 }
 
 /**
+ * 通用错误「✨ 问 AI」总线:任意 appAlert({ askAi }) 弹框点击按钮都会到这里,
+ * 复用 onAskAiAboutError 把上下文打到右侧聊天面板。
+ *
+ * 把 errorCode 拼进 error 文本(而不是分字段传)的原因:AiChatPanel.askAboutError
+ * 现有签名只认 { connId, connName?, sql, error },改它会牵动 ResultGrid 的对接,
+ * 这里把错误码当成 error 前缀更省事 —— AI 模型也吃得下「[MySQL 1062] Duplicate entry」这种格式。
+ */
+let chatErrorAskOff: (() => void) | null = null
+onMounted(() => {
+  chatErrorAskOff = onChatErrorAsk((e) => {
+    const errText = e.errorCode ? `[${e.errorCode}] ${e.error}` : e.error
+    void onAskAiAboutError({
+      connId: e.connId ?? '',
+      connName: e.connName,
+      sql: e.sql ?? '',
+      error: errText,
+    })
+  })
+})
+onUnmounted(() => {
+  chatErrorAskOff?.()
+  chatErrorAskOff = null
+})
+
+/**
  * 通用 AI 入口：把已经拼好的 prompt 发到 AI 聊天面板（#9-#21 共用此通道）。
  */
 interface AskAiPredefinedPayload {
@@ -1278,6 +1312,14 @@ const paletteItems = computed<PaletteItem[]>(() => [
     label: `${t('pal.activity')} · ${c.name || c.dialect}`,
     group: t('pal.groupActions'),
   })),
+  // OceanBase 集群拓扑（仅 OB 方言可见；其他方言显示无意义）
+  ...paletteConns.value
+    .filter((c) => c.dialect === DbDialect.OceanBase)
+    .map((c) => ({
+      id: `act:obtopo:${c.id}`,
+      label: `${t('pal.obTopology')} · ${c.name || c.dialect}`,
+      group: t('pal.groupActions'),
+    })),
   // schema 快照 同上
   ...paletteConns.value.map((c) => ({
     id: `act:snapshots:${c.id}`,
@@ -1371,6 +1413,9 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id.startsWith('act:activity:')) {
     const cid = item.id.slice('act:activity:'.length)
     void openActivity(cid)
+  } else if (item.id.startsWith('act:obtopo:')) {
+    const cid = item.id.slice('act:obtopo:'.length)
+    void openObTopology(cid)
   } else if (item.id.startsWith('act:snapshots:')) {
     const cid = item.id.slice('act:snapshots:'.length)
     void openSnapshots(cid)
@@ -1916,6 +1961,13 @@ onUnmounted(() => unsubMenu?.())
     v-if="activityOpen"
     :conn="activityOpen.conn"
     @close="activityOpen = null"
+  />
+
+  <!-- OceanBase 集群拓扑（信创差异化能力） -->
+  <OceanBaseTopologyDialog
+    v-if="obTopoOpen"
+    :conn="obTopoOpen.conn"
+    @close="obTopoOpen = null"
   />
 
   <!-- #16 Schema 快照（一键拍/对比） -->
