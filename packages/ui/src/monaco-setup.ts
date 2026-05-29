@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 // 必须在导入 monaco-editor 之前先装好翻译数组：
 // monaco 的 nls.js 是惰性查表（每次 localize() 时从 globalThis._VSCODE_NLS_MESSAGES 读），
 // 但 *某些* action label / 命令描述会在 monaco 模块装载时就求值缓存，

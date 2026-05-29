@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 数据契约（B7）：在 localStorage 维护一份 JSON 规则集，结果集执行后按契约扫，
  * 违规行用 toast 提示（详细在 console）。

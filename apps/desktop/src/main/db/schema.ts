@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /** 本地 SQLite 表结构（桌面端自身存储，与"目标数据库"无关）。 */
 export const SCHEMA_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS connections (

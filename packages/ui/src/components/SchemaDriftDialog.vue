@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * Schema 漂移检测（D6）：选两个真实连接（源 = 预期 / 基准；目标 = 怀疑漂移的），
  * 拉两边所有表的 DDL（MySQL 用 SHOW CREATE TABLE；PG 拼装 columns + indexes + FK），

@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 备份 / 还原（#14）——MVP 走纯 SQL 路线（不依赖外部 mysqldump / pg_dump）。
  *

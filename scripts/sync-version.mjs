@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 // 把 git tag 解析出来的 semver 写回 apps/desktop/package.json 的 version 字段。
 // CI 在 build/package 前调用，确保产物文件名（${productName}-${version}-…）跟 tag 对齐。
 // 非 tag push（或本地手工 run）下 GITHUB_REF 不是 refs/tags/v*，直接 noop。

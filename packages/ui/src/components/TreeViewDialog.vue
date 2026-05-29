@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 自引用树形展示（A5）：用户指定 idCol / parentCol / labelCol → 把结果集渲染为树。
  *

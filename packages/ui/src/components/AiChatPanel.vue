@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { type ChatMessage, askAiChat, extractAllSql } from '../ai'

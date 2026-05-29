@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import { DbDialect } from '@db-tool/shared-types'
 import type { ConnectionConfig, TestResult } from '@db-tool/shared-types'
 import type { DatabaseDriver, DriverConnection, SqlDialectHelpers } from '../driver.js'

@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * AI 聊天里把 assistant 文本块（非 SQL 部分）渲染成 HTML 的工具。
  *

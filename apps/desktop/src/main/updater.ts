@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import { BrowserWindow, app, dialog } from 'electron'
 // electron-updater 是 CJS，ESM 下需取默认导出再解构。
 import electronUpdater from 'electron-updater'

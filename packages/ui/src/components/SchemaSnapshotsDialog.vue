@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * Schema 快照（#16）：把某连接当前所有表的 DDL 抓下来存 localStorage，
  * 后续任何时候可以列出历史快照、对比两份的差异（按表 diff）。

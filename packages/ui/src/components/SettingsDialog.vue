@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import { ref } from 'vue'
 import { confirm as appConfirm } from '../dialog'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'

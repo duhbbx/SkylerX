@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 判定一条错误信息是否为「连接级」错误（连不上 / 认证失败），
  * 用于在查询/展开失败时自动弹出连接编辑框让用户改配置。

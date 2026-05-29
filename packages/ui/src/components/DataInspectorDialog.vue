@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 数据检查器（A3 列采样 + B5 约束扫描 + B6 整表剖析 + B9 类型优化建议 + B10 表维护）。
  *

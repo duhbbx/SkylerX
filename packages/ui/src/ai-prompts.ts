@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * AI 入口共享的 prompt 构造器（#9 / #10 / #17 / #18 / #19 / #20 / #21）。
  *

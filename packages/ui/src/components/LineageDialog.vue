@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 列血缘（A10 启发式版本）：还没有真 SQL parser，先用最简启发式 —— 在历史 SQL 文本里
  * 出现「<table>.<column>」或裸 <column>（前提是 SQL 里 FROM 了 <table>）的视为相关。

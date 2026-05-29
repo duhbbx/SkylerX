@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 极简事件总线，专门让 QueryPane 把「这条 SQL 执行完了」回传给 AiChatPanel。
  *

@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import { MetaNodeKind, type MetadataNode } from '@db-tool/shared-types'
 
 /** UI 侧的树节点：元数据 + 展开/加载状态 + 已取子节点。 */

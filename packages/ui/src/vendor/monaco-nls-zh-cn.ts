@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /* AUTO-GENERATED from monaco-editor/dev/vs/nls.messages.zh-cn.js — do not edit. */
 export const ZH_CN_MESSAGES: (string | null)[] = [
   '{0} ({1})',

@@ -1,3 +1,7 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 把多语句 SQL 按分号拆分，跳过字符串/反引号/行注释/块注释中的分号。
  * 够用的 MVP 拆分器（非完整 SQL 词法分析）。

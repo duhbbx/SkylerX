@@ -1,4 +1,7 @@
-<script setup lang="ts">
+<script setup lang="ts">/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * 「服务器活动」面板：DBA 排障常用 3 件套
  *   - 进程列表（#1）：MySQL `SHOW PROCESSLIST` / PG `pg_stat_activity` / MSSQL `sys.dm_exec_requests`
