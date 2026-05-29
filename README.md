@@ -10,6 +10,8 @@ Cross-platform desktop **database management tool** (Navicat / DBeaver alternati
 
 > **License**: [Apache License 2.0](./LICENSE)
 
+![SkylerX query workspace with AI assistant](./docs/screenshots/query-workspace.png)
+
 > ⚠️ **Disclaimer / Status**
 >
 > SkylerX is under active development and has **NOT been fully tested in production environments**. Test coverage is partial, edge cases across all supported dialects have not been exhaustively verified, and breaking changes may land between minor versions.

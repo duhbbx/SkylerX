@@ -58,7 +58,6 @@ try {
   else pick = /^zh/i.test(nav) ? 'zh' : 'en'
   applyMonacoLocale(pick)
   if (typeof console !== 'undefined') {
-    // biome-ignore lint/suspicious/noConsole: 启动诊断（可在确认无误后删）
     console.log('[skylerx monaco-nls] init', {
       saved,
       nav,
@@ -68,7 +67,6 @@ try {
   }
 } catch (e) {
   if (typeof console !== 'undefined') {
-    // biome-ignore lint/suspicious/noConsole: 启动诊断
     console.error('[skylerx monaco-nls] init failed:', e)
   }
 }

@@ -10,6 +10,8 @@
 
 > **许可**：[Apache License 2.0](./LICENSE)
 
+![SkylerX 查询工作区与 AI 助手](./docs/screenshots/query-workspace.png)
+
 > ⚠️ **免责声明 / 项目状态**
 >
 > SkylerX 仍在持续开发中，**尚未经过生产环境的完整测试**。当前测试覆盖率有限，跨方言的边界场景未全部验证，次版本之间可能出现破坏性变更。

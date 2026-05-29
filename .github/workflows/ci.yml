@@ -16,6 +16,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # 最快失败：扫源码残片（悬空 </content>、git 冲突标记等），不需要装依赖
+      - run: node scripts/check-artifacts.mjs
       # --ignore-scripts 跳过原生模块重建 / Electron 下载；vitest 需要的 esbuild 单独构建
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm rebuild esbuild

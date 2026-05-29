@@ -77,10 +77,9 @@ function injectVue(src) {
   const m = src.match(/<script\b[^>]*>/)
   if (!m) return null // 没有 script 块，跳过（不动 template-only 文件）
   const insertAt = m.index + m[0].length
-  // 保证前面是换行；若紧跟换行就不再加
-  const after = src.slice(insertAt)
-  const sep = after.startsWith('\n') ? '' : '\n'
-  return `${src.slice(0, insertAt)}${sep}${BLOCK_COMMENT}\n${after.replace(/^\n/, '')}`
+  // 始终让注释独占一行，避免老 Biome 在「<script ...>/* */」同一行上解析失败放大错误。
+  const after = src.slice(insertAt).replace(/^\n*/, '')
+  return `${src.slice(0, insertAt)}\n${BLOCK_COMMENT}\n${after}`
 }
 
 /** 给 .ts/.js/.mjs/.cjs 文件加头，保留 shebang 在首行。 */

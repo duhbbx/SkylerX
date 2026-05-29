@@ -1361,6 +1361,10 @@ const DICT: Record<string, [string, string]> = {
     '该对象暂不支持查看定义',
     'Viewing definition not supported for this object',
   ],
+  'ws.noSqlUnsupported': [
+    '该方言不支持 SQL 查询',
+    'SQL queries are not supported for this dialect',
+  ],
   'ws.noDef': ['未取到定义', 'Definition not found'],
   'ws.ddlCopied': ['已复制建表语句', 'CREATE statement copied'],
   'ws.confirmEmptyTable': [
@@ -1936,6 +1940,35 @@ const DICT: Record<string, [string, string]> = {
     'No replicas reported (only binary log status available)',
   ],
   'repl.lastError': ['最近错误', 'Last error'],
+
+  // ── 潜在死键（保留待清理） ──
+  // 以下 key 当前在源码字面量搜索中查无引用，暂保留以防被动态拼接或外部插件使用；
+  // 后续如确认无人使用，可在 PR 中删除。
+  // TODO i18n: common.run
+  // TODO i18n: drift.tables
+  // TODO i18n: enc.confirmPassword
+  // TODO i18n: enc.encrypting
+  // TODO i18n: enc.exportEncrypted
+  // TODO i18n: enc.password
+  // TODO i18n: enc.passwordMismatch
+  // TODO i18n: enc.wrongPassword
+  // TODO i18n: health.failed
+  // TODO i18n: import.mapHead
+  // TODO i18n: nav.activity
+  // TODO i18n: nav.settings
+  // TODO i18n: notif.failed
+  // TODO i18n: query.ai
+  // TODO i18n: query.compress.title
+  // TODO i18n: query.favoriteTitle
+  // TODO i18n: query.hint
+  // TODO i18n: query.runToCursor
+  // TODO i18n: query.saveSnippet.title
+  // TODO i18n: query.stripComments.title
+  // TODO i18n: settings.ai.active
+  // TODO i18n: settings.aiApiKey
+  // TODO i18n: settings.aiBaseUrl
+  // TODO i18n: settings.aiSection
+  // TODO i18n: settings.note
 }
 
 /** 翻译：取当前语言文案，缺失回退 key；支持 {name} 插值。 */

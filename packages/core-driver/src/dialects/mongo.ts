@@ -7,17 +7,17 @@ import {
   type CommandResult,
   type ConnectionConfig,
   type DbDialect,
-  type MetadataNode,
   MetaNodeKind,
   type MetaScope,
+  type MetadataNode,
   type QueryResult,
   type TestResult,
 } from '@db-tool/shared-types'
 import {
   type DatabaseDriver,
   type DriverConnection,
-  driverExtra,
   type SqlDialectHelpers,
+  driverExtra,
 } from '../driver.js'
 
 /**
@@ -52,10 +52,9 @@ async function loadMongoDb(): Promise<any> {
 function buildUri(config: ConnectionConfig): string {
   const fromExtra = (config.extra?.uri as string | undefined)?.trim()
   if (fromExtra) return fromExtra
-  const auth =
-    config.user
-      ? `${encodeURIComponent(config.user)}${config.password ? ':' + encodeURIComponent(config.password) : ''}@`
-      : ''
+  const auth = config.user
+    ? `${encodeURIComponent(config.user)}${config.password ? `:${encodeURIComponent(config.password)}` : ''}@`
+    : ''
   const host = config.host || 'localhost'
   const port = config.port || 27017
   const db = config.database ? `/${encodeURIComponent(config.database)}` : ''
@@ -124,16 +123,12 @@ function normalizeIds(value: unknown, ObjectId: any): unknown {
  */
 function normalizeIdOperator(value: object, ObjectId: any): unknown {
   if (Array.isArray(value)) {
-    return value.map((v) =>
-      typeof v === 'string' && HEX24.test(v) ? new ObjectId(v) : v,
-    )
+    return value.map((v) => (typeof v === 'string' && HEX24.test(v) ? new ObjectId(v) : v))
   }
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (Array.isArray(v)) {
-      out[k] = v.map((it) =>
-        typeof it === 'string' && HEX24.test(it) ? new ObjectId(it) : it,
-      )
+      out[k] = v.map((it) => (typeof it === 'string' && HEX24.test(it) ? new ObjectId(it) : it))
     } else if (typeof v === 'string' && HEX24.test(v)) {
       out[k] = new ObjectId(v)
     } else {
@@ -302,10 +297,7 @@ class MongoConnection implements DriverConnection {
       }
       case 'insertMany': {
         const c = needCol()
-        const docs = normalizeIds(
-          (args.documents as unknown[]) ?? [],
-          this.ObjectId,
-        ) as unknown[]
+        const docs = normalizeIds((args.documents as unknown[]) ?? [], this.ObjectId) as unknown[]
         const options = (args.options as Record<string, unknown>) ?? {}
         const r = await c.insertMany(docs, options)
         return {
@@ -326,7 +318,10 @@ class MongoConnection implements DriverConnection {
           this.ObjectId,
         ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
-        const r = op === 'updateOne' ? await c.updateOne(filter, update, options) : await c.updateMany(filter, update, options)
+        const r =
+          op === 'updateOne'
+            ? await c.updateOne(filter, update, options)
+            : await c.updateMany(filter, update, options)
         return {
           data: r,
           affected: Number(r?.modifiedCount ?? 0),
@@ -359,7 +354,10 @@ class MongoConnection implements DriverConnection {
           this.ObjectId,
         ) as Record<string, unknown>
         const options = (args.options as Record<string, unknown>) ?? {}
-        const r = op === 'deleteOne' ? await c.deleteOne(filter, options) : await c.deleteMany(filter, options)
+        const r =
+          op === 'deleteOne'
+            ? await c.deleteOne(filter, options)
+            : await c.deleteMany(filter, options)
         return {
           data: r,
           affected: Number(r?.deletedCount ?? 0),
@@ -382,7 +380,10 @@ class MongoConnection implements DriverConnection {
         const name = String(args.name ?? '')
         const options = (args.options as Record<string, unknown>) ?? {}
         const r = await db.createCollection(name, options)
-        return { data: { ok: true, name: r?.collectionName ?? name }, executionTimeMs: Date.now() - start }
+        return {
+          data: { ok: true, name: r?.collectionName ?? name },
+          executionTimeMs: Date.now() - start,
+        }
       }
       case 'dropCollection': {
         const name = String(args.name ?? '')

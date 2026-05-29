@@ -1,4 +1,5 @@
-<script setup lang="ts">/*
+<script setup lang="ts">
+/*
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -168,10 +169,10 @@ const mongoUri = computed<string>({
   },
   set: (v: string) => {
     const trimmed = v ?? ''
-    const extra = { ...((form.extra as Record<string, unknown> | undefined) ?? {}) }
-    if (trimmed) extra.uri = trimmed
-    else delete extra.uri
-    form.extra = Object.keys(extra).length ? extra : undefined
+    const { uri: _drop, ...rest } = (form.extra as Record<string, unknown> | undefined) ?? {}
+    void _drop
+    const next = trimmed ? { ...rest, uri: trimmed } : rest
+    form.extra = Object.keys(next).length ? next : undefined
   },
 })
 const mongoUriActive = computed(() => isMongo.value && mongoUri.value.trim().length > 0)

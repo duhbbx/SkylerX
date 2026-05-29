@@ -1,4 +1,5 @@
-<script setup lang="ts">/*
+<script setup lang="ts">
+/*
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -152,9 +153,9 @@ const yTicks = computed(() => {
 function formatNum(n: number): string {
   if (!Number.isFinite(n)) return ''
   const abs = Math.abs(n)
-  if (abs >= 1e9) return (n / 1e9).toFixed(1) + 'B'
-  if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M'
-  if (abs >= 1e4) return (n / 1e3).toFixed(1) + 'k'
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`
+  if (abs >= 1e4) return `${(n / 1e3).toFixed(1)}k`
   if (abs >= 1 || n === 0) return Number.isInteger(n) ? String(n) : n.toFixed(2)
   return n.toPrecision(2)
 }

@@ -70,7 +70,6 @@ function _dlog(data: unknown, message: string, zh: string | undefined): void {
       message,
     )
   if (critical) {
-    // biome-ignore lint/suspicious/noConsole: 启动诊断
     console.warn(
       `[shim.localize CRITICAL] msg=${JSON.stringify(message)} lang=${getNLSLanguage()} zh=${JSON.stringify(zh)} data=${JSON.stringify(data)}`,
     )
@@ -96,7 +95,6 @@ export function localize2(
 }
 
 if (typeof console !== 'undefined') {
-  // biome-ignore lint/suspicious/noConsole: 启动诊断 —— 验证 alias 真的把 nls.js 换成了我们的 shim
   console.warn(
     '[skylerx monaco-nls-shim] LOADED · lang =',
     getNLSLanguage(),

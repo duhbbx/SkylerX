@@ -1,4 +1,5 @@
-<script setup lang="ts">/*
+<script setup lang="ts">
+/*
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -64,10 +65,10 @@ const points = computed<Pt[]>(() => {
 
 const bounds = computed(() => {
   if (!points.value.length) return { minX: -180, maxX: 180, minY: -90, maxY: 90 }
-  let minX = Number.POSITIVE_INFINITY,
-    maxX = Number.NEGATIVE_INFINITY
-  let minY = Number.POSITIVE_INFINITY,
-    maxY = Number.NEGATIVE_INFINITY
+  let minX = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
   for (const p of points.value) {
     if (p.x < minX) minX = p.x
     if (p.x > maxX) maxX = p.x

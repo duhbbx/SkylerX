@@ -82,30 +82,30 @@ export function applyMask(value: unknown, kind: MaskKind): unknown {
   switch (kind) {
     case 'phone': {
       if (s.length < 7) return mask4(s)
-      return s.slice(0, 3) + '****' + s.slice(-4)
+      return `${s.slice(0, 3)}****${s.slice(-4)}`
     }
     case 'email': {
       const at = s.indexOf('@')
       if (at <= 0) return mask4(s)
       const local = s.slice(0, at)
       const domain = s.slice(at)
-      return local[0] + '***' + domain
+      return `${local[0]}***${domain}`
     }
     case 'idCard': {
       if (s.length < 10) return mask4(s)
-      return s.slice(0, 6) + '*'.repeat(Math.max(4, s.length - 10)) + s.slice(-4)
+      return `${s.slice(0, 6)}${'*'.repeat(Math.max(4, s.length - 10))}${s.slice(-4)}`
     }
     case 'bankCard': {
       if (s.length < 9) return mask4(s)
-      return s.slice(0, 4) + ' **** **** ' + s.slice(-4)
+      return `${s.slice(0, 4)} **** **** ${s.slice(-4)}`
     }
     case 'name': {
-      if (s.length <= 2) return s[0] + '*'
-      return s[0] + '*'.repeat(s.length - 1)
+      if (s.length <= 2) return `${s[0]}*`
+      return `${s[0]}${'*'.repeat(s.length - 1)}`
     }
     case 'address': {
       if (s.length <= 6) return s
-      return s.slice(0, 6) + '***'
+      return `${s.slice(0, 6)}***`
     }
     default:
       return mask4(s)
