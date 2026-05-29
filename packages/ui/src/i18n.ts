@@ -1172,6 +1172,8 @@ const DICT: Record<string, [string, string]> = {
   'ddl.executing': ['执行中…', 'Running…'],
   'ddl.saveExec': ['保存（执行）', 'Save (run)'],
   'ddl.create': ['创建', 'Create'],
+  'ddl.format': ['格式化', 'Format'],
+  'ddl.formatHint': ['按方言格式化 SQL（解析失败保持原样）', 'Format SQL by dialect (no-op on parse failure)'],
   'ddl.loadingDef': ['载入定义中…', 'Loading definition…'],
   'ddl.location': ['位置：{target}', 'Location: {target}'],
 

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import type { DbDialect } from '@db-tool/shared-types'
+import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import {
@@ -14,6 +15,7 @@ import {
   objectTemplate,
 } from '../ddl'
 import { t } from '../i18n'
+import { settings } from '../settings'
 import SqlEditor from './SqlEditor.vue'
 import type { TreeNode } from './treeNode'
 
@@ -87,6 +89,35 @@ onMounted(async () => {
   resetDirtyBaseline()
 })
 
+/**
+ * 方言 → sql-formatter 语言（与 QueryPane.fmtLang 一致；不抽公共是为了让本组件
+ * 不依赖 QueryPane 的内部 helper，独立可移植；将来要复用再抽到 packages/ui/src/sql-fmt.ts）。
+ */
+function fmtLang(d: string): SqlLanguage {
+  if (['mysql', 'mariadb', 'oceanbase', 'tidb'].includes(d)) return 'mysql'
+  if (['postgresql', 'kingbase', 'cockroachdb', 'greenplum', 'opengauss', 'h2'].includes(d))
+    return 'postgresql'
+  if (d === 'sqlserver') return 'transactsql'
+  if (['oracle', 'dm'].includes(d)) return 'plsql'
+  return 'sql'
+}
+
+/**
+ * 格式化当前 DDL（按方言 + 用户偏好的关键字大小写）。
+ * 解析失败（半截语句 / 含未支持的方言扩展语法）则保持原样、不阻断用户编辑。
+ */
+function formatDdl(): void {
+  if (!code.value.trim()) return
+  try {
+    code.value = sqlFormat(code.value, {
+      language: fmtLang(props.dialect),
+      keywordCase: settings.keywordCase,
+    })
+  } catch {
+    /* 格式化失败保持原样 */
+  }
+}
+
 async function create(): Promise<void> {
   busy.value = true
   error.value = null
@@ -111,6 +142,14 @@ async function create(): Promise<void> {
     <div class="toolbar">
       <button class="primary" :disabled="busy || loading" @click="create">
         {{ busy ? t('ddl.executing') : isEdit ? t('ddl.saveExec') : t('ddl.create') }}
+      </button>
+      <button
+        class="ghost"
+        :disabled="loading || !code.trim()"
+        :title="t('ddl.formatHint')"
+        @click="formatDdl"
+      >
+        {{ t('ddl.format') }}
       </button>
       <button class="ghost" @click="emit('cancel')">{{ t('common.cancel') }}</button>
       <span v-if="loading" class="target">{{ t('ddl.loadingDef') }}</span>
