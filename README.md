@@ -10,6 +10,20 @@ Cross-platform desktop **database management tool** (Navicat / DBeaver alternati
 
 > **License**: [Apache License 2.0](./LICENSE)
 
+## About
+
+**Wuhan Skyler Network Technology Co., Ltd.** (武汉斯凯勒网络科技有限公司)
+
+SkylerX is developed and maintained by Wuhan Skyler Network Technology Co., Ltd.
+
+**We also take on outsourced development and project partnerships** — full-stack web, desktop apps, database/data platform consulting, and AI integration. Get in touch:
+
+| Channel | Contact |
+| --- | --- |
+| 📧 Email | duhbbx@gmail.com |
+| 💬 WeChat | tuhoooo |
+| 🐛 Issues | [GitHub Issues](https://github.com/duhbbx/SkylerX/issues) |
+
 ## Supported databases
 
 ### SQL
@@ -181,9 +195,3 @@ Packaging notes:
 ## License
 
 [Apache License 2.0](./LICENSE) — desktop app is open source.
-
-## Company
-
-**Wuhan Skyler Network Technology Co., Ltd.** (武汉斯凯勒网络科技有限公司)
-
-SkylerX is developed and maintained by Wuhan Skyler Network Technology Co., Ltd. For commercial support, enterprise features, or contact, please open an issue on [GitHub](https://github.com/duhbbx/SkylerX/issues).
