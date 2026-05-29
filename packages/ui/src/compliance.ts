@@ -373,7 +373,7 @@ export function renderReport(
 ): string {
   const ts = new Date().toISOString()
   const lines: string[] = []
-  lines.push(`# 等保合规检查报告`)
+  lines.push('# 等保合规检查报告')
   lines.push('')
   lines.push(`- 连接：**${conn.name}** (${conn.dialect})`)
   lines.push(`- 主机：${conn.host}:${conn.port}`)
