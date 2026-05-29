@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import type { DbDialect, QueryResult } from '@db-tool/shared-types'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { prompt as appPrompt, toast } from '../dialog'
@@ -386,6 +386,30 @@ function startEdit(area: 'r' | 'n', index: number, col: string): void {
 function isEditing(area: 'r' | 'n', index: number, col: string): boolean {
   const e = editing.value
   return !!e && e.area === area && e.index === index && e.col === col
+}
+
+/**
+ * 编辑态 <input> 挂载时自动 focus + 选中文本。
+ *
+ * Vue 3 函数式 ref 的真实行为：**每次 re-render 都会调用**（不是只在 mount/unmount）。
+ * 用户在编辑单元格键入时 v-model 触发更新 → 整行 re-render → 函数 ref 被再次调用 →
+ * 如果无条件 focus + select 就会把已输入内容选中，下一键替换选区 →
+ * 体验为「只能断断续续输入，输入一会儿就被全选掉」。
+ *
+ * 修法：用 WeakSet 记忆「已经初始化过的 input」，同一元素只 focus + select 一次。
+ * 切换到别的单元格时该 <input> 被 Vue 卸载，新 input 是新元素 → WeakSet 看不到 → 重新初始化。
+ *
+ * nextTick 保留：ref 回调在 patch 期间触发，select() 必须等浏览器 layout 完才稳定。
+ */
+const editorInited = new WeakSet<HTMLInputElement>()
+function mountEditor(el: Element | null): void {
+  if (!el || !(el instanceof HTMLInputElement)) return
+  if (editorInited.has(el)) return
+  editorInited.add(el)
+  void nextTick(() => {
+    el.focus()
+    el.select()
+  })
 }
 
 function commit(): void {
@@ -775,6 +799,92 @@ const summaryRow = computed<Record<string, string>>(() => {
   }
   return out
 })
+
+// ── 列头 sparkline + 条件着色 ──
+type ColInfo = { name: string; dataType: string }
+const NUMERIC_TYPE_RE = /INT|NUMERIC|DECIMAL|FLOAT|DOUBLE|REAL|NUMBER|BIGINT|SMALLINT|TINYINT|SERIAL|MONEY/i
+function isNumericCol(col: ColInfo): boolean {
+  if (NUMERIC_TYPE_RE.test(col.dataType ?? '')) return true
+  // 类型缺失时按值嗅探：抽前 20 行,全部能 Number 化即视作数字列
+  const sample = (props.result?.rows ?? []).slice(0, 20) as Row[]
+  if (sample.length < 3) return false
+  let ok = 0
+  for (const r of sample) {
+    const v = r[col.name]
+    if (v == null) continue
+    if (Number.isFinite(Number(v))) ok++
+    else return false
+  }
+  return ok >= 3
+}
+
+function buildSparklinePoints(values: number[], w: number, h: number): string | null {
+  const xs = values.filter((n) => Number.isFinite(n))
+  if (xs.length < 3) return null
+  let min = xs[0]
+  let max = xs[0]
+  for (const v of xs) {
+    if (v < min) min = v
+    if (v > max) max = v
+  }
+  const range = max - min || 1
+  const step = xs.length === 1 ? 0 : w / (xs.length - 1)
+  return xs
+    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`)
+    .join(' ')
+}
+
+const SPARK_W = 40
+const SPARK_H = 14
+// 缓存：依赖 viewRows / 可见列;props.result 重置时计算结果跟着变。
+const sparkCache = computed<Record<string, string | null>>(() => {
+  const out: Record<string, string | null> = {}
+  for (const c of visibleColumns.value) {
+    if (!isNumericCol(c)) {
+      out[c.name] = null
+      continue
+    }
+    const nums: number[] = []
+    for (const r of viewRows.value) {
+      const v = r[c.name]
+      if (v == null) continue
+      const n = Number(v)
+      if (Number.isFinite(n)) nums.push(n)
+    }
+    out[c.name] = buildSparklinePoints(nums, SPARK_W, SPARK_H)
+  }
+  return out
+})
+function sparkOf(col: ColInfo): string | null {
+  return sparkCache.value[col.name] ?? null
+}
+
+// ── 条件着色：默认规则集,first-match 生效 ──
+type CellStyle = { backgroundColor?: string } | undefined
+type CellStyleFn = (row: Row, col: ColInfo) => CellStyle
+const DEFAULT_CELL_RULES: CellStyleFn[] = [
+  // 1. null / undefined → 浅灰底
+  (row, col) => {
+    const v = row[col.name]
+    return v == null ? { backgroundColor: 'rgba(128,128,128,0.08)' } : undefined
+  },
+  // 2. 数字列阈值:0 极浅灰、|v|>=1000 浅红
+  (row, col) => {
+    if (!isNumericCol(col)) return undefined
+    const v = Number(row[col.name])
+    if (!Number.isFinite(v)) return undefined
+    if (v === 0) return { backgroundColor: 'rgba(128,128,128,0.04)' }
+    if (Math.abs(v) >= 1000) return { backgroundColor: 'rgba(255,128,128,0.10)' }
+    return undefined
+  },
+]
+function cellStyle(row: Row, col: ColInfo): CellStyle {
+  for (const rule of DEFAULT_CELL_RULES) {
+    const s = rule(row, col)
+    if (s) return s
+  }
+  return undefined
+}
 </script>
 
 <template>
@@ -922,6 +1032,21 @@ const summaryRow = computed<Record<string, string>>(() => {
                   class="lossy-tag"
                   title="BigInt 值已字符串化以保留精度"
                 >ⓘ</span>
+                <svg
+                  v-if="sparkOf(c)"
+                  class="sparkline"
+                  width="40"
+                  height="14"
+                  viewBox="0 0 40 14"
+                  aria-hidden="true"
+                >
+                  <polyline
+                    :points="sparkOf(c) || ''"
+                    stroke="var(--accent, #5b8def)"
+                    stroke-width="1.2"
+                    fill="none"
+                  />
+                </svg>
                 <span v-if="sortCol === c.name" class="sort-ind">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 <button
                   v-if="filterable"
@@ -962,15 +1087,18 @@ const summaryRow = computed<Record<string, string>>(() => {
                     editing: isEditing('r', i, c.name),
                   },
                 ]"
+                :style="isEditing('r', i, c.name) ? undefined : cellStyle(row, c)"
                 @dblclick="onCellDblClick('r', i, c.name)"
                 @contextmenu.prevent="onCellContext($event, row[c.name])"
               >
                 <span v-if="editable && isEditing('r', i, c.name)" class="edit-cell">
                   <input
+                    :ref="(el) => mountEditor(el as Element | null)"
                     v-model="localRows[i][c.name]"
-                    autofocus
+                    class="cell-editor"
                     @blur="editing = null"
-                    @keyup.enter="editing = null"
+                    @keydown.enter.prevent="editing = null"
+                    @keydown.esc.prevent="editing = null"
                     @click.stop
                   />
                   <button
@@ -1001,10 +1129,12 @@ const summaryRow = computed<Record<string, string>>(() => {
               >
                 <input
                   v-if="isEditing('n', k, c.name)"
+                  :ref="(el) => mountEditor(el as Element | null)"
                   v-model="inserts[k][c.name]"
-                  autofocus
+                  class="cell-editor"
                   @blur="editing = null"
-                  @keyup.enter="editing = null"
+                  @keydown.enter.prevent="editing = null"
+                  @keydown.esc.prevent="editing = null"
                   @click.stop
                 />
                 <template v-else>{{ row[c.name] === '' ? '' : fmt(row[c.name], c.name) }}</template>
@@ -1501,6 +1631,34 @@ td input {
   color: var(--text);
   font: inherit;
   padding: 4px 10px;
+}
+/* ── 原位编辑器:与 cell 等宽等高,无突起 ── */
+td.editing .cell-editor {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 10px; /* 与非编辑态 td 的 padding 完全一致,文字位置不抖动 */
+  border: 1px solid var(--accent, #5b8def);
+  background: var(--bg, white);
+  color: inherit;
+  font: inherit;
+  outline: none;
+  border-radius: 0;
+}
+/* edit-cell 包了一个 expand 按钮,需要让 wrapper 也撑满 cell */
+td.editing .edit-cell {
+  height: 100%;
+  width: 100%;
+}
+/* ── 列头 sparkline ── */
+.sparkline {
+  vertical-align: middle;
+  margin-left: 4px;
+  opacity: 0.6;
+  pointer-events: none;
 }
 .statusbar {
   display: flex;
