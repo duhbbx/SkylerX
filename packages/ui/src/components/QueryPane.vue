@@ -26,9 +26,11 @@ import {
 import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { addQueryFavorite } from '../favorites'
+import { aiInlineDefaultEnabled, registerAiInlineCompletion } from '../aiInline'
 import { t } from '../i18n'
-import type { Suggestion } from '../monaco-setup'
+import { type Suggestion, monaco } from '../monaco-setup'
 import { notify } from '../notifications'
+import { lintStatements } from '../sqlLint'
 import { type PlanNode, parsePgPlan, planQuery } from '../plan'
 import { pluginBuiltinSnippets } from '../plugins'
 import { settings } from '../settings'
@@ -918,6 +920,21 @@ async function execSql(text: string): Promise<void> {
       return
     }
   }
+  // SQL Linter：error → 弹确认；warn → toast；info → 静默（仅在 console 里留痕，方便调试）
+  // 跑在 dangerOf 之前，避免「无 WHERE」这种规则与 prod 强确认双弹（lintError 命中时直接 return）。
+  const findings = lintStatements(statements, { connEnv: env, isReadOnly: readOnly })
+  const lintErrors = findings.filter((f) => f.severity === 'error')
+  if (lintErrors.length) {
+    const ok = await appConfirm({
+      title: t('query.dangerTitle'),
+      message: lintErrors.map((f) => `• ${f.message}`).join('\n'),
+      variant: 'danger',
+      confirmText: t('common.confirm'),
+    })
+    if (!ok) return
+  }
+  const lintWarns = findings.filter((f) => f.severity === 'warn')
+  if (lintWarns.length) toast.warn(lintWarns.map((f) => f.message).join('; '))
   const dangers = statements.map(dangerOf).filter(Boolean) as string[]
   if (dangers.length) {
     if (env === 'prod') {
@@ -1257,6 +1274,27 @@ function onEditorReplace(): void {
   if (isPaneActive()) editorRef.value?.triggerReplace?.()
 }
 
+/** 拼一个轻量 schema 提示给 AI 行内补全（只发表名，列发太多会撑爆 token）。 */
+function buildSchemaHint(): string | undefined {
+  if (!tableList || !tableList.length) return undefined
+  const sample = tableList.slice(0, 40).join(', ')
+  return `tables: ${sample}`
+}
+
+/** AI 行内补全：在 Monaco 实例上挂 InlineCompletionsProvider；onUnmounted 时释放。 */
+let aiInlineDisposer: { dispose(): void } | null = null
+function setupAiInline(): void {
+  const ed = editorRef.value?.getEditor?.()
+  if (!ed) return
+  aiInlineDisposer = registerAiInlineCompletion(monaco, ed, {
+    getContext: () => ({
+      dialect: props.conn.dialect,
+      schemaHint: buildSchemaHint(),
+    }),
+    enabled: aiInlineDefaultEnabled,
+  })
+}
+
 onMounted(() => {
   void loadHistory()
   void loadContext()
@@ -1272,6 +1310,7 @@ onMounted(() => {
   window.addEventListener('editor:save-snippet', onEditorSaveSnippet)
   window.addEventListener('editor:find', onEditorFind)
   window.addEventListener('editor:replace', onEditorReplace)
+  setupAiInline()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousedown', onWinClickForMore)
@@ -1280,6 +1319,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('editor:save-snippet', onEditorSaveSnippet)
   window.removeEventListener('editor:find', onEditorFind)
   window.removeEventListener('editor:replace', onEditorReplace)
+  aiInlineDisposer?.dispose()
+  aiInlineDisposer = null
   // 关 tab 时若还有未关闭的 session，按"放弃改动"语义结束（endSession 内部会 ROLLBACK）。
   // 这里不弹确认——确认的责任在 QueryTabs.close（它有机会先弹再卸载组件）。
   void endSessionIfAny()

@@ -193,7 +193,12 @@ function triggerReplace(): void {
   editor?.getAction('editor.action.startFindReplaceAction')?.run()
 }
 
-defineExpose({ getSelectedText, getTextBeforeCursor, triggerFind, triggerReplace })
+/** 给外部（QueryPane 注册 AI 行内补全）拿原始 monaco editor 实例；可能 undefined（尚未 mount） */
+function getEditor(): monaco.editor.IStandaloneCodeEditor | undefined {
+  return editor
+}
+
+defineExpose({ getSelectedText, getTextBeforeCursor, triggerFind, triggerReplace, getEditor })
 
 onBeforeUnmount(() => {
   for (const d of actionDisposables) d.dispose()
