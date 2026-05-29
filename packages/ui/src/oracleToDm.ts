@@ -152,7 +152,8 @@ export function translateOracleType(dtype: string, scale?: number): string {
   const raw = (dtype ?? '').trim()
   if (!raw) return raw
   // 拆"主类型 + 括号长度"
-  const m = /^([A-Za-z_ ]+?)\s*(\(([^)]*)\))?\s*$/.exec(raw)
+  // 字符类必须含 0-9,否则 VARCHAR2 / NVARCHAR2 这种类型名直接匹配不上 → 整体回退原样。
+  const m = /^([A-Za-z0-9_ ]+?)\s*(\(([^)]*)\))?\s*$/.exec(raw)
   if (!m) return raw
   const baseRaw = m[1] ?? ''
   const len = m[3]
