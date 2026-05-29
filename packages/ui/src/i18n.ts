@@ -22,8 +22,10 @@ function detect(): Locale {
   } catch {
     /* localStorage 不可用时忽略 */
   }
-  if (typeof navigator !== 'undefined' && !/^zh/i.test(navigator.language)) return 'en'
-  return 'zh' // 默认中文（主要用户群）
+  // ⚠ Electron renderer 的 navigator.language 几乎总是 'en-US'(不跟随系统 locale),
+  // 不能用它决定默认语言,否则中文用户重启后默认会被判成 en。
+  // 主用户群为中文,默认 zh;用户在设置里切到 en 后 setLocale() 会写 localStorage,以后跟随。
+  return 'zh'
 }
 
 export const locale = ref<Locale>(detect())

@@ -1384,16 +1384,36 @@ const APP_VERSION = '0.1.0'
 const updateState = ref<{ checking: boolean; latest?: string; error?: string }>({ checking: false })
 async function checkForUpdate(): Promise<void> {
   updateState.value = { checking: true }
+  // 10s 超时:GitHub API 偶尔慢/被代理拦截,fetch 不超时会一直 spinner。
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), 10_000)
   try {
     const res = await fetch('https://api.github.com/repos/duhbbx/SkylerX/releases/latest', {
-      headers: { accept: 'application/vnd.github+json' },
+      headers: {
+        accept: 'application/vnd.github+json',
+        // GitHub 要求 UA;Chromium 默认 UA 一般够用,显式给一个稳一点
+        'user-agent': `SkylerX/${APP_VERSION}`,
+      },
+      signal: ac.signal,
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
     const data = (await res.json()) as { tag_name?: string; name?: string }
     const latest = (data.tag_name ?? data.name ?? '').replace(/^v/, '')
     updateState.value = { checking: false, latest }
   } catch (e) {
-    updateState.value = { checking: false, error: e instanceof Error ? e.message : String(e) }
+    // 网络层错误(代理/防火墙/DNS)在 Chromium 是 "Failed to fetch",在 Node 是 "fetch failed";
+    // 都把"可能原因"提示给用户,避免一行干瘪报错没人能看懂。
+    const raw = e instanceof Error ? e.message : String(e)
+    const isAbort = e instanceof Error && e.name === 'AbortError'
+    const isNetwork = /failed to fetch|fetch failed|network|ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(raw)
+    const msg = isAbort
+      ? '请求超时(>10s)。检查网络/代理是否能访问 api.github.com'
+      : isNetwork
+        ? `网络不可达: ${raw}\n可能原因:本地代理拦截、GFW、DNS 解析失败`
+        : raw
+    updateState.value = { checking: false, error: msg }
+  } finally {
+    clearTimeout(timer)
   }
 }
 // 快捷键参考表
