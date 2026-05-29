@@ -136,10 +136,14 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.previewTable(node, connId),
   },
   {
+    // 仅对表 (Table) 提供「打开结构」（看列定义 / 索引 / FK 的只读页）。
+    // 视图本身没有可编辑或可独立存在的「结构」——它的"结构"就是它的 SELECT
+    // 语句（用「打开 DDL / 编辑」入口看），所以这里不挂 View；用户报告：
+    // 之前在 View 上点「打开结构」会进一个对视图无意义的页面。
     id: 'view-structure',
     label: 'ctx.view-structure',
     section: 'open',
-    kinds: [MetaNodeKind.Table, MetaNodeKind.View],
+    kinds: [MetaNodeKind.Table],
     run: ({ node, connId, ctrl }) => ctrl.viewStructure(node, connId),
   },
   {
