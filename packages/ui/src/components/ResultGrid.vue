@@ -65,6 +65,12 @@ const emit = defineEmits<{
   askAi: [payload: { connId: string; connName?: string; sql: string; error: string }]
   /** A8 反向查找：让上层弹 SearchValueDialog 找该值还出现在哪 */
   searchValue: [value: string]
+  /**
+   * FK 值候选懒加载请求（dbgate 式）：当用户开始编辑 FK 列时触发，
+   * 父组件（QueryPane）查 SELECT DISTINCT <refColumn> FROM <refTable> LIMIT 50
+   * 并通过 cb 把结果回填给 fkOptionsCache。
+   */
+  fkLookup: [payload: { refTable: string; refColumn: string; cb: (vals: string[]) => void }]
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -78,6 +84,56 @@ const inserts = ref<Row[]>([])
 const editing = ref<{ area: 'r' | 'n'; index: number; col: string } | null>(null)
 const selected = ref<Set<string>>(new Set())
 const lastClick = ref<{ area: 'r' | 'n'; index: number } | null>(null)
+
+/**
+ * #4 FK 值下拉（dbgate 式）：编辑某列时如果它是 FK，给 input 关联 datalist
+ * 显示父表该列的 top 50 distinct 值，让用户从下拉里挑而不是裸打字。
+ * 缓存 key = `${refTable}::${refColumn}`，懒加载（首次编辑触发 emit fkLookup）。
+ */
+const fkOptionsCache = ref<Record<string, string[]>>({})
+const fkInflight = new Set<string>() // 已在飞的请求 key，防重复发
+
+/** 当前列若是 FK，返回 { refTable, refColumn }，否则 null。 */
+function fkOf(col: string): { refTable: string; refColumn: string } | null {
+  const fks = props.foreignKeys ?? []
+  for (const fk of fks) {
+    const idx = fk.columns.indexOf(col)
+    if (idx >= 0 && fk.refColumns[idx]) {
+      return { refTable: fk.refTable, refColumn: fk.refColumns[idx] }
+    }
+  }
+  return null
+}
+
+/** 编辑器 focus 时调，触发懒加载父表 distinct 值。 */
+function ensureFkOptions(col: string): void {
+  const fk = fkOf(col)
+  if (!fk) return
+  const key = `${fk.refTable}::${fk.refColumn}`
+  if (fkOptionsCache.value[key] || fkInflight.has(key)) return
+  fkInflight.add(key)
+  emit('fkLookup', {
+    refTable: fk.refTable,
+    refColumn: fk.refColumn,
+    cb: (vals) => {
+      fkOptionsCache.value = { ...fkOptionsCache.value, [key]: vals }
+      fkInflight.delete(key)
+    },
+  })
+}
+
+/** datalist id（每个 FK 引用唯一） */
+function fkDatalistId(col: string): string {
+  const fk = fkOf(col)
+  return fk ? `fk-opts-${fk.refTable}-${fk.refColumn}`.replace(/[^a-zA-Z0-9_-]/g, '_') : ''
+}
+
+/** 该列 datalist 的 options（FK 才有，否则空） */
+function fkOptionsFor(col: string): string[] {
+  const fk = fkOf(col)
+  if (!fk) return []
+  return fkOptionsCache.value[`${fk.refTable}::${fk.refColumn}`] ?? []
+}
 
 // ── 客户端排序（仅只读浏览时；编辑态依赖行索引对齐，故禁用）──
 const sortCol = ref<string | null>(null)
@@ -1175,11 +1231,16 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                     :ref="(el) => mountEditor(el as Element | null)"
                     v-model="localRows[i][c.name]"
                     class="cell-editor"
+                    :list="fkOf(c.name) ? fkDatalistId(c.name) : undefined"
+                    @focus="ensureFkOptions(c.name)"
                     @blur="editing = null"
                     @keydown.enter.prevent="editing = null"
                     @keydown.esc.prevent="editing = null"
                     @click.stop
                   />
+                  <datalist v-if="fkOf(c.name)" :id="fkDatalistId(c.name)">
+                    <option v-for="v in fkOptionsFor(c.name)" :key="v" :value="v" />
+                  </datalist>
                   <button
                     class="expand"
                     :title="t('grid.cellEditorTitle')"
@@ -1211,11 +1272,16 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                   :ref="(el) => mountEditor(el as Element | null)"
                   v-model="inserts[k][c.name]"
                   class="cell-editor"
+                  :list="fkOf(c.name) ? fkDatalistId(c.name) : undefined"
+                  @focus="ensureFkOptions(c.name)"
                   @blur="editing = null"
                   @keydown.enter.prevent="editing = null"
                   @keydown.esc.prevent="editing = null"
                   @click.stop
                 />
+                <datalist v-if="isEditing('n', k, c.name) && fkOf(c.name)" :id="fkDatalistId(c.name)">
+                  <option v-for="v in fkOptionsFor(c.name)" :key="v" :value="v" />
+                </datalist>
                 <template v-else>{{ row[c.name] === '' ? '' : fmt(row[c.name], c.name) }}</template>
               </td>
             </tr>

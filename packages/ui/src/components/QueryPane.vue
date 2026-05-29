@@ -279,6 +279,34 @@ interface FkNavigate {
   refColumns: string[]
   values: unknown[]
 }
+/**
+ * #4 FK 值下拉：ResultGrid 编辑 FK 列时请求父表 distinct 值。
+ * 查 50 条够下拉用；失败 cb([]) 让 datalist 空，不打断编辑。
+ */
+async function onFkLookup(payload: {
+  refTable: string
+  refColumn: string
+  cb: (vals: string[]) => void
+}): Promise<void> {
+  const { refTable, refColumn, cb } = payload
+  const tbl = quoteId(props.conn.dialect, refTable)
+  const col = quoteId(props.conn.dialect, refColumn)
+  try {
+    const r = await client.connections.execute(
+      props.conn.id,
+      `SELECT DISTINCT ${col} AS v FROM ${tbl} WHERE ${col} IS NOT NULL ORDER BY ${col} LIMIT 50`,
+    )
+    cb(
+      r.rows
+        .map((row: Record<string, unknown>) => row.v)
+        .filter((v): v is string | number => v != null)
+        .map((v) => String(v)),
+    )
+  } catch {
+    cb([])
+  }
+}
+
 function onFkNavigate(fk: FkNavigate): void {
   const fam = familyOf(props.conn.dialect)
   const tbl = quoteId(props.conn.dialect, fk.refTable)
@@ -1421,6 +1449,7 @@ defineExpose({
         @commit="onCommit"
         @filter="(w) => applyServerFilter(cur, w)"
         @navigate-fk="onFkNavigate"
+        @fk-lookup="onFkLookup"
         @ask-ai="(p) => emit('askAiAboutError', p)"
         @search-value="(v) => emit('searchValue', { connId: conn.id, value: v })"
       />
