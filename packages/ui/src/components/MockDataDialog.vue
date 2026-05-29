@@ -16,6 +16,7 @@
  */
 import type { ConnectionConfig } from '@db-tool/shared-types'
 import { computed, onMounted, ref, watch } from 'vue'
+import { askAiChat } from '../ai'
 import { confirm as appConfirm, toast } from '../dialog'
 import { t } from '../i18n'
 import {
@@ -26,6 +27,7 @@ import {
   detectSemantic,
   previewSample,
 } from '../mockgen'
+import { settings } from '../settings'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -182,6 +184,86 @@ function kindOf(colName: string): SemanticKind {
   return cfg.value[colName]?.kind ?? detectSemantic(colName, '')
 }
 
+// ─── AI 推断 ──────────────────────────────────────────────────────
+
+const aiBusy = ref(false)
+/** 检查当前 AI provider 是否配过 key（按钮 disabled 用） */
+const aiConfigured = computed(() => {
+  const cfg = settings.aiProviders[settings.aiProvider]
+  return !!cfg?.apiKey?.trim() && !!cfg?.baseUrl?.trim()
+})
+
+/**
+ * 让 AI 看一遍所有列，按列名 + SQL 类型推断 SemanticKind。
+ * 失败 / 解析不到 → toast，不破坏现有 cfg。
+ */
+async function aiInfer(): Promise<void> {
+  if (!aiConfigured.value) {
+    toast.warn(t('mock.aiNoKey'))
+    return
+  }
+  aiBusy.value = true
+  try {
+    const kindList = SEMANTIC_KINDS.map((k) => k.kind).join(', ')
+    const colsText = props.baseColumns
+      .map((c) => `- ${c.name} (${c.type})${c.pk ? ' [PK]' : ''}`)
+      .join('\n')
+    // prompt 用英文：模型对英文 JSON instruction 反应更稳；返回的 kind 都是 ascii
+    const prompt = `You are helping generate realistic test data for a SQL table.
+
+Given the column list below, infer the most likely "semantic kind" for each column by looking at:
+  - The column name (English / Chinese / pinyin / abbreviation all possible)
+  - The SQL type
+  - The [PK] marker (primary keys often get 'auto')
+
+Pick ONE kind per column from this exact allow-list (anything else is invalid):
+${kindList}
+
+Notes:
+  - For Chinese context columns (name/姓名 → name_cn, 手机/phone → phone_cn, 身份证 → id_card_cn, 地址 → address_cn etc.) prefer the _cn variants.
+  - If unsure, pick "auto".
+  - For status/state/role columns prefer "enum" (caller will fill values later).
+  - For description/content/remark/note prefer "lorem_cn".
+
+Columns:
+${colsText}
+
+Respond with ONLY a JSON object mapping column name to kind, nothing else. Example:
+{"user_id":"auto","name":"name_cn","mobile":"phone_cn"}`
+
+    const reply = await askAiChat({
+      messages: [{ role: 'user', content: prompt }],
+      dialect: props.conn.dialect,
+    })
+
+    // 抓第一段 { ... }（容忍模型前后多余文字）
+    const m = reply.match(/\{[\s\S]*\}/)
+    if (!m) throw new Error('AI did not return JSON')
+    const parsed = JSON.parse(m[0]) as Record<string, string>
+
+    const allowed = new Set(SEMANTIC_KINDS.map((k) => k.kind))
+    const next = { ...cfg.value }
+    let applied = 0
+    for (const [name, kind] of Object.entries(parsed)) {
+      if (!allowed.has(kind as SemanticKind)) continue
+      const exists = props.baseColumns.some((c) => c.name === name)
+      if (!exists) continue
+      const cur = next[name] ?? {}
+      next[name] = { ...cur, kind: kind as SemanticKind }
+      applied++
+    }
+    cfg.value = next
+    bumpPreview()
+    toast.success(t('mock.aiSuccess', { n: applied }))
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg === 'NO_API_KEY') toast.warn(t('mock.aiNoKey'))
+    else toast.error(t('mock.aiFail', { err: msg.slice(0, 80) }))
+  } finally {
+    aiBusy.value = false
+  }
+}
+
 // ─── 生成 ──────────────────────────────────────────────────────────
 
 function generate(): void {
@@ -216,6 +298,14 @@ function generate(): void {
         </label>
         <span class="muted">{{ t('mock.cols', { n: baseColumns.length }) }}</span>
         <span class="spacer" />
+        <button
+          class="ghost ai"
+          :disabled="aiBusy || !aiConfigured"
+          :title="aiConfigured ? t('mock.aiInferHint') : t('mock.aiNoKey')"
+          @click="aiInfer"
+        >
+          {{ aiBusy ? t('mock.aiInferring') : t('mock.aiInfer') }}
+        </button>
         <button class="ghost" :title="t('mock.resetHint')" @click="reset">
           {{ t('mock.reset') }}
         </button>
@@ -385,6 +475,15 @@ function generate(): void {
 }
 .bar .ghost:hover {
   background: rgba(124, 108, 255, 0.10);
+}
+.bar .ghost.ai {
+  color: var(--accent, #7c6cff);
+  border-color: var(--accent, #7c6cff);
+}
+.bar .ghost.ai:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: transparent;
 }
 .bar .primary {
   background: var(--accent, #7c6cff);

@@ -1406,6 +1406,19 @@ const DICT: Record<string, [string, string]> = {
   'mock.generate': ['生成 INSERT', 'Generate INSERT'],
   'mock.invalidCount': ['行数无效', 'Invalid row count'],
   'mock.empty': ['没有可生成的列', 'No generatable columns'],
+  // 测试数据生成 v2 · AI 推断
+  'mock.aiInfer': ['✨ AI 推断全表', '✨ AI infer all'],
+  'mock.aiInferHint': [
+    '让 AI 看一遍所有列名 + 类型，自动选择最合适的语义类型',
+    'Let AI scan all column names + types and pick the best semantic kind',
+  ],
+  'mock.aiInferring': ['推断中…', 'Inferring…'],
+  'mock.aiNoKey': [
+    '请先在「设置 → AI」配置 provider 和 API Key',
+    'Configure a provider and API key in Settings → AI first',
+  ],
+  'mock.aiSuccess': ['AI 已推断 {n} 列语义', 'AI inferred {n} columns'],
+  'mock.aiFail': ['AI 推断失败：{err}', 'AI inference failed: {err}'],
   'ws.statsUnsupported': [
     '该方言暂不支持统计信息（仅 MySQL / PostgreSQL 系）',
     'Statistics not supported for this dialect (MySQL / PostgreSQL only)',
