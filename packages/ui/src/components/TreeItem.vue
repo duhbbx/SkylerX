@@ -3,10 +3,12 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import type { ConnectionEnv } from '@db-tool/shared-types'
-import { inject } from 'vue'
+import { type ConnectionEnv, MetaNodeKind } from '@db-tool/shared-types'
+import { computed, inject } from 'vue'
 import { ENV_META } from '../connEnv'
 import { t } from '../i18n'
+import { bumpUsage, getUsage, navUsageVersion } from '../nav-usage'
+import { settings } from '../settings'
 import { TreeControllerKey } from './tree-controller'
 import { type TreeNode, iconFor } from './treeNode'
 
@@ -15,10 +17,37 @@ const props = defineProps<{ node: TreeNode; connId: string; depth: number; env?:
 // 注入控制器：任意深度直接调用，无需逐层 emit 冒泡
 const ctrl = inject(TreeControllerKey)!
 
+/**
+ * 用户报告 #7：开启 navSortByUsage 时，把当前节点的 Database / Schema 子节点
+ * 按使用频率降序重排。其他类型（Group / Table / Column）保持原序——
+ * 表列字典序比频率更直观。
+ *
+ * 依赖 navUsageVersion 触发响应式重算（cache 本身是 plain object 不是 reactive）。
+ */
+const displayChildren = computed<TreeNode[]>(() => {
+  void navUsageVersion.value // 触发依赖
+  const kids = props.node.children || []
+  if (!settings.navSortByUsage || kids.length < 2) return kids
+  const sortable = kids.every(
+    (k) => k.kind === MetaNodeKind.Database || k.kind === MetaNodeKind.Schema,
+  )
+  if (!sortable) return kids
+  return [...kids].sort((a, b) => {
+    const ua = getUsage(props.connId, a.path)
+    const ub = getUsage(props.connId, b.path)
+    if (ub !== ua) return ub - ua
+    return a.name.localeCompare(b.name)
+  })
+})
+
 async function toggle(): Promise<void> {
   const node = props.node
   if (!node.hasChildren) return
   node.expanded = !node.expanded
+  // 用户报告 #7：展开 Database / Schema 算一次「使用」累计计数
+  if (node.expanded && (node.kind === MetaNodeKind.Database || node.kind === MetaNodeKind.Schema)) {
+    bumpUsage(props.connId, node.path)
+  }
   if (node.expanded && node.children === null) await ctrl.loadChildren(node, props.connId)
 }
 
@@ -89,7 +118,7 @@ function onContext(e: MouseEvent): void {
         {{ t('nav.loading') }}
       </div>
       <TreeItem
-        v-for="child in node.children || []"
+        v-for="child in displayChildren"
         :key="child.kind + ':' + child.group + ':' + child.name"
         :node="child"
         :conn-id="connId"

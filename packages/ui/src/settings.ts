@@ -103,6 +103,13 @@ export interface Settings {
   // ── K1 自定义键盘快捷键 ──
   /** 用户自定义的快捷键覆盖；key = 命令 id，value = chord 字符串（详见 keybindings.ts） */
   keyBindings: Record<string, string>
+
+  // ── 用户报告 #7：NavTree 库/schema 按使用频率排序 ──
+  /**
+   * 开启后导航树中的 Database / Schema 子节点按用户「展开 / 双击 / 选中」累计次数
+   * 降序排列；关闭则保持驱动返回的字典序。明细见 nav-usage.ts。
+   */
+  navSortByUsage: boolean
 }
 
 const KEY = 'skylerx.settings'
@@ -145,6 +152,7 @@ const DEFAULTS: Settings = {
   maskingEnabled: false,
   maskingRules: structuredClone(DEFAULT_MASK_RULES),
   keyBindings: {},
+  navSortByUsage: false,
 }
 
 interface LegacySettings {

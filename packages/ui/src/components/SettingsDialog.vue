@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { ref } from 'vue'
-import { confirm as appConfirm } from '../dialog'
+import { confirm as appConfirm, toast } from '../dialog'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
 import { addFact, clearFacts, clearVectorMemory, removeFact } from '../memory'
+import { clearUsage as clearNavUsage } from '../nav-usage'
 import {
   AI_PROVIDER_LABEL,
   AI_PROVIDER_ORDER,
@@ -44,6 +45,19 @@ function onPickProvider(p: AiProvider): void {
 
 // ── 记忆与画像 ──
 /** #13 加一行空白脱敏规则 */
+/** 用户报告 #7：清空 NavTree 库/schema 使用频率统计。 */
+async function resetNavUsage(): Promise<void> {
+  const ok = await appConfirm({
+    title: t('settings.navSortByUsageReset'),
+    message: t('settings.navSortByUsageResetConfirm'),
+    variant: 'warn',
+  })
+  if (ok) {
+    clearNavUsage()
+    toast.success(t('common.done'))
+  }
+}
+
 function addMaskRule(): void {
   settings.maskingRules.push({
     name: '',
@@ -136,6 +150,17 @@ function watermarkPreviewSvg(): string {
           <p class="hint">
             <!-- 文案上明示：本项仅影响「新建查询页」的初始提交模式；已打开的 tab 不受影响 -->
             {{ settings.commitMode === 'manual' ? t('commit.modeManualDesc') : t('commit.modeAutoDesc') }}
+          </p>
+          <!-- 用户报告 #7：NavTree 库/schema 按使用频率排序（默认关） -->
+          <label class="row">
+            <span class="lbl">{{ t('settings.navSortByUsage') }}</span>
+            <input v-model="settings.navSortByUsage" type="checkbox" class="chk" />
+          </label>
+          <p class="hint">
+            {{ t('settings.navSortByUsageDesc') }}
+            <button v-if="settings.navSortByUsage" class="link-btn" @click="resetNavUsage">
+              {{ t('settings.navSortByUsageReset') }}
+            </button>
           </p>
           <!-- #13 数据脱敏：列名匹配 → 结果集渲染遮罩 -->
           <label class="row">
@@ -438,6 +463,15 @@ function watermarkPreviewSvg(): string {
   font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0 0 0 8px;
+  color: var(--accent, #7c6cff);
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline;
 }
 /* ── #13 数据脱敏规则编辑 ── */
 .mask-rules {

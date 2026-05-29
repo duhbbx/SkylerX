@@ -98,6 +98,17 @@ const DICT: Record<string, [string, string]> = {
   'settings.nullDisplay': ['NULL 显示', 'NULL display'],
   // ── 设置中心分类 ──
   'settings.cat.general': ['常规', 'General'],
+  // 用户报告 #7: NavTree 库/schema 按使用频率排序
+  'settings.navSortByUsage': ['按使用频率排序数据库 / Schema', 'Sort DBs / Schemas by usage'],
+  'settings.navSortByUsageDesc': [
+    '开启后，导航树中的库 / Schema 子节点按你「展开 / 双击 / 选中」累计次数高频在前。关闭则保持驱动返回的字典序。',
+    'When on, DB / Schema children are ordered by your interaction frequency (expand / open / select) with the most-used first. Off keeps the driver-returned alphabetical order.',
+  ],
+  'settings.navSortByUsageReset': ['重置使用次数', 'Reset usage counters'],
+  'settings.navSortByUsageResetConfirm': [
+    '将清空所有库 / Schema 的本机使用计数，无法恢复。继续？',
+    'Clear all local usage counters for DBs / Schemas. This cannot be undone. Continue?',
+  ],
   'settings.cat.editor': ['编辑器', 'Editor'],
   'settings.cat.grid': ['数据网格', 'Data grid'],
   'settings.cat.watermark': ['生产水印', 'Production watermark'],
