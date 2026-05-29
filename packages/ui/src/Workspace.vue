@@ -38,6 +38,7 @@ import NavTree from './components/NavTree.vue'
 import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import MockDataDialog from './components/MockDataDialog.vue'
+import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
@@ -323,6 +324,18 @@ async function onMockData(connId: string, node: TreeNode): Promise<void> {
     tableName: node.name,
     baseColumns,
   }
+}
+
+/** #8 NDJSON 查看器：通用文件选择 → 弹查看对话框（独立工具，不依赖连接） */
+const ndjsonState = ref<{ name: string; content: string } | null>(null)
+async function openNdjsonViewer(): Promise<void> {
+  if (!client.files) {
+    await appAlert({ message: t('ws.noFilesApi'), variant: 'warn' })
+    return
+  }
+  const file = await client.files.openText([{ name: 'NDJSON', extensions: ['ndjson', 'jsonl'] }])
+  if (!file) return
+  ndjsonState.value = file
 }
 
 function onMockGenerated(sql: string): void {
@@ -1364,6 +1377,8 @@ const paletteItems = computed<PaletteItem[]>(() => [
     : []),
   // #12 Dashboard
   { id: 'act:dashboard', label: t('pal.dashboard'), group: t('pal.groupActions') },
+  // #8 NDJSON 文件查看器（参考 dbgate）
+  { id: 'act:ndjson-viewer', label: t('pal.ndjsonViewer'), group: t('pal.groupActions') },
   // A2 跨表全文搜索
   ...paletteConns.value.map((c) => ({
     id: `act:search-value:${c.id}`,
@@ -1448,6 +1463,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:ai-toolbox') aiToolboxOpen.value = {}
   else if (item.id === 'act:new-window') void client.window?.newSession?.()
   else if (item.id === 'act:dashboard') dashboardOpen.value = true
+  else if (item.id === 'act:ndjson-viewer') void openNdjsonViewer()
   else if (item.id.startsWith('act:search-value:')) {
     const cid = item.id.slice('act:search-value:'.length)
     searchValueOpen.value = { connId: cid }
@@ -1986,6 +2002,13 @@ onUnmounted(() => unsubMenu?.())
     v-if="obTopoOpen"
     :conn="obTopoOpen.conn"
     @close="obTopoOpen = null"
+  />
+
+  <!-- #8 NDJSON 文件查看器 -->
+  <NdjsonViewerDialog
+    v-if="ndjsonState"
+    :file="ndjsonState"
+    @close="ndjsonState = null"
   />
 
   <!-- 测试数据生成 v2：按语义配置每列 + 配置持久化 -->
