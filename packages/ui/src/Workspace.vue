@@ -37,6 +37,7 @@ import Modal from './components/Modal.vue'
 import NavTree from './components/NavTree.vue'
 import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
+import MockDataDialog from './components/MockDataDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
@@ -92,7 +93,6 @@ import {
 } from './favorites'
 import { t } from './i18n'
 import { chordFromEvent, getBindings } from './keybindings'
-import { buildMockInserts } from './mockgen'
 import { settings, zoomIn, zoomOut, zoomReset } from './settings'
 
 const navRef = useTemplateRef('navRef')
@@ -289,32 +289,49 @@ async function onDesignTable(connId: string, node: TreeNode): Promise<void> {
   tabsRef.value?.editTable(conn, ctx, node)
 }
 
-// 生成测试数据 → 取列信息，按类型造多行 INSERT 填入查询页（不执行）
+/**
+ * 生成测试数据 v2：弹 MockDataDialog 让用户按语义配置每列，
+ * 比旧版（只 prompt 行数 → 按 SQL 类型随机）强大得多。
+ * v1 的 buildMockInserts 调用迁移到 dialog 内部。
+ */
+const mockState = ref<{
+  conn: ConnectionConfig
+  tableRef: string
+  tableName: string
+  baseColumns: { name: string; type: string; pk?: boolean }[]
+} | null>(null)
+
 async function onMockData(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
-  const countStr = await appPrompt({
-    message: t('ws.mockPrompt', { name: node.name }),
-    defaultValue: '20',
-  })
-  const count = Number(countStr)
-  if (!Number.isFinite(count) || count < 1) return
   const colNodes = await client.connections.metadata(connId, {
     parentKind: MetaNodeKind.Group,
     path: [...node.path],
     group: 'columns',
   })
-  const cols = colNodes.map((c) => ({
+  const baseColumns = colNodes.map((c) => ({
     name: c.name,
     type: c.detail?.dataType ?? '',
     pk: !!c.detail?.primaryKey,
   }))
-  if (!cols.length) {
+  if (!baseColumns.length) {
     await appAlert({ message: t('ws.noCols'), variant: 'warn' })
     return
   }
-  const ref = node.sqlName ?? node.name
-  const sql = buildMockInserts(conn.dialect, ref, cols, Math.floor(count))
-  tabsRef.value?.openDraft(conn, sql, t('ws.tabMockData', { name: node.name }))
+  mockState.value = {
+    conn,
+    tableRef: node.sqlName ?? node.name,
+    tableName: node.name,
+    baseColumns,
+  }
+}
+
+function onMockGenerated(sql: string): void {
+  if (!mockState.value) return
+  tabsRef.value?.openDraft(
+    mockState.value.conn,
+    sql,
+    t('ws.tabMockData', { name: mockState.value.tableName }),
+  )
 }
 
 // 表统计信息 → 弹窗展示行数 / 数据 / 索引占用
@@ -1969,6 +1986,17 @@ onUnmounted(() => unsubMenu?.())
     v-if="obTopoOpen"
     :conn="obTopoOpen.conn"
     @close="obTopoOpen = null"
+  />
+
+  <!-- 测试数据生成 v2：按语义配置每列 + 配置持久化 -->
+  <MockDataDialog
+    v-if="mockState"
+    :conn="mockState.conn"
+    :table-ref="mockState.tableRef"
+    :table-name="mockState.tableName"
+    :base-columns="mockState.baseColumns"
+    @generate="onMockGenerated"
+    @close="mockState = null"
   />
 
   <!-- #16 Schema 快照（一键拍/对比） -->
