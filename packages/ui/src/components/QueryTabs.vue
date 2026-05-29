@@ -10,6 +10,7 @@ import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
 import { confirm as appConfirm } from '../dialog'
 import { t as tr } from '../i18n'
 import DdlEditor from './DdlEditor.vue'
+import DialectIcon from './DialectIcon.vue'
 import ElasticPane from './ElasticPane.vue'
 import ErdView from './ErdView.vue'
 import MongoPane from './MongoPane.vue'
@@ -420,6 +421,8 @@ watch(tabs, saveLayout, { deep: true })
           @dblclick="togglePin(t.id)"
         >
           <span v-if="t.pinned" class="t-pin">📌</span>
+          <!-- 数据库品牌 logo：用户切换 tab 时一眼分清是哪个 dialect -->
+          <DialectIcon :dialect="t.conn.dialect" :size="13" class="t-dialect" />
           <span class="t-title">{{ t.title }}</span>
           <button
             class="t-act"
@@ -545,6 +548,10 @@ watch(tabs, saveLayout, { deep: true })
 .t-pin {
   font-size: 10px;
   line-height: 1;
+}
+.t-dialect {
+  flex: none;
+  margin-right: 2px;
 }
 .t-act {
   background: transparent;

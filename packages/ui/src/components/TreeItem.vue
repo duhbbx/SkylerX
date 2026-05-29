@@ -9,10 +9,18 @@ import { ENV_META } from '../connEnv'
 import { t } from '../i18n'
 import { bumpUsage, getUsage, navUsageVersion } from '../nav-usage'
 import { settings } from '../settings'
+import DialectIcon from './DialectIcon.vue'
 import { TreeControllerKey } from './tree-controller'
 import { type TreeNode, iconFor } from './treeNode'
 
-const props = defineProps<{ node: TreeNode; connId: string; depth: number; env?: ConnectionEnv }>()
+const props = defineProps<{
+  node: TreeNode
+  connId: string
+  depth: number
+  env?: ConnectionEnv
+  /** 仅连接节点 (kind=connection) 使用：显示对应数据库 logo（替代默认 🔌） */
+  dialect?: string
+}>()
 
 // 注入控制器：任意深度直接调用，无需逐层 emit 冒泡
 const ctrl = inject(TreeControllerKey)!
@@ -93,7 +101,15 @@ function onContext(e: MouseEvent): void {
       <span class="caret" @click.stop="toggle" @dblclick.stop>
         {{ node.hasChildren ? (node.expanded ? '▾' : '▸') : '' }}
       </span>
-      <span class="ico">{{ iconFor(node) }}</span>
+      <!-- 连接节点：显示对应数据库品牌 logo（用户报告：一眼分清是哪个数据库）；
+           其他节点保留原 emoji 字符。 -->
+      <DialectIcon
+        v-if="node.kind === 'connection' && dialect"
+        :dialect="dialect"
+        :size="14"
+        class="ico-svg"
+      />
+      <span v-else class="ico">{{ iconFor(node) }}</span>
       <span
         v-if="node.kind === 'connection' && env"
         class="env-dot"
@@ -173,6 +189,13 @@ function onContext(e: MouseEvent): void {
   width: 16px;
   flex: none;
   text-align: center;
+}
+.ico-svg {
+  width: 16px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .env-dot {
   flex: none;

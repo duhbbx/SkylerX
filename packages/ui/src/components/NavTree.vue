@@ -82,6 +82,8 @@ interface ConnRoot {
   node: TreeNode
   group?: string
   env?: ConnectionEnv
+  /** 方言（用于 TreeItem 显示数据库品牌 logo） */
+  dialect: string
 }
 
 const roots = ref<ConnRoot[]>([])
@@ -249,6 +251,7 @@ async function reload(): Promise<void> {
     node: prev.get(c.id) ?? rootNode(c.name || t('common.untitled')),
     group: c.group,
     env: connEnv(c),
+    dialect: c.dialect,
   }))
   // 新出现的分组默认展开（保留用户已折叠的）
   const s = new Set(expandedGroups.value)
@@ -406,11 +409,11 @@ onMounted(reload)
           <span class="gcount">{{ g.conns.length }}</span>
         </div>
         <div v-show="expandedGroups.has(g.name)">
-          <TreeItem v-for="r in g.conns" :key="r.id" :node="r.node" :conn-id="r.id" :depth="1" :env="r.env" />
+          <TreeItem v-for="r in g.conns" :key="r.id" :node="r.node" :conn-id="r.id" :depth="1" :env="r.env" :dialect="r.dialect" />
         </div>
       </template>
 
-      <TreeItem v-for="r in ungrouped" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" :env="r.env" />
+      <TreeItem v-for="r in ungrouped" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" :env="r.env" :dialect="r.dialect" />
     </div>
 
     <div v-if="multiSel.size" class="bulk-bar">
