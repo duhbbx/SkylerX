@@ -140,3 +140,47 @@ export function categorizeConnectionError(msg: string): CategorizedError {
     raw: m,
   }
 }
+
+/**
+ * 从底层驱动错误里尽力提取数据库错误码,供「问 AI」弹框带给 AI 用作精准定位。
+ *
+ * 现实情况:多数错误经过 Electron IPC 后已经被序列化成 `new Error(msg)`,
+ * errno/code/number 这些原生字段会丢失,只剩 message。所以这里:
+ * 1) 先尝试读对象上的常见字段(MySQL errno / PG SQLSTATE / MSSQL number);
+ * 2) 兜底从 message 里 regex 抓 ORA-xxxxx、SQLSTATE 五位码等文本特征。
+ *
+ * 拿不到就返回 undefined,不强求 —— Workspace 那边会把 errorCode 拼到 error
+ * 文本前面,有就更好,没有也不影响主流程。
+ */
+export function extractDbErrorCode(err: unknown): string | undefined {
+  if (err == null) return undefined
+  // 1) 对象字段 —— IPC 后大概率丢失,但本地直抛或主进程同一上下文里能拿到
+  if (typeof err === 'object') {
+    const e = err as Record<string, unknown>
+    // MySQL / MariaDB / TiDB / Doris / OceanBase
+    if (typeof e.errno === 'number') return `MySQL ${e.errno}`
+    // PostgreSQL / CockroachDB / Kingbase: code 是 SQLSTATE 5 位(数字+字母混合)
+    if (typeof e.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code)) return `PG ${e.code}`
+    // SQL Server / Sybase
+    if (typeof e.number === 'number') return `MSSQL ${e.number}`
+  }
+  // 2) message 兜底 —— IPC 序列化后唯一靠谱来源
+  const msg =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+        ? err
+        : typeof err === 'object'
+          ? String((err as { message?: unknown }).message ?? '')
+          : String(err)
+  // Oracle / DM: ORA-12345
+  const ora = msg.match(/\bORA-\d{4,5}\b/)
+  if (ora) return ora[0]
+  // 文本里直接含 "SQLSTATE: 23505" 之类
+  const sqlstate = msg.match(/\bSQLSTATE[:=]?\s*([0-9A-Z]{5})\b/)
+  if (sqlstate) return `PG ${sqlstate[1]}`
+  // MySQL 文本里常见 "ER_DUP_ENTRY" 或 "Error 1062" / "errno: 1062"
+  const mysqlErrno = msg.match(/\b(?:errno|Error)\s*[:=]?\s*(\d{3,5})\b/i)
+  if (mysqlErrno) return `MySQL ${mysqlErrno[1]}`
+  return undefined
+}

@@ -11,6 +11,7 @@
  * - toast 是右下角非阻塞通知，适合替代 window.alert 的"成功了"类型用法。
  */
 import { reactive, ref } from 'vue'
+import type { ChatErrorAskEvent } from './chat-bus'
 
 export type DialogVariant = 'info' | 'success' | 'warn' | 'danger'
 
@@ -25,6 +26,11 @@ interface DialogState {
   /** prompt 用：默认值 + 占位符 + 返回结果 */
   promptValue: string
   promptPlaceholder: string
+  /**
+   * alert 专用:若提供则在 OK 按钮左侧渲染「✨ 问 AI」按钮,
+   * 点击后 emit ChatErrorAskEvent + 关闭弹框。null/undefined = 不显示。
+   */
+  askAi: ChatErrorAskEvent | null
   resolve: (v: unknown) => void
 }
 
@@ -38,6 +44,7 @@ export const dialogState = reactive<DialogState>({
   cancelText: '',
   promptValue: '',
   promptPlaceholder: '',
+  askAi: null,
   resolve: () => {},
 })
 
@@ -51,6 +58,7 @@ function open(opts: Partial<DialogState>, kind: DialogState['kind']): Promise<un
       cancelText: '',
       promptValue: '',
       promptPlaceholder: '',
+      askAi: null,
       ...opts,
       open: true,
       kind,
@@ -70,12 +78,19 @@ export function confirm(opts: {
   return open({ ...opts, variant: opts.variant ?? 'warn' }, 'confirm') as Promise<boolean>
 }
 
-/** 替代 window.alert：单 OK 按钮；danger 变体红色。 */
+/**
+ * 替代 window.alert：单 OK 按钮；danger 变体红色。
+ *
+ * 传入 askAi 时,弹框左下角追加「✨ 问 AI」按钮,点击后把上下文(SQL、错误、
+ * 错误码、连接信息)发送到右侧 AI 聊天面板自动开聊;点击同时关闭弹框,
+ * Promise resolve(undefined) 跟点 OK 同效果。
+ */
 export function alert(opts: {
   title?: string
   message: string
   variant?: DialogVariant
   confirmText?: string
+  askAi?: ChatErrorAskEvent
 }): Promise<void> {
   return open({ ...opts, variant: opts.variant ?? 'info' }, 'alert') as Promise<void>
 }

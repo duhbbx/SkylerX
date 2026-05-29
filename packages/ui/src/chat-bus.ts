@@ -36,3 +36,44 @@ export function onChatSqlExecuted(l: Listener): () => void {
     listeners.delete(l)
   }
 }
+
+/**
+ * 错误弹框「✨ 问 AI」按钮事件：任何 alert 提供 askAi 字段即可触发,
+ * 由 Workspace 接住,统一打开右侧 AI 聊天面板并预填问题。
+ *
+ * 字段尽量保持「原始上下文」语义,不要在这里做提示词拼接 —— 让消费方
+ * (Workspace + AiChatPanel.askAboutError) 决定最终问 AI 的提示词,
+ * 单一职责更稳。
+ */
+export interface ChatErrorAskEvent {
+  /** 关联 SQL,没有就空字符串 */
+  sql?: string
+  /** 错误正文(必填) */
+  error: string
+  /** 数据库错误码(MySQL errno、PG SQLSTATE、Oracle ORA-xxx、MSSQL number 等) */
+  errorCode?: string
+  connId?: string
+  connName?: string
+  /** 方便 AI 给方言相关建议 */
+  dialect?: string
+}
+
+type ErrorAskListener = (e: ChatErrorAskEvent) => void
+const errorAskListeners = new Set<ErrorAskListener>()
+
+export function emitChatErrorAsk(e: ChatErrorAskEvent): void {
+  for (const l of errorAskListeners) {
+    try {
+      l(e)
+    } catch {
+      /* 监听器自己处理 */
+    }
+  }
+}
+
+export function onChatErrorAsk(l: ErrorAskListener): () => void {
+  errorAskListeners.add(l)
+  return () => {
+    errorAskListeners.delete(l)
+  }
+}

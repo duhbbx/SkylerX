@@ -10,8 +10,9 @@ import {
   type TestResult,
 } from '@db-tool/shared-types'
 import { computed, reactive, ref, watch } from 'vue'
+import { emitChatErrorAsk } from '../chat-bus'
 import { ENV_OPTIONS, connEnv, connReadOnly } from '../connEnv'
-import { categorizeConnectionError } from '../connError'
+import { categorizeConnectionError, extractDbErrorCode } from '../connError'
 import { useDataClient } from '../data-client'
 import { t } from '../i18n'
 
@@ -302,6 +303,22 @@ function stripIpcWrapper(msg: string): string {
   return msg.replace(/^Error invoking remote method '[^']+':\s*/i, '').replace(/^Error:\s*/i, '')
 }
 
+/**
+ * 错误 banner 里点「✨ 问 AI」: 把测试连接的原始错误 + 方言/连接名打给 AI。
+ * 连接还没创建时 connId 可能是空字符串——AI 聊天面板能容忍，只是少了 connId 上下文。
+ */
+function askAiAboutTestError(): void {
+  const raw = testResult.value?.message ?? ''
+  if (!raw) return
+  emitChatErrorAsk({
+    error: raw,
+    errorCode: extractDbErrorCode(raw),
+    connId: props.connId ?? '',
+    connName: form.name,
+    dialect: form.dialect,
+  })
+}
+
 async function remove(): Promise<void> {
   if (!props.connId) return
   await client.connections.remove(props.connId)
@@ -518,12 +535,24 @@ async function remove(): Promise<void> {
         <ul class="err-steps">
           <li v-for="k in categorizedError.stepKeys" :key="k">{{ t(k) }}</li>
         </ul>
-        <button type="button" class="err-toggle" @click="showRawError = !showRawError">
-          {{ showRawError ? t('errSteps.hideRaw') : t('errSteps.showRaw') }}
-        </button>
+        <div class="err-actions">
+          <button type="button" class="err-toggle" @click="showRawError = !showRawError">
+            {{ showRawError ? t('errSteps.hideRaw') : t('errSteps.showRaw') }}
+          </button>
+          <button type="button" class="err-ask-ai" @click="askAiAboutTestError">
+            ✨ {{ t('aichat.askAi') }}
+          </button>
+        </div>
         <pre v-if="showRawError" class="err-raw">{{ categorizedError.raw }}</pre>
       </template>
-      <template v-else> ✗ {{ testResult.message }} </template>
+      <template v-else>
+        <div>✗ {{ testResult.message }}</div>
+        <div class="err-actions">
+          <button type="button" class="err-ask-ai" @click="askAiAboutTestError">
+            ✨ {{ t('aichat.askAi') }}
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -653,6 +682,24 @@ async function remove(): Promise<void> {
 .banner.err .err-steps li {
   list-style: disc;
   margin: 2px 0;
+}
+.banner.err .err-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2px;
+}
+.banner.err .err-ask-ai {
+  background: transparent;
+  border: 1px solid var(--accent, #7c6cff);
+  padding: 2px 10px;
+  border-radius: 4px;
+  color: var(--accent, #7c6cff);
+  font-size: 12px;
+  cursor: pointer;
+}
+.banner.err .err-ask-ai:hover {
+  background: rgba(124, 108, 255, 0.10);
 }
 .banner.err .err-toggle {
   background: transparent;

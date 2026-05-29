@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { nextTick, ref, watch } from 'vue'
+import { emitChatErrorAsk } from '../chat-bus'
 import { dialogState, dismissToast, toasts } from '../dialog'
 import { t } from '../i18n'
 
@@ -43,6 +44,17 @@ function onCancel(): void {
   else resolve(undefined)
 }
 
+// 「✨ 问 AI」按钮:把错误上下文广播给 Workspace,同时关闭当前 alert
+// (resolve undefined 跟点 OK 行为一致,调用方不需要分支处理)
+function onAskAi(): void {
+  const payload = dialogState.askAi
+  if (!payload) return
+  const resolve = dialogState.resolve
+  dialogState.open = false
+  emitChatErrorAsk(payload)
+  resolve(undefined)
+}
+
 function onKey(e: KeyboardEvent): void {
   if (!dialogState.open) return
   if (e.key === 'Escape') {
@@ -79,6 +91,13 @@ function onKey(e: KeyboardEvent): void {
         @keydown.escape.prevent="onCancel"
       />
       <div class="dlg-actions">
+        <button
+          v-if="dialogState.kind === 'alert' && dialogState.askAi"
+          class="ask-ai-btn"
+          @click="onAskAi"
+        >
+          ✨ {{ t('aichat.askAi') }}
+        </button>
         <button v-if="dialogState.kind !== 'alert'" class="ghost" @click="onCancel">
           {{ dialogState.cancelText || t('common.cancel') }}
         </button>
@@ -220,12 +239,28 @@ function onKey(e: KeyboardEvent): void {
  * 用 flex order 实现（不依赖兄弟选择器 ~，模板中 ghost 在 primary 之前）：
  *   - 普通：ghost(2) primary(3)   → 取消左 / 确认右
  *   - danger: primary.danger(1, 推到最左) ghost(2)  → 删除左 / 取消右
+ *   - alert+askAi: ask-ai(1) primary(3) → askAi 左 / 确认右
  */
 .dlg-actions .ghost      { order: 2; }
 .dlg-actions .primary    { order: 3; }
+.dlg-actions .ask-ai-btn { order: 1; }
 .dlg-actions .primary.danger { order: 1; margin-right: auto; }
 .dlg-actions .primary:hover {
   filter: brightness(1.1);
+}
+/*
+ * 「✨ 问 AI」按钮 —— 紫色描边 + 紫色文字,跟主 confirm 按钮区分,
+ * 让用户清楚这是「次要但有用」的入口,不是默认动作。
+ * margin-right:auto 把它推到左边,跟 confirm/OK 形成「次要|主要」布局。
+ */
+.dlg-actions .ask-ai-btn {
+  margin-right: auto;
+  background: transparent;
+  color: var(--accent, #7c6cff);
+  border-color: var(--accent, #7c6cff);
+}
+.dlg-actions .ask-ai-btn:hover {
+  background: rgba(124, 108, 255, 0.12);
 }
 
 /* ── Toast ── */
