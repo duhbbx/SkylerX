@@ -10,13 +10,35 @@ Cross-platform desktop **database management tool** (Navicat / DBeaver alternati
 
 > **License**: [Apache License 2.0](./LICENSE)
 
+> ⚠️ **Disclaimer / Status**
+>
+> SkylerX is under active development and has **NOT been fully tested in production environments**. Test coverage is partial, edge cases across all supported dialects have not been exhaustively verified, and breaking changes may land between minor versions.
+>
+> - **Use at your own risk.** Apache License 2.0 provides the software "AS IS", without warranty of any kind, express or implied (see [LICENSE](./LICENSE) §7–8).
+> - **Always back up your databases before any write operation, schema change, data sync, or migration.**
+> - Prefer evaluation on dev / staging connections; for production connections, mark them as `prod` (the app enforces an extra confirmation step) and verify destructive SQL with `EXPLAIN` / dry-run first.
+> - We recommend treating SkylerX as a **power user / developer tool**, not as a managed DBA platform, until a stable 1.0 release.
+>
+> Bug reports and reproductions via [GitHub Issues](https://github.com/duhbbx/SkylerX/issues) are very welcome — they directly drive the hardening backlog.
+
 ## About
 
 **Wuhan Skyler Network Technology Co., Ltd.** (武汉斯凯勒网络科技有限公司)
 
 SkylerX is developed and maintained by Wuhan Skyler Network Technology Co., Ltd.
 
-**We also take on outsourced development and project partnerships** — full-stack web, desktop apps, database/data platform consulting, and AI integration. Get in touch:
+**We also take on outsourced development and project partnerships.** Areas we work in:
+
+- 🛠 **Full-stack web** development (Vue / React / Node / Go / Java)
+- 🖥 **Desktop apps** (Electron / Tauri, multi-platform packaging & auto-update)
+- 🗄 **Database consulting**: dialect selection, schema design, performance tuning, migration (incl. Oracle / SQL Server → MySQL / PostgreSQL / 国产数据库)
+- 🔄 **Navicat / DataGrip replacement** rollout & customization for enterprises
+- 🏢 **On-premise / air-gapped deployment** & private-cloud builds (incl. 信创 / 国产化 environments)
+- 📊 **Data platforms**: ETL pipelines, dashboards, data warehouse (ClickHouse / Snowflake / DuckDB) setup
+- 🤖 **AI integration**: LLM API gateways, RAG over internal data, agentic workflows, on-prem inference
+- 🛡 **DevOps & SRE**: CI/CD, observability, multi-cloud / hybrid deployment
+
+Get in touch:
 
 | Channel | Contact |
 | --- | --- |

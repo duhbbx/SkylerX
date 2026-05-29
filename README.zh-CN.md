@@ -10,13 +10,35 @@
 
 > **许可**：[Apache License 2.0](./LICENSE)
 
+> ⚠️ **免责声明 / 项目状态**
+>
+> SkylerX 仍在持续开发中，**尚未经过生产环境的完整测试**。当前测试覆盖率有限，跨方言的边界场景未全部验证，次版本之间可能出现破坏性变更。
+>
+> - **使用风险自负**。Apache License 2.0 以「按现状」（AS IS）方式提供本软件，不附带任何明示或暗示的担保（详见 [LICENSE](./LICENSE) §7–8）。
+> - **在执行任何写入、改表、数据同步或迁移操作前，务必先备份数据库。**
+> - 建议先在 dev / staging 环境的连接上评估使用；生产连接请打上 `prod` 标记（应用会强制二次确认），破坏性 SQL 先 `EXPLAIN` / dry-run 验证。
+> - 在发布稳定的 1.0 版本之前，建议把 SkylerX 视为**开发者 / 高级用户工具**，而不是托管型 DBA 平台。
+>
+> 欢迎通过 [GitHub Issues](https://github.com/duhbbx/SkylerX/issues) 提交 bug 与复现步骤——这些会直接进入加固待办列表。
+
 ## 关于
 
 **武汉斯凯勒网络科技有限公司**（Wuhan Skyler Network Technology Co., Ltd.）
 
 SkylerX 由武汉斯凯勒网络科技有限公司开发并维护。
 
-**承接外包开发与项目合作** —— 全栈 Web、桌面应用、数据库 / 数据平台咨询、AI 集成等方向均可洽谈。欢迎联系：
+**承接外包开发与项目合作。** 主要服务方向：
+
+- 🛠 **全栈 Web 开发**（Vue / React / Node / Go / Java）
+- 🖥 **桌面端应用**（Electron / Tauri，多平台打包与自动更新）
+- 🗄 **数据库咨询**：选型、表结构设计、性能调优、迁移（含 Oracle / SQL Server → MySQL / PostgreSQL / 国产数据库 等方向）
+- 🔄 **Navicat / DataGrip 企业替代方案**落地与定制
+- 🏢 **私有化 / 离网部署** 与私有云构建（含 信创 / 国产化 环境）
+- 📊 **数据平台**：ETL 流水线、看板、数据仓库（ClickHouse / Snowflake / DuckDB）搭建
+- 🤖 **AI 集成**：LLM API 网关、内部数据 RAG、Agent 工作流、本地推理部署
+- 🛡 **DevOps & SRE**：CI/CD、可观测性、多云 / 混合云部署
+
+欢迎联系：
 
 | 渠道 | 联系方式 |
 | --- | --- |
