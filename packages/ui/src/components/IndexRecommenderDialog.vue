@@ -222,6 +222,15 @@ onMounted(() => {
       <div v-else-if="showEmpty" class="status">{{ t('idxrec.empty') }}</div>
       <div v-else class="table-wrap">
         <table class="hints">
+          <!-- table-layout:fixed 配套：用 <colgroup> 给 6 列设宽度比例，避免 DDL 被挤窄 -->
+          <colgroup>
+            <col class="c-tbl" />
+            <col class="c-cols" />
+            <col class="c-score" />
+            <col class="c-reason" />
+            <col class="c-ddl" />
+            <col class="c-action" />
+          </colgroup>
           <thead>
             <tr>
               <th>{{ t('idxrec.col.table') }}</th>
@@ -325,10 +334,22 @@ onMounted(() => {
   border-radius: 6px;
 }
 table.hints {
+  /*
+   * fixed 布局：浏览器按各列 width 比例分配，而不是按内容自适应。
+   * 自适应模式下 .reason 的 nowrap 会先吞掉 DDL 的宽度，DDL 列变得很窄就强制竖排。
+   */
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
 }
+/* 6 列：表名 / 列芯片 / 分数 / 原因 / DDL / 按钮。DDL 拿大头 38%。 */
+table.hints col.c-tbl     { width: 12%; }
+table.hints col.c-cols    { width: 14%; }
+table.hints col.c-score   { width: 6%;  }
+table.hints col.c-reason  { width: 22%; }
+table.hints col.c-ddl     { width: 38%; }
+table.hints col.c-action  { width: 8%;  }
 table.hints thead {
   position: sticky;
   top: 0;
@@ -352,6 +373,7 @@ table.hints tr.done {
 }
 .tbl {
   font-weight: 600;
+  word-break: break-word;
 }
 .chip {
   display: inline-block;
@@ -360,19 +382,26 @@ table.hints tr.done {
   border-radius: 4px;
   padding: 1px 6px;
   margin-right: 4px;
+  margin-bottom: 3px;
   font-family: ui-monospace, monospace;
   font-size: 11px;
 }
 .reason {
   color: var(--muted);
   font-size: 11px;
-  white-space: nowrap;
+  /* 不再 nowrap：让原因自己换行而不挤掉 DDL 列宽 */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .ddl code {
   font-family: ui-monospace, monospace;
-  font-size: 11px;
-  word-break: break-all;
+  font-size: 12px;
+  /* 不再 break-all：默认按词边界换行，只有变态长 token 才强制断 */
   white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  display: block;
+  line-height: 1.5;
 }
 button.primary {
   padding: 4px 12px;
