@@ -1,92 +1,189 @@
+<div align="right">
+
+[简体中文](./README.zh-CN.md) | **English**
+
+</div>
+
 # SkylerX
 
-跨平台桌面**数据库管理工具**（类 Navicat / DBeaver），Electron + Vue3 + Vite + TypeScript。
+Cross-platform desktop **database management tool** (Navicat / DBeaver alternative), built with Electron + Vue 3 + Vite + TypeScript.
 
-> **许可**：[Apache License 2.0](./LICENSE)。
+> **License**: [Apache License 2.0](./LICENSE)
 
-## 支持的数据库
+## Supported databases
 
-| 数据库 | 驱动 | 说明 |
+### SQL
+
+| Database | Driver | Notes |
 | --- | --- | --- |
-| MySQL / MariaDB / OceanBase | mysql2 | 纯 JS |
-| PostgreSQL / 人大金仓 KingbaseES | pg | 协议兼容 |
-| SQL Server | mssql | 纯 JS |
-| Oracle | oracledb | 原生（thin 模式免 Instant Client），惰性加载 |
-| 达梦 DM | dmdb | 原生，达梦官方分发，惰性加载 |
+| MySQL / MariaDB / OceanBase / TiDB | mysql2 | Pure JS |
+| PostgreSQL / KingbaseES / CockroachDB / Greenplum / openGauss / H2 | pg | Protocol-compatible |
+| SQL Server | mssql | Pure JS |
+| Oracle | oracledb | Native (thin mode, no Instant Client needed), lazy-loaded |
+| 达梦 DM | dmdb | Native, official vendor distribution, lazy-loaded |
+| SQLite | better-sqlite3 | Local file |
+| DuckDB | duckdb | Local file, OLAP |
+| ClickHouse | @clickhouse/client | Columnar OLAP |
+| Snowflake | snowflake-sdk | Cloud DW |
 
-## 功能
+### NoSQL (parallel `executeCommand` channel)
 
-- **Navicat 式导航树**：连接 → 库 → (schema) → 表/视图/函数… → 列/索引/键，目录带对象计数；树形由驱动按方言决定。连接可标 **环境**（dev/test/**prod**，prod 着红点）。
-- **查询**：Monaco 编辑器（SQL 高亮 + 表/列/函数/片段自动补全）、多查询页签、SQL 历史（搜索/收藏）、库/schema 切换、服务端取消（KILL / pg_cancel）。
-  - **⌘/Ctrl+Enter 执行**（有选区只跑选中语句）、**EXPLAIN 可视化执行计划**、SQL 格式化（⌘⇧F）、查询参数（`:name`）。
-  - **SQL 片段库**（含标签筛选）、**生成 SQL 模板**（SELECT/INSERT/UPDATE/DELETE/复制表结构/新建索引/编辑注释）。
-  - **prod 连接的高危操作**（DROP/DELETE/TRUNCATE/UPDATE）需键入连接名二次确认。
-- **结果集**：分页、**大结果集虚拟滚动**、可编辑网格（多选行、改单元格、增删行 → 事务提交）、单元格查看器、列筛选、导出 CSV/JSON/SQL、**一键图表**（后续）。
-- **对象管理**：可视化表设计器（字段/索引/外键/唯一键/检查 + SQL 预览，**改表时加载并 diff 现有索引/外键**）、新建视图/函数/存储过程、删除（含级联、批量多选）、表结构查看、**表统计信息**（行数/大小）、**生成测试数据**、**外键依赖关系**。
-- **数据迁移 / 对比**：CSV / JSON / **Excel 导入**、导出表/库为 SQL、数据传输、**结构对比/同步**、**数据级对比/同步**（按主键生成 INSERT/UPDATE/DELETE）。
-- **效率**：⌘K **命令面板**、⌘⇧O **全局对象搜索**（搜表/视图/列并在树中定位）、ER 图、**用户与权限（GRANT）**、设置中心（主题/字号/中英文 i18n）。
-- **连接**：增删改、测试、本地 SQLite + safeStorage 加密存储、SSH 隧道、SSL、分组、连不上自动弹编辑框、自动更新（electron-updater）。
+| Database | Driver | Notes |
+| --- | --- | --- |
+| MongoDB | mongodb | Document store, ObjectId roundtrip |
+| Redis | ioredis | KV + STREAM / HLL / Bitmap / Geo viewers |
+| Elasticsearch | @elastic/elasticsearch | REST / HTTP search engine |
 
-### 常用快捷键
+## Features
 
-| 快捷键 | 作用 |
+### Query workspace
+- **Monaco editor** with SQL syntax highlighting, auto-completion for tables / columns / functions / snippets
+- **Multiple query tabs**, SQL history (search & favorite), database / schema switching
+- **Server-side cancellation** (KILL / pg_cancel)
+- **EXPLAIN visualizer** with estimated vs actual rows, slow operator highlighting, `EXPLAIN+` (ANALYZE) opt-in
+- **SQL formatter** (⌘⇧F), parameterized queries (`:name`)
+- **SQL snippets** library with tag filtering
+- **Production safeguard**: connections tagged as `prod` require typing the connection name to confirm DROP / DELETE / TRUNCATE
+- **Manual / auto commit**: per-tab toggle in toolbar; defaults from global setting; new transactions auto-start after commit/rollback
+
+### Result grid
+- Pagination, **virtual scrolling for large result sets**, editable grid (multi-row select, cell edit, insert / delete → transactional commit)
+- Cell viewer with **NULL / empty / large-text / JSON / BLOB** visual differentiation
+- **JSON column editing** + **BLOB preview** (auto-detect PNG / JPEG / GIF / WEBP signatures, render inline image or hex dump)
+- Column filter, multi-format copy (CSV / TSV / JSON / Markdown / SQL VALUES), export
+- **Result charting** (bar / line / pie via inline SVG, PNG export)
+- **Alternative views**: pivot table, self-FK tree, geo scatter, timeline
+- **Cell right-click**: reverse value search, FK navigation, "Ask AI" about error
+- **Foreign key navigation**: jump to referenced row, browse incoming references
+
+### Schema & DBA
+- Visual table designer with diff-aware ALTER on save
+- View / function / procedure / trigger DDL editor
+- ER diagram viewer
+- **Schema snapshots** + per-table diff
+- **Schema drift detection** between two live connections + auto-generated align SQL
+- **Server activity panel**: process list + long transactions + lock waits, with `KILL` action
+- **Replication lag monitor**: MySQL `SHOW REPLICA STATUS` / PG `pg_stat_replication` / MSSQL AOAG
+- **Data Inspector** (column sample / full profile / constraint scan / type optimization / table maintenance)
+- **Data Fixup** (duplicates / NULL backfill / soft-delete recovery)
+- **Index Recommender** (based on SQL history + existing indexes)
+- **Schema diff & data diff** with sync SQL generation
+- **Backup / Restore** wizard (pure-SQL path, cross-platform, no `mysqldump` dependency)
+
+### AI assistant (multi-provider: Anthropic / OpenAI / DeepSeek / Codex / Grok)
+- **Right-side chat panel** (Cursor-style), Markdown rendering, SQL highlighting
+- **3-tier memory**: free-text profile / structured facts / vector memory (top-K retrieval)
+- **AI Toolbox** (7 specialized prompts):
+  - Write migration (ALTER + reverse ALTER + data migration script)
+  - Optimize SQL (with EXPLAIN context)
+  - Explain EXPLAIN (plain-language)
+  - Generate test data (FK-aware, realistic style)
+  - Natural language → SQL
+  - Document table columns (data dictionary)
+  - Explain table purpose
+- **AI Database Health Check**: scans MySQL/PG metadata, reports 6 anti-patterns
+- **AI Write Comments**: AI suggests column comments → one-click ALTER / COMMENT ON
+- **AI SQL Translation** between MySQL / PostgreSQL / SQL Server / Oracle
+- **Cross-table value search** with cell right-click "find where else this value appears"
+
+### Data flow
+- CSV / JSON / **Excel import** with column mapping wizard
+- Export table / schema to SQL, data transfer between connections
+- **Data dictionary** export (Markdown / HTML)
+- **Encrypted export**: AES-256-GCM + PBKDF2 (utility module ready)
+
+### Productivity
+- ⌘K **command palette**
+- ⌘⇧O **global object search** (search tables / views / columns and locate in tree)
+- **Customizable keyboard shortcuts** (per-command rebind, conflict detection)
+- **Native application menu** (7 categories: File / Edit / View / Tools / Window / Help, plus macOS app menu)
+- **Multi-window** (new SPA window for side-by-side connections)
+- **Dashboard** (multi-SQL multi-card view)
+- **Data masking** (column-name rules → mask phone / email / ID card / bank card)
+- **Data contracts** (notNull / range / regex rules → scan results)
+- **Webhook notifications** (DingTalk / Feishu / Slack / generic) for slow query / query error / manual
+
+### Connections
+- CRUD + test, local SQLite + `safeStorage` encrypted password store
+- **SSH tunneling**, SSL/TLS, connection grouping, env tagging (dev/test/prod with color coding)
+- Auto-update (electron-updater)
+- **Friendly error categorization** with troubleshooting steps for: port unreachable / DNS / timeout / auth failure / SSL failure / driver missing / etc.
+
+## Common shortcuts
+
+| Shortcut | Action |
 | --- | --- |
-| ⌘/Ctrl + K | 命令面板 |
-| ⌘/Ctrl + ⇧ + O | 全局对象搜索 |
-| ⌘/Ctrl + Enter | 执行（有选区只跑选中） |
-| ⌘/Ctrl + ⇧ + F | 格式化 SQL |
+| ⌘/Ctrl + K | Command palette |
+| ⌘/Ctrl + ⇧ + O | Global object search |
+| ⌘/Ctrl + Enter | Execute (or selection) |
+| ⌘/Ctrl + ⇧ + F | Format SQL |
+| ⌘/Ctrl + ⇧ + L | Toggle AI chat panel |
+| ⌘/Ctrl + ⇧ + N | New window |
+| ⌘/Ctrl + , | Settings |
 
-## 结构
+All shortcuts are customizable in **Settings → Key Bindings**.
+
+## Structure
 
 ```
 packages/
-  shared-types/   跨端共用纯数据类型（DTO / 枚举 / 元数据 / 执行选项）
-  core-driver/    数据库驱动抽象层 + 执行通道（LocalTransport 直连）
+  shared-types/   Shared DTO / enums / metadata / execute options
+  core-driver/    Database driver abstraction + execution channel (LocalTransport)
 apps/
-  desktop/        Electron + Vue3 + Vite + TS 桌面端（本地 SQLite 存配置）
+  desktop/        Electron + Vue 3 + Vite + TS desktop app (local SQLite store)
 ```
 
-架构详见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for details.
 
-## 开发
+## Development
 
 ```bash
-pnpm install          # 安装依赖（首次会下载 Electron）
-pnpm --filter @db-tool/desktop rebuild:native   # 首次按 Electron ABI 重建原生模块（better-sqlite3 等），仅需一次
-pnpm dev:desktop      # 启动桌面端（electron-vite dev，热更新）
-pnpm typecheck        # 全量类型检查
-pnpm test             # 单元测试（Vitest：ddl / plan / schema-diff / data-diff / mockgen / privileges …）
-pnpm lint             # Biome 规则检查（pnpm format 可自动格式化）
-pnpm build:desktop    # 构建桌面端
+pnpm install                                          # Install deps (downloads Electron on first run)
+pnpm --filter @db-tool/desktop rebuild:native         # Rebuild native modules (better-sqlite3, etc.) for Electron ABI — one-time
+pnpm dev:desktop                                      # Start desktop app (electron-vite dev, HMR)
+pnpm typecheck                                        # Workspace-wide type check
+pnpm test                                             # Unit tests (Vitest)
+pnpm lint                                             # Biome lint (pnpm format auto-fixes)
+pnpm build:desktop                                    # Production build
 ```
 
-CI（`.github/workflows/ci.yml`）在 push / PR 跑 typecheck + test + lint。
+CI (`.github/workflows/ci.yml`) runs typecheck + test + lint on push / PR.
 
-E2E 冒烟（opt-in，需先构建 + 重建原生模块，不在主 CI 跑）：
+## Packaging
 
 ```bash
-pnpm build:desktop
-pnpm --filter @db-tool/desktop rebuild:native
-pnpm e2e              # Playwright 启动 Electron，校验窗口 / 导航 / 命令面板渲染
+pnpm --filter @db-tool/desktop exec electron-vite build               # Production bundle → apps/desktop/out
+pnpm --filter @db-tool/desktop exec electron-builder install-app-deps # Rebuild native modules for Electron ABI
+pnpm --filter @db-tool/desktop exec electron-builder                  # Build platform installer → apps/desktop/release
 ```
 
-## 打包
+Multi-platform installers are produced by CI (`.github/workflows/build-desktop.yml`, triggered on tag `v*` or manually). Matrix:
 
-```bash
-pnpm --filter @db-tool/desktop exec electron-vite build               # 生产构建 → apps/desktop/out
-pnpm --filter @db-tool/desktop exec electron-builder install-app-deps # 按 Electron ABI 重建原生模块
-pnpm --filter @db-tool/desktop exec electron-builder                  # 出当前平台安装包 → apps/desktop/release
-```
+| Platform | Architectures | Package formats |
+| --- | --- | --- |
+| macOS | x64 + arm64 | `.dmg` |
+| Windows | x64 + arm64 | NSIS `.exe` installer |
+| Linux x64 | x64 | `.AppImage` + `.deb` + `.rpm` + `.pacman` + `.tar.gz` |
+| Linux arm64 | arm64 | `.AppImage` + `.tar.gz` |
 
-三平台安装包由 CI 产出（`.github/workflows/build-desktop.yml`，matrix: macOS / Windows / Linux，tag `v*` 或手动触发）。打包注意：
+The `.deb` / `.rpm` packages cover Ubuntu / Debian / Deepin / UnionTech UOS / Ubuntu Kylin / Fedora / openEuler / Red Flag / NeoKylin (RHEL-based) and similar distributions.
 
-- **依赖分类**：运行时原生/外部依赖（better-sqlite3 / mysql2 / pg / mssql）放 `dependencies`；构建期依赖（工作区包、monaco、vue）放 `devDependencies`——electron-builder 只打包 `dependencies`。
-- **pnpm monorepo**：electron-builder 需 `node-linker=hoisted`（CI 已设 `NPM_CONFIG_NODE_LINKER=hoisted`）。
-- **node-gyp**：Python ≥3.12 缺 `distutils`，CI 固定 Python 3.11。
-- 首次本地打包需联网下载 Electron 发行包（约 100MB）。
+Packaging notes:
 
-> Oracle / 达梦为原生模块（惰性加载），纳入打包需在对应平台安装其驱动并 electron-rebuild。
+- **Dependency classification**: runtime native / external deps (better-sqlite3, mysql2, pg, mssql) go in `dependencies`; build-time deps (workspace packages, Monaco, Vue) go in `devDependencies`. electron-builder only packs `dependencies`.
+- **pnpm monorepo**: electron-builder requires `node-linker=hoisted` (CI sets `NPM_CONFIG_NODE_LINKER=hoisted`).
+- **node-gyp**: Python ≥3.12 lacks `distutils`; CI pins Python 3.11.
+- **Version sync**: `scripts/sync-version.mjs` syncs `apps/desktop/package.json#version` from the git tag on tagged builds so artifact names match the tag.
+- First local packaging downloads the Electron distribution (~100MB).
 
-## 许可
+> Oracle / 达梦 are native modules with lazy loading; including them in a build requires installing the driver on the target platform and running `electron-rebuild`.
 
-[Apache License 2.0](./LICENSE) —— 桌面端开源。
+## License
+
+[Apache License 2.0](./LICENSE) — desktop app is open source.
+
+## Company
+
+**Wuhan Skyler Network Technology Co., Ltd.** (武汉斯凯勒网络科技有限公司)
+
+SkylerX is developed and maintained by Wuhan Skyler Network Technology Co., Ltd. For commercial support, enterprise features, or contact, please open an issue on [GitHub](https://github.com/duhbbx/SkylerX/issues).

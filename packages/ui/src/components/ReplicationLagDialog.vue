@@ -534,4 +534,3 @@ function headerLabel(name: string): string {
 .last-err-title { font-weight: 600; margin-bottom: 4px; }
 .last-err-row { white-space: pre-wrap; word-break: break-all; }
 </style>
-</content>
