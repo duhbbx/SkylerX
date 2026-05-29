@@ -280,6 +280,46 @@ interface FkNavigate {
   values: unknown[]
 }
 /**
+ * #5 展开 FK 引用列（dbgate "Expand columns from related tables"）：
+ * 用户在 FK 列头点 ⊕ 触发。生成 SELECT 原表 + LEFT JOIN 父表前 3 列别名的新查询 SQL，
+ * 让用户在新 tab 看到 JOIN 后的扩展列。父表用 LIMIT 0 探一次列名。
+ */
+async function onExpandFk(payload: {
+  fkCol: string
+  refTable: string
+  refColumn: string
+}): Promise<void> {
+  if (!cur.value?.editTable) {
+    toast.warn(t('query.expandFkNeedTable'))
+    return
+  }
+  const tableRef = cur.value.editTable
+  const q = (s: string) => quoteId(props.conn.dialect, s)
+  let refCols: string[] = []
+  try {
+    const refTbl = q(payload.refTable)
+    const probe = await client.connections.execute(props.conn.id, `SELECT * FROM ${refTbl} LIMIT 0`)
+    refCols = probe.columns
+      .slice(0, 4)
+      .map((c) => c.name)
+      .filter((n) => n !== payload.refColumn)
+      .slice(0, 3)
+  } catch {
+    refCols = []
+  }
+  if (!refCols.length) refCols = [payload.refColumn]
+  const aliasSelect = refCols
+    .map((rc) => `${q(payload.refTable)}.${q(rc)} AS ${q(`${payload.refTable}_${rc}`)}`)
+    .join(', ')
+  const sqlOut = `SELECT ${tableRef}.*, ${aliasSelect}
+FROM ${tableRef}
+LEFT JOIN ${q(payload.refTable)}
+  ON ${tableRef}.${q(payload.fkCol)} = ${q(payload.refTable)}.${q(payload.refColumn)}
+LIMIT 200`
+  emit('newDraft', sqlOut, t('query.expandFkTab', { col: payload.fkCol, ref: payload.refTable }))
+}
+
+/**
  * #4 FK 值下拉：ResultGrid 编辑 FK 列时请求父表 distinct 值。
  * 查 50 条够下拉用；失败 cb([]) 让 datalist 空，不打断编辑。
  */
@@ -1450,6 +1490,7 @@ defineExpose({
         @filter="(w) => applyServerFilter(cur, w)"
         @navigate-fk="onFkNavigate"
         @fk-lookup="onFkLookup"
+        @expand-fk="onExpandFk"
         @ask-ai="(p) => emit('askAiAboutError', p)"
         @search-value="(v) => emit('searchValue', { connId: conn.id, value: v })"
       />

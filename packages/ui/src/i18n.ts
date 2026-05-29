@@ -795,6 +795,10 @@ const DICT: Record<string, [string, string]> = {
     'Click header to sort · double-click cell to view · click row number for full row',
   ],
   'grid.filterColTitle': ['筛选该列（点击勾选可选值）', 'Filter column (click to pick values)'],
+  // #5 展开 FK 引用列
+  'grid.expandFkTitle': ['展开 → {ref} 的引用字段（新查询）', 'Expand to {ref} reference fields (new query)'],
+  'query.expandFkNeedTable': ['本结果集非单表查询，无法展开引用列', 'Cannot expand: result is not a single-table query'],
+  'query.expandFkTab': ['{col} → {ref}', '{col} → {ref}'],
   // dbgate 式 Excel 多值过滤面板
   'grid.filterPopTitle': ['筛选「{col}」', 'Filter "{col}"'],
   'grid.filterPopSearchPh': ['搜索值…', 'Search values…'],

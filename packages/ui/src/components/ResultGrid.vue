@@ -71,6 +71,11 @@ const emit = defineEmits<{
    * 并通过 cb 把结果回填给 fkOptionsCache。
    */
   fkLookup: [payload: { refTable: string; refColumn: string; cb: (vals: string[]) => void }]
+  /**
+   * #5 展开 FK 引用列：用户在 FK 列头点 ⊕ 时触发。父组件按方言生成
+   * 含 LEFT JOIN 的新 SQL（带 ref_table.label 列），openDraft 新建查询 tab。
+   */
+  expandFk: [payload: { fkCol: string; refTable: string; refColumn: string }]
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -1191,6 +1196,21 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                   @click.stop="openColumnFilter(c.name, ($event.currentTarget as HTMLElement))"
                 >
                   ⏷
+                </button>
+                <!-- #5 展开 FK 引用列：仅 FK 列出现的 ⊕，点开走父组件 LEFT JOIN 新建 tab -->
+                <button
+                  v-if="fkOf(c.name)"
+                  class="funnel"
+                  :title="t('grid.expandFkTitle', { ref: fkOf(c.name)?.refTable ?? '' })"
+                  @click.stop="
+                    emit('expandFk', {
+                      fkCol: c.name,
+                      refTable: fkOf(c.name)!.refTable,
+                      refColumn: fkOf(c.name)!.refColumn,
+                    })
+                  "
+                >
+                  ⊕
                 </button>
                 <span
                   class="col-resize"
