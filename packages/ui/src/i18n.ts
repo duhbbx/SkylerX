@@ -521,6 +521,45 @@ const DICT: Record<string, [string, string]> = {
     'Need advanced mysqldump / pg_dump features? Will be added via IPC later; SQL fallback for now',
   ],
   'backup.openExportHint': ['打开导航树并右键库节点', 'Open the nav tree and right-click a DB'],
+  // NDJSON 备份 / 还原（参考 dbgate Archives）
+  'backup.howBackupNdjson1': [
+    '把当前库的所有表导出为单个 .ndjson 文件（每行一个 JSON 对象）',
+    'Export all tables of the current database to a single .ndjson file (one JSON per line)',
+  ],
+  'backup.howBackupNdjson2': [
+    '每行格式：{"__table":"users","data":{"id":1,"name":"Alice"}}',
+    'Each line: {"__table":"users","data":{"id":1,"name":"Alice"}}',
+  ],
+  'backup.howBackupNdjson3': [
+    '可跨连接 import/export，适合数据工程师 / 轻量备份',
+    'Cross-connection import/export, friendly for data engineers / lightweight backup',
+  ],
+  'backup.howBackupNdjson4': [
+    '比纯 SQL 灵活：可只导部分表、可用 jq 等工具二次处理',
+    'More flexible than SQL: export specific tables, post-process with jq, etc',
+  ],
+  'backup.ndjsonNote': [
+    '注意：BLOB 字段经 JSON 序列化可能失真；表 schema 不一起导出（还原前需有表）',
+    'Note: BLOB fields may lose fidelity via JSON; table schema is NOT exported (table must exist before restore)',
+  ],
+  'backup.ndjsonDoBackup': ['📦 导出 NDJSON', '📦 Export NDJSON'],
+  'backup.ndjsonPhaseList': ['列出表…', 'Listing tables…'],
+  'backup.ndjsonPhaseDump': ['导出 {name}…', 'Exporting {name}…'],
+  'backup.ndjsonPhaseSave': ['保存文件…', 'Saving file…'],
+  'backup.ndjsonSaved': [
+    '已导出 {n} 行 / {t} 个表 → {path}',
+    'Exported {n} rows / {t} tables → {path}',
+  ],
+  'backup.howRestoreNdjson': [
+    '选一个 .ndjson 文件 → 按 __table 字段分桶 → 每个表批量 INSERT',
+    'Pick a .ndjson file → group by __table → batch INSERT per table',
+  ],
+  'backup.ndjsonRestoreConfirm': [
+    '即将把 {file} 中 {n} 行还原到 {t} 张表。继续？',
+    'About to restore {n} rows from {file} into {t} tables. Continue?',
+  ],
+  'backup.ndjsonNoRows': ['NDJSON 文件里没有可还原行', 'No restorable rows in NDJSON file'],
+  'backup.noTables': ['当前库没有表', 'No tables in current database'],
   'backup.howRestore': [
     '选一个 .sql 文件 → 按分号切分后逐条执行；失败的语句会收集到下方错误列表',
     'Pick a .sql file → split by ; and execute one by one; failures collected below',
