@@ -213,6 +213,17 @@ function onKey(e: KeyboardEvent): void {
   background: var(--err, #e04050);
   border-color: var(--err, #e04050);
 }
+/*
+ * 危险动作（删除 / DROP / 不可逆 SQL）按钮反转位置：危险动作在左、取消在右。
+ * 默认顺手按 Enter 容易误删；把危险按钮挪到左、取消挪到右，让回车不会立即执行危险操作。
+ *
+ * 用 flex order 实现（不依赖兄弟选择器 ~，模板中 ghost 在 primary 之前）：
+ *   - 普通：ghost(2) primary(3)   → 取消左 / 确认右
+ *   - danger: primary.danger(1, 推到最左) ghost(2)  → 删除左 / 取消右
+ */
+.dlg-actions .ghost      { order: 2; }
+.dlg-actions .primary    { order: 3; }
+.dlg-actions .primary.danger { order: 1; margin-right: auto; }
 .dlg-actions .primary:hover {
   filter: brightness(1.1);
 }
