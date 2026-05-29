@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import type { DbDialect, QueryResult } from '@db-tool/shared-types'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { prompt as appPrompt, toast } from '../dialog'
@@ -86,6 +86,24 @@ const sortDir = ref<'asc' | 'desc'>('asc')
 const viewer = ref<{ row: number; col: string | null } | null>(null)
 // ── 筛选 / 列显隐 / 复制（均只读态）──
 const filterText = ref('')
+/**
+ * dbgate 式 Excel 多值过滤：每列允许的值集合（前端筛，不发额外 SQL）。
+ * key = 列名；value = 允许的 String 化值集合（NULL 用 '__NULL__' 哨兵）。
+ * 整列没条目 = 不过滤；条目有 = viewRows 只保留命中的行。
+ */
+const valueFilters = ref<Record<string, Set<string>>>({})
+/** 当前打开的列过滤面板（null = 没开） */
+const colFilterPopup = ref<{
+  col: string
+  top: number
+  left: number
+  /** distinct 值列表（来自当前 viewRows 之外的 base 数据），已排序 */
+  allValues: string[]
+  /** 用户当前在面板里的勾选状态（确认时同步到 valueFilters） */
+  selected: Set<string>
+  /** 面板内的搜索文本（过滤 distinct 列表显示） */
+  search: string
+} | null>(null)
 const hiddenCols = ref<Set<string>>(new Set())
 const showColsMenu = ref(false)
 const showCopyMenu = ref(false)
@@ -182,6 +200,15 @@ const viewRows = computed<Row[]>(() => {
   const f = filterText.value.trim().toLowerCase()
   if (f)
     rows = rows.filter((r) => columnNames.value.some((c) => fmt(r[c]).toLowerCase().includes(f)))
+  // dbgate 式列多值过滤：纯前端，按每列的 allowed set 收紧
+  for (const [col, allowed] of Object.entries(valueFilters.value)) {
+    if (!allowed.size) continue
+    rows = rows.filter((r) => {
+      const v = r[col]
+      const key = v == null ? '__NULL__' : String(v)
+      return allowed.has(key)
+    })
+  }
   if (sortCol.value) {
     const col = sortCol.value
     const dir = sortDir.value === 'asc' ? 1 : -1
@@ -598,8 +625,60 @@ function askAiAboutError(): void {
   })
 }
 
-// ── 服务端列筛选（生成 WHERE，由 QueryPane 重查）──
-async function filterCol(col: string): Promise<void> {
+// ── 列筛选（dbgate 式多值面板，纯前端）──
+/**
+ * 点列头 ⏷：弹出 Excel-like 多值过滤面板。
+ * - 不发额外 SQL，纯前端 viewRows 上筛
+ * - distinct 值取自 base（编辑态用 localRows、只读态用 result.rows）的当前列
+ * - 默认全选（= 不过滤）；用户可勾选 / 反选 / 搜索 / 全选 / 清空
+ * - 面板有「高级 WHERE 条件…」入口走原有服务端 prompt 行为
+ */
+function openColumnFilter(col: string, btnEl: HTMLElement): void {
+  const rect = btnEl.getBoundingClientRect()
+  const base = (props.editable ? localRows.value : props.result?.rows ?? []) as Row[]
+  const all = new Set<string>()
+  for (const r of base) {
+    const v = r[col]
+    all.add(v == null ? '__NULL__' : String(v))
+  }
+  const allValues = [...all].sort((a, b) => a.localeCompare(b))
+  const prev = valueFilters.value[col]
+  const selected = prev && prev.size > 0 ? new Set(prev) : new Set(allValues)
+  colFilterPopup.value = {
+    col,
+    top: rect.bottom + 4,
+    left: Math.max(8, Math.min(window.innerWidth - 280, rect.left)),
+    allValues,
+    selected,
+    search: '',
+  }
+}
+
+function applyColumnFilter(): void {
+  const p = colFilterPopup.value
+  if (!p) return
+  const next = { ...valueFilters.value }
+  if (p.selected.size === p.allValues.length) delete next[p.col]
+  else if (p.selected.size === 0) {
+    // 全反选 = 用户想要"无任何值"，相当于过滤掉一切 → 仍存一个空集
+    next[p.col] = new Set()
+  } else {
+    next[p.col] = new Set(p.selected)
+  }
+  valueFilters.value = next
+  colFilterPopup.value = null
+}
+
+/** 点面板外面关闭面板（不关 popup 本身——里面 .stop 已挡）。 */
+function onDocClick(): void {
+  if (colFilterPopup.value) colFilterPopup.value = null
+}
+onMounted(() => document.addEventListener('mousedown', onDocClick))
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
+
+/** 高级模式入口：弹原来的"列 + WHERE 条件"prompt（QueryPane 会重查）。 */
+async function openServerSideFilter(col: string): Promise<void> {
+  colFilterPopup.value = null
   const cur = colFilters.value[col] ?? ''
   const input = await appPrompt({
     message: t('grid.filterPrompt', { col }),
@@ -1051,9 +1130,9 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                 <button
                   v-if="filterable"
                   class="funnel"
-                  :class="{ on: colFilters[c.name] }"
+                  :class="{ on: !!valueFilters[c.name] || !!colFilters[c.name] }"
                   :title="t('grid.filterColTitle')"
-                  @click.stop="filterCol(c.name)"
+                  @click.stop="openColumnFilter(c.name, ($event.currentTarget as HTMLElement))"
                 >
                   ⏷
                 </button>
@@ -1278,6 +1357,80 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
       <GeoMapDialog v-if="altView === 'geo' && result" :result="result" @close="altView = null" />
       <TimelineDialog v-if="altView === 'timeline' && result" :result="result" @close="altView = null" />
     </template>
+
+    <!-- dbgate 式 Excel 多值过滤面板：fixed 定位到 ⏷ 按钮下方，点外面关 -->
+    <div
+      v-if="colFilterPopup"
+      class="col-filter-pop"
+      :style="{ top: colFilterPopup.top + 'px', left: colFilterPopup.left + 'px' }"
+      @click.stop
+    >
+      <div class="cfp-head">
+        <span class="cfp-title">{{ t('grid.filterPopTitle', { col: colFilterPopup.col }) }}</span>
+        <button class="cfp-x" :title="t('common.close')" @click="colFilterPopup = null">×</button>
+      </div>
+      <input
+        v-model="colFilterPopup.search"
+        :placeholder="t('grid.filterPopSearchPh')"
+        class="cfp-search"
+      />
+      <div class="cfp-actions">
+        <button
+          class="cfp-mini"
+          @click="colFilterPopup.selected = new Set(colFilterPopup.allValues)"
+        >
+          {{ t('grid.filterPopAll') }}
+        </button>
+        <button
+          class="cfp-mini"
+          @click="colFilterPopup.selected = new Set(
+            colFilterPopup.allValues.filter((v) => !colFilterPopup!.selected.has(v))
+          )"
+        >
+          {{ t('grid.filterPopInvert') }}
+        </button>
+        <button class="cfp-mini" @click="colFilterPopup.selected = new Set()">
+          {{ t('grid.filterPopClear') }}
+        </button>
+        <span class="cfp-count">
+          {{ colFilterPopup.selected.size }} / {{ colFilterPopup.allValues.length }}
+        </span>
+      </div>
+      <div class="cfp-list">
+        <label
+          v-for="v in colFilterPopup.allValues.filter((x) =>
+            !colFilterPopup!.search ||
+            x.toLowerCase().includes(colFilterPopup!.search.toLowerCase())
+          )"
+          :key="v"
+          class="cfp-row"
+        >
+          <input
+            type="checkbox"
+            :checked="colFilterPopup.selected.has(v)"
+            @change="
+              ($event.target as HTMLInputElement).checked
+                ? colFilterPopup!.selected.add(v)
+                : colFilterPopup!.selected.delete(v)
+            "
+          />
+          <span :class="{ nullcell: v === '__NULL__' }">{{
+            v === '__NULL__' ? 'NULL' : v
+          }}</span>
+        </label>
+        <div v-if="!colFilterPopup.allValues.length" class="cfp-empty">
+          {{ t('grid.filterPopEmpty') }}
+        </div>
+      </div>
+      <div class="cfp-foot">
+        <button class="cfp-mini link" @click="openServerSideFilter(colFilterPopup.col)">
+          {{ t('grid.filterPopAdvanced') }}
+        </button>
+        <span class="spacer" />
+        <button class="cfp-mini" @click="colFilterPopup = null">{{ t('common.cancel') }}</button>
+        <button class="cfp-mini primary" @click="applyColumnFilter">{{ t('common.confirm') }}</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1494,6 +1647,120 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
 .form-row {
   display: contents;
 }
+
+/* ── dbgate 式列多值过滤面板 ──────────────────────────────────────── */
+.col-filter-pop {
+  position: fixed;
+  z-index: 1500;
+  width: 280px;
+  max-height: 420px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+.cfp-head {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.cfp-title {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cfp-x {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.cfp-x:hover { color: var(--text); }
+.cfp-search {
+  margin: 8px 10px 4px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+}
+.cfp-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.cfp-mini {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 3px;
+  color: var(--text);
+  cursor: pointer;
+}
+.cfp-mini:hover { background: rgba(124, 108, 255, 0.10); }
+.cfp-mini.primary {
+  background: var(--accent, #7c6cff);
+  color: white;
+  border-color: var(--accent, #7c6cff);
+}
+.cfp-mini.link {
+  border: none;
+  color: var(--accent, #7c6cff);
+  padding: 2px 4px;
+}
+.cfp-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cfp-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 10px;
+}
+.cfp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.cfp-row:hover { background: rgba(124, 108, 255, 0.06); }
+.cfp-row input[type='checkbox'] { margin: 0; }
+.cfp-row span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, monospace;
+}
+.cfp-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+}
+.cfp-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.cfp-foot .spacer { flex: 1; }
 .form-body input {
   padding: 4px 8px;
   background: var(--bg);
