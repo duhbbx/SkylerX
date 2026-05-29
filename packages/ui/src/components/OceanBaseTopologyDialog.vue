@@ -50,16 +50,17 @@ interface TenantRow {
   compatibility_mode?: string
   status: string
   locked?: string
+  locality?: string
 }
 interface UnitRow {
   unit_id: number
   resource_pool_id: number
+  unit_group_id?: number
   tenant_id: number
   zone: string
   svr_ip: string
   svr_port: number
   status: string
-  replica_type?: string
 }
 
 const zones = ref<ZoneRow[]>([])
@@ -91,12 +92,13 @@ async function refresh(): Promise<void> {
       ),
       client.connections.execute(
         props.conn.id,
-        `SELECT tenant_id, tenant_name, tenant_type, primary_zone, compatibility_mode, status, locked
+        `SELECT tenant_id, tenant_name, tenant_type, primary_zone, compatibility_mode, status, locked, locality
            FROM oceanbase.DBA_OB_TENANTS ORDER BY tenant_id`,
       ),
+      // OB 4.x DBA_OB_UNITS 没有 replica_type；用 UNIT_GROUP_ID 标识副本组归属
       client.connections.execute(
         props.conn.id,
-        `SELECT unit_id, resource_pool_id, tenant_id, zone, svr_ip, svr_port, status, replica_type
+        `SELECT unit_id, resource_pool_id, unit_group_id, tenant_id, zone, svr_ip, svr_port, status
            FROM oceanbase.DBA_OB_UNITS ORDER BY tenant_id, zone, svr_ip`,
       ),
     ])
@@ -266,6 +268,9 @@ async function copyAddr(svr: ServerRow): Promise<void> {
                 <span class="t-meta" v-if="te.compatibility_mode">
                   {{ te.compatibility_mode }}
                 </span>
+                <span class="t-meta locality" v-if="te.locality" :title="te.locality">
+                  {{ te.locality.length > 30 ? `${te.locality.slice(0, 30)}…` : te.locality }}
+                </span>
                 <span class="t-zones">
                   <span v-for="z in tenantZones(te.tenant_id)" :key="z" class="z-chip">{{ z }}</span>
                 </span>
@@ -277,7 +282,7 @@ async function copyAddr(svr: ServerRow): Promise<void> {
                   <span class="u-id">unit-{{ u.unit_id }}</span>
                   <span class="u-pool">pool {{ u.resource_pool_id }}</span>
                   <span class="u-loc">{{ u.zone }} / {{ u.svr_ip }}:{{ u.svr_port }}</span>
-                  <span class="u-type" v-if="u.replica_type">{{ u.replica_type }}</span>
+                  <span class="u-type" v-if="u.unit_group_id">group {{ u.unit_group_id }}</span>
                   <span class="badge" :class="statusClass(u.status)">{{ u.status }}</span>
                 </div>
                 <div v-if="unitsOf(te.tenant_id).length === 0" class="empty">
@@ -488,6 +493,13 @@ async function copyAddr(svr: ServerRow): Promise<void> {
   padding: 1px 6px;
   border: 1px solid var(--border);
   border-radius: 3px;
+}
+.t-meta.locality {
+  font-family: ui-monospace, SF Mono, Consolas, monospace;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .t-zones {
   display: inline-flex;
