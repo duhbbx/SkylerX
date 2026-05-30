@@ -23,7 +23,8 @@ import { reactive } from 'vue'
 
 export interface SaveFileRequest {
   defaultName: string
-  content: string
+  /** 文本或二进制内容;二进制建议 Uint8Array(xlsx/png/blob 等场景) */
+  content: string | Uint8Array
   filters?: { name: string; extensions: string[] }[]
   defaultDir?: string
 }
@@ -56,7 +57,10 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
   // 1) 新浏览器(Chrome 86+/Edge):File System Access API,体验最接近原生
   const showSaveFilePicker = (window as unknown as {
     showSaveFilePicker?: (opts: unknown) => Promise<{
-      createWritable: () => Promise<{ write: (d: string) => Promise<void>; close: () => Promise<void> }>
+      createWritable: () => Promise<{
+        write: (d: string | Uint8Array) => Promise<void>
+        close: () => Promise<void>
+      }>
       name: string
     }>
   }).showSaveFilePicker
@@ -64,7 +68,7 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
     try {
       const types = (req.filters ?? []).map((f) => ({
         description: f.name,
-        accept: { 'text/plain': f.extensions.map((e) => `.${e}`) },
+        accept: { 'application/octet-stream': f.extensions.map((e) => `.${e}`) },
       }))
       const handle = await showSaveFilePicker({
         suggestedName: req.defaultName,
@@ -80,9 +84,12 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
       // 其它错误也走 anchor 兜底
     }
   }
-  // 2) 兜底:anchor download
+  // 2) 兜底:anchor download(文本/二进制都支持)
   try {
-    const blob = new Blob([req.content], { type: 'text/plain;charset=utf-8' })
+    const isBin = req.content instanceof Uint8Array
+    const blob = isBin
+      ? new Blob([(req.content as Uint8Array).buffer as ArrayBuffer], { type: 'application/octet-stream' })
+      : new Blob([req.content as string], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

@@ -81,13 +81,8 @@ async function doExport(): Promise<void> {
       }
     }
     if (includeSnippets.value) ws.snippets = JSON.parse(JSON.stringify(snippets))
-    const api = (window as unknown as { api?: { files?: { saveText?: (req: unknown) => Promise<string | null> } } })?.api
-    const saveText = api?.files?.saveText
-    if (!saveText) {
-      toast.error('文件 API 不可用')
-      return
-    }
-    const path = await saveText({
+    // 走自定义 SaveFileDialog
+    const path = await client.files.saveText({
       defaultName: `skylerx-workspace-${new Date().toISOString().slice(0, 10)}.skylerxws`,
       content: JSON.stringify(ws, null, 2),
       filters: [{ name: 'SkylerX Workspace', extensions: ['skylerxws', 'json'] }],

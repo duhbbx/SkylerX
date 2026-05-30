@@ -347,10 +347,18 @@ async function exportPng(): Promise<void> {
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
     URL.revokeObjectURL(url)
-    const a = document.createElement('a')
-    a.href = canvas.toDataURL('image/png')
-    a.download = `chart-${kind.value}-${Date.now()}.png`
-    a.click()
+    // 走自定义 SaveFileDialog
+    const pngBlob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/png'),
+    )
+    if (!pngBlob) throw new Error('canvas.toBlob 失败')
+    const { saveFileWithDialog } = await import('../saveFile')
+    const bytes = new Uint8Array(await pngBlob.arrayBuffer())
+    await saveFileWithDialog({
+      defaultName: `chart-${kind.value}-${Date.now()}.png`,
+      content: bytes,
+      filters: [{ name: 'PNG', extensions: ['png'] }],
+    })
     toast.success(t('chart.exported'))
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e))

@@ -16,6 +16,7 @@ export const FILE_IPC = {
   listDir: 'files:listDir',
   commonDirs: 'files:commonDirs',
   writeText: 'files:writeText',
+  writeBinary: 'files:writeBinary',
   openPath: 'files:openPath',
   showInFolder: 'files:showInFolder',
   mkdir: 'files:mkdir',
@@ -151,6 +152,16 @@ export function registerFileIpc(): void {
     await writeFile(filePath, content, 'utf8')
     return filePath
   })
+
+  /** 写二进制文件(xlsx / png / blob 等;renderer 端传 Uint8Array 序列化为 Buffer)。 */
+  ipcMain.handle(
+    FILE_IPC.writeBinary,
+    async (_e, filePath: string, bytes: ArrayBuffer | Uint8Array) => {
+      const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+      await writeFile(filePath, buf)
+      return filePath
+    },
+  )
 
   /** 打开路径(文件用默认程序,文件夹用 Finder/Explorer)。 */
   ipcMain.handle(FILE_IPC.openPath, async (_e, p: string): Promise<string> => {

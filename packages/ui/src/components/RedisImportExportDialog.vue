@@ -134,15 +134,9 @@ async function doExport(): Promise<void> {
       }
     } while (cursor !== '0')
 
-    // 写文件
-    const desktopApi = (window as unknown as { api?: { files?: { saveText?: (req: unknown) => Promise<string | null> } } })?.api
-    const saveText = desktopApi?.files?.saveText
-    if (!saveText) {
-      toast.error('文件 API 不可用')
-      return
-    }
+    // 走自定义 SaveFileDialog
     const filename = `redis_${props.conn.name || 'export'}_db${props.dbIndex}_${Date.now()}.json`
-    const path = await saveText({
+    const path = await client.files.saveText({
       defaultName: filename,
       content: JSON.stringify(items, null, 2),
       filters: [{ name: 'JSON', extensions: ['json'] }],

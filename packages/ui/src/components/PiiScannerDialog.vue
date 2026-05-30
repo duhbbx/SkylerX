@@ -193,12 +193,8 @@ const exportText = computed(() => {
 })
 
 async function exportCsv(): Promise<void> {
-  const api = (window as unknown as { api?: { files?: { saveText?: (req: unknown) => Promise<string | null> } } })?.api
-  if (!api?.files?.saveText) {
-    toast.error('文件 API 不可用')
-    return
-  }
-  const path = await api.files.saveText({
+  // 走自定义 SaveFileDialog(client.files.saveText 已被 useDataClient 包装)
+  const path = await client.files.saveText({
     defaultName: `pii_scan_${props.conn.name}_${Date.now()}.csv`,
     content: exportText.value,
     filters: [{ name: 'CSV', extensions: ['csv'] }],

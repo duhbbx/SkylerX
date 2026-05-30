@@ -22,14 +22,25 @@ async function onSaveFileSubmit(path: string): Promise<void> {
   try {
     const fapi = client.files as unknown as {
       writeText?: (p: string, c: string) => Promise<string>
+      writeBinary?: (p: string, b: Uint8Array | ArrayBuffer) => Promise<string>
     }
-    if (!fapi.writeText) {
-      toast.error('writeText IPC 不可用')
-      saveFileState.resolve?.(null)
-      saveFileState.open = false
-      return
+    if (req.content instanceof Uint8Array) {
+      if (!fapi.writeBinary) {
+        toast.error('writeBinary IPC 不可用')
+        saveFileState.resolve?.(null)
+        saveFileState.open = false
+        return
+      }
+      await fapi.writeBinary(path, req.content)
+    } else {
+      if (!fapi.writeText) {
+        toast.error('writeText IPC 不可用')
+        saveFileState.resolve?.(null)
+        saveFileState.open = false
+        return
+      }
+      await fapi.writeText(path, req.content as string)
     }
-    await fapi.writeText(path, req.content)
     saveFileState.open = false
     saveFileState.resolve?.(path)
     savedCard.value = { path }

@@ -107,6 +107,8 @@ const api = {
     }> => ipcRenderer.invoke('files:commonDirs'),
     writeText: (filePath: string, content: string): Promise<string> =>
       ipcRenderer.invoke('files:writeText', filePath, content),
+    writeBinary: (filePath: string, bytes: Uint8Array | ArrayBuffer): Promise<string> =>
+      ipcRenderer.invoke('files:writeBinary', filePath, bytes),
     openPath: (p: string): Promise<string> => ipcRenderer.invoke('files:openPath', p),
     showInFolder: (p: string): Promise<void> => ipcRenderer.invoke('files:showInFolder', p),
     mkdir: (p: string): Promise<string> => ipcRenderer.invoke('files:mkdir', p),

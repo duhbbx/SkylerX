@@ -476,6 +476,7 @@ export interface DataClient {
       sep: string
     }>
     writeText?(filePath: string, content: string): Promise<string>
+    writeBinary?(filePath: string, bytes: Uint8Array | ArrayBuffer): Promise<string>
     openPath?(p: string): Promise<string>
     showInFolder?(p: string): Promise<void>
     mkdir?(p: string): Promise<string>

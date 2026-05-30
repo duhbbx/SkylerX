@@ -386,17 +386,15 @@ async function doExport(format: ExportFormat): Promise<void> {
   })
 }
 
-/** 用 anchor download 触发二进制下载(saveText 只接字符串,xlsx/csv.gz 走这个)。 */
-function downloadBlobAs(filename: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  // 给浏览器一点时间触发下载,再释放
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+/** 把二进制保存走自定义 SaveFileDialog(桌面)或浏览器 fallback(Web)。 */
+async function saveBinaryWithDialog(
+  defaultName: string,
+  blob: Blob,
+  filters?: { name: string; extensions: string[] }[],
+): Promise<void> {
+  const { saveFileWithDialog } = await import('../saveFile')
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  await saveFileWithDialog({ defaultName, content: bytes, filters })
 }
 
 /** 导出 xlsx(用 xlsx 包,deps 里已有,惰性加载避免 bundle 变大)。 */
@@ -416,7 +414,9 @@ async function doExportXlsx(): Promise<void> {
     const blob = new Blob([wbout], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
-    downloadBlobAs(`export-${Date.now()}.xlsx`, blob)
+    await saveBinaryWithDialog(`export-${Date.now()}.xlsx`, blob, [
+      { name: 'Excel', extensions: ['xlsx'] },
+    ])
     toast.success('xlsx 已导出')
   } catch (e) {
     toast.error(`xlsx 导出失败: ${e instanceof Error ? e.message : String(e)}`)
@@ -434,13 +434,19 @@ async function doExportCsvGz(): Promise<void> {
     if (typeof CompressionStream === 'undefined') {
       // 老浏览器没 CompressionStream → 直接导未压缩 CSV
       const blob = new Blob([csv], { type: 'text/csv' })
-      downloadBlobAs(`export-${Date.now()}.csv`, blob)
+      await saveBinaryWithDialog(`export-${Date.now()}.csv`, blob, [
+        { name: 'CSV', extensions: ['csv'] },
+      ])
       toast.warn('当前环境不支持 gzip,已退回未压缩 CSV')
       return
     }
     const stream = new Blob([csv]).stream().pipeThrough(new CompressionStream('gzip'))
     const buf = await new Response(stream).arrayBuffer()
-    downloadBlobAs(`export-${Date.now()}.csv.gz`, new Blob([buf], { type: 'application/gzip' }))
+    await saveBinaryWithDialog(
+      `export-${Date.now()}.csv.gz`,
+      new Blob([buf], { type: 'application/gzip' }),
+      [{ name: 'gzip', extensions: ['gz'] }],
+    )
     toast.success('csv.gz 已导出')
   } catch (e) {
     toast.error(`csv.gz 导出失败: ${e instanceof Error ? e.message : String(e)}`)
@@ -966,7 +972,7 @@ function onJsonPathPick(path: string): void {
   toast.success(`已复制: ${sql}`)
 }
 /** #5：把当前 BLOB 当文件下载到本地（图片用嗅到的 mime，其余 application/octet-stream）。 */
-function downloadBlob(): void {
+async function downloadBlob(): Promise<void> {
   const bytes = cellBytes.value
   if (!bytes) return
   const mime = sniffBlobMime(bytes) ?? 'application/octet-stream'
@@ -980,13 +986,12 @@ function downloadBlob(): void {
           : mime === 'image/webp'
             ? 'webp'
             : 'bin'
-  const blob = new Blob([bytes as BlobPart], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${viewer.value?.col ?? 'blob'}.${ext}`
-  a.click()
-  URL.revokeObjectURL(url)
+  // 走自定义 SaveFileDialog
+  await saveBinaryWithDialog(
+    `${viewer.value?.col ?? 'blob'}.${ext}`,
+    new Blob([bytes as BlobPart], { type: mime }),
+    [{ name: ext.toUpperCase(), extensions: [ext] }],
+  )
 }
 
 function hexDump(bytes: Uint8Array, maxBytes = 4096): string {
