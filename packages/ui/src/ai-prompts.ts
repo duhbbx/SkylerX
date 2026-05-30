@@ -214,6 +214,45 @@ ${sql}
 }
 
 /**
+ * 存储过程 / 函数翻译 prompt。语义比单条 SQL 复杂得多:OUT/INOUT 参数 / 错误处理 / 游标 / DELIMITER / BEGIN-END 块 / 异常块结构都得改写。
+ * 输出三段:译后 SP 代码 / 警告 / 建议(同 pTranslate 的输出形态)。
+ */
+export function pTranslateProcedure(
+  from: string,
+  to: string,
+  code: string,
+): string {
+  return `请把下面这段 **存储过程 / 函数** 从 **${from}** 翻译成 **${to}** 方言。需要处理:
+- CREATE PROCEDURE / FUNCTION 头部语法差异
+- 参数模式(IN / OUT / INOUT)在不同方言的写法
+- BEGIN-END 块、DECLARE 变量、异常处理(EXCEPTION/HANDLER/TRY-CATCH)结构差异
+- 游标 / FOR 循环 / RAISE NOTICE / SIGNAL 等关键字的等价
+- DELIMITER 用法(MySQL)在目标方言怎么省/换
+- 内置函数 / 类型 / NULL 行为差异
+
+**源代码（${from}）**
+\`\`\`sql
+${code}
+\`\`\`
+
+请严格按以下三段输出:
+
+1. **译后代码**:包在 \`\`\`sql 代码块里,**完整可执行**(含 CREATE 头、参数列表、BEGIN-END 块)。
+
+2. **警告**:用 Markdown bullet 列表(\`- xxx\`)列出**语义有差异 / 不可直译**的点(每一条配源/目标的具体语法对比):
+   - 异常处理结构差异(MySQL HANDLER vs PG EXCEPTION vs T-SQL TRY-CATCH)
+   - 自动事务边界差异
+   - OUT 参数语义差异(返回值 vs 多结果集)
+   - 触发器中调用方式差异
+   - 字符集 / 时区 / NULL 比较等隐式行为差异
+   如果没有不可平移点,写一条 \`- 无明显不可平移结构\`。
+
+3. **建议**:用 Markdown bullet 列表给出目标方言**更地道**的写法(如 PG 用 LANGUAGE plpgsql / RETURNS RECORD;MSSQL 用 RAISERROR + THROW;Oracle 用 PRAGMA EXCEPTION_INIT 等)。如无建议,写一条 \`- 直译已足够地道\`。
+
+用 H3(\`### 警告\` / \`### 建议\`)标题分段。`
+}
+
+/**
  * G2 「AI 写表/列注释」prompt：把列定义清单（columnsCsv）交给 AI，让它**只输出 JSON 数组**，
  * 每项 `{ col: "列名", comment: "中文一句话业务含义" }`，外层包 ```json 代码块，
  * 方便前端用稳定的正则解析回结构化数据后做对比 + 落库。

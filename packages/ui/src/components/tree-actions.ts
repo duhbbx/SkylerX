@@ -458,6 +458,67 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ connId, ctrl }) => ctrl.openMysqlAdvanced(connId),
   },
 
+  // ── 数据安全 ──
+  {
+    id: 'pii-scanner',
+    label: 'ctx.pii-scanner',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
+    excludeKind: DbKind.NoSql,
+    run: ({ node, connId, ctrl }) => {
+      const database = node.kind === MetaNodeKind.Database ? node.name : undefined
+      const schema = node.kind === MetaNodeKind.Schema ? node.name : undefined
+      ctrl.openPiiScanner(connId, database, schema)
+    },
+  },
+  {
+    id: 'masking-view',
+    label: 'ctx.masking-view',
+    section: 'meta',
+    kinds: [MetaNodeKind.Table],
+    excludeKind: DbKind.NoSql,
+    enabled: (n) => !!n.sqlName || !!n.name,
+    run: ({ node, connId, ctrl }) => {
+      const path = node.path
+      let database: string | undefined
+      let schema: string | undefined
+      // 简单按 path 长度推断
+      if (path.length === 2) {
+        // [db, table] or [schema, table]
+        database = path[0]
+      } else if (path.length === 3) {
+        database = path[0]
+        schema = path[1]
+      }
+      ctrl.openMaskingView(connId, database, schema, node.name)
+    },
+  },
+  // ── AI 深化:慢 SQL 优化 / 错误根因 / schema 反向 ──
+  {
+    id: 'ai-insights',
+    label: 'ctx.ai-insights',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection],
+    excludeKind: DbKind.NoSql,
+    run: ({ connId, ctrl }) => ctrl.openAiInsights(connId),
+  },
+  {
+    id: 'ai-schema-reverse',
+    label: 'ctx.ai-schema-reverse',
+    section: 'create',
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
+    excludeKind: DbKind.NoSql,
+    run: ({ node, connId, ctrl }) => {
+      const database =
+        node.kind === MetaNodeKind.Database
+          ? node.name
+          : node.kind === MetaNodeKind.Schema
+            ? node.path[0]
+            : undefined
+      ctrl.openAiSchemaReverse(connId, database)
+    },
+  },
+
   // ── G1 AI 数据库体检 / C5 索引推荐：连接级，挂 Connection 节点右键 ──
   // 对 Redis/Mongo/ES 没有"表/索引"概念,这两个功能无意义,按方言隐藏。
   {

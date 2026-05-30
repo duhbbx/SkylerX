@@ -129,6 +129,14 @@ export interface TreeController {
   openMppPartition(connId: string, database?: string, table?: string): void
   /** MySQL/MariaDB:打开 binlog/主从/变量 面板 */
   openMysqlAdvanced(connId: string): void
+  /** PII 扫描器 */
+  openPiiScanner(connId: string, database?: string, schema?: string): void
+  /** 脱敏视图生成 */
+  openMaskingView(connId: string, database?: string, schema?: string, table?: string): void
+  /** AI 慢 SQL 优化 + 错误根因 */
+  openAiInsights(connId: string, prefillSql?: string, prefillError?: string, tab?: 'slow' | 'error'): void
+  /** AI 反向工程 schema(从 sample 推断) */
+  openAiSchemaReverse(connId: string, database?: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

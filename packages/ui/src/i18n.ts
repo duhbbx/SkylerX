@@ -1353,6 +1353,10 @@ const DICT: Record<string, [string, string]> = {
   'ctx.clickhouse-advanced': ['分区 / Mutation / 副本 / TTL', 'Parts / Mutations / Replicas / TTL'],
   'ctx.mpp-partition': ['分区管理…', 'Partitions…'],
   'ctx.mysql-advanced': ['Binlog / 主从 / 变量', 'Binlog / Replication / Variables'],
+  'ctx.pii-scanner': ['PII 扫描…', 'PII scanner…'],
+  'ctx.masking-view': ['生成脱敏视图…', 'Generate masked view…'],
+  'ctx.ai-insights': ['AI 诊断(慢 SQL / 错误)', 'AI insights (slow SQL / errors)'],
+  'ctx.ai-schema-reverse': ['AI 反向推断 schema…', 'AI infer schema…'],
   'ctx.redis-flush-db': ['清空当前库 (FLUSHDB)', 'Flush this database (FLUSHDB)'],
   'ctx.redis-flush-all': ['清空整个实例 (FLUSHALL)', 'Flush entire instance (FLUSHALL)'],
 

@@ -49,6 +49,10 @@ import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import AiInsightsDialog from './components/AiInsightsDialog.vue'
+import AiSchemaReverseDialog from './components/AiSchemaReverseDialog.vue'
+import DataMaskingViewDialog from './components/DataMaskingViewDialog.vue'
+import PiiScannerDialog from './components/PiiScannerDialog.vue'
 import ClickHouseAdvancedDialog from './components/ClickHouseAdvancedDialog.vue'
 import MppPartitionDialog from './components/MppPartitionDialog.vue'
 import MysqlAdvancedDialog from './components/MysqlAdvancedDialog.vue'
@@ -1306,6 +1310,24 @@ const chAdvOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null
 const mppPartOpen = ref<{ conn: ConnectionConfig; database?: string; table?: string } | null>(null)
 /** MySQL 高级面板(binlog/主从/变量) */
 const mysqlAdvOpen = ref<{ conn: ConnectionConfig } | null>(null)
+/** PII 扫描器 */
+const piiScanOpen = ref<{ conn: ConnectionConfig; database?: string; schema?: string } | null>(null)
+/** 数据脱敏视图 */
+const maskingViewOpen = ref<{
+  conn: ConnectionConfig
+  database?: string
+  schema?: string
+  table?: string
+} | null>(null)
+/** AI Insights(慢 SQL + 错误根因) */
+const aiInsightsOpen = ref<{
+  conn: ConnectionConfig
+  prefillSql?: string
+  prefillError?: string
+  initialTab?: 'slow' | 'error'
+} | null>(null)
+/** AI schema 反向工程 */
+const aiSchemaRevOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -2116,6 +2138,10 @@ onUnmounted(() => unsubMenu?.())
     @open-click-house-advanced="(cid, db) => client.connections.get(cid).then(c => { chAdvOpen = { conn: c, database: db } })"
     @open-mpp-partition="(cid, db, tbl) => client.connections.get(cid).then(c => { mppPartOpen = { conn: c, database: db, table: tbl } })"
     @open-mysql-advanced="(cid) => client.connections.get(cid).then(c => { mysqlAdvOpen = { conn: c } })"
+    @open-pii-scanner="(cid, db, sch) => client.connections.get(cid).then(c => { piiScanOpen = { conn: c, database: db, schema: sch } })"
+    @open-masking-view="(cid, db, sch, tbl) => client.connections.get(cid).then(c => { maskingViewOpen = { conn: c, database: db, schema: sch, table: tbl } })"
+    @open-ai-insights="(cid, sql, err, tab) => client.connections.get(cid).then(c => { aiInsightsOpen = { conn: c, prefillSql: sql, prefillError: err, initialTab: tab } })"
+    @open-ai-schema-reverse="(cid, db) => client.connections.get(cid).then(c => { aiSchemaRevOpen = { conn: c, database: db } })"
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
@@ -2588,6 +2614,47 @@ onUnmounted(() => unsubMenu?.())
     :open="!!mysqlAdvOpen"
     :conn="mysqlAdvOpen.conn"
     @close="mysqlAdvOpen = null"
+  />
+
+  <!-- PII 扫描 -->
+  <PiiScannerDialog
+    v-if="piiScanOpen"
+    :open="!!piiScanOpen"
+    :conn="piiScanOpen.conn"
+    :database="piiScanOpen.database"
+    :schema="piiScanOpen.schema"
+    @close="piiScanOpen = null"
+  />
+
+  <!-- 数据脱敏视图 -->
+  <DataMaskingViewDialog
+    v-if="maskingViewOpen"
+    :open="!!maskingViewOpen"
+    :conn="maskingViewOpen.conn"
+    :database="maskingViewOpen.database"
+    :schema="maskingViewOpen.schema"
+    :table="maskingViewOpen.table"
+    @close="maskingViewOpen = null"
+  />
+
+  <!-- AI Insights -->
+  <AiInsightsDialog
+    v-if="aiInsightsOpen"
+    :open="!!aiInsightsOpen"
+    :conn="aiInsightsOpen.conn"
+    :prefill-sql="aiInsightsOpen.prefillSql"
+    :prefill-error="aiInsightsOpen.prefillError"
+    :initial-tab="aiInsightsOpen.initialTab"
+    @close="aiInsightsOpen = null"
+  />
+
+  <!-- AI schema 反向 -->
+  <AiSchemaReverseDialog
+    v-if="aiSchemaRevOpen"
+    :open="!!aiSchemaRevOpen"
+    :conn="aiSchemaRevOpen.conn"
+    :database="aiSchemaRevOpen.database"
+    @close="aiSchemaRevOpen = null"
   />
 
   <!-- 新建数据库 -->

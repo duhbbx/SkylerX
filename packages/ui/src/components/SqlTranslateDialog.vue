@@ -20,7 +20,7 @@
  */
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { askAiChat, extractSql } from '../ai'
-import { pTranslate } from '../ai-prompts'
+import { pTranslate, pTranslateProcedure } from '../ai-prompts'
 import { toast } from '../dialog'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
@@ -42,6 +42,8 @@ const DIALECTS: { value: string; label: string }[] = [
 const fromDialect = ref<string>('mysql')
 const toDialect = ref<string>('postgresql')
 const sourceSql = ref<string>(props.initialSql ?? '')
+/** 翻译模式:'sql'=普通查询/DDL;'procedure'=存储过程/函数(需要换 prompt 处理参数、游标、异常块) */
+const mode = ref<'sql' | 'procedure'>('sql')
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -99,11 +101,16 @@ async function run(): Promise<void> {
   answer.value = ''
   try {
     controller = new AbortController()
-    const prompt = pTranslate(fromDialect.value, toDialect.value, sql)
+    const prompt =
+      mode.value === 'procedure'
+        ? pTranslateProcedure(fromDialect.value, toDialect.value, sql)
+        : pTranslate(fromDialect.value, toDialect.value, sql)
     const text = await askAiChat({
       messages: [{ role: 'user', content: prompt }],
       extraSystem:
-        'You are a senior SQL polyglot. Translate SQL across dialects precisely; flag every non-portable construct honestly.',
+        mode.value === 'procedure'
+          ? 'You are a senior SP/PL/SQL polyglot. Translate stored procedures faithfully; preserve control flow and explicit error handling.'
+          : 'You are a senior SQL polyglot. Translate SQL across dialects precisely; flag every non-portable construct honestly.',
       signal: controller.signal,
     })
     answer.value = text
@@ -162,6 +169,10 @@ onUnmounted(() => controller?.abort())
           </select>
         </label>
         <span class="spacer"></span>
+        <div class="mode-seg" :title="'模式:SQL 普通查询/DDL 或 存储过程/函数'">
+          <button :class="{ on: mode === 'sql' }" @click="mode = 'sql'">SQL</button>
+          <button :class="{ on: mode === 'procedure' }" @click="mode = 'procedure'">存储过程</button>
+        </div>
         <button class="primary" :disabled="loading || !sourceSql.trim()" @click="run">
           {{ loading ? t('xlate.translating') : t('xlate.translate') }}
         </button>
@@ -217,6 +228,9 @@ onUnmounted(() => controller?.abort())
   height: 100%;
   min-height: 0;
 }
+.mode-seg { display: inline-flex; gap: 2px; }
+.mode-seg button { padding: 3px 10px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--muted); cursor: pointer; }
+.mode-seg button.on { background: rgba(124, 108, 255, 0.18); color: var(--text); border-color: var(--accent); }
 .bar {
   display: flex;
   align-items: center;

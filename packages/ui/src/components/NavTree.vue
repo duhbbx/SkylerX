@@ -91,6 +91,14 @@ const emit = defineEmits<{
   openMppPartition: [connId: string, database?: string, table?: string]
   /** MySQL 高级(binlog/主从/变量) */
   openMysqlAdvanced: [connId: string]
+  /** PII 扫描 */
+  openPiiScanner: [connId: string, database?: string, schema?: string]
+  /** 脱敏视图 */
+  openMaskingView: [connId: string, database?: string, schema?: string, table?: string]
+  /** AI Insights */
+  openAiInsights: [connId: string, prefillSql?: string, prefillError?: string, tab?: 'slow' | 'error']
+  /** AI 反向 schema */
+  openAiSchemaReverse: [connId: string, database?: string]
 }>()
 
 // 批量可选的对象类型（与可删除类型一致）
@@ -285,6 +293,12 @@ const controller: TreeController = {
   openClickHouseAdvanced: (connId, database) => emit('openClickHouseAdvanced', connId, database),
   openMppPartition: (connId, database, table) => emit('openMppPartition', connId, database, table),
   openMysqlAdvanced: (connId) => emit('openMysqlAdvanced', connId),
+  openPiiScanner: (connId, database, schema) => emit('openPiiScanner', connId, database, schema),
+  openMaskingView: (connId, database, schema, table) =>
+    emit('openMaskingView', connId, database, schema, table),
+  openAiInsights: (connId, prefillSql, prefillError, tab) =>
+    emit('openAiInsights', connId, prefillSql, prefillError, tab),
+  openAiSchemaReverse: (connId, database) => emit('openAiSchemaReverse', connId, database),
 }
 
 provide(TreeControllerKey, controller)

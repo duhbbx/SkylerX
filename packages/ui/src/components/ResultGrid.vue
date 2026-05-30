@@ -385,6 +385,67 @@ async function doExport(format: ExportFormat): Promise<void> {
   })
 }
 
+/** 用 anchor download 触发二进制下载(saveText 只接字符串,xlsx/csv.gz 走这个)。 */
+function downloadBlobAs(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // 给浏览器一点时间触发下载,再释放
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** 导出 xlsx(用 xlsx 包,deps 里已有,惰性加载避免 bundle 变大)。 */
+async function doExportXlsx(): Promise<void> {
+  showExport.value = false
+  const cols = columnNames.value
+  if (!cols.length) return
+  const rows = ((props.editable ? localRows.value : props.result?.rows) ?? []) as Row[]
+  try {
+    const XLSX = await import('xlsx')
+    // aoa = array of arrays;第一行是表头
+    const aoa: unknown[][] = [cols, ...rows.map((r) => cols.map((c) => r[c] ?? null))]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+    const blob = new Blob([wbout], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    downloadBlobAs(`export-${Date.now()}.xlsx`, blob)
+    toast.success('xlsx 已导出')
+  } catch (e) {
+    toast.error(`xlsx 导出失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+/** 导出 csv.gz(用浏览器 CompressionStream API)。 */
+async function doExportCsvGz(): Promise<void> {
+  showExport.value = false
+  const cols = columnNames.value
+  if (!cols.length) return
+  const rows = ((props.editable ? localRows.value : props.result?.rows) ?? []) as Row[]
+  try {
+    const csv = toCSV(cols, rows)
+    if (typeof CompressionStream === 'undefined') {
+      // 老浏览器没 CompressionStream → 直接导未压缩 CSV
+      const blob = new Blob([csv], { type: 'text/csv' })
+      downloadBlobAs(`export-${Date.now()}.csv`, blob)
+      toast.warn('当前环境不支持 gzip,已退回未压缩 CSV')
+      return
+    }
+    const stream = new Blob([csv]).stream().pipeThrough(new CompressionStream('gzip'))
+    const buf = await new Response(stream).arrayBuffer()
+    downloadBlobAs(`export-${Date.now()}.csv.gz`, new Blob([buf], { type: 'application/gzip' }))
+    toast.success('csv.gz 已导出')
+  } catch (e) {
+    toast.error(`csv.gz 导出失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 function resetEdits(): void {
   const rows = props.result?.rows ?? []
   localRows.value = JSON.parse(JSON.stringify(rows)) as Row[]
@@ -1357,6 +1418,8 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
               @click.stop
             >
               <button @click="doExport('csv')">CSV</button>
+              <button @click="doExportCsvGz">CSV (gzip)</button>
+              <button @click="doExportXlsx">Excel (xlsx)</button>
               <button @click="doExport('json')">JSON</button>
               <button @click="doExport('sql')">SQL INSERT</button>
               <button @click="doExport('markdown')">Markdown</button>
