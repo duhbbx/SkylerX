@@ -19,7 +19,12 @@ import DialectSelect from './DialectSelect.vue'
 
 const client = useDataClient()
 
-const props = defineProps<{ connId: string | null; initialError?: string }>()
+const props = defineProps<{
+  connId: string | null
+  initialError?: string
+  /** 来自"在此分组下新建连接"的预填分组名 */
+  prefillGroup?: string
+}>()
 const emit = defineEmits<{ saved: [ConnectionConfig]; deleted: [string]; cancel: [] }>()
 
 // 方言列表:统一 "English (中文)" 格式,按英文名字典序 A-Z 排序;国产数据库中文注解放括号里。
@@ -128,6 +133,8 @@ async function load(): Promise<void> {
     Object.assign(form, blankForm())
     env.value = ''
     readOnly.value = false
+    // 来自"在此分组下新建连接"的预填
+    if (props.prefillGroup) form.group = props.prefillGroup
   }
   normalize()
   // 收集已有分组用于输入提示

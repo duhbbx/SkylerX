@@ -58,7 +58,7 @@ function fmtTime(ts: number): string {
 </script>
 
 <template>
-  <Modal :title="t('lineage.title', { col: column, table })" @close="emit('close')">
+  <Modal :title="t('lineage.title', { col: column, table })" width="wide" @close="emit('close')">
     <div class="lin">
       <p class="hint">{{ t('lineage.hint') }}</p>
       <div v-if="loading" class="empty">{{ t('lineage.loading') }}</div>

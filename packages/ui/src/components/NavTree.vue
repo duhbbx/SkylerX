@@ -14,6 +14,7 @@ import { connEnv } from '../connEnv'
 import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
 import type { ObjectKind, SqlTemplateKind } from '../ddl'
+import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { t } from '../i18n'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
@@ -99,6 +100,8 @@ const emit = defineEmits<{
   openAiInsights: [connId: string, prefillSql?: string, prefillError?: string, tab?: 'slow' | 'error']
   /** AI 反向 schema */
   openAiSchemaReverse: [connId: string, database?: string]
+  /** 在指定分组下新建连接(空白菜单 → 新建连接 → 预填 group) */
+  newConnInGroup: [groupName: string]
 }>()
 
 // 批量可选的对象类型（与可删除类型一致）
@@ -303,8 +306,131 @@ const controller: TreeController = {
 
 provide(TreeControllerKey, controller)
 
+/** 空白区右键:新建连接 / 新建分组 / 刷新。 */
+function onTreeBodyContextmenu(e: MouseEvent): void {
+  // 在 tree-node / group-row 上的右键由它们自己拦截,这里只处理空白区
+  const target = e.target as HTMLElement | null
+  if (target?.closest('.tree-node') || target?.closest('.group-row')) return
+  e.preventDefault()
+  menu.x = e.clientX
+  menu.y = e.clientY
+  menu.node = null
+  menu.connId = ''
+  menu.entries = [
+    {
+      id: 'new-conn-blank',
+      label: 'ctx.new-conn',
+      kinds: [],
+      run: () => emit('newConn'),
+    } as TreeAction,
+    {
+      id: 'new-group-blank',
+      label: 'ctx.new-group',
+      kinds: [],
+      run: () => void onNewGroup(),
+    } as TreeAction,
+    { divider: true, id: 'd-blank-1' },
+    {
+      id: 'refresh-tree-blank',
+      label: 'ctx.refresh',
+      kinds: [],
+      run: () => void reload(),
+    } as TreeAction,
+  ]
+  menu.visible = true
+}
+
+/** 分组行右键:重命名 / 在此组新建连接 / 删除分组。 */
+function onGroupContextmenu(e: MouseEvent, groupName: string): void {
+  e.preventDefault()
+  e.stopPropagation()
+  menu.x = e.clientX
+  menu.y = e.clientY
+  menu.node = null
+  menu.connId = ''
+  menu.entries = [
+    {
+      id: 'rename-group',
+      label: 'ctx.rename-group',
+      kinds: [],
+      run: () => void onRenameGroup(groupName),
+    } as TreeAction,
+    {
+      id: 'new-conn-in-group',
+      label: 'ctx.new-conn-in-group',
+      kinds: [],
+      run: () => emit('newConnInGroup', groupName),
+    } as TreeAction,
+    { divider: true, id: 'd-group-1' },
+    {
+      id: 'delete-group',
+      label: 'ctx.delete-group',
+      kinds: [],
+      section: 'danger',
+      danger: true,
+      run: () => void onDeleteGroup(groupName),
+    } as TreeAction,
+  ]
+  menu.visible = true
+}
+
+async function onNewGroup(): Promise<void> {
+  const name = await appPrompt({ message: t('ctx.new-group'), defaultValue: '新分组' })
+  if (!name?.trim()) return
+  // 新建分组的语义 = 立刻在该组下建一个连接;不需要持久化空组
+  emit('newConnInGroup', name.trim())
+}
+
+async function onRenameGroup(oldName: string): Promise<void> {
+  const newName = await appPrompt({ message: t('ctx.rename-group'), defaultValue: oldName })
+  if (!newName?.trim() || newName.trim() === oldName) return
+  try {
+    const conns: ConnectionConfig[] = await client.connections.list()
+    for (const c of conns) {
+      if (c.group === oldName) {
+        const full = await client.connections.get(c.id)
+        full.group = newName.trim()
+        await client.connections.update(full)
+      }
+    }
+    await reload()
+    toast.success(`${oldName} → ${newName.trim()}`)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  }
+}
+
+async function onDeleteGroup(name: string): Promise<void> {
+  if (
+    !(await appConfirm({
+      message: `从所有连接中移除分组 "${name}" ?连接保留,只清掉 group 标签`,
+      variant: 'danger',
+    }))
+  )
+    return
+  try {
+    const conns: ConnectionConfig[] = await client.connections.list()
+    for (const c of conns) {
+      if (c.group === name) {
+        const full = await client.connections.get(c.id)
+        full.group = undefined
+        await client.connections.update(full)
+      }
+    }
+    await reload()
+    toast.success(`已删除分组 "${name}"`)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  }
+}
+
 function onMenuPick(action: TreeAction): void {
-  if (menu.node) action.run({ node: menu.node, connId: menu.connId, ctrl: controller })
+  if (menu.node) {
+    action.run({ node: menu.node, connId: menu.connId, ctrl: controller })
+  } else {
+    // 空白区 / 分组行的 action.run 不依赖 ctx,签名是 () => void
+    ;(action.run as unknown as () => void)()
+  }
   menu.visible = false
 }
 
@@ -463,11 +589,11 @@ onMounted(reload)
         <button class="icon" :title="t('nav.collapseAll')" @click="collapseAll">⊟</button>
       </span>
     </div>
-    <div ref="treeBodyEl" class="tree-body">
+    <div ref="treeBodyEl" class="tree-body" @contextmenu="onTreeBodyContextmenu">
       <div v-if="!roots.length" class="tree-status">{{ t('nav.empty') }}</div>
 
       <template v-for="g in groupList" :key="'g:' + g.name">
-        <div class="group-row" @click="toggleGroup(g.name)">
+        <div class="group-row" @click="toggleGroup(g.name)" @contextmenu="onGroupContextmenu($event, g.name)">
           <span class="caret">{{ expandedGroups.has(g.name) ? '▾' : '▸' }}</span>
           <span class="folder">📁</span>
           <span class="gname">{{ g.name }}</span>

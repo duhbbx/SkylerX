@@ -1429,7 +1429,7 @@ defineExpose({
         </span>
       </template>
       <span class="tb-sep" />
-      <button :title="t('query.format.title')" @click="formatSql">fx {{ t('query.format') }}</button>
+      <button :title="t('query.format.title')" @click="formatSql">{{ t('query.format') }}</button>
       <button class="ghost" :title="t('query.ai.title')" @click="askAi">✨ AI</button>
       <span class="tb-sep" />
       <!-- 更多操作下拉：用 position:fixed 渲染，避免被 toolbar 的 overflow:auto 裁切 / 被下方 Monaco 编辑器盖住 -->

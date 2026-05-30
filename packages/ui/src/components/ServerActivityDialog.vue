@@ -12,7 +12,7 @@
  * 每个面板：列表 + 选行后右下 KILL（mysql `KILL <pid>` / pg `pg_terminate_backend(pid)` / mssql `KILL <spid>`），
  * 顶部有「刷新」按钮 + 可选自动刷新（2s/5s/10s）。
  */
-import type { ConnectionConfig, QueryResult } from '@db-tool/shared-types'
+import { DbKind, dialectKind, type ConnectionConfig, type QueryResult } from '@db-tool/shared-types'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf } from '../ddl'
@@ -34,7 +34,10 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 复用 ddl.ts 的 familyOf()：CockroachDB / Greenplum / OpenGauss / H2 已被归入 'pg' 家族，
 // 因此会自动走 PG 的 pg_stat_activity / pg_stat_statements 查询分支。
-function familyOfConn(): 'mysql' | 'pg' | 'mssql' | 'other' {
+function familyOfConn(): 'mysql' | 'pg' | 'mssql' | 'nosql' | 'other' {
+  // NoSQL(Redis/Mongo/ES)这个面板完全不适用 — ddl.familyOf 兜底会回 'mysql',会导致
+  // 用 SQL 去打 Redis 直接抛 SQL_CHANNEL_UNSUPPORTED。这里先按 dialectKind 短路。
+  if (dialectKind(props.conn.dialect) === DbKind.NoSql) return 'nosql'
   const f = familyOf(props.conn.dialect)
   if (f === 'sqlserver') return 'mssql'
   if (f === 'mysql' || f === 'pg') return f
@@ -139,6 +142,12 @@ function sqlFor(tab: TabId): string | null {
 }
 
 async function load(): Promise<void> {
+  if (familyOfConn() === 'nosql') {
+    error.value =
+      'NoSQL 方言不适用本面板。Redis 请用「⚙ 服务器」→ 客户端/慢日志;MongoDB/ES 同。'
+    result.value = null
+    return
+  }
   const sql = sqlFor(active.value)
   if (!sql) {
     error.value = t('activity.unsupported')
@@ -213,7 +222,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Modal :title="t('activity.title', { conn: conn.name || conn.dialect })" @close="emit('close')">
+  <Modal :title="t('activity.title', { conn: conn.name || conn.dialect })" width="wide" @close="emit('close')">
     <div class="act">
       <!-- Tab 切换 -->
       <div class="tabs">
@@ -274,6 +283,9 @@ onBeforeUnmount(() => {
   padding: 0 0 8px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 8px;
+  /* 防止文字过多自动换行(刷新选项/tab 名称中文较长时容易 wrap) */
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 .tabs button {
   padding: 5px 12px;
@@ -283,6 +295,8 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   color: var(--muted);
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tabs button:hover { color: var(--text); background: rgba(124, 108, 255, 0.10); }
 .tabs button.on { color: var(--accent); border-color: var(--accent); }

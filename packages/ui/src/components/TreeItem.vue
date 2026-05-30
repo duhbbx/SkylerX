@@ -98,8 +98,10 @@ function onContext(e: MouseEvent): void {
       @dblclick="onOpen"
       @contextmenu="onContext"
     >
-      <span class="caret" @click.stop="toggle" @dblclick.stop>
-        {{ node.hasChildren ? (node.expanded ? '▾' : '▸') : '' }}
+      <span class="caret" :class="{ loading: node.loading }" @click.stop="toggle" @dblclick.stop>
+        <!-- 加载中用 caret 上的 spinner 代替单独一行 "加载中..." 提示,
+             避免空目录展开瞬间下方兄弟节点闪动(那一行 ~22px 一进一出导致重排) -->
+        {{ node.loading ? '⟳' : node.hasChildren ? (node.expanded ? '▾' : '▸') : '' }}
       </span>
       <!-- 连接节点：显示对应数据库品牌 logo（用户报告：一眼分清是哪个数据库）；
            其他节点保留原 emoji 字符。 -->
@@ -130,9 +132,8 @@ function onContext(e: MouseEvent): void {
     </div>
 
     <template v-if="node.expanded">
-      <div v-if="node.loading" class="tree-msg" :style="{ paddingLeft: (depth + 1) * 14 + 8 + 'px' }">
-        {{ t('nav.loading') }}
-      </div>
+      <!-- 之前这里有 v-if="node.loading" 的 "加载中..." 行,会引起兄弟节点重排闪烁;
+           现在改为 caret 上显示 ⟳ spinner,这里只渲染真实 children。 -->
       <TreeItem
         v-for="child in displayChildren"
         :key="child.kind + ':' + child.group + ':' + child.name"
@@ -221,6 +222,15 @@ function onContext(e: MouseEvent): void {
   padding: 3px 8px;
   color: var(--muted);
   font-size: 12px;
+}
+.caret.loading {
+  color: var(--accent);
+  animation: caret-spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes caret-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 .tree-err {
   padding: 4px 8px 4px 24px;

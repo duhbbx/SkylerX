@@ -1357,6 +1357,11 @@ const DICT: Record<string, [string, string]> = {
   'ctx.masking-view': ['生成脱敏视图…', 'Generate masked view…'],
   'ctx.ai-insights': ['AI 诊断(慢 SQL / 错误)', 'AI insights (slow SQL / errors)'],
   'ctx.ai-schema-reverse': ['AI 反向推断 schema…', 'AI infer schema…'],
+  'ctx.new-conn': ['新建连接…', 'New connection…'],
+  'ctx.new-group': ['新建分组…', 'New group…'],
+  'ctx.new-conn-in-group': ['在此分组下新建连接…', 'New connection in this group…'],
+  'ctx.rename-group': ['重命名分组…', 'Rename group…'],
+  'ctx.delete-group': ['删除分组(连接保留)', 'Delete group (keep conns)'],
   'ctx.redis-flush-db': ['清空当前库 (FLUSHDB)', 'Flush this database (FLUSHDB)'],
   'ctx.redis-flush-all': ['清空整个实例 (FLUSHALL)', 'Flush entire instance (FLUSHALL)'],
 

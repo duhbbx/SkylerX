@@ -77,7 +77,7 @@ async function loadHistory(): Promise<void> {
 </script>
 
 <template>
-  <Modal :title="t('rowhist.title', { table })" @close="emit('close')">
+  <Modal :title="t('rowhist.title', { table })" width="wide" @close="emit('close')">
     <div class="rh">
       <div class="cfg">
         <span class="lbl">{{ t('rowhist.shadowTable') }}</span>

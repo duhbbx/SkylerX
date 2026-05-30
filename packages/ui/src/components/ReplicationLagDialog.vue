@@ -371,7 +371,7 @@ function headerLabel(name: string): string {
 </script>
 
 <template>
-  <Modal :title="t('repl.title', { conn: conn.name || conn.dialect })" @close="emit('close')">
+  <Modal :title="t('repl.title', { conn: conn.name || conn.dialect })" width="wide" @close="emit('close')">
     <div class="repl">
       <!-- 顶部：方言判定 + 角色 + 刷新控制 -->
       <div class="head">

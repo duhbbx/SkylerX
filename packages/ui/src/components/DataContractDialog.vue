@@ -129,7 +129,7 @@ function importJson(): void {
 </script>
 
 <template>
-  <Modal :title="t('contract.title')" @close="emit('close')">
+  <Modal :title="t('contract.title')" width="wide" @close="emit('close')">
     <div class="ct">
       <div class="bar">
         <button class="primary" @click="addNew">+ {{ t('contract.add') }}</button>

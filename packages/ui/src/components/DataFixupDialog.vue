@@ -142,7 +142,7 @@ UPDATE ${qt} SET ${c} = NULL WHERE ${c} IS NOT NULL ${filter};`
 </script>
 
 <template>
-  <Modal :title="t('fixup.title', { table })" @close="emit('close')">
+  <Modal :title="t('fixup.title', { table })" width="wide" @close="emit('close')">
     <div class="fix">
       <div class="tabs">
         <button :class="{ on: active === 'dup' }" @click="active = 'dup'">🔍 {{ t('fixup.tabDup') }}</button>

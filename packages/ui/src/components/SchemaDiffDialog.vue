@@ -127,7 +127,7 @@ function openInQuery(): void {
 </script>
 
 <template>
-  <Modal :title="t('sdiff.title')" @close="emit('close')">
+  <Modal :title="t('sdiff.title')" width="xl" fixed-height storage-key="schema-diff" @close="emit('close')">
     <div class="diff">
       <div class="pickers">
         <div class="side">

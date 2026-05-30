@@ -124,7 +124,7 @@ function openInQuery(): void {
 </script>
 
 <template>
-  <Modal :title="t('priv.title')" @close="emit('close')">
+  <Modal :title="t('priv.title')" width="xl" fixed-height storage-key="privileges" @close="emit('close')">
     <div class="priv">
       <div class="bar">
         <select v-model="connId" @change="loadUsers">

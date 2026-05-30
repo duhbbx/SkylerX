@@ -137,7 +137,7 @@ function previewCols(card: Card): string[] {
 </script>
 
 <template>
-  <Modal :title="t('dash.title')" @close="emit('close')">
+  <Modal :title="t('dash.title')" width="wide" @close="emit('close')">
     <div class="dash">
       <div class="dash-bar">
         <button class="primary" @click="addCard">+ {{ t('dash.addCard') }}</button>

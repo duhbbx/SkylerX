@@ -64,6 +64,24 @@ const unsupportedReason = computed<string | null>(() => {
   }
 })
 
+/** 该方言的 CREATE DATABASE 是否支持 COMMENT 子句(或独立 COMMENT ON 语句)。 */
+const supportsComment = computed<boolean>(() => {
+  switch (props.conn.dialect) {
+    case DbDialect.PostgreSQL:
+    case DbDialect.KingbaseES:
+    case DbDialect.OpenGauss:
+    case DbDialect.Greenplum:
+    case DbDialect.CockroachDB:
+    case DbDialect.Redshift:
+    case DbDialect.ClickHouse:
+    case DbDialect.Snowflake:
+      return true
+    // MySQL/MariaDB/OceanBase/TiDB/Doris/StarRocks/SqlServer/TDengine 都不支持
+    default:
+      return false
+  }
+})
+
 /** Charset 选项(按方言推荐)。 */
 const charsetOptions = computed<string[]>(() => {
   switch (props.conn.dialect) {
@@ -270,10 +288,10 @@ watch(
           </select>
         </div>
 
-        <div class="row">
+        <!-- MySQL 系 CREATE DATABASE 没有 COMMENT 语法,按方言隐藏 -->
+        <div v-if="supportsComment" class="row">
           <label class="lbl">注释</label>
           <input v-model="comment" class="ip" placeholder="可选,描述用途" />
-          <div class="meta">注:MySQL 系不支持库注释,会被忽略</div>
         </div>
       </template>
 

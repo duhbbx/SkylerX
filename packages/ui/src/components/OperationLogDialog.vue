@@ -86,7 +86,7 @@ async function exportCsv(): Promise<void> {
 </script>
 
 <template>
-  <Modal :title="t('oplog.title')" @close="emit('close')">
+  <Modal :title="t('oplog.title')" width="wide" @close="emit('close')">
     <div class="oplog">
       <div class="bar">
         <input v-model="term" class="q" :placeholder="t('oplog.searchPh')" />

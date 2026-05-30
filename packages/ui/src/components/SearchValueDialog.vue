@@ -177,7 +177,7 @@ async function runSearch(): Promise<void> {
 </script>
 
 <template>
-  <Modal :title="t('search.title')" @close="emit('close')">
+  <Modal :title="t('search.title')" width="xl" fixed-height storage-key="search-value" @close="emit('close')">
     <div class="srch">
       <div class="bar">
         <select v-model="connId" :title="t('aichat.conn')">

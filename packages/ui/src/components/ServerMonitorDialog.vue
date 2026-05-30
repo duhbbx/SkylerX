@@ -141,7 +141,7 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <Modal :title="t('monitor.title')" @close="emit('close')">
+  <Modal :title="t('monitor.title')" width="wide" @close="emit('close')">
     <div class="mon">
       <select v-model="connId" class="sel">
         <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name || c.id }} · {{ c.dialect }}</option>

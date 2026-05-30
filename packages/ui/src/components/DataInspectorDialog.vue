@@ -295,7 +295,7 @@ void switchTab('sample')
 </script>
 
 <template>
-  <Modal :title="t('inspect.title', { table })" @close="emit('close')">
+  <Modal :title="t('inspect.title', { table })" width="wide" @close="emit('close')">
     <div class="ins">
       <div class="tabs">
         <button :class="{ on: active === 'sample' }" @click="switchTab('sample')">📊 {{ t('inspect.tabSample') }}</button>

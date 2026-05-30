@@ -136,7 +136,7 @@ function preview(h: Hit): void {
 </script>
 
 <template>
-  <Modal :title="t('osearch.title')" @close="emit('close')">
+  <Modal :title="t('osearch.title')" width="wide" @close="emit('close')">
     <div class="osearch">
       <div class="bar">
         <select v-model="connId" class="conn">

@@ -128,7 +128,8 @@ const aiChatRef = useTemplateRef('aiChatRef')
 const client = useDataClient()
 
 // editing 非空 → 弹出连接表单弹窗；error 为连接失败信息（自动弹窗时带上）
-const editing = ref<{ connId: string | null; error?: string } | null>(null)
+// prefillGroup:新建时如果是从"分组右键"触发,提前把 group 字段填好
+const editing = ref<{ connId: string | null; error?: string; prefillGroup?: string } | null>(null)
 
 // 删除确认弹窗
 const dropConfirm = ref<{
@@ -178,6 +179,11 @@ const dropCascadeApplicable = computed(() =>
 
 function onNew(): void {
   editing.value = { connId: null }
+}
+
+/** 在指定分组下新建连接(导航树空白菜单/分组菜单触发)。 */
+function onNewConnInGroup(group: string): void {
+  editing.value = { connId: null, prefillGroup: group }
 }
 
 function onEditConn(id: string): void {
@@ -1939,9 +1945,29 @@ function dispatchCommand(cmdId: string): boolean {
   }
 }
 
+// 双击 Shift 全局触发全文搜索:相邻两次 Shift 间隔 < 350ms 算"双击"
+let lastShiftAt = 0
+const DOUBLE_SHIFT_WINDOW_MS = 350
+
 function onKeydown(e: KeyboardEvent): void {
-  // K1：先查用户自定义快捷键。若 chord 命中一个已知命令，执行后 return。
-  // 用户未改的 chord 会等同 DEFAULT_KEY_BINDINGS → 下面硬编码分支仍可命中（双保险）。
+  // 双击 Shift → 全文搜索(任何 focus 都生效;编辑器里也行)
+  // 只在 Shift 键单独按时触发(不带 Ctrl/Meta/Alt + 不带其它字符键)
+  if (e.key === 'Shift' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
+    const now = performance.now()
+    if (now - lastShiftAt < DOUBLE_SHIFT_WINDOW_MS) {
+      lastShiftAt = 0
+      // 双击命中:打开全文搜索;连接 id 用当前活跃 tab 的连接,没有则空
+      const activeConnId = (tabsRef.value?.activeConnId as unknown as { value: string } | undefined)?.value ?? ''
+      searchValueOpen.value = { connId: activeConnId }
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+    lastShiftAt = now
+  }
+
+  // K1:先查用户自定义快捷键。若 chord 命中一个已知命令,执行后 return。
+  // 用户未改的 chord 会等同 DEFAULT_KEY_BINDINGS → 下面硬编码分支仍可命中(双保险)。
   const chord = chordFromEvent(e)
   if (chord) {
     const bindings = getBindings(settings.keyBindings)
@@ -1949,13 +1975,17 @@ function onKeydown(e: KeyboardEvent): void {
       if (c !== chord) continue
       if (dispatchCommand(cmdId)) {
         e.preventDefault()
+        e.stopPropagation()
         return
       }
       break
     }
   }
   if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    // Monaco 编辑器自己绑了 Cmd+K(deleteLines 等),这里 capture 阶段抢先
+    // + stopPropagation 阻止它接收到。
     e.preventDefault()
+    e.stopPropagation()
     if (paletteOpen.value) paletteOpen.value = false
     else void openPalette()
   } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
@@ -1980,8 +2010,10 @@ function onKeydown(e: KeyboardEvent): void {
     zoomReset()
   }
 }
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+// capture 阶段注册,优先级高于 Monaco 编辑器自己注册的 keydown,
+// 让 Cmd+K / 双击 Shift 等全局快捷键不会被编辑器吃掉。
+onMounted(() => window.addEventListener('keydown', onKeydown, true))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
 
 /**
  * 应用菜单命令路由：主进程菜单点击后 send('menu:command', key)，按 key 调对应方法。
@@ -2087,6 +2119,7 @@ onUnmounted(() => unsubMenu?.())
   <NavTree
     ref="navRef"
     @new-conn="onNew"
+    @new-conn-in-group="onNewConnInGroup"
     @edit-conn="onEditConn"
     @select-conn="onSelectConn"
     @new-query="onNewQuery"
@@ -2203,6 +2236,7 @@ onUnmounted(() => unsubMenu?.())
       ref="connFormRef"
       :conn-id="editing.connId"
       :initial-error="editing.error"
+      :prefill-group="editing.prefillGroup"
       @saved="onSaved"
       @deleted="onDeleted"
       @cancel="onCancelConn"

@@ -223,7 +223,7 @@ function fmtTime(ts: number): string {
 </script>
 
 <template>
-  <Modal :title="t('snap.title', { conn: conn.name || conn.dialect })" @close="emit('close')">
+  <Modal :title="t('snap.title', { conn: conn.name || conn.dialect })" width="wide" @close="emit('close')">
     <div class="snap">
       <!-- 列表视图 -->
       <template v-if="!diffOf">
