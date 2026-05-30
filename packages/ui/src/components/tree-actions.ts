@@ -518,6 +518,23 @@ export const TREE_ACTIONS: TreeAction[] = [
       ctrl.openAiSchemaReverse(connId, database)
     },
   },
+  // AI 建表助手(对话式):从业务需求出多表 schema + 关系 + 索引
+  {
+    id: 'ai-schema-architect',
+    label: 'ctx.ai-schema-architect',
+    section: 'create',
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
+    excludeKind: DbKind.NoSql,
+    run: ({ node, connId, ctrl }) => {
+      const database =
+        node.kind === MetaNodeKind.Database
+          ? node.name
+          : node.kind === MetaNodeKind.Schema
+            ? node.path[0]
+            : undefined
+      ctrl.openAiSchemaArchitect(connId, database)
+    },
+  },
 
   // ── G1 AI 数据库体检 / C5 索引推荐：连接级，挂 Connection 节点右键 ──
   // 对 Redis/Mongo/ES 没有"表/索引"概念,这两个功能无意义,按方言隐藏。

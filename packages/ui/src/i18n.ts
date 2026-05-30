@@ -1357,6 +1357,7 @@ const DICT: Record<string, [string, string]> = {
   'ctx.masking-view': ['生成脱敏视图…', 'Generate masked view…'],
   'ctx.ai-insights': ['AI 诊断(慢 SQL / 错误)', 'AI insights (slow SQL / errors)'],
   'ctx.ai-schema-reverse': ['AI 反向推断 schema…', 'AI infer schema…'],
+  'ctx.ai-schema-architect': ['AI 建表助手(对话式)…', 'AI architect (chat)…'],
   'ctx.new-conn': ['新建连接…', 'New connection…'],
   'ctx.new-group': ['新建分组…', 'New group…'],
   'ctx.new-conn-in-group': ['在此分组下新建连接…', 'New connection in this group…'],

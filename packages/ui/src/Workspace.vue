@@ -50,7 +50,9 @@ import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import AiInsightsDialog from './components/AiInsightsDialog.vue'
+import AiSchemaArchitectDialog from './components/AiSchemaArchitectDialog.vue'
 import PasteImportDialog from './components/PasteImportDialog.vue'
+import WorkspaceExportDialog from './components/WorkspaceExportDialog.vue'
 import AiSchemaReverseDialog from './components/AiSchemaReverseDialog.vue'
 import DataMaskingViewDialog from './components/DataMaskingViewDialog.vue'
 import PiiScannerDialog from './components/PiiScannerDialog.vue'
@@ -1337,6 +1339,10 @@ const aiInsightsOpen = ref<{
 const aiSchemaRevOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
 /** Excel/CSV 粘贴智能导入 */
 const pasteImportOpen = ref<{ preferConnId?: string; prefillRows?: string[][] } | null>(null)
+/** AI 建表助手(对话式) */
+const aiArchOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
+/** Workspace 导出/导入 */
+const wsExportOpen = ref<boolean>(false)
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -2184,6 +2190,8 @@ onUnmounted(() => unsubMenu?.())
     @open-masking-view="(cid, db, sch, tbl) => client.connections.get(cid).then(c => { maskingViewOpen = { conn: c, database: db, schema: sch, table: tbl } })"
     @open-ai-insights="(cid, sql, err, tab) => client.connections.get(cid).then(c => { aiInsightsOpen = { conn: c, prefillSql: sql, prefillError: err, initialTab: tab } })"
     @open-ai-schema-reverse="(cid, db) => client.connections.get(cid).then(c => { aiSchemaRevOpen = { conn: c, database: db } })"
+    @open-ai-schema-architect="(cid, db) => client.connections.get(cid).then(c => { aiArchOpen = { conn: c, database: db } })"
+    @open-workspace-export="wsExportOpen = true"
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
@@ -2707,6 +2715,23 @@ onUnmounted(() => unsubMenu?.())
     :prefer-conn-id="pasteImportOpen.preferConnId"
     :prefill-rows="pasteImportOpen.prefillRows"
     @close="pasteImportOpen = null"
+  />
+
+  <!-- AI 建表助手 -->
+  <AiSchemaArchitectDialog
+    v-if="aiArchOpen"
+    :open="!!aiArchOpen"
+    :conn="aiArchOpen.conn"
+    :database="aiArchOpen.database"
+    @close="aiArchOpen = null"
+  />
+
+  <!-- Workspace 导出/导入 -->
+  <WorkspaceExportDialog
+    v-if="wsExportOpen"
+    :open="wsExportOpen"
+    @close="wsExportOpen = false"
+    @imported="navRef?.reload()"
   />
 
   <!-- 新建数据库 -->

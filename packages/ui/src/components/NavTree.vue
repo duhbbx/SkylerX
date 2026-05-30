@@ -101,8 +101,12 @@ const emit = defineEmits<{
   openAiInsights: [connId: string, prefillSql?: string, prefillError?: string, tab?: 'slow' | 'error']
   /** AI 反向 schema */
   openAiSchemaReverse: [connId: string, database?: string]
+  /** AI 建表助手 */
+  openAiSchemaArchitect: [connId: string, database?: string]
   /** 在指定分组下新建连接(空白菜单 → 新建连接 → 预填 group) */
   newConnInGroup: [groupName: string]
+  /** 打开 Workspace 导出/导入对话框 */
+  openWorkspaceExport: []
 }>()
 
 // 批量可选的对象类型（与可删除类型一致）
@@ -303,6 +307,7 @@ const controller: TreeController = {
   openAiInsights: (connId, prefillSql, prefillError, tab) =>
     emit('openAiInsights', connId, prefillSql, prefillError, tab),
   openAiSchemaReverse: (connId, database) => emit('openAiSchemaReverse', connId, database),
+  openAiSchemaArchitect: (connId, database) => emit('openAiSchemaArchitect', connId, database),
 }
 
 provide(TreeControllerKey, controller)
@@ -596,6 +601,8 @@ onMounted(reload)
           :title="settings.maskingEnabled ? '截图模式 ON — 点关闭' : '截图模式 OFF — 点开启脱敏'"
           @click="settings.maskingEnabled = !settings.maskingEnabled"
         >{{ settings.maskingEnabled ? '🙈' : '👁' }}</button>
+        <!-- Workspace 导出/导入(换电脑 / 团队共享) -->
+        <button class="icon" title="导出/导入 workspace(连接 + Snippets)" @click="emit('openWorkspaceExport')">💾</button>
       </span>
     </div>
     <div ref="treeBodyEl" class="tree-body" @contextmenu="onTreeBodyContextmenu">

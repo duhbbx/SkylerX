@@ -137,6 +137,8 @@ export interface TreeController {
   openAiInsights(connId: string, prefillSql?: string, prefillError?: string, tab?: 'slow' | 'error'): void
   /** AI 反向工程 schema(从 sample 推断) */
   openAiSchemaReverse(connId: string, database?: string): void
+  /** AI 建表助手(对话式) */
+  openAiSchemaArchitect(connId: string, database?: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')
