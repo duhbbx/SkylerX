@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS connections (
   group_name   TEXT,
   extra_json   TEXT,
   created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+  updated_at   INTEGER NOT NULL,
+  -- 用户拖拽排序的相对位置(REAL 支持 0.5 这种插队值, 避免每次重排所有行)
+  sort_index   REAL
 );
 
 CREATE TABLE IF NOT EXISTS query_history (

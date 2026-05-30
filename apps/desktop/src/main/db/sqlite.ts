@@ -25,6 +25,7 @@ export function getDb(): Database.Database {
 function migrate(db: Database.Database): void {
   ensureColumn(db, 'connections', 'ssh_json', 'TEXT')
   ensureColumn(db, 'connections', 'group_name', 'TEXT')
+  ensureColumn(db, 'connections', 'sort_index', 'REAL') // 拖拽排序
   // 历史增强:标签 / 备注 / 置顶,supportable on old db
   ensureColumn(db, 'query_history', 'tags', 'TEXT')
   ensureColumn(db, 'query_history', 'note', 'TEXT')

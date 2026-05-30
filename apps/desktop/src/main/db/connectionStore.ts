@@ -23,6 +23,7 @@ interface ConnectionRow {
   extra_json: string | null
   created_at: number
   updated_at: number
+  sort_index: number | null
 }
 
 /** 用系统钥匙串加密密码；不可用时降级为 base64（仅开发兜底，附前缀以便识别）。 */
@@ -77,6 +78,7 @@ function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfi
     extra: row.extra_json ? JSON.parse(row.extra_json) : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    sortIndex: row.sort_index ?? undefined,
   }
 }
 
@@ -104,8 +106,8 @@ export function createConnection(input: ConnectionConfig): ConnectionConfig {
   getDb()
     .prepare(
       `INSERT INTO connections
-        (id, name, dialect, host, port, username, password_enc, database, ssl_json, ssh_json, group_name, extra_json, created_at, updated_at)
-       VALUES (@id, @name, @dialect, @host, @port, @username, @password_enc, @database, @ssl_json, @ssh_json, @group_name, @extra_json, @created_at, @updated_at)`,
+        (id, name, dialect, host, port, username, password_enc, database, ssl_json, ssh_json, group_name, extra_json, created_at, updated_at, sort_index)
+       VALUES (@id, @name, @dialect, @host, @port, @username, @password_enc, @database, @ssl_json, @ssh_json, @group_name, @extra_json, @created_at, @updated_at, @sort_index)`,
     )
     .run({
       id,
@@ -122,6 +124,7 @@ export function createConnection(input: ConnectionConfig): ConnectionConfig {
       extra_json: input.extra ? JSON.stringify(input.extra) : null,
       created_at: now,
       updated_at: now,
+      sort_index: input.sortIndex ?? null,
     })
   return { ...rowToConfig({ ...toRow(input, id, now, now) }, false) }
 }
@@ -141,7 +144,7 @@ export function updateConnection(input: ConnectionConfig): ConnectionConfig {
        name=@name, dialect=@dialect, host=@host, port=@port, username=@username,
        password_enc=@password_enc, database=@database, ssl_json=@ssl_json,
        ssh_json=@ssh_json, group_name=@group_name,
-       extra_json=@extra_json, updated_at=@updated_at
+       extra_json=@extra_json, updated_at=@updated_at, sort_index=@sort_index
      WHERE id=@id`,
   ).run({
     id: input.id,
@@ -157,6 +160,7 @@ export function updateConnection(input: ConnectionConfig): ConnectionConfig {
     group_name: input.group?.trim() || null,
     extra_json: input.extra ? JSON.stringify(input.extra) : null,
     updated_at: now,
+    sort_index: input.sortIndex ?? null,
   })
   const updated = db
     .prepare('SELECT * FROM connections WHERE id = ?')
@@ -189,6 +193,7 @@ function toRow(
     extra_json: input.extra ? JSON.stringify(input.extra) : null,
     created_at: createdAt,
     updated_at: updatedAt,
+    sort_index: input.sortIndex ?? null,
   }
 }
 
