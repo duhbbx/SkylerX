@@ -10,8 +10,20 @@ type Width = 'normal' | 'medium' | 'wide' | 'xl'
 
 // 全局自增 z-index：每次新 Modal 挂载时拿一个比之前都高的层级，
 // 这样后打开的 modal 自动盖在前面的之上（比如从 AI 助手里打开「配置」时不被反盖）。
+//
+// 层级规划(跟 AppDialogs / Toasts 等固定 z-index 错开):
+//   2000-2999 普通 Modal (modalZBase + seq)
+//   2900     Toast(右下角通知, 不阻挡操作)
+//   3000     AppDialogs 系统级 confirm/alert/prompt(故意比普通 Modal 高)
+//   3200     SavedCard
+//   9999     ThemedSelect.ts-panel(teleport popup)
+//   ≥10000   topmost Modal — 强制在最顶,等同 OS 原生文件对话框
+//             代表"用户必须先处理这个,其它一切都被遮"的最高优先级,
+//             目前只有 SaveFileDialog 用(folder chooser 性质上等同原生 file dialog)
 const modalZBase = 2000
+const modalZTopmost = 10000
 let modalZSeq = 0
+let modalZTopmostSeq = 0
 
 const props = defineProps<{
   title?: string
@@ -33,6 +45,12 @@ const props = defineProps<{
    * 用于「未保存修改」类提示——脏表单关闭时弹 confirm，用户取消即不关。
    */
   beforeClose?: () => boolean | Promise<boolean>
+  /**
+   * 最顶层模式: z-index ≥ 10000, 强制盖在所有其它 Modal / appConfirm / ThemedSelect popup 之上.
+   * 仅用于"文件对话框"这类等同于 OS 原生 modal 的场景(SaveFileDialog 等),
+   * 普通业务弹窗不要开,会破坏正常的层级语义.
+   */
+  topmost?: boolean
 }>()
 const emit = defineEmits<{ close: [] }>()
 
@@ -54,7 +72,7 @@ function onKey(e: KeyboardEvent): void {
 
 const widthClass = computed(() => `w-${props.width ?? 'normal'}`)
 const modalEl = ref<HTMLDivElement>()
-const myZ = ref(modalZBase + ++modalZSeq)
+const myZ = ref(props.topmost ? modalZTopmost + ++modalZTopmostSeq : modalZBase + ++modalZSeq)
 
 /** 持久化的尺寸（仅 fixedHeight + storageKey 时启用）。 */
 function loadSize(): { width?: number; height?: number } {
