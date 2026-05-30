@@ -596,8 +596,9 @@ function fmt(v: unknown, colName?: string): string {
   if (v === null || v === undefined) return settings.nullDisplay
   if (isSqlSentinel(v)) return v.__sql
   if (isBlob(v)) return `<BLOB ${blobSize(v)} bytes>`
-  // #13 数据脱敏：编辑态不脱敏（要改原值）；只读态按列名规则遮罩
-  if (!props.editable && colName && settings.maskingEnabled) {
+  // #13 数据脱敏:截图模式开关 → 任何场景(包括编辑表)都遮罩,只影响渲染显示;
+  // 编辑保留原值在 row 数据里,提交时仍走真值,所以脱敏不影响数据更新。
+  if (colName && settings.maskingEnabled) {
     const rule = ruleFor(colName, settings.maskingRules)
     if (rule) {
       const masked = applyMask(typeof v === 'object' ? JSON.stringify(v) : v, rule.kind)

@@ -279,10 +279,10 @@ function fmtBytes(n: number): string {
           <span class="meta">{{ filteredVars.length }} / {{ vars.length }}</span>
         </div>
         <table class="grid">
-          <thead><tr><th>名称</th><th>值</th></tr></thead>
+          <thead><tr><th style="white-space:nowrap;width:280px">名称</th><th>值</th></tr></thead>
           <tbody>
             <tr v-for="e in filteredVars" :key="e.k" class="row" @click="varKind === 'variables' && setVar(e)">
-              <td class="mono">{{ e.k }}</td>
+              <td class="mono var-name">{{ e.k }}</td>
               <td class="mono val">{{ e.v }}</td>
             </tr>
           </tbody>
@@ -335,5 +335,6 @@ function fmtBytes(n: number): string {
 .seg button.on { background: rgba(124, 108, 255, 0.18); color: var(--text); border-color: var(--accent); }
 .row { cursor: pointer; }
 .row:hover td { background: rgba(124, 108, 255, 0.06); }
-.val { color: var(--accent); }
+.val { color: var(--accent); word-break: break-all; }
+.var-name { white-space: nowrap; }
 </style>

@@ -49,18 +49,17 @@ export function applyMonacoLocale(locale: 'zh' | 'en'): void {
   }
 }
 
-// 模块装载即按 localStorage 中保存的语言决定 NLS。默认与 i18n.detect 对齐。
+// 模块装载即按 localStorage 中保存的语言决定 NLS。
+// 与 i18n.detect 严格对齐:默认 zh(Electron renderer navigator.language='en-US' 不可信)。
 try {
   const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('skylerx.locale') : null
-  const nav = typeof navigator !== 'undefined' ? navigator.language || '' : ''
   let pick: 'zh' | 'en'
   if (saved === 'zh' || saved === 'en') pick = saved
-  else pick = /^zh/i.test(nav) ? 'zh' : 'en'
+  else pick = 'zh' // 主用户群中文,默认 zh;用户切英文后会写 localStorage,下次跟随
   applyMonacoLocale(pick)
   if (typeof console !== 'undefined') {
     console.log('[skylerx monaco-nls] init', {
       saved,
-      nav,
       pick,
       msgCount: G._VSCODE_NLS_MESSAGES?.length ?? 0,
     })

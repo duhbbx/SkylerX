@@ -38,8 +38,10 @@ const props = defineProps<{
   baseColumns: { name: string; type: string; pk?: boolean }[]
 }>()
 const emit = defineEmits<{
-  /** 用户点「生成」：把 SQL 草稿发出去（父组件灌进查询页） */
+  /** 用户点「生成」:把 SQL 草稿发出去(父组件灌进查询页) */
   generate: [sql: string]
+  /** 用户点「直接执行」:由父组件调 client.connections.execute 写入数据库 */
+  execute: [sql: string]
   close: []
 }>()
 
@@ -266,18 +268,58 @@ Respond with ONLY a JSON object mapping column name to kind, nothing else. Examp
 
 // ─── 生成 ──────────────────────────────────────────────────────────
 
-function generate(): void {
+function buildSql(): string | null {
   if (count.value < 1) {
     toast.warn(t('mock.invalidCount'))
-    return
+    return null
   }
   const sql = buildMockInserts(props.conn.dialect, props.tableRef, columns.value, count.value)
   if (!sql) {
     toast.warn(t('mock.empty'))
-    return
+    return null
   }
+  return sql
+}
+
+function generate(): void {
+  const sql = buildSql()
+  if (!sql) return
   emit('generate', sql)
   emit('close')
+}
+
+/** 直接执行:不打开查询页,父组件接管真正执行(用 client.connections.execute) */
+async function execute(): Promise<void> {
+  const sql = buildSql()
+  if (!sql) return
+  if (
+    !(await appConfirm({
+      message: `确认在 ${props.tableRef} 写入 ${count.value} 行测试数据?`,
+      variant: 'warn',
+    }))
+  )
+    return
+  emit('execute', sql)
+}
+
+/** 手动加载已保存配置(覆盖当前未保存的) */
+async function loadFromSaved(): Promise<void> {
+  const s = loadSaved()
+  if (!s) {
+    toast.warn('未找到保存的配置')
+    return
+  }
+  if (
+    !(await appConfirm({
+      message: `加载已保存配置(${new Date(s.updatedAt).toLocaleString()}),会覆盖当前修改?`,
+      variant: 'warn',
+    }))
+  )
+    return
+  count.value = s.count
+  cfg.value = s.columns
+  bumpPreview()
+  toast.success('已加载')
 }
 </script>
 
@@ -312,7 +354,11 @@ function generate(): void {
         <button class="ghost" :title="t('mock.saveHint')" @click="save">
           {{ t('mock.save') }}
         </button>
+        <button class="ghost" title="从保存配置加载(覆盖当前)" @click="loadFromSaved">
+          加载
+        </button>
         <button class="primary" @click="generate">{{ t('mock.generate') }}</button>
+        <button class="primary" title="直接执行,不打开查询页" @click="execute">▶ 直接执行</button>
       </div>
 
       <!-- 列配置表格 -->
@@ -447,7 +493,10 @@ function generate(): void {
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
+.count-row span { white-space: nowrap; flex-shrink: 0; }
 .count-in {
   width: 80px;
   padding: 4px 8px;
@@ -569,14 +618,15 @@ table.cols tr.pk {
   margin-top: 4px;
   font-size: 11px;
 }
+/* td 保持 table-cell — 之前 display:flex 把 cell 脱出表行流,导致与其它列错位 */
 .preview {
   color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  white-space: nowrap;
 }
 .prev-val {
-  flex: 1;
+  display: inline-block;
+  vertical-align: middle;
+  max-width: calc(100% - 32px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -584,6 +634,9 @@ table.cols tr.pk {
   color: var(--text);
 }
 .reroll {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 6px;
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 4px;

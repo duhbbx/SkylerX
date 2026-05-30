@@ -161,12 +161,14 @@ interface LegacySettings {
   aiBaseUrl?: string
 }
 
-function load(): Settings {
+/** 防止 AI 配置丢失:settings 写盘时同步备份到 BACKUP_KEY,主 KEY 异常/空时从这恢复。 */
+const BACKUP_KEY = 'skylerx.settings.backup'
+
+function parseSettings(raw: string | null): Settings | null {
+  if (!raw) return null
   try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return structuredClone(DEFAULTS)
     const parsed = JSON.parse(raw) as Partial<Settings> & LegacySettings
-    // 迁移老字段（单 provider → providers.anthropic），原字段读完即丢
+    // 迁移老字段(单 provider → providers.anthropic),原字段读完即丢
     const providers = parsed.aiProviders
       ? ({ ...defaultProviders(), ...parsed.aiProviders } as Record<AiProvider, AiProviderConfig>)
       : defaultProviders()
@@ -177,16 +179,39 @@ function load(): Settings {
         baseUrl: parsed.aiBaseUrl || providers.anthropic.baseUrl,
       }
     }
-    const merged: Settings = {
+    return {
       ...DEFAULTS,
       ...parsed,
       aiProviders: providers,
       aiProvider: (parsed.aiProvider as AiProvider | undefined) ?? 'anthropic',
     }
-    return merged
   } catch {
-    return structuredClone(DEFAULTS)
+    return null
   }
+}
+
+/** 一份 settings 是否包含有意义的 AI 配置(至少一个 provider 有 apiKey)。 */
+function hasMeaningfulConfig(s: Settings): boolean {
+  return Object.values(s.aiProviders).some((p) => p?.apiKey?.trim())
+}
+
+function load(): Settings {
+  const main = parseSettings(localStorage.getItem(KEY))
+  const backup = parseSettings(localStorage.getItem(BACKUP_KEY))
+  // 1) 主存在且有 AI 配置 → 用主
+  if (main && hasMeaningfulConfig(main)) return main
+  // 2) 主丢了/没配,但备份还有 → 用备份(这种情况通常是用户报"配置丢了")
+  if (backup && hasMeaningfulConfig(backup)) {
+    // 顺手把备份写回主 KEY,避免每次启动都走 fallback
+    try {
+      localStorage.setItem(KEY, JSON.stringify(backup))
+    } catch {
+      /* ignore */
+    }
+    return backup
+  }
+  // 3) 两份都没用 → 用主(可能是首次启动的 DEFAULTS 形态)或 DEFAULTS
+  return main ?? backup ?? structuredClone(DEFAULTS)
 }
 
 /** 全局设置单例（任意组件 import 即用，改动自动持久化）。 */
@@ -196,7 +221,11 @@ watch(
   settings,
   () => {
     try {
-      localStorage.setItem(KEY, JSON.stringify(settings))
+      const json = JSON.stringify(settings)
+      localStorage.setItem(KEY, json)
+      // 只有当确实有"有意义的 AI 配置"才更新 backup;
+      // 防止用户某次误把所有 key 删空导致 backup 被破坏。
+      if (hasMeaningfulConfig(settings)) localStorage.setItem(BACKUP_KEY, json)
     } catch {
       /* 忽略持久化失败 */
     }

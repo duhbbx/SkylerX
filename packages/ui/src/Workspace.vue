@@ -544,6 +544,28 @@ function onMockGenerated(sql: string): void {
   )
 }
 
+/** Mock 数据 → 直接执行(不开查询页),拆 INSERT 语句逐条 execute */
+async function onMockExecute(sql: string): Promise<void> {
+  if (!mockState.value) return
+  const conn = mockState.value.conn
+  const stmts = sql.split(/;\s*(?:\n|$)/).map((s) => s.trim().replace(/;$/, '')).filter(Boolean)
+  let ok = 0
+  let fail = 0
+  let firstErr = ''
+  for (const s of stmts) {
+    try {
+      await client.connections.execute(conn.id, s, [], {})
+      ok++
+    } catch (e) {
+      fail++
+      if (!firstErr) firstErr = e instanceof Error ? e.message : String(e)
+    }
+  }
+  if (fail) toast.error(`成功 ${ok} · 失败 ${fail}: ${firstErr}`)
+  else toast.success(`成功插入 ${ok} 段`)
+  mockState.value = null
+}
+
 // 表统计信息 → 弹窗展示行数 / 数据 / 索引占用
 const tableStats = ref<{
   name: string
@@ -2504,6 +2526,7 @@ onUnmounted(() => unsubMenu?.())
     :table-name="mockState.tableName"
     :base-columns="mockState.baseColumns"
     @generate="onMockGenerated"
+    @execute="onMockExecute"
     @close="mockState = null"
   />
 

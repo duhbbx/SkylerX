@@ -226,17 +226,28 @@ const groupedByTable = computed(() => {
 
 <template>
   <Modal v-if="open" :title="`PII 扫描器  ·  ${conn.name || conn.dialect}`" width="xl" fixed-height storage-key="pii-scanner" @close="emit('close')">
+    <!-- 帮助说明:第一次打开就能看明白这个面板是干啥的 -->
+    <div class="help-banner">
+      <span class="help-ico" title="什么是 PII 扫描器">❓</span>
+      <span class="help-text">
+        <b>PII (Personally Identifiable Information) 扫描器</b>:在你选的范围内扫描所有列名,
+        启发式识别可能含敏感信息的列(手机/邮箱/身份证/银行卡/姓名/地址/密码 token 等),
+        可选打开"抽样验证" 拉每列前 N 行用正则二次确认。
+        报告导出 CSV 后可拿去做合规审计 / 决定哪些列要建脱敏视图(右键库 → 生成脱敏视图)。
+      </span>
+    </div>
     <div class="ctrl">
-      <input v-model="dbName" class="ip" placeholder="database (可选)" />
-      <input v-model="schemaName" class="ip" placeholder="schema (PG 用)" />
-      <input v-model="tblFilter" class="ip" placeholder="table LIKE (可选)" />
-      <label class="lbl-inline">
-        <input v-model="sampling" type="checkbox" /> 抽样验证
+      <input v-model="dbName" class="ip" placeholder="database 名(可留空 = 默认/全部)" />
+      <input v-model="schemaName" class="ip" placeholder="schema(PG 系;可留空)" />
+      <input v-model="tblFilter" class="ip" placeholder="table LIKE(可选,如 user_%)" />
+      <label class="lbl-inline" title="对每个命中列再抽样 N 行用 regex 二次确认,降低误报">
+        <input v-model="sampling" type="checkbox" />
+        <span class="nowrap">抽样验证</span>
         <input v-model.number="sampleN" type="number" class="ip-mini" min="10" max="1000" />
       </label>
       <span class="spacer" />
-      <button v-if="!running" class="btn-primary" @click="run">▶ 扫描</button>
-      <button v-else class="btn-danger" @click="stop">■ 停止</button>
+      <button v-if="!running" class="btn-primary nowrap" @click="run">▶ 扫描</button>
+      <button v-else class="btn-danger nowrap" @click="stop">■ 停止</button>
     </div>
 
     <div v-if="progress" class="progress">
@@ -291,7 +302,30 @@ const groupedByTable = computed(() => {
 </template>
 
 <style scoped>
-.ctrl { display: flex; align-items: center; gap: 8px; padding: 0 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.help-banner {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(124, 108, 255, 0.08);
+  border: 1px solid rgba(124, 108, 255, 0.3);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.help-ico { font-size: 16px; flex-shrink: 0; }
+.help-text { flex: 1; }
+.nowrap { white-space: nowrap; flex-shrink: 0; }
+.ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+  flex-wrap: nowrap;
+}
 .spacer { flex: 1; }
 .ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; width: 130px; }
 .ip-mini { width: 60px; padding: 3px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 11px; }
