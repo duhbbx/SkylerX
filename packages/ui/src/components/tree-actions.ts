@@ -383,6 +383,35 @@ export const TREE_ACTIONS: TreeAction[] = [
     enabled: (n) => !!n.sqlName,
     run: ({ node, connId, ctrl }) => ctrl.aiCommentTable(node, connId),
   },
+  // ── OB/TiDB 集群拓扑(连接级) ──
+  {
+    id: 'cluster-topology',
+    label: 'ctx.cluster-topology',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection],
+    onlyDialects: [DbDialect.OceanBase, DbDialect.TiDB],
+    run: ({ connId, ctrl }) => ctrl.openClusterTopology(connId),
+  },
+  // ── PG 系扩展/复制/复制槽(连接节点 或 库节点) ──
+  {
+    id: 'pg-advanced',
+    label: 'ctx.pg-advanced',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database],
+    onlyDialects: [
+      DbDialect.PostgreSQL,
+      DbDialect.KingbaseES,
+      DbDialect.OpenGauss,
+      DbDialect.Greenplum,
+      DbDialect.CockroachDB,
+      DbDialect.Redshift,
+    ],
+    run: ({ node, connId, ctrl }) => {
+      const database = node.kind === MetaNodeKind.Database ? node.name : undefined
+      ctrl.openPgAdvanced(connId, database)
+    },
+  },
+
   // ── G1 AI 数据库体检 / C5 索引推荐：连接级，挂 Connection 节点右键 ──
   // 对 Redis/Mongo/ES 没有"表/索引"概念,这两个功能无意义,按方言隐藏。
   {

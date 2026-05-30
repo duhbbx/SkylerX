@@ -119,6 +119,10 @@ export interface TreeController {
   newDatabase(connId: string, parent: TreeNode): void
   /** 新建 Schema(支持 schema 的方言:PG 系 / Oracle / MSSQL / Snowflake) */
   newSchema(connId: string, parent: TreeNode): void
+  /** OB/TiDB:打开集群拓扑面板 */
+  openClusterTopology(connId: string): void
+  /** PG 系:打开扩展/复制/复制槽面板 */
+  openPgAdvanced(connId: string, database?: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

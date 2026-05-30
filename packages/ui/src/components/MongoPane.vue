@@ -114,6 +114,13 @@ const props = defineProps<{
   collection: string
 }>()
 
+const emit = defineEmits<{
+  /** 顶栏"统计/索引"按钮 — 外层弹 MongoCollectionInfoDialog */
+  openInfo: []
+  /** 顶栏"Aggregation"按钮 — 外层弹 MongoAggregationDialog */
+  openAgg: []
+}>()
+
 const client = useDataClient()
 
 const filterText = ref('{}')
@@ -409,6 +416,9 @@ async function commitEdits(): Promise<void> {
       </button>
       <button class="btn" :disabled="dirtyCount === 0 || committing" @click="revertEdits">撤销修改</button>
       <span class="spacer" />
+      <!-- M2+M3 集合统计/索引 · M4 aggregation pipeline -->
+      <button class="btn" title="统计 / 索引" @click="emit('openInfo')">📊 统计</button>
+      <button class="btn" title="Aggregation pipeline" @click="emit('openAgg')">⚙ Aggregation</button>
       <span v-if="meta" class="meta">
         {{ rows.length }} 行 · {{ meta.executionTimeMs }} ms<span v-if="meta.truncated"> · 已截断</span>
       </span>

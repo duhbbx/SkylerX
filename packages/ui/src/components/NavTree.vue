@@ -81,6 +81,10 @@ const emit = defineEmits<{
   newDatabase: [connId: string, parent: TreeNode]
   /** 新建 Schema */
   newSchema: [connId: string, parent: TreeNode]
+  /** OB/TiDB:打开集群拓扑 */
+  openClusterTopology: [connId: string]
+  /** PG 系:打开扩展/复制/复制槽面板 */
+  openPgAdvanced: [connId: string, database?: string]
 }>()
 
 // 批量可选的对象类型（与可删除类型一致）
@@ -270,6 +274,8 @@ const controller: TreeController = {
   newRedisKey: (connId, dbIndex, parent) => emit('newRedisKey', connId, dbIndex, parent),
   newDatabase: (connId, parent) => emit('newDatabase', connId, parent),
   newSchema: (connId, parent) => emit('newSchema', connId, parent),
+  openClusterTopology: (connId) => emit('openClusterTopology', connId),
+  openPgAdvanced: (connId, database) => emit('openPgAdvanced', connId, database),
 }
 
 provide(TreeControllerKey, controller)

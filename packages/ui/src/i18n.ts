@@ -1348,6 +1348,8 @@ const DICT: Record<string, [string, string]> = {
   'ctx.redis-new-key': ['新建 key…', 'New key…'],
   'ctx.new-database': ['新建数据库…', 'New database…'],
   'ctx.new-schema': ['新建 Schema…', 'New schema…'],
+  'ctx.cluster-topology': ['集群拓扑 / Region', 'Cluster topology'],
+  'ctx.pg-advanced': ['扩展 / 复制 / 复制槽', 'Extensions / Replication / Slots'],
   'ctx.redis-flush-db': ['清空当前库 (FLUSHDB)', 'Flush this database (FLUSHDB)'],
   'ctx.redis-flush-all': ['清空整个实例 (FLUSHALL)', 'Flush entire instance (FLUSHALL)'],
 

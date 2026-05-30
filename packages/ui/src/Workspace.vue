@@ -49,8 +49,15 @@ import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import ClusterTopologyDialog from './components/ClusterTopologyDialog.vue'
+import MongoAggregationDialog from './components/MongoAggregationDialog.vue'
+import MongoCollectionInfoDialog from './components/MongoCollectionInfoDialog.vue'
+import PgAdvancedDialog from './components/PgAdvancedDialog.vue'
+import RedisBigKeysDialog from './components/RedisBigKeysDialog.vue'
 import RedisImportExportDialog from './components/RedisImportExportDialog.vue'
+import RedisMonitorDialog from './components/RedisMonitorDialog.vue'
 import RedisNewKeyDialog from './components/RedisNewKeyDialog.vue'
+import RedisScriptDialog from './components/RedisScriptDialog.vue'
 import RedisSearchDialog from './components/RedisSearchDialog.vue'
 import RedisServerInfoDialog from './components/RedisServerInfoDialog.vue'
 import ReplicationLagDialog from './components/ReplicationLagDialog.vue'
@@ -1274,8 +1281,22 @@ const redisIeOpen = ref<{
   dbIndex: number
   mode: 'import' | 'export'
 } | null>(null)
-/** Redis 服务器信息面板(INFO / 慢日志 / 客户端 / 命令统计 / CONFIG) */
+/** Redis 服务器信息面板(INFO / 慢日志 / 客户端 / 命令统计 / CONFIG / Cluster / Sentinel) */
 const redisServerInfoOpen = ref<{ conn: ConnectionConfig } | null>(null)
+/** Redis 大 key 排行 */
+const redisBigKeysOpen = ref<{ conn: ConnectionConfig; dbIndex: number } | null>(null)
+/** Redis Lua/Functions 编辑器 */
+const redisScriptOpen = ref<{ conn: ConnectionConfig; dbIndex?: number } | null>(null)
+/** Redis 实时监控(INFO stats 轮询) */
+const redisMonitorOpen = ref<{ conn: ConnectionConfig } | null>(null)
+/** Mongo 集合 stats/索引 面板 */
+const mongoCollInfoOpen = ref<{ conn: ConnectionConfig; database: string; collection: string } | null>(null)
+/** Mongo aggregation pipeline 弹窗 */
+const mongoAggOpen = ref<{ conn: ConnectionConfig; database: string; collection: string } | null>(null)
+/** OB/TiDB 集群拓扑 */
+const clusterTopoOpen = ref<{ conn: ConnectionConfig } | null>(null)
+/** PG 高级面板(扩展/复制/复制槽) */
+const pgAdvOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -2081,6 +2102,8 @@ onUnmounted(() => unsubMenu?.())
     @new-redis-key="onNewRedisKey"
     @new-database="onNewDatabase"
     @new-schema="onNewSchema"
+    @open-cluster-topology="(cid) => client.connections.get(cid).then(c => { clusterTopoOpen = { conn: c } })"
+    @open-pg-advanced="(cid, db) => client.connections.get(cid).then(c => { pgAdvOpen = { conn: c, database: db } })"
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
@@ -2097,6 +2120,11 @@ onUnmounted(() => unsubMenu?.())
       @redis-open-import="(c, db) => { redisIeOpen = { conn: c, dbIndex: db, mode: 'import' } }"
       @redis-open-export="(c, db) => { redisIeOpen = { conn: c, dbIndex: db, mode: 'export' } }"
       @redis-open-server-info="(c) => { redisServerInfoOpen = { conn: c } }"
+      @redis-open-big-keys="(c, db) => { redisBigKeysOpen = { conn: c, dbIndex: db } }"
+      @redis-open-script="(c, db) => { redisScriptOpen = { conn: c, dbIndex: db } }"
+      @redis-open-monitor="(c) => { redisMonitorOpen = { conn: c } }"
+      @mongo-open-info="(c, d, col) => { mongoCollInfoOpen = { conn: c, database: d, collection: col } }"
+      @mongo-open-agg="(c, d, col) => { mongoAggOpen = { conn: c, database: d, collection: col } }"
     />
   </main>
 
@@ -2458,6 +2486,69 @@ onUnmounted(() => unsubMenu?.())
     :open="!!redisServerInfoOpen"
     :conn="redisServerInfoOpen.conn"
     @close="redisServerInfoOpen = null"
+  />
+
+  <!-- Redis 大 key 排行 -->
+  <RedisBigKeysDialog
+    v-if="redisBigKeysOpen"
+    :open="!!redisBigKeysOpen"
+    :conn="redisBigKeysOpen.conn"
+    :db-index="redisBigKeysOpen.dbIndex"
+    @close="redisBigKeysOpen = null"
+  />
+
+  <!-- Redis Lua / Functions -->
+  <RedisScriptDialog
+    v-if="redisScriptOpen"
+    :open="!!redisScriptOpen"
+    :conn="redisScriptOpen.conn"
+    :db-index="redisScriptOpen.dbIndex"
+    @close="redisScriptOpen = null"
+  />
+
+  <!-- Redis 实时监控 -->
+  <RedisMonitorDialog
+    v-if="redisMonitorOpen"
+    :open="!!redisMonitorOpen"
+    :conn="redisMonitorOpen.conn"
+    @close="redisMonitorOpen = null"
+  />
+
+  <!-- Mongo 集合统计 / 索引 -->
+  <MongoCollectionInfoDialog
+    v-if="mongoCollInfoOpen"
+    :open="!!mongoCollInfoOpen"
+    :conn="mongoCollInfoOpen.conn"
+    :database="mongoCollInfoOpen.database"
+    :collection="mongoCollInfoOpen.collection"
+    @close="mongoCollInfoOpen = null"
+  />
+
+  <!-- Mongo aggregation -->
+  <MongoAggregationDialog
+    v-if="mongoAggOpen"
+    :open="!!mongoAggOpen"
+    :conn="mongoAggOpen.conn"
+    :database="mongoAggOpen.database"
+    :collection="mongoAggOpen.collection"
+    @close="mongoAggOpen = null"
+  />
+
+  <!-- OB/TiDB 集群拓扑 -->
+  <ClusterTopologyDialog
+    v-if="clusterTopoOpen"
+    :open="!!clusterTopoOpen"
+    :conn="clusterTopoOpen.conn"
+    @close="clusterTopoOpen = null"
+  />
+
+  <!-- PG 高级面板 -->
+  <PgAdvancedDialog
+    v-if="pgAdvOpen"
+    :open="!!pgAdvOpen"
+    :conn="pgAdvOpen.conn"
+    :database="pgAdvOpen.database"
+    @close="pgAdvOpen = null"
   />
 
   <!-- 新建数据库 -->

@@ -31,6 +31,12 @@ const emit = defineEmits<{
   openExport: []
   /** 顶栏"服务器面板" */
   openServerInfo: []
+  /** 顶栏"大 key 排行" */
+  openBigKeys: []
+  /** 顶栏"Lua/Functions" */
+  openScript: []
+  /** 顶栏"实时监控" */
+  openMonitor: []
 }>()
 
 const client = useDataClient()
@@ -1078,9 +1084,12 @@ watch(
       <span class="spacer" />
       <!-- A5/A6/B1+B2+B3 入口:emit 给外层 Workspace 弹对应 dialog -->
       <button class="btn" title="跨库搜索 key" @click="emit('openSearch')">🔍 搜索</button>
+      <button class="btn" title="大 key 排行(MEMORY USAGE)" @click="emit('openBigKeys')">🐋 大 key</button>
+      <button class="btn" title="Lua / Functions 编辑器" @click="emit('openScript')">λ 脚本</button>
       <button class="btn" title="导出当前库为 JSON" @click="emit('openExport')">⬇ 导出</button>
       <button class="btn" title="从 JSON 导入" @click="emit('openImport')">⬆ 导入</button>
-      <button class="btn" title="服务器信息 / 慢日志 / 客户端" @click="emit('openServerInfo')">⚙ 服务器</button>
+      <button class="btn" title="实时监控(INFO stats 轮询)" @click="emit('openMonitor')">📊 监控</button>
+      <button class="btn" title="服务器信息 / 慢日志 / 客户端 / Cluster / Sentinel" @click="emit('openServerInfo')">⚙ 服务器</button>
       <span v-if="keys.length" class="meta">{{ keys.length }} keys{{ finished ? '' : '+' }}</span>
     </div>
 

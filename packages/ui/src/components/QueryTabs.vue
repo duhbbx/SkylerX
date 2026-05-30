@@ -51,6 +51,12 @@ const emit = defineEmits<{
   redisOpenImport: [conn: ConnectionConfig, dbIndex: number]
   redisOpenExport: [conn: ConnectionConfig, dbIndex: number]
   redisOpenServerInfo: [conn: ConnectionConfig]
+  redisOpenBigKeys: [conn: ConnectionConfig, dbIndex: number]
+  redisOpenScript: [conn: ConnectionConfig, dbIndex: number]
+  redisOpenMonitor: [conn: ConnectionConfig]
+  // Mongo 顶栏入口
+  mongoOpenInfo: [conn: ConnectionConfig, database: string, collection: string]
+  mongoOpenAgg: [conn: ConnectionConfig, database: string, collection: string]
 }>()
 
 const tabs = ref<Tab[]>([])
@@ -481,6 +487,8 @@ watch(tabs, saveLayout, { deep: true })
             :conn="t.conn"
             :database="t.mongo.database"
             :collection="t.mongo.collection"
+            @open-info="emit('mongoOpenInfo', t.conn, t.mongo.database, t.mongo.collection)"
+            @open-agg="emit('mongoOpenAgg', t.conn, t.mongo.database, t.mongo.collection)"
           />
           <RedisPane
             v-else-if="t.kind === 'redisDb' && t.redis"
@@ -491,6 +499,9 @@ watch(tabs, saveLayout, { deep: true })
             @open-import="emit('redisOpenImport', t.conn, t.redis.dbIndex)"
             @open-export="emit('redisOpenExport', t.conn, t.redis.dbIndex)"
             @open-server-info="emit('redisOpenServerInfo', t.conn)"
+            @open-big-keys="emit('redisOpenBigKeys', t.conn, t.redis.dbIndex)"
+            @open-script="emit('redisOpenScript', t.conn, t.redis.dbIndex)"
+            @open-monitor="emit('redisOpenMonitor', t.conn)"
           />
           <ElasticPane
             v-else-if="t.kind === 'esIndex' && t.es"

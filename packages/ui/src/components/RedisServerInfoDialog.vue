@@ -27,7 +27,7 @@ const emit = defineEmits<{ close: [] }>()
 
 const client = useDataClient()
 
-type Tab = 'info' | 'slowlog' | 'clients' | 'cmdstats' | 'config'
+type Tab = 'info' | 'slowlog' | 'clients' | 'cmdstats' | 'config' | 'cluster' | 'sentinel'
 const tab = ref<Tab>('info')
 const loading = ref(false)
 const autoRefresh = ref(false)
@@ -76,6 +76,26 @@ const cmdStats = ref<CmdStat[]>([])
 // CONFIG GET * → { name: value }
 const configEntries = ref<{ k: string; v: string }[]>([])
 const configFilter = ref('')
+
+// Cluster — CLUSTER INFO + CLUSTER NODES
+interface ClusterNode {
+  id: string
+  endpoint: string
+  flags: string[]
+  master: string // '-' = self is master
+  pingSent: number
+  pongRecv: number
+  configEpoch: number
+  linkState: string
+  slots: { from: number; to: number }[]
+}
+const clusterInfo = ref<{ k: string; v: string }[]>([])
+const clusterNodes = ref<ClusterNode[]>([])
+const clusterErr = ref<string | null>(null)
+
+// Sentinel — SENTINEL masters / replicas / sentinels
+const sentinelMasters = ref<{ k: string; v: string }[][]>([])
+const sentinelErr = ref<string | null>(null)
 
 async function call(op: string, args: unknown[] = []): Promise<unknown> {
   const r = await client.connections.executeCommand(props.conn.id, { op, args })
@@ -289,12 +309,117 @@ const filteredConfig = computed(() => {
   return configEntries.value.filter((e) => e.k.includes(q))
 })
 
+async function loadCluster(): Promise<void> {
+  loading.value = true
+  clusterErr.value = null
+  try {
+    // CLUSTER INFO -> 文本 KEY:VALUE per line
+    const infoRaw = String((await call('CLUSTER', ['INFO'])) ?? '')
+    const infos: { k: string; v: string }[] = []
+    for (const line of infoRaw.split(/\r?\n/)) {
+      const idx = line.indexOf(':')
+      if (idx > 0) infos.push({ k: line.slice(0, idx), v: line.slice(idx + 1).trim() })
+    }
+    clusterInfo.value = infos
+    // CLUSTER NODES -> 多行,每行:id endpoint@cport flags master ping pong epoch link slot1 slot2 ...
+    const nodesRaw = String((await call('CLUSTER', ['NODES'])) ?? '')
+    const nodes: ClusterNode[] = []
+    for (const line of nodesRaw.split(/\r?\n/)) {
+      const parts = line.trim().split(/\s+/)
+      if (parts.length < 8) continue
+      const slots: { from: number; to: number }[] = []
+      for (let i = 8; i < parts.length; i++) {
+        const s = parts[i]
+        // slot 可能是 single (123) 或 range (100-200) 或 importing/migrating (跳过)
+        if (s.includes('[')) continue
+        if (s.includes('-')) {
+          const [a, b] = s.split('-').map(Number)
+          slots.push({ from: a, to: b })
+        } else {
+          const n = Number(s)
+          if (Number.isFinite(n)) slots.push({ from: n, to: n })
+        }
+      }
+      nodes.push({
+        id: parts[0],
+        endpoint: parts[1],
+        flags: parts[2].split(','),
+        master: parts[3],
+        pingSent: Number(parts[4]),
+        pongRecv: Number(parts[5]),
+        configEpoch: Number(parts[6]),
+        linkState: parts[7],
+        slots,
+      })
+    }
+    clusterNodes.value = nodes
+  } catch (e) {
+    clusterErr.value =
+      e instanceof Error ? e.message : '该 Redis 实例可能未启用 cluster 模式(单机/Sentinel/Standalone)'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadSentinel(): Promise<void> {
+  loading.value = true
+  sentinelErr.value = null
+  try {
+    // SENTINEL MASTERS → 数组 of (字段名 - 值 交错 array)
+    const raw = (await call('SENTINEL', ['MASTERS'])) as unknown[]
+    const out: { k: string; v: string }[][] = []
+    for (const m of raw ?? []) {
+      const row: { k: string; v: string }[] = []
+      if (Array.isArray(m)) {
+        for (let i = 0; i + 1 < m.length; i += 2) {
+          row.push({ k: String(m[i]), v: String(m[i + 1] ?? '') })
+        }
+      }
+      out.push(row)
+    }
+    sentinelMasters.value = out
+  } catch (e) {
+    sentinelErr.value =
+      e instanceof Error
+        ? e.message
+        : '该 Redis 实例不是 Sentinel 节点(只有 sentinel 服务端口才支持 SENTINEL 命令)'
+  } finally {
+    loading.value = false
+  }
+}
+
 async function refresh(): Promise<void> {
   if (tab.value === 'info') await loadInfo()
   else if (tab.value === 'slowlog') await loadSlowlog()
   else if (tab.value === 'clients') await loadClients()
   else if (tab.value === 'cmdstats') await loadCmdStats()
   else if (tab.value === 'config') await loadConfig()
+  else if (tab.value === 'cluster') await loadCluster()
+  else if (tab.value === 'sentinel') await loadSentinel()
+}
+
+/** 把 slots 数组渲染成总计数字。 */
+function totalSlots(slots: { from: number; to: number }[]): number {
+  let n = 0
+  for (const s of slots) n += s.to - s.from + 1
+  return n
+}
+/** Slot 分布的彩条:按 master 分配颜色。 */
+const slotBar = computed(() => {
+  // 把所有 nodes 的 slots 按 from 起点排序,每段标 master id 短码,渲染时按短码哈希颜色
+  const segs: { from: number; to: number; ownerShort: string }[] = []
+  for (const n of clusterNodes.value) {
+    if (n.master !== '-') continue // 只算 master
+    for (const s of n.slots) segs.push({ from: s.from, to: s.to, ownerShort: n.id.slice(0, 8) })
+  }
+  segs.sort((a, b) => a.from - b.from)
+  return segs
+})
+function slotColor(short: string): string {
+  // 简易 hash → HSL
+  let h = 0
+  for (const c of short) h = (h * 31 + c.charCodeAt(0)) % 360
+  return `hsl(${h}, 60%, 55%)`
 }
 
 watch(tab, refresh)
@@ -348,8 +473,8 @@ function smartValue(k: string, v: string): string {
 <template>
   <Modal v-if="open" :title="`Redis 服务器  ·  ${conn.name || conn.dialect}`" width="xl" fixed-height storage-key="redis-server-info" @close="emit('close')">
     <div class="tabs">
-      <button v-for="t in (['info','slowlog','clients','cmdstats','config'] as Tab[])" :key="t" :class="{ on: tab === t }" @click="tab = t">
-        {{ ({info:'INFO',slowlog:'慢日志',clients:'客户端',cmdstats:'命令统计',config:'CONFIG'} as Record<Tab,string>)[t] }}
+      <button v-for="t in (['info','slowlog','clients','cmdstats','config','cluster','sentinel'] as Tab[])" :key="t" :class="{ on: tab === t }" @click="tab = t">
+        {{ ({info:'INFO',slowlog:'慢日志',clients:'客户端',cmdstats:'命令统计',config:'CONFIG',cluster:'Cluster',sentinel:'Sentinel'} as Record<Tab,string>)[t] }}
       </button>
       <span class="spacer" />
       <label class="auto"><input v-model="autoRefresh" type="checkbox" /> 5s 自动刷新</label>
@@ -464,6 +589,85 @@ function smartValue(k: string, v: string): string {
             <tr v-if="!cmdStats.length"><td colspan="4" class="empty-row">无统计</td></tr>
           </tbody>
         </table>
+      </template>
+
+      <!-- Cluster -->
+      <template v-else-if="tab === 'cluster'">
+        <div v-if="clusterErr" class="err-banner">{{ clusterErr }}</div>
+        <template v-else>
+          <div class="info-sec">
+            <div class="info-title">CLUSTER INFO</div>
+            <table class="grid">
+              <tbody>
+                <tr v-for="e in clusterInfo" :key="e.k">
+                  <td class="info-k">{{ e.k }}</td><td class="info-v">{{ e.v }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="info-sec">
+            <div class="info-title">Slot 分布 (0-16383)</div>
+            <div class="slot-bar">
+              <div
+                v-for="(s, i) in slotBar"
+                :key="i"
+                class="slot-seg"
+                :style="{
+                  left: `${(s.from / 16384) * 100}%`,
+                  width: `${((s.to - s.from + 1) / 16384) * 100}%`,
+                  background: slotColor(s.ownerShort),
+                }"
+                :title="`${s.from}-${s.to} → ${s.ownerShort}`"
+              />
+            </div>
+          </div>
+          <div class="info-sec">
+            <div class="info-title">CLUSTER NODES</div>
+            <table class="grid">
+              <thead>
+                <tr>
+                  <th style="width: 90px">id (短)</th>
+                  <th>endpoint</th>
+                  <th style="width: 100px">role</th>
+                  <th style="width: 120px">master</th>
+                  <th style="width: 60px">slots</th>
+                  <th style="width: 70px">link</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="n in clusterNodes" :key="n.id">
+                  <td class="mono">{{ n.id.slice(0, 8) }}</td>
+                  <td class="mono">{{ n.endpoint }}</td>
+                  <td>
+                    <span v-for="f in n.flags" :key="f" class="flag" :data-flag="f">{{ f }}</span>
+                  </td>
+                  <td class="mono">{{ n.master === '-' ? '—' : n.master.slice(0, 8) }}</td>
+                  <td>{{ totalSlots(n.slots) }}</td>
+                  <td>{{ n.linkState }}</td>
+                </tr>
+                <tr v-if="!clusterNodes.length"><td colspan="6" class="empty-row">无节点</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </template>
+
+      <!-- Sentinel -->
+      <template v-else-if="tab === 'sentinel'">
+        <div v-if="sentinelErr" class="err-banner">{{ sentinelErr }}</div>
+        <template v-else>
+          <div v-for="(m, i) in sentinelMasters" :key="i" class="info-sec">
+            <div class="info-title">Master #{{ i + 1 }}</div>
+            <table class="grid">
+              <tbody>
+                <tr v-for="e in m" :key="e.k">
+                  <td class="info-k">{{ e.k }}</td><td class="info-v">{{ e.v }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="!sentinelMasters.length" class="empty">无监控的 master</div>
+        </template>
       </template>
 
       <!-- CONFIG -->
@@ -662,4 +866,38 @@ tr.self {
   font-size: 13px;
   cursor: pointer;
 }
+.err-banner {
+  padding: 10px 14px;
+  background: rgba(224, 64, 80, 0.08);
+  border: 1px solid rgba(224, 64, 80, 0.4);
+  border-radius: 6px;
+  color: var(--err, #e04050);
+  font-size: 12px;
+}
+.slot-bar {
+  position: relative;
+  height: 20px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.slot-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.flag {
+  display: inline-block;
+  margin-right: 3px;
+  padding: 0 4px;
+  font-size: 9px;
+  border-radius: 2px;
+  background: var(--border);
+  color: var(--muted);
+}
+.flag[data-flag='master'] { background: rgba(124, 108, 255, 0.4); color: #fff; }
+.flag[data-flag='slave'] { background: rgba(3, 169, 244, 0.4); color: #fff; }
+.flag[data-flag='myself'] { background: rgba(76, 175, 80, 0.5); color: #fff; }
+.flag[data-flag='fail'],
+.flag[data-flag='fail?'] { background: rgba(224, 64, 80, 0.6); color: #fff; }
 </style>
