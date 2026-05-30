@@ -9,8 +9,13 @@
  *  - 任一源失败自动回退到另一源 (fetchLatest 内置)
  *
  * 渲染规则不变:平台 × 架构 × 格式 → 在 assets 中匹配文件名.
+ *
+ * i18n:rows 内部仍用一个 labelKey 指向 ComponentLabels.matrix.rowLabels,
+ *       表头 / 提示 / 错误 / "下载" 链接全部走 L.matrix.*。format 字段做了 enum 化,
+ *       让 .exe (安装版) / .exe (绿色版) 也能本地化。
  */
 import { computed, onMounted, ref } from 'vue'
+import { useData } from 'vitepress'
 import {
   type DownloadSource,
   type ReleaseInfo,
@@ -18,18 +23,27 @@ import {
   fetchLatest,
   saveSource,
 } from './downloadSource'
+import { getComponentLabels, type MatrixRowKey } from '../i18n'
+
+const { lang } = useData()
+const L = computed(() => getComponentLabels(lang.value))
 
 const source = ref<DownloadSource>('github')
 const info = ref<ReleaseInfo | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
+/** format 显示:'plain' 直接用 format 字段;其余 enum 走 L.matrix.formats[k]。 */
+type FormatKind = 'plain' | 'exeSetup' | 'exePortable'
+
 interface Row {
   platform: 'macos' | 'windows' | 'linux'
   arch: 'arm64' | 'x64'
+  /** 默认展示文本(plain 模式直接用);如果 formatKind != 'plain' 会被翻译覆盖 */
   format: string
+  formatKind: FormatKind
   match: (name: string) => boolean
-  label: string
+  labelKey: MatrixRowKey
 }
 
 const rows: Row[] = [
@@ -37,78 +51,89 @@ const rows: Row[] = [
     platform: 'macos',
     arch: 'arm64',
     format: '.dmg',
-    label: 'macOS (Apple Silicon + Rosetta)',
+    formatKind: 'plain',
+    labelKey: 'macArm',
     match: (n) => /\.dmg$/i.test(n) && /arm64/i.test(n),
   },
   // Intel Mac 不再发独立包 — Apple Silicon 已 5 年, Intel 用户可走 Rosetta 跑 arm64 dmg
   {
     platform: 'windows',
     arch: 'x64',
-    format: '.exe (安装版)',
-    label: 'Windows 64-bit Installer',
+    format: '.exe',
+    formatKind: 'exeSetup',
+    labelKey: 'winInstaller',
     match: (n) => /-setup\.exe$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
   },
   {
     platform: 'windows',
     arch: 'arm64',
-    format: '.exe (安装版)',
-    label: 'Windows ARM64 Installer',
+    format: '.exe',
+    formatKind: 'exeSetup',
+    labelKey: 'winInstallerArm',
     match: (n) => /-setup\.exe$/i.test(n) && /arm64/i.test(n),
   },
   {
     platform: 'windows',
     arch: 'x64',
-    format: '.exe (绿色版)',
-    label: 'Windows 64-bit 免安装',
+    format: '.exe',
+    formatKind: 'exePortable',
+    labelKey: 'winPortable',
     match: (n) => /-portable\.exe$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
   },
   {
     platform: 'windows',
     arch: 'arm64',
-    format: '.exe (绿色版)',
-    label: 'Windows ARM64 免安装',
+    format: '.exe',
+    formatKind: 'exePortable',
+    labelKey: 'winPortableArm',
     match: (n) => /-portable\.exe$/i.test(n) && /arm64/i.test(n),
   },
   {
     platform: 'linux',
     arch: 'x64',
     format: '.AppImage',
-    label: 'Linux x64',
+    formatKind: 'plain',
+    labelKey: 'linuxAppimage',
     match: (n) => /\.AppImage$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
   },
   {
     platform: 'linux',
     arch: 'x64',
     format: '.deb',
-    label: 'Debian / Ubuntu / 麒麟 / UOS',
+    formatKind: 'plain',
+    labelKey: 'linuxDeb',
     match: (n) => /\.deb$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
   },
   {
     platform: 'linux',
     arch: 'x64',
     format: '.rpm',
-    label: 'Fedora / openEuler / 中标麒麟',
+    formatKind: 'plain',
+    labelKey: 'linuxRpm',
     match: (n) => /\.rpm$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
   },
   {
     platform: 'linux',
     arch: 'x64',
     format: '.pacman',
-    label: 'Arch / Manjaro',
+    formatKind: 'plain',
+    labelKey: 'linuxPacman',
     match: (n) => /\.pacman$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
   },
   {
     platform: 'linux',
     arch: 'arm64',
     format: '.AppImage',
-    label: 'Linux ARM64',
+    formatKind: 'plain',
+    labelKey: 'linuxAppimageArm',
     match: (n) => /\.AppImage$/i.test(n) && /arm64/i.test(n),
   },
   {
     platform: 'linux',
     arch: 'x64',
     format: '.tar.gz',
-    label: 'Linux x64 (tar.gz)',
+    formatKind: 'plain',
+    labelKey: 'linuxTarGz',
     match: (n) => /\.tar\.gz$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
   },
 ]
@@ -132,6 +157,13 @@ function bytes(n: number): string {
   if (n < 1e6) return `${(n / 1e3).toFixed(0)} KB`
   if (n < 1e9) return `${(n / 1e6).toFixed(1)} MB`
   return `${(n / 1e9).toFixed(2)} GB`
+}
+
+/** 当前 row 的 format 列显示文本(可能被 i18n 覆盖,可能是 plain 文件后缀) */
+function formatText(r: Row): string {
+  if (r.formatKind === 'exeSetup') return L.value.matrix.formats.exeSetup
+  if (r.formatKind === 'exePortable') return L.value.matrix.formats.exePortable
+  return r.format
 }
 
 async function load(): Promise<void> {
@@ -159,11 +191,11 @@ onMounted(async () => {
 })
 
 const platformIcon: Record<string, string> = { macos: '', windows: '⊞', linux: '🐧' }
-const platformLabel: Record<string, string> = {
-  macos: 'macOS',
-  windows: 'Windows',
-  linux: 'Linux',
-}
+const platformLabel = computed<Record<string, string>>(() => ({
+  macos: L.value.download.platforms.macos,
+  windows: L.value.download.platforms.windows,
+  linux: L.value.download.platforms.linux,
+}))
 /** 第一次出现该 platform 的行返回 true,用来在表格里插一行分组标题(带 anchor id) */
 function isFirstOfPlatform(i: number): boolean {
   return i === 0 || rows[i - 1].platform !== rows[i].platform
@@ -184,6 +216,12 @@ function trackDownload(row: Row): void {
     /* ignore */
   }
 }
+
+const errorText = computed(() => {
+  if (!error.value) return ''
+  const src = source.value === 'oss' ? L.value.matrix.ossLabel : 'GitHub API'
+  return L.value.matrix.errorTpl(src, error.value, latestPage.value)
+})
 </script>
 
 <template>
@@ -191,12 +229,14 @@ function trackDownload(row: Row): void {
     <!-- 顶部:版本 / 切换源 -->
     <div class="dl-mx-header">
       <div class="dl-mx-ver">
-        <span v-if="loading">加载中…</span>
+        <span v-if="loading">{{ L.matrix.loading }}</span>
         <span v-else-if="info?.tag_name">
-          最新版本:
+          {{ L.matrix.latestVersion }}
           <a :href="latestPage" target="_blank" rel="noopener">{{ info.tag_name }}</a>
         </span>
-        <span v-else>从 <a :href="latestPage" target="_blank" rel="noopener">{{ source === 'oss' ? 'OSS 镜像' : 'GitHub Releases' }}</a> 直接下载</span>
+        <span v-else>
+          {{ L.matrix.fallbackPrefix }}<a :href="latestPage" target="_blank" rel="noopener">{{ source === 'oss' ? L.matrix.ossLabel : L.matrix.githubLabel }}</a>{{ L.matrix.fallbackSuffix }}
+        </span>
       </div>
 
       <div class="dl-mx-actions">
@@ -205,37 +245,37 @@ function trackDownload(row: Row): void {
             type="button"
             :class="{ on: source === 'oss' }"
             :aria-selected="source === 'oss'"
-            title="国内镜像:阿里云 OSS (上海),适合中国大陆下载"
+            :title="L.matrix.cnMirrorTitle"
             @click="switchSource('oss')"
           >
-            🇨🇳 国内镜像
+            {{ L.matrix.cnMirrorBtn }}
           </button>
           <button
             type="button"
             :class="{ on: source === 'github' }"
             :aria-selected="source === 'github'"
-            title="海外源:GitHub Releases,适合海外用户"
+            :title="L.matrix.githubBtnTitle"
             @click="switchSource('github')"
           >
-            🌐 GitHub
+            {{ L.matrix.githubBtn }}
           </button>
         </div>
-        <a class="dl-mx-history" :href="releasesPage" target="_blank" rel="noopener">历史版本 →</a>
+        <a class="dl-mx-history" :href="releasesPage" target="_blank" rel="noopener">{{ L.matrix.history }}</a>
       </div>
     </div>
 
     <div v-if="error" class="dl-mx-err">
-      {{ source === 'oss' ? 'OSS 镜像' : 'GitHub API' }} 不可达({{ error }}),已尝试自动切换备用源。仍失败可点上方按钮手动切换,或前往 <a :href="latestPage" target="_blank" rel="noopener">{{ latestPage }}</a> 手动选择。
+      {{ errorText }}
     </div>
 
     <table class="dl-mx-table">
       <thead>
         <tr>
-          <th>平台</th>
-          <th>架构</th>
-          <th>格式</th>
-          <th>说明</th>
-          <th>下载</th>
+          <th>{{ L.matrix.th.platform }}</th>
+          <th>{{ L.matrix.th.arch }}</th>
+          <th>{{ L.matrix.th.format }}</th>
+          <th>{{ L.matrix.th.desc }}</th>
+          <th>{{ L.matrix.th.download }}</th>
         </tr>
       </thead>
       <tbody>
@@ -252,12 +292,12 @@ function trackDownload(row: Row): void {
           <tr :id="`${r.platform}-${r.arch}-${r.format.replace(/[.\s()]/g, '')}`">
             <td>{{ platformIcon[r.platform] }} {{ r.platform }}</td>
             <td>{{ r.arch }}</td>
-            <td><code>{{ r.format }}</code></td>
-            <td>{{ r.label }}</td>
+            <td><code>{{ formatText(r) }}</code></td>
+            <td>{{ L.matrix.rowLabels[r.labelKey] }}</td>
             <td>
               <template v-if="findAsset(r)">
                 <a class="dl-mx-link" :href="findAsset(r)!.url" target="_blank" rel="noopener" @click="trackDownload(r)">
-                  下载 <span class="dl-mx-size">({{ bytes(findAsset(r)!.size) }})</span>
+                  {{ L.matrix.downloadLink }} <span class="dl-mx-size">({{ bytes(findAsset(r)!.size) }})</span>
                 </a>
               </template>
               <span v-else class="dl-mx-na">—</span>
@@ -268,12 +308,7 @@ function trackDownload(row: Row): void {
     </table>
 
     <p class="dl-mx-tip">
-      <template v-if="source === 'oss'">
-        💡 当前是<strong>国内镜像</strong>(阿里云 OSS · 华东 2 上海)。如果国内访问也慢,切到 GitHub 试试;海外用户建议直接选 GitHub。
-      </template>
-      <template v-else>
-        💡 当前是 <strong>GitHub Releases</strong>。中国大陆用户访问慢时,点上方"🇨🇳 国内镜像" 切换到阿里云 OSS;或用 <code>https://github.akams.cn/</code> 等加速镜像替换 URL 前缀。
-      </template>
+      {{ source === 'oss' ? L.matrix.tipOss : L.matrix.tipGithub }}
     </p>
   </div>
 </template>

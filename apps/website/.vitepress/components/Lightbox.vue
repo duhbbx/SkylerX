@@ -7,7 +7,12 @@
  *
  * 不依赖第三方 npm 包,避开 medium-zoom 等的样式覆盖问题。
  */
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useData } from 'vitepress'
+import { getComponentLabels } from '../i18n'
+
+const { lang } = useData()
+const L = computed(() => getComponentLabels(lang.value))
 
 const open = ref(false)
 const src = ref('')
@@ -53,7 +58,7 @@ onUnmounted(() => {
   <Teleport to="body">
     <Transition name="lb">
       <div v-if="open" class="lb-overlay" @click.self="close">
-        <button class="lb-close" aria-label="关闭" @click="close">✕</button>
+        <button class="lb-close" :aria-label="L.lightbox.close" @click="close">✕</button>
         <img :src="src" :alt="alt" class="lb-img" @click="close" />
       </div>
     </Transition>

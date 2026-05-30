@@ -63,20 +63,49 @@ import { join } from 'node:path'
 function channelFilePath(): string {
   return join(app.getPath('userData'), 'updater-channel.json')
 }
+
+/**
+ * 首启动 / 没保存过 channel 时,按时区猜一个合理默认值.
+ *  - 大陆时区(Asia/Shanghai 等) → 'oss-cn',避免国内用户开箱就撞 GFW 把
+ *    github.com 的 TCP 切断(net::ERR_CONNECTION_CLOSED).
+ *  - 其余(含 HK/MO/TW + 海外) → 'github',源头最新.
+ * 用户在 UI 上手动切过就持久化,后续启动不再走这个推断.
+ */
+function defaultChannel(): UpdateChannel {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (
+      tz === 'Asia/Shanghai' ||
+      tz === 'Asia/Chongqing' ||
+      tz === 'Asia/Urumqi' ||
+      tz === 'Asia/Harbin'
+    ) {
+      return 'oss-cn'
+    }
+  } catch {
+    /* Intl 不可用就走默认 */
+  }
+  return 'github'
+}
+
 async function loadChannel(): Promise<UpdateChannel> {
   try {
     const raw = await fs.readFile(channelFilePath(), 'utf8')
     const p = JSON.parse(raw) as { channel?: UpdateChannel }
     return p.channel === 'oss-cn' ? 'oss-cn' : 'github'
   } catch {
-    return 'github'
+    return defaultChannel()
   }
 }
 async function saveChannel(c: UpdateChannel): Promise<void> {
   await fs.writeFile(channelFilePath(), JSON.stringify({ channel: c }))
 }
 
+// 记一份当前 channel, error 提示用 — applyChannel 是唯一写点
+let currentChannel: UpdateChannel = 'github'
+
 function applyChannel(c: UpdateChannel): void {
+  currentChannel = c
   if (c === 'oss-cn') {
     autoUpdater.setFeedURL({ provider: 'generic', url: OSS_GENERIC_URL })
     pushLog(`setFeedURL → OSS (generic) ${OSS_GENERIC_URL}`)
@@ -138,6 +167,19 @@ function broadcast(s: UpdaterStatus): void {
       break
     case 'error':
       pushLog(s.message, 'error')
+      // GitHub channel + 网络层错误 → 八成是 GFW / 公司代理切断 TCP.
+      // 主动建议用户切到 OSS 镜像,省得他自己猜.
+      if (
+        currentChannel === 'github' &&
+        /(ECONN|ETIMEDOUT|ENOTFOUND|CONNECTION_CLOSED|CONNECTION_REFUSED|CONNECTION_RESET|net::ERR_|getaddrinfo)/i.test(
+          s.message,
+        )
+      ) {
+        pushLog(
+          '提示: GitHub 在当前网络下不可达(可能被防火墙/代理切断). 在「关于」弹框里切到「OSS 镜像」试试.',
+          'warn',
+        )
+      }
       break
   }
   // webContents 可能在窗口关闭时不可用,加防御
