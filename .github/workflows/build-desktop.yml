@@ -25,12 +25,16 @@ jobs:
           - { name: win-x64,    os: windows-latest,   eb_args: '--win --x64',    npm_arch: x64    }
           - { name: win-arm64,  os: windows-latest,   eb_args: '--win --arm64',  npm_arch: arm64  }
 
-          # ── Linux：x64 + arm64 双架构 ──
-          # ubuntu-24.04-arm 是 GH-hosted 的 ARM Linux runner（2024 新增），native build。
-          - { name: linux-x64,   os: ubuntu-latest,    eb_args: '--linux --x64',   npm_arch: x64   }
-          # linux-arm64 显式列出 target：deb/rpm/pacman 走 fpm，但 fpm 上游没有 arm64 二进制
+          # ── Linux x64：拆成两个并行 job 提速 ──
+          #   linux-x64-image: AppImage + tar.gz, 不走 fpm, ~3 min
+          #   linux-x64-fpm:   deb + rpm,         fpm 启动 + 重打包慢, ~5 min
+          # 拆前: 单 linux-x64 串行 5 个 target ~11-12 min, 是其他 job 的 2x.
+          # 拆后: max(3, 5) ≈ 5 min, 提速 ~55%.
+          - { name: linux-x64-image, os: ubuntu-latest, eb_args: '--linux AppImage tar.gz --x64', npm_arch: x64 }
+          - { name: linux-x64-fpm,   os: ubuntu-latest, eb_args: '--linux deb rpm --x64',         npm_arch: x64 }
+          # linux-arm64: fpm 上游没有 arm64 二进制
           # (electron-builder 缓存的 fpm-1.9.3-2.3.1-linux-x86 在 arm64 host 直接 Exec format error)
-          # 所以 arm64 只出 AppImage + tar.gz；--linux <targets...> 会按 yml target 各自的 arch 列表过滤
+          # 所以 arm64 只出 AppImage + tar.gz; --linux <targets...> 按 yml 各 target 的 arch 列表过滤
           - { name: linux-arm64, os: ubuntu-24.04-arm, eb_args: '--linux AppImage tar.gz --arm64', npm_arch: arm64 }
     runs-on: ${{ matrix.os }}
     env:
@@ -69,6 +73,8 @@ jobs:
       # ~/.cache/electron         Electron 主程序 zip(每架构 ~100MB)
       # ~/.cache/electron-builder AppImage tools / 7za / fpm 等工具链
       # 只在 Linux 加: Windows / macOS cache 路径不一样, 收益小复杂度高.
+      # key 按 npm_arch 区分: 同 arch 的多个 job(如 linux-x64-image / linux-x64-fpm)
+      # 共享同一份 electron x64 zip 缓存, 避免每 job 各下一份浪费配额.
       - name: Cache electron downloads (Linux)
         if: startsWith(matrix.os, 'ubuntu')
         uses: actions/cache@v4
@@ -76,9 +82,9 @@ jobs:
           path: |
             ~/.cache/electron
             ~/.cache/electron-builder
-          key: electron-${{ matrix.name }}-${{ hashFiles('apps/desktop/package.json') }}
+          key: electron-linux-${{ matrix.npm_arch }}-${{ hashFiles('apps/desktop/package.json') }}
           restore-keys: |
-            electron-${{ matrix.name }}-
+            electron-linux-${{ matrix.npm_arch }}-
 
       # tag push 时根据 git tag 同步 apps/desktop/package.json 的 version，
       # 让产物文件名（${productName}-${version}-…）跟 tag 对齐。手工/分支触发下 noop。
