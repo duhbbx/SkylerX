@@ -49,7 +49,10 @@ import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import RedisImportExportDialog from './components/RedisImportExportDialog.vue'
 import RedisNewKeyDialog from './components/RedisNewKeyDialog.vue'
+import RedisSearchDialog from './components/RedisSearchDialog.vue'
+import RedisServerInfoDialog from './components/RedisServerInfoDialog.vue'
 import ReplicationLagDialog from './components/ReplicationLagDialog.vue'
 import RowHistoryDialog from './components/RowHistoryDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
@@ -1263,6 +1266,16 @@ const searchValueOpen = ref<{ connId: string; value?: string } | null>(null)
 const redisNewKeyOpen = ref<{ conn: ConnectionConfig; dbIndex: number; parent: TreeNode } | null>(
   null,
 )
+/** Redis 跨库搜索弹窗 */
+const redisSearchOpen = ref<{ conn: ConnectionConfig } | null>(null)
+/** Redis 导入/导出 弹窗(共用一个组件,mode 切换) */
+const redisIeOpen = ref<{
+  conn: ConnectionConfig
+  dbIndex: number
+  mode: 'import' | 'export'
+} | null>(null)
+/** Redis 服务器信息面板(INFO / 慢日志 / 客户端 / 命令统计 / CONFIG) */
+const redisServerInfoOpen = ref<{ conn: ConnectionConfig } | null>(null)
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -2080,6 +2093,10 @@ onUnmounted(() => unsubMenu?.())
       @ai="onAiFromPane"
       @ask-ai-about-error="onAskAiAboutError"
       @search-value="(p) => { searchValueOpen = { connId: p.connId, value: p.value } }"
+      @redis-open-search="(c) => { redisSearchOpen = { conn: c } }"
+      @redis-open-import="(c, db) => { redisIeOpen = { conn: c, dbIndex: db, mode: 'import' } }"
+      @redis-open-export="(c, db) => { redisIeOpen = { conn: c, dbIndex: db, mode: 'export' } }"
+      @redis-open-server-info="(c) => { redisServerInfoOpen = { conn: c } }"
     />
   </main>
 
@@ -2414,6 +2431,33 @@ onUnmounted(() => unsubMenu?.())
     :db-index="redisNewKeyOpen.dbIndex"
     @close="redisNewKeyOpen = null"
     @created="onRedisKeyCreated"
+  />
+
+  <!-- Redis 跨库搜索 -->
+  <RedisSearchDialog
+    v-if="redisSearchOpen"
+    :open="!!redisSearchOpen"
+    :conn="redisSearchOpen.conn"
+    @close="redisSearchOpen = null"
+    @pick="(db, key) => { tabsRef?.openRedisDb(redisSearchOpen!.conn, db, key); redisSearchOpen = null }"
+  />
+
+  <!-- Redis 导入/导出 JSON -->
+  <RedisImportExportDialog
+    v-if="redisIeOpen"
+    :open="!!redisIeOpen"
+    :conn="redisIeOpen.conn"
+    :db-index="redisIeOpen.dbIndex"
+    :mode="redisIeOpen.mode"
+    @close="redisIeOpen = null"
+  />
+
+  <!-- Redis 服务器信息面板 -->
+  <RedisServerInfoDialog
+    v-if="redisServerInfoOpen"
+    :open="!!redisServerInfoOpen"
+    :conn="redisServerInfoOpen.conn"
+    @close="redisServerInfoOpen = null"
   />
 
   <!-- 新建数据库 -->

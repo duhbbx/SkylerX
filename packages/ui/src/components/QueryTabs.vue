@@ -46,6 +46,11 @@ const emit = defineEmits<{
   ai: [string, string, string]
   askAiAboutError: [payload: { connId: string; connName?: string; sql: string; error: string }]
   searchValue: [payload: { connId: string; value: string }]
+  // Redis 顶栏入口转发给 Workspace
+  redisOpenSearch: [conn: ConnectionConfig]
+  redisOpenImport: [conn: ConnectionConfig, dbIndex: number]
+  redisOpenExport: [conn: ConnectionConfig, dbIndex: number]
+  redisOpenServerInfo: [conn: ConnectionConfig]
 }>()
 
 const tabs = ref<Tab[]>([])
@@ -482,6 +487,10 @@ watch(tabs, saveLayout, { deep: true })
             :conn="t.conn"
             :db-index="t.redis.dbIndex"
             :pending-key="t.redis.pendingKey"
+            @open-search="emit('redisOpenSearch', t.conn)"
+            @open-import="emit('redisOpenImport', t.conn, t.redis.dbIndex)"
+            @open-export="emit('redisOpenExport', t.conn, t.redis.dbIndex)"
+            @open-server-info="emit('redisOpenServerInfo', t.conn)"
           />
           <ElasticPane
             v-else-if="t.kind === 'esIndex' && t.es"
