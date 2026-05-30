@@ -122,8 +122,23 @@ function registerCustomActions(): void {
   })
   // 工具类
   add('skylerx.format', t('editor.action.formatAll'), G_TOOLS, 1, () => emit('format'))
-  add('skylerx.compress', t('editor.action.compress'), G_TOOLS, 2, () => emit('compress'))
-  add('skylerx.strip-comments', t('editor.action.stripComments'), G_TOOLS, 3, () =>
+  // 注释 / 取消注释:Monaco 内置 action,转发即可
+  add(
+    'skylerx.comment-line',
+    locale.value === 'zh' ? '切换单行注释' : 'Toggle line comment',
+    G_TOOLS,
+    2,
+    () => editor?.getAction('editor.action.commentLine')?.run(),
+  )
+  add(
+    'skylerx.comment-block',
+    locale.value === 'zh' ? '切换块注释' : 'Toggle block comment',
+    G_TOOLS,
+    3,
+    () => editor?.getAction('editor.action.blockComment')?.run(),
+  )
+  add('skylerx.compress', t('editor.action.compress'), G_TOOLS, 4, () => emit('compress'))
+  add('skylerx.strip-comments', t('editor.action.stripComments'), G_TOOLS, 5, () =>
     emit('stripComments'),
   )
   // 保存 / AI

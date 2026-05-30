@@ -113,7 +113,17 @@ function openConnection(conn: ConnectionConfig): void {
       pending: null,
     })
 }
+/** NoSQL(Redis/Mongo/ES)不能开 SQL 查询页;路由到对应 Pane 或提示。 */
+function isNoSqlConn(conn: ConnectionConfig): boolean {
+  return dialectKind(conn.dialect) === DbKind.NoSql
+}
+
 function newQuery(conn: ConnectionConfig, ctx?: TableContext): void {
+  // NoSQL 连接:不开 SQL Tab,直接走对应 Pane
+  if (isNoSqlConn(conn)) {
+    openConnection(conn)
+    return
+  }
   push({
     kind: 'query',
     conn,
@@ -123,6 +133,10 @@ function newQuery(conn: ConnectionConfig, ctx?: TableContext): void {
   })
 }
 function runSql(conn: ConnectionConfig, sql: string): void {
+  if (isNoSqlConn(conn)) {
+    toast.warn('NoSQL 连接不支持执行 SQL,请用 ⚙ 服务器 → CONFIG / RedisPane 命令输入框')
+    return
+  }
   const cur = active.value
   if (cur && cur.kind === 'query' && cur.conn.id === conn.id) cur.pending = { sql, seq: ++pendSeq }
   else
@@ -137,8 +151,12 @@ function newForCurrent(): void {
   if (active.value) newQuery(active.value.conn)
 }
 
-/** 打开一个带初始 SQL 的查询页（不执行，如「查看定义」）。 */
+/** 打开一个带初始 SQL 的查询页(不执行,如"查看定义")。NoSQL 连接拦截 */
 function openDraft(conn: ConnectionConfig, sql: string, title: string): void {
+  if (isNoSqlConn(conn)) {
+    toast.warn('NoSQL 连接不支持 SQL 草稿页')
+    return
+  }
   push({ kind: 'query', conn, title, pending: null, draft: sql })
 }
 

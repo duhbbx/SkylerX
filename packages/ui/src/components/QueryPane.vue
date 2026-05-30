@@ -1779,13 +1779,30 @@ defineExpose({
 }
 .toolbar .ctx {
   width: auto;
-  padding: 4px 24px 4px 8px;
+  padding: 4px 26px 4px 10px;
   font-size: 12px;
   max-width: 180px;
   background-color: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
+  /* 关闭原生 select 的系统下拉样式,改为自定义 caret;option 列表的样式
+     由 OS 决定无法跨平台完全统一,但触发器(button 看起来部分)与主题对齐 */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23bbb' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  cursor: pointer;
+}
+.toolbar .ctx:hover {
+  border-color: var(--accent);
+}
+.toolbar .ctx:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
 }
 .editor {
   flex: none;

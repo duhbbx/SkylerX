@@ -123,6 +123,11 @@ onBeforeUnmount(() => {
       <div class="modal-body">
         <slot />
       </div>
+      <!-- footer slot:有传 #footer 内容时显示底部按钮区(取消/保存等);
+           内容自身管 z-index 不被 body overflow 裁;固定高度,贴底,默认 sticky 视觉 -->
+      <div v-if="$slots.footer" class="modal-foot">
+        <slot name="footer" />
+      </div>
       <span v-if="fixedHeight" class="resize-grip" :title="t('common.resizeHint')" />
     </div>
   </div>
@@ -231,5 +236,16 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   padding: 14px 18px;
+}
+/* footer:固定贴底,与 body 用 border-top 分隔,按钮右对齐 */
+.modal-foot {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--panel, transparent);
+  border-radius: 0 0 8px 8px;
 }
 </style>

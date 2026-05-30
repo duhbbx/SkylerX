@@ -123,15 +123,17 @@ async function exportCsv(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 720px;
-  max-width: 88vw;
+  width: 100%; /* 占满 modal-body 宽度,不再写死 720px */
 }
 .bar {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
 }
 .bar .q {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 200px;
 }
 .bar input,
 .bar select,
@@ -145,7 +147,10 @@ async function exportCsv(): Promise<void> {
 .bar .exp {
   cursor: pointer;
   background: var(--panel);
+  white-space: nowrap; /* "导出 CSV" 不再折行 */
+  flex-shrink: 0;
 }
+.bar .sel { flex-shrink: 0; min-width: 110px; }
 .bar .exp:disabled {
   opacity: 0.5;
   cursor: default;

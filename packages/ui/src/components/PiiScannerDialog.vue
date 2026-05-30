@@ -236,17 +236,21 @@ const groupedByTable = computed(() => {
         报告导出 CSV 后可拿去做合规审计 / 决定哪些列要建脱敏视图(右键库 → 生成脱敏视图)。
       </span>
     </div>
+    <!-- 重排:第一行三个输入(等宽),第二行抽样验证+扫描按钮(右对齐),避免互相挤压 -->
     <div class="ctrl">
-      <input v-model="dbName" class="ip" placeholder="database 名(可留空 = 默认/全部)" />
-      <input v-model="schemaName" class="ip" placeholder="schema(PG 系;可留空)" />
-      <input v-model="tblFilter" class="ip" placeholder="table LIKE(可选,如 user_%)" />
-      <label class="lbl-inline" title="对每个命中列再抽样 N 行用 regex 二次确认,降低误报">
+      <input v-model="dbName" class="ip" placeholder="database(留空 = 默认/全部)" />
+      <input v-model="schemaName" class="ip" placeholder="schema(PG 系)" />
+      <input v-model="tblFilter" class="ip" placeholder="table LIKE(如 user_%)" />
+    </div>
+    <div class="ctrl-row2">
+      <label class="lbl-inline" title="对命中列再抽样 N 行,用 regex 二次确认">
         <input v-model="sampling" type="checkbox" />
         <span class="nowrap">抽样验证</span>
         <input v-model.number="sampleN" type="number" class="ip-mini" min="10" max="1000" />
+        <span class="nowrap">行</span>
       </label>
       <span class="spacer" />
-      <button v-if="!running" class="btn-primary nowrap" @click="run">▶ 扫描</button>
+      <button v-if="!running" class="btn-primary nowrap" @click="run">▶ 开始扫描</button>
       <button v-else class="btn-danger nowrap" @click="stop">■ 停止</button>
     </div>
 
@@ -321,10 +325,17 @@ const groupedByTable = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 0 0 6px;
+  flex-wrap: nowrap;
+}
+.ctrl .ip { flex: 1 1 0; min-width: 0; }
+.ctrl-row2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 0 0 8px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 8px;
-  flex-wrap: nowrap;
 }
 .spacer { flex: 1; }
 .ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; width: 130px; }
