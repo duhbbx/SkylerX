@@ -155,19 +155,30 @@ jobs:
             apps/desktop/release/*.yml
           if-no-files-found: ignore
 
-      # Prerelease channel yml(build job 里也生成一份给 GitHub Release attach 用)
-      # 详细说明见 release-mirror-oss job 里同名 step
-      - name: Duplicate latest*.yml as rc/beta/alpha channels (for GH Release)
+      # Prerelease channel yml: 只复制成当前 tag 的 prerelease channel(不再无脑生成 3 套).
+      # tag 命名规则:
+      #   v0.5.0        → stable,无需额外 yml(electron-updater 默认 channel='latest')
+      #   v0.5.0-rc1    → 复制成 rc.yml/rc-mac.yml/rc-linux.yml/rc-linux-arm64.yml
+      #   v0.5.0-beta.2 → 复制成 beta.*
+      #   v0.5.0-alpha.3→ 复制成 alpha.*
+      # electron-updater 6.x 从 app version 提取 channel = 正则取首个字母段(rc/beta/alpha).
+      - name: Duplicate latest*.yml to current tag prerelease channel (for GH Release)
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
+          # 从 tag 提取 prerelease channel(如 v0.5.0-rc1 → rc, v0.5.0 → 空)
+          TAG="${GITHUB_REF_NAME#v}"
+          CH=$(echo "$TAG" | grep -oE '\-([a-z]+)' | head -1 | tr -d -)
+          if [ -z "$CH" ]; then
+            echo "::notice::Stable release ($TAG), 不生成额外 channel yml"
+            ls apps/desktop/release/*.yml 2>/dev/null | sort
+            exit 0
+          fi
+          echo "::notice::Prerelease release ($TAG), 复制 latest*.yml → $CH*.yml"
           for src in apps/desktop/release/latest*.yml; do
             [ -f "$src" ] || continue
-            base=$(basename "$src" | sed 's/^latest/CH/')
-            for ch in rc beta alpha; do
-              dst="apps/desktop/release/$(echo "$base" | sed "s/^CH/$ch/")"
-              cp "$src" "$dst"
-            done
+            dst=$(echo "$src" | sed "s|/latest|/$CH|")
+            cp "$src" "$dst"
           done
           ls apps/desktop/release/*.yml | sort
 
@@ -196,6 +207,7 @@ jobs:
             apps/desktop/release/rc*.yml
             apps/desktop/release/beta*.yml
             apps/desktop/release/alpha*.yml
+            # 上面通配每次只命中 latest + 当前 prerelease channel(一个),不会全四套
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -380,43 +392,52 @@ jobs:
           access-key-id: ${{ env.OSS_ACCESS_KEY_ID }}
           access-key-secret: ${{ env.OSS_ACCESS_KEY_SECRET }}
 
-      # Prerelease channel yml — electron-updater 看到 app version 含 -rc.1 / -beta.2 / -alpha.3
-      # 后缀时,默认 channel 推断成 rc / beta / alpha,会去拉 rc.yml / beta.yml / alpha.yml,
-      # 而不是 latest.yml。我们的 build 只生成 latest*.yml,所以 prerelease 装机的用户
-      # 自动更新 check 时拿不到 yml,退化为"已是最新"。
-      # 修法:把 latest*.yml 复制一份命名为 rc*.yml / beta*.yml / alpha*.yml,
-      # 这样所有 prerelease channel 推断都能命中。stable release 仍走 latest.yml 不变。
-      - name: Duplicate latest*.yml as rc/beta/alpha channels
+      # Prerelease channel yml: 只复制成当前 tag 的 prerelease channel(同 build job 逻辑).
+      # tag v0.5.0 → 不动; v0.5.0-rc11 → rc.yml; v0.5.0-beta.1 → beta.yml.
+      - name: Duplicate latest*.yml to current tag prerelease channel
         if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
         run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CH=$(echo "$TAG" | grep -oE '\-([a-z]+)' | head -1 | tr -d -)
+          if [ -z "$CH" ]; then
+            echo "::notice::Stable release ($TAG), 不生成额外 channel yml"
+            ls dist/*.yml 2>/dev/null | sort
+            exit 0
+          fi
+          echo "::notice::Prerelease release ($TAG), 复制 latest*.yml → $CH*.yml"
           for src in dist/latest*.yml; do
             [ -f "$src" ] || continue
-            base=$(basename "$src" | sed 's/^latest/CH/')
-            for ch in rc beta alpha; do
-              dst="dist/$(echo "$base" | sed "s/^CH/$ch/")"
-              cp "$src" "$dst"
-              echo "  $src → $(basename "$dst")"
-            done
+            dst=$(echo "$src" | sed "s|/latest|/$CH|")
+            cp "$src" "$dst"
+            echo "  $src → $(basename "$dst")"
           done
           ls dist/*.yml | sort
 
       # 上传到 releases/<tag>/ + releases/latest/ 双路径
       # 排除项:
       #   *.blockmap  — electron-updater 的增量差分文件,自动更新场景才需要,
-      #                 网页直接下载无意义,排掉省 OSS 流量(单文件 ~10MB,8 个架构 80MB)
+      #                 网页直接下载无意义,排掉省 OSS 流量
       # 保留项:
-      #   latest*.yml + rc*.yml + beta*.yml + alpha*.yml — electron-updater 必读
+      #   latest*.yml + 当前 channel*.yml — electron-updater 必读
       #   所有产物文件(.dmg/.exe/.AppImage/.deb/.rpm/.pacman/.tar.gz)
       - name: Upload to OSS (tagged + latest)
         if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
         run: |
           TAG="${GITHUB_REF_NAME}"
           echo "::notice::Uploading to oss://${OSS_BUCKET}/releases/${TAG}/ and /latest/"
+
+          # 永久存档目录: <tag>/ - 只追加,不覆盖
           ossutil cp -rf dist/ "oss://${OSS_BUCKET}/releases/${TAG}/" \
             --exclude "*.blockmap"
-          # latest/ 镜像: 用户可永远靠 /releases/latest/ 拿当前最新版
+
+          # latest/ 镜像必须先清空再上传,否则 ossutil cp 只追加 → 历次 rc 文件累积,
+          # latest/ 目录越来越大(用户报告:rc2-rc10 所有版本文件都堆在里面).
+          # ossutil rm -rf 先删整个目录,再 cp 上传当前 tag 的产物,保持 latest/ 干净.
+          echo "::notice::Cleaning oss://${OSS_BUCKET}/releases/latest/ before sync ..."
+          ossutil rm -rf "oss://${OSS_BUCKET}/releases/latest/" --include "*" || true
           ossutil cp -rf dist/ "oss://${OSS_BUCKET}/releases/latest/" \
             --exclude "*.blockmap"
+
           echo "::notice::Done. Download base: https://${OSS_BUCKET}.${OSS_ENDPOINT}/releases/${TAG}/"
 
 # 备注：

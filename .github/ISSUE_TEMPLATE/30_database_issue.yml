@@ -46,8 +46,8 @@ body:
         - Redshift
         - Doris
         - StarRocks
-        - DM (达梦)
-        - KingbaseES (人大金仓)
+        - DM (Dameng)
+        - KingbaseES
         - openGauss
         - TDengine
         - Other (specify in description)
@@ -113,7 +113,7 @@ body:
     attributes:
       label: Expected vs Actual
       placeholder: |
-        Expected: a "物化视图" / "Materialized Views" group containing `mv`
+        Expected: a "Materialized Views" group containing `mv`
         Actual: nothing about materialized views in the tree
 
   - type: textarea
