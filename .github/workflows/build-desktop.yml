@@ -281,12 +281,32 @@ jobs:
           access-key-id: ${{ env.OSS_ACCESS_KEY_ID }}
           access-key-secret: ${{ env.OSS_ACCESS_KEY_SECRET }}
 
+      # Prerelease channel yml — electron-updater 看到 app version 含 -rc.1 / -beta.2 / -alpha.3
+      # 后缀时,默认 channel 推断成 rc / beta / alpha,会去拉 rc.yml / beta.yml / alpha.yml,
+      # 而不是 latest.yml。我们的 build 只生成 latest*.yml,所以 prerelease 装机的用户
+      # 自动更新 check 时拿不到 yml,退化为"已是最新"。
+      # 修法:把 latest*.yml 复制一份命名为 rc*.yml / beta*.yml / alpha*.yml,
+      # 这样所有 prerelease channel 推断都能命中。stable release 仍走 latest.yml 不变。
+      - name: Duplicate latest*.yml as rc/beta/alpha channels
+        if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
+        run: |
+          for src in dist/latest*.yml; do
+            [ -f "$src" ] || continue
+            base=$(basename "$src" | sed 's/^latest/CH/')
+            for ch in rc beta alpha; do
+              dst="dist/$(echo "$base" | sed "s/^CH/$ch/")"
+              cp "$src" "$dst"
+              echo "  $src → $(basename "$dst")"
+            done
+          done
+          ls dist/*.yml | sort
+
       # 上传到 releases/<tag>/ + releases/latest/ 双路径
       # 排除项:
       #   *.blockmap  — electron-updater 的增量差分文件,自动更新场景才需要,
       #                 网页直接下载无意义,排掉省 OSS 流量(单文件 ~10MB,8 个架构 80MB)
       # 保留项:
-      #   latest*.yml — electron-updater 必读;app 端 setFeedURL('.../latest/') 后会自动取
+      #   latest*.yml + rc*.yml + beta*.yml + alpha*.yml — electron-updater 必读
       #   所有产物文件(.dmg/.exe/.AppImage/.deb/.rpm/.pacman/.tar.gz)
       - name: Upload to OSS (tagged + latest)
         if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
