@@ -996,6 +996,16 @@ const DICT: Record<string, [string, string]> = {
   'designer.noApply': ['没有可应用的变更', 'No changes to apply'],
   'designer.needName': ['请输入表名', 'Please enter a table name'],
   'designer.needField': ['至少需要一个有效字段', 'At least one valid field is required'],
+  'designer.col.missingName': ['第 {row} 行: 缺列名', 'Row {row}: column name missing'],
+  'designer.col.missingType': ['第 {row} 行 "{name}": 缺类型', 'Row {row} "{name}": type missing'],
+  'designer.col.skippedHint': [
+    '第 {row} 行 "{name}" 因字段不完整被跳过',
+    'Row {row} "{name}" skipped (incomplete)',
+  ],
+  'designer.preview.warningHeader': [
+    '-- ⚠ 以下列因字段不完整未生成 SQL,请补全后再保存:',
+    '-- ⚠ The following columns were skipped (incomplete; fill in to include in SQL):',
+  ],
   'designer.saveAsPrompt': ['另存为（新表名）', 'Save as (new table name)'],
   'designer.alterBadge': ['修改表', 'Alter table'],
   'designer.new': ['新建', 'New'],
