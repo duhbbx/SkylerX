@@ -142,6 +142,13 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
 
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+  // Windows: 暂时关闭签名校验 — 未走 SignPath 之前 exe 没签,
+  // electron-updater 默认会拒绝 "publisherName 不匹配" / "not signed".
+  // 走 SignPath 给 Windows 签名后删掉这两行,改回严格校验.
+  // 类型断言:这两个属性在 electron-updater 6.x 都存在但 .d.ts 没声明
+  ;(autoUpdater as unknown as { disableWebInstaller: boolean }).disableWebInstaller = false
+  ;(autoUpdater as unknown as { verifyUpdateCodeSignature: unknown }).verifyUpdateCodeSignature =
+    () => Promise.resolve(null)
 
   // 启动时应用持久化的 channel 选择(默认 github,用户切过 oss-cn 就走那个)
   void loadChannel().then((c) => applyChannel(c))

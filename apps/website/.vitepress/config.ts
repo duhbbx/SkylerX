@@ -16,18 +16,37 @@ export default defineConfig({
   ignoreDeadLinks: true,
   appearance: 'dark',
 
-  head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
-    ['meta', { name: 'theme-color', content: '#7c6cff' }],
-    ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:title', content: 'SkylerX — 开源数据库管理工具' }],
-    ['meta', {
-      property: 'og:description',
-      content: '20+ SQL/NoSQL 方言 · 国产数据库全家桶 · AI 助手 · 跨平台桌面端',
-    }],
-    ['meta', { property: 'og:image', content: 'https://skyler.uno/og.png' }],
-    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-  ],
+  head: (() => {
+    const base: Array<[string, Record<string, string>]> = [
+      ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+      ['meta', { name: 'theme-color', content: '#7c6cff' }],
+      ['meta', { property: 'og:type', content: 'website' }],
+      ['meta', { property: 'og:title', content: 'SkylerX — 开源数据库管理工具' }],
+      [
+        'meta',
+        {
+          property: 'og:description',
+          content: '20+ SQL/NoSQL 方言 · 国产数据库全家桶 · AI 助手 · 跨平台桌面端',
+        },
+      ],
+      ['meta', { property: 'og:image', content: 'https://skyler.uno/og.png' }],
+      ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ]
+    // Umami 自托管:仅当构建时 env UMAMI_WEBSITE_ID 存在才注入 script,
+    // 避免占位 UUID 导致 Umami script.js 404。
+    // 用法:UMAMI_WEBSITE_ID=xxxxxxxx-xxxx-... pnpm build:website
+    if (process.env.UMAMI_WEBSITE_ID) {
+      base.push([
+        'script',
+        {
+          defer: '',
+          src: 'https://umami.skyler.uno/script.js',
+          'data-website-id': process.env.UMAMI_WEBSITE_ID,
+        },
+      ])
+    }
+    return base
+  })(),
 
   themeConfig: {
     logo: '/favicon.svg',

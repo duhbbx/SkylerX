@@ -3268,8 +3268,13 @@ onUnmounted(() => unsubMenu?.())
 .about-row {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start; /* 多行错误时上对齐,不让 "更新" label 被拉到中间 */
+  gap: 12px;
   padding: 4px 2px;
   border-bottom: 1px solid var(--border);
+}
+.about-row > span:first-child {
+  flex: none; /* 左侧 label 不收缩 */
 }
 .about-row:last-child {
   border-bottom: none;
@@ -3288,22 +3293,40 @@ onUnmounted(() => unsubMenu?.())
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 错误文本可能很长(Windows 没签的多行 stacktrace),让 cell 允许换行 */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  /* 防撑爆 about Modal: 限定最大宽度, 多出的折行 */
+  max-width: 360px;
 }
 .upd-cell button {
   padding: 3px 10px;
   font-size: 12px;
+  flex: none;
 }
 .upd-ok {
   color: #4caf50;
   font-size: 12px;
+  flex: none;
 }
 .upd-err {
   color: var(--err, #e04050);
-  font-size: 12px;
+  font-size: 11px;
+  /* 长 stacktrace 允许换行 + 单词内断行(英文长串路径不会撑出框) */
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1 1 100%;
+  max-height: 96px;
+  overflow-y: auto;
+  background: rgba(224, 64, 80, 0.06);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
 }
 .upd-new {
   color: var(--accent);
   font-size: 12px;
+  flex: none;
 }
 .upd-progress {
   display: inline-flex;
