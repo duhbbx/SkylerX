@@ -86,10 +86,9 @@ linux:
     - target: rpm
       arch:
         - x64
-    # pacman 删除:
-    #   - Arch / Manjaro 用户基数小, 多数熟练用户能自己处理 AppImage / tar.gz
-    #   - fpm 打 pacman 平均吃 ~60-90s, 占 linux-x64 总耗时 ~10%
-    #   - 必要时用户走 yay -S 装 AUR(社区维护), 或者直接 AppImage 无依赖运行
+    - target: pacman
+      arch:
+        - x64
     - target: tar.gz
       arch:
         - x64
