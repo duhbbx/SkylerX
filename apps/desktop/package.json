@@ -1,6 +1,6 @@
 {
   "name": "@db-tool/desktop",
-  "version": "0.1.1",
+  "version": "0.4.0",
   "private": true,
   "description": "数据库管理工具 - 桌面端 (Electron + Vue3)",
   "main": "./out/main/index.js",
