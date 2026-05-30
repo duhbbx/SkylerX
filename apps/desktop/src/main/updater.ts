@@ -159,12 +159,16 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
   ;(autoUpdater as unknown as { disableWebInstaller: boolean }).disableWebInstaller = false
   ;(autoUpdater as unknown as { verifyUpdateCodeSignature: unknown }).verifyUpdateCodeSignature =
     () => Promise.resolve(null)
-  // 强制 channel = 'latest' 让所有版本都走 latest.yml,不被 prerelease 后缀
-  // 自动推断成 rc/beta/alpha channel 误拉 rc.yml 等(我们 build 默认只生成 latest.yml).
-  // 配合 allowPrerelease=true,让 GitHub provider 接受 -rc 后缀的 release(否则报
-  // "No published versions on GitHub" — 它默认 channel=latest+allowPrerelease=false
-  // 时只看 stable release,而仓库现在全是 v0.5.0-rc* prerelease tag).
-  autoUpdater.channel = 'latest'
+  // ⚠ 不要强制 autoUpdater.channel = 'latest':
+  //   GitHub provider 在 channel='latest' 时会主动过滤掉所有 -rc/-beta/-alpha tag
+  //   的 release(不管 allowPrerelease 是否 true),导致仓库全是 -rc 时报
+  //   "No published versions on GitHub".
+  //   让 electron-updater 按 app version 自动推断 channel:
+  //     0.5.0      → 'latest' → 拉 latest.yml + 找 stable release
+  //     0.5.0-rc9  → 'rc'     → 拉 rc.yml    + 找 含-rc 的 release
+  //   CI 已经同时生成 latest.yml + rc.yml/beta.yml/alpha.yml,所以两种 channel 都有.
+  //
+  // allowPrerelease=true 让 prerelease → stable 升级也能跑(stable app 收到 -rc 更新)
   autoUpdater.allowPrerelease = true
 
   // loadChannel + applyChannel + 启动 check 必须串行,
