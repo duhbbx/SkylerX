@@ -223,12 +223,22 @@ const controller: TreeController = {
       })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      // 不在树里显示错误：收起该节点，错误只通过弹窗呈现
+      // 不在树里显示错误：收起该节点，错误通过弹窗 / toast 呈现
       node.children = null
       node.expanded = false
       // 连接节点打不开，或任意层级的连接级错误 → 弹出该连接编辑框
       if (node.kind === MetaNodeKind.Connection || isConnectionError(msg)) {
         emit('connError', connId, msg)
+      } else {
+        // 非连接级错误(权限/SQL/驱动 bug 等):用户之前报告"不报错只是节点收起",
+        // 看不到任何提示以为软件无响应. 至少 toast 一条带"问 AI"的错误,让用户能定位.
+        toast.error(msg, {
+          askAi: {
+            error: msg,
+            connId,
+            errorCode: undefined,
+          },
+        })
       }
     } finally {
       node.loading = false
