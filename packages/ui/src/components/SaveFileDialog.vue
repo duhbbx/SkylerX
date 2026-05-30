@@ -247,7 +247,10 @@ function fmtSize(n: number): string {
 
 function fmtTime(ms: number): string {
   if (!ms) return ''
-  return new Date(ms).toLocaleString()
+  const d = new Date(ms)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  // 固定 24 小时制 YYYY-MM-DD HH:mm:ss,不走 locale 避免 PM/AM 出现
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function onSortClick(by: SortBy): void {
@@ -379,7 +382,7 @@ watch(
                     大小 {{ sortBy === 'size' ? (sortDesc ? '↓' : '↑') : '' }}
                   </button>
                 </th>
-                <th style="width: 160px">
+                <th style="width: 175px; white-space: nowrap;">
                   <button class="sort-btn" @click="onSortClick('mtime')">
                     修改时间 {{ sortBy === 'mtime' ? (sortDesc ? '↓' : '↑') : '' }}
                   </button>
@@ -554,7 +557,12 @@ watch(
 .grid tr.folder .name { color: var(--accent); font-weight: 500; }
 .name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.size, .time { font-family: ui-monospace, monospace; color: var(--muted); font-size: 11px; }
+.size, .time {
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap; /* 时间用 24 小时制 YYYY-MM-DD HH:mm:ss,固定宽度,不换行 */
+}
 .empty { text-align: center; color: var(--muted); padding: 20px; font-style: italic; }
 .empty.err { color: #e04050; }
 .footer-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 4px 0; border-top: 1px solid var(--border); }
