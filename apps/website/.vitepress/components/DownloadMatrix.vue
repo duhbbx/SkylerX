@@ -152,6 +152,15 @@ onMounted(async () => {
 })
 
 const platformIcon: Record<string, string> = { macos: '', windows: '⊞', linux: '🐧' }
+const platformLabel: Record<string, string> = {
+  macos: 'macOS',
+  windows: 'Windows',
+  linux: 'Linux',
+}
+/** 第一次出现该 platform 的行返回 true,用来在表格里插一行分组标题(带 anchor id) */
+function isFirstOfPlatform(i: number): boolean {
+  return i === 0 || rows[i - 1].platform !== rows[i].platform
+}
 
 /** 给 Umami 上报下载点击,看哪个平台/源/版本最受欢迎。失败静默(没装 Umami 也不影响下载)。 */
 function trackDownload(row: Row): void {
@@ -223,20 +232,31 @@ function trackDownload(row: Row): void {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(r, i) in rows" :id="`${r.platform}-${r.arch}-${r.format.replace(/[.\s()]/g, '')}`" :key="i">
-          <td>{{ platformIcon[r.platform] }} {{ r.platform }}</td>
-          <td>{{ r.arch }}</td>
-          <td><code>{{ r.format }}</code></td>
-          <td>{{ r.label }}</td>
-          <td>
-            <template v-if="findAsset(r)">
-              <a class="dl-mx-link" :href="findAsset(r)!.url" target="_blank" rel="noopener" @click="trackDownload(r)">
-                下载 <span class="dl-mx-size">({{ bytes(findAsset(r)!.size) }})</span>
-              </a>
-            </template>
-            <span v-else class="dl-mx-na">—</span>
-          </td>
-        </tr>
+        <template v-for="(r, i) in rows" :key="i">
+          <!-- platform 切换时插一行带 id 的分组标题,
+               让 hero 上 "下载(Windows arm64)" 点击后能精确滚到对应分组(#windows/#macos/#linux) -->
+          <tr v-if="isFirstOfPlatform(i)" :id="r.platform" class="dl-mx-group">
+            <td colspan="5">
+              <h3 class="dl-mx-grp-title">
+                {{ platformIcon[r.platform] }} {{ platformLabel[r.platform] }}
+              </h3>
+            </td>
+          </tr>
+          <tr :id="`${r.platform}-${r.arch}-${r.format.replace(/[.\s()]/g, '')}`">
+            <td>{{ platformIcon[r.platform] }} {{ r.platform }}</td>
+            <td>{{ r.arch }}</td>
+            <td><code>{{ r.format }}</code></td>
+            <td>{{ r.label }}</td>
+            <td>
+              <template v-if="findAsset(r)">
+                <a class="dl-mx-link" :href="findAsset(r)!.url" target="_blank" rel="noopener" @click="trackDownload(r)">
+                  下载 <span class="dl-mx-size">({{ bytes(findAsset(r)!.size) }})</span>
+                </a>
+              </template>
+              <span v-else class="dl-mx-na">—</span>
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
 
@@ -317,6 +337,19 @@ function trackDownload(row: Row): void {
   padding: 10px 12px;
   border-bottom: 1px solid var(--vp-c-divider);
   text-align: left;
+}
+/* platform 分组标题行 — anchor 锚点 + 视觉分组 */
+.dl-mx-group td {
+  background: var(--vp-c-bg-soft);
+  padding: 14px 12px 8px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  /* anchor scroll-margin 让 #windows 跳转时上方留点空间(顶部 nav 不会遮)*/
+  scroll-margin-top: 80px;
+}
+.dl-mx-grp-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 .dl-mx-table th {
   background: var(--vp-c-bg-soft);
