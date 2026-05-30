@@ -308,16 +308,26 @@ jobs:
             const seen = new Set();
             for (const p of paths) {
               const y = yaml.load(fs.readFileSync(p, 'utf8'));
-              // 顶层字段:除 files 外其他 (version/path/sha512/releaseDate) 用第一个 yml 的
               for (const k of Object.keys(y)) {
                 if (k === 'files') continue;
                 if (merged[k] === undefined) merged[k] = y[k];
               }
               for (const f of (y.files || [])) {
-                if (!seen.has(f.url)) {
-                  seen.add(f.url);
-                  merged.files.push(f);
+                if (seen.has(f.url)) continue;
+                // ⚠ 关键: 同一 url 可能在多个 matrix yml 出现(比如 win-x64 跟 win-arm64
+                // cross-compile 都列了 setup.exe), sha/size 不同. 必须用 dist/ 实际文件
+                // 的 size 校验, 只留 yml.size === fs.statSync(dist/url).size 的那条.
+                // 不匹配的丢弃 → electron-updater 下载完 sha 校验失败.
+                const distFile = path.join('dist', f.url);
+                if (fs.existsSync(distFile)) {
+                  const realSize = fs.statSync(distFile).size;
+                  if (Number(f.size) !== realSize) {
+                    console.log(`  skip ${f.url}: yml.size=${f.size} ≠ fs.size=${realSize} (来自 ${p})`);
+                    continue;
+                  }
                 }
+                seen.add(f.url);
+                merged.files.push(f);
               }
             }
             const out = path.join('dist', name);
