@@ -879,8 +879,9 @@ export function buildCreateTable(
 /**
  * 由「原始列快照 + 当前表规格」diff 出 ALTER 语句（MySQL / PostgreSQL 系）。
  * - 列：按 originalName 配对 → 识别 新增 / 删除 / 改名 / 改类型·空否·默认·注释。
+ * - 主键：对比原始列 PK 集合 vs 当前列 PK 集合 → DROP/ADD PRIMARY KEY。
  * - 约束/索引：改表模式下设计器约束页从空白开始，凡填写者均视为「新增」→ ALTER ADD / CREATE INDEX。
- * - 主键变更、删除既有约束本版不处理（请用 SQL 编辑器）。
+ * - 删除既有约束（UNIQUE/CHECK）本版不处理（请用 SQL 编辑器）。
  * 返回不带分号的语句数组；调用方拼接预览或逐条执行（executeBatch 事务）。
  */
 export function buildAlterTable(
@@ -972,6 +973,37 @@ export function buildAlterTable(
         )
       if (commentChanged)
         stmts.push(`COMMENT ON COLUMN ${tableRef}.${col} IS '${esc(c.comment.trim())}'`)
+    }
+  }
+
+  // ── 主键 diff ─────────────────────────────────────────────
+  // 用户报告:改表设计器里勾上某列的 PK,保存时 ALTER 语句为空 → 没修改主键.
+  // 修法:对比 原始列 PK 集合 vs 当前列 PK 集合,有变化就生成 DROP + ADD.
+  // 各方言差异:
+  //   - MySQL: DROP PRIMARY KEY / ADD PRIMARY KEY (...)
+  //   - PG 系: DROP CONSTRAINT IF EXISTS "<table>_pkey" / ADD PRIMARY KEY (...)
+  //            (PG 默认 pk 约束名是 <裸表名>_pkey,用 IF EXISTS 保险)
+  //   - Oracle/DM: DROP PRIMARY KEY / ADD PRIMARY KEY (...)  (Oracle 也支持)
+  //   - SqlServer: DROP CONSTRAINT 需约束名,简单走 PK_<table> 约定 + IF EXISTS
+  const oldPkCols = original.filter((o) => o.primaryKey).map((o) => o.name)
+  const newPkCols = current.filter((c) => c.primaryKey).map((c) => c.name)
+  const pkChanged =
+    oldPkCols.length !== newPkCols.length || oldPkCols.some((n, i) => n !== newPkCols[i])
+  if (pkChanged) {
+    if (oldPkCols.length) {
+      if (fam === 'mysql' || fam === 'oracle') {
+        stmts.push(`ALTER TABLE ${tableRef} DROP PRIMARY KEY`)
+      } else if (fam === 'pg') {
+        // 取裸表名(去掉 "schema". 引号)拼 _pkey,IF EXISTS 容错
+        const baseName = tableRef.replace(/^.*\./, '').replace(/['"`\[\]]/g, '')
+        stmts.push(`ALTER TABLE ${tableRef} DROP CONSTRAINT IF EXISTS ${q(`${baseName}_pkey`)}`)
+      } else if (fam === 'sqlserver') {
+        const baseName = tableRef.replace(/^.*\./, '').replace(/['"`\[\]]/g, '')
+        stmts.push(`ALTER TABLE ${tableRef} DROP CONSTRAINT IF EXISTS ${q(`PK_${baseName}`)}`)
+      }
+    }
+    if (newPkCols.length) {
+      stmts.push(`ALTER TABLE ${tableRef} ADD PRIMARY KEY (${newPkCols.map(q).join(', ')})`)
     }
   }
 
