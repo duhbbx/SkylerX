@@ -538,6 +538,18 @@ export function createPostgresDriver(dialect: DbDialect): DatabaseDriver {
       const pool = new Pool(buildPoolConfig(config))
       // 空闲连接报错兜底，避免未处理错误导致主进程崩溃
       pool.on('error', (err) => console.error('[pg] pool error:', err.message))
+      // pg.Pool 是 lazy connection（new Pool 不真连,要等第一次 query 才连）.
+      // 用户报告"PG 连不上不报错" — 因为 connect() 直接返回 PgConnection 不抛错,
+      // 错误延迟到 fetchMetadata 第一次 query 时才暴露,UI 这边看上去"没反应".
+      // 主动跑一次轻量 ping 让连接错误在 connect() 阶段就抛出,UI 立刻能弹编辑框.
+      try {
+        await pool.query('SELECT 1')
+      } catch (e) {
+        await pool.end().catch(() => {
+          /* 关闭失败不影响抛原始错误 */
+        })
+        throw e
+      }
       return new PgConnection(pool, config.database || 'postgres')
     },
 
