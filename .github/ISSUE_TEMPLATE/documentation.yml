@@ -1,0 +1,29 @@
+name: 📖 Documentation
+description: Report a typo, missing info, or improvement for the docs site
+title: "[Docs] "
+labels:
+  - "type: docs"
+  - "module: docs-site"
+  - "status: needs-triage"
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Page URL (or path in repo)
+      placeholder: "https://skylerx.skyler.uno/docs/getting-started"
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What needs fixing / adding?
+      placeholder: "The 'Auto-update' section doesn't mention that prerelease users need to manually download once first."
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested text (optional)
+      description: If you can phrase the fix, that's even better — we'll just need to merge it.

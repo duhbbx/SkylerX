@@ -1,0 +1,13 @@
+# Disable blank issues — force users into one of the templates below
+blank_issues_enabled: false
+
+contact_links:
+  - name: 💬 Discussions / 讨论区
+    url: https://github.com/duhbbx/SkylerX/discussions
+    about: 有问题想聊但不确定是不是 bug? 来讨论区
+  - name: 📖 Documentation / 文档
+    url: https://skylerx.skyler.uno
+    about: 安装 / 使用 / 排错文档
+  - name: 🔒 Security advisory
+    url: https://github.com/duhbbx/SkylerX/security/advisories/new
+    about: 私下报告安全漏洞(不要开公开 issue)
