@@ -195,16 +195,24 @@ function hasMeaningfulConfig(s: Settings): boolean {
   return Object.values(s.aiProviders).some((p) => p?.apiKey?.trim())
 }
 
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
 function load(): Settings {
-  const main = parseSettings(localStorage.getItem(KEY))
-  const backup = parseSettings(localStorage.getItem(BACKUP_KEY))
+  const main = parseSettings(safeGetItem(KEY))
+  const backup = parseSettings(safeGetItem(BACKUP_KEY))
   // 1) 主存在且有 AI 配置 → 用主
   if (main && hasMeaningfulConfig(main)) return main
   // 2) 主丢了/没配,但备份还有 → 用备份(这种情况通常是用户报"配置丢了")
   if (backup && hasMeaningfulConfig(backup)) {
     // 顺手把备份写回主 KEY,避免每次启动都走 fallback
     try {
-      localStorage.setItem(KEY, JSON.stringify(backup))
+      if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(backup))
     } catch {
       /* ignore */
     }
