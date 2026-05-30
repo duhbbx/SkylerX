@@ -54,7 +54,11 @@ mac:
   target:
     - target: dmg
       arch:
-        - x64
+        # 只打 arm64. 之前配 [x64, arm64] 在 mac-arm64 runner 上 cross-compile
+        # x64 dmg 时,install-app-deps 已为 arm64 rebuild 过 native modules(better-sqlite3 等),
+        # 这一步**没**为 x64 重新 rebuild,导致两个 dmg 里 .node 文件 arch 错乱.
+        # 用户报告: arm64 Mac 装 arm64.dmg → better_sqlite3.node 是 x86_64 → 启动直接挂.
+        # Intel Mac 用户走 Rosetta 跑 arm64.dmg(性能稍损但能用).
         - arm64
   category: public.app-category.developer-tools
   hardenedRuntime: true
