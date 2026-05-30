@@ -16,7 +16,14 @@ import {
   listConnections,
   updateConnection,
 } from '../db/connectionStore.js'
-import { clearHistory, listHistory, recordHistory } from '../db/historyStore.js'
+import {
+  clearHistory,
+  deleteHistoryEntry,
+  listHistory,
+  recordHistory,
+  searchHistory,
+  updateHistoryMeta,
+} from '../db/historyStore.js'
 import { closeTunnel, ensureTunnel } from '../ssh-tunnel.js'
 import { getTransport } from '../transport.js'
 
@@ -34,6 +41,9 @@ export const IPC = {
   cancel: 'connections:cancel',
   history: 'connections:history',
   historyClear: 'connections:historyClear',
+  historySearch: 'connections:historySearch',
+  historyMeta: 'connections:historyMeta',
+  historyDelete: 'connections:historyDelete',
   beginSession: 'connections:beginSession',
   executeInSession: 'connections:executeInSession',
   commitSession: 'connections:commitSession',
@@ -104,6 +114,20 @@ export function registerConnectionIpc(): void {
   ipcMain.handle(IPC.history, (_e, connId: string, limit?: number) => listHistory(connId, limit))
 
   ipcMain.handle(IPC.historyClear, (_e, connId: string) => clearHistory(connId))
+
+  ipcMain.handle(
+    IPC.historySearch,
+    (_e, query: string, opts?: { connectionId?: string; limit?: number }) =>
+      searchHistory(query, opts),
+  )
+
+  ipcMain.handle(
+    IPC.historyMeta,
+    (_e, id: number, patch: { tags?: string | null; note?: string | null; pinned?: number }) =>
+      updateHistoryMeta(id, patch),
+  )
+
+  ipcMain.handle(IPC.historyDelete, (_e, id: number) => deleteHistoryEntry(id))
 
   // ── 手动提交会话 ──
   ipcMain.handle(IPC.beginSession, (_e, connId: string, options?: ExecuteOptions) =>

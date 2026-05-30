@@ -3,10 +3,23 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
+import type { DbDialect } from '@db-tool/shared-types'
 import { computed, ref } from 'vue'
+import { prompt as appPrompt } from '../dialog'
 import { t } from '../i18n'
-import { allTags, removeSnippet, snippets } from '../snippets'
+import {
+  allTags,
+  applySnippetVars,
+  extractSnippetVars,
+  removeSnippet,
+  snippets,
+  snippetsForDialect,
+} from '../snippets'
 
+const props = defineProps<{
+  /** 当前编辑器所连的方言;snippet 限定 dialects 时按此筛选 */
+  dialect?: DbDialect | null
+}>()
 const emit = defineEmits<{ pick: [string] }>()
 
 const q = ref('')
@@ -15,7 +28,8 @@ const tags = computed(() => allTags())
 
 const filtered = computed(() => {
   const k = q.value.trim().toLowerCase()
-  return snippets.filter(
+  // 先按当前方言筛(unset/通用 + 命中)
+  return snippetsForDialect(props.dialect).filter(
     (s) =>
       (!activeTag.value || (s.tags ?? []).includes(activeTag.value)) &&
       (!k || `${s.name} ${s.sql} ${(s.tags ?? []).join(' ')}`.toLowerCase().includes(k)),
@@ -24,6 +38,22 @@ const filtered = computed(() => {
 
 function toggleTag(t: string): void {
   activeTag.value = activeTag.value === t ? null : t
+}
+
+/** 选中 snippet:遇到 {{var}} 占位符 → 依次弹 prompt 填值 → 替换后 emit。 */
+async function applyAndPick(sql: string): Promise<void> {
+  const vars = extractSnippetVars(sql)
+  if (!vars.length) {
+    emit('pick', sql)
+    return
+  }
+  const values: Record<string, string> = {}
+  for (const name of vars) {
+    const v = await appPrompt({ message: `参数 {{${name}}}:`, defaultValue: '' })
+    if (v == null) return // 取消任意一个 → 整个放弃
+    values[name] = v
+  }
+  emit('pick', applySnippetVars(sql, values))
 }
 </script>
 
@@ -54,7 +84,7 @@ function toggleTag(t: string): void {
         :key="s.id"
         class="snip-item"
         :title="t('snip.loadEditor')"
-        @dblclick="emit('pick', s.sql)"
+        @dblclick="applyAndPick(s.sql)"
       >
         <div class="snip-main">
           <div class="snip-name">

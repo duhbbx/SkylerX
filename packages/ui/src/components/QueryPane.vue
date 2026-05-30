@@ -1514,7 +1514,7 @@ defineExpose({
         @clear="onClearHistory"
         @save-snippet="saveSnippet"
       />
-      <SnippetsPanel v-else-if="showSnippets" @pick="onPickSnippet" />
+      <SnippetsPanel v-else-if="showSnippets" :dialect="props.conn.dialect" @pick="onPickSnippet" />
       <PlanPanel v-else-if="showPlan" :tree="planData?.tree ?? null" :text="planData?.text ?? null" />
       <ResultGrid
         v-else

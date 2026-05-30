@@ -16,6 +16,7 @@ import { useDataClient } from '../data-client'
 import type { ObjectKind, SqlTemplateKind } from '../ddl'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { t } from '../i18n'
+import { settings } from '../settings'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
 import { type MenuEntry, type TreeAction, menuEntriesFor } from './tree-actions'
@@ -587,6 +588,14 @@ onMounted(reload)
         <button class="icon" :title="t('nav.refresh')" @click="reload">⟳</button>
         <button class="icon" :title="t('nav.expandAll')" @click="expandAll">⊞</button>
         <button class="icon" :title="t('nav.collapseAll')" @click="collapseAll">⊟</button>
+        <!-- 截图模式:一键切脱敏视图(masking.ts 规则集对 phone/email/idcard/bankcard 等列名匹配),
+             给老板看截图前打开,看完关掉,所有窗口立即生效 -->
+        <button
+          class="icon"
+          :class="{ on: settings.maskingEnabled }"
+          :title="settings.maskingEnabled ? '截图模式 ON — 点关闭' : '截图模式 OFF — 点开启脱敏'"
+          @click="settings.maskingEnabled = !settings.maskingEnabled"
+        >{{ settings.maskingEnabled ? '🙈' : '👁' }}</button>
       </span>
     </div>
     <div ref="treeBodyEl" class="tree-body" @contextmenu="onTreeBodyContextmenu">
@@ -645,6 +654,24 @@ onMounted(reload)
 .head-actions {
   display: flex;
   gap: 6px;
+}
+.head-actions .icon {
+  padding: 2px 6px;
+  font-size: 13px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.head-actions .icon:hover {
+  background: rgba(124, 108, 255, 0.12);
+  color: var(--text);
+}
+.head-actions .icon.on {
+  background: rgba(124, 108, 255, 0.22);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .tree-body {
   flex: 1;

@@ -25,6 +25,10 @@ export function getDb(): Database.Database {
 function migrate(db: Database.Database): void {
   ensureColumn(db, 'connections', 'ssh_json', 'TEXT')
   ensureColumn(db, 'connections', 'group_name', 'TEXT')
+  // 历史增强:标签 / 备注 / 置顶,supportable on old db
+  ensureColumn(db, 'query_history', 'tags', 'TEXT')
+  ensureColumn(db, 'query_history', 'note', 'TEXT')
+  ensureColumn(db, 'query_history', 'pinned', 'INTEGER NOT NULL DEFAULT 0')
 }
 
 function ensureColumn(db: Database.Database, table: string, col: string, decl: string): void {

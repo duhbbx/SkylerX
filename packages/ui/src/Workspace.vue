@@ -50,6 +50,7 @@ import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import AiInsightsDialog from './components/AiInsightsDialog.vue'
+import PasteImportDialog from './components/PasteImportDialog.vue'
 import AiSchemaReverseDialog from './components/AiSchemaReverseDialog.vue'
 import DataMaskingViewDialog from './components/DataMaskingViewDialog.vue'
 import PiiScannerDialog from './components/PiiScannerDialog.vue'
@@ -1334,6 +1335,8 @@ const aiInsightsOpen = ref<{
 } | null>(null)
 /** AI schema 反向工程 */
 const aiSchemaRevOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
+/** Excel/CSV 粘贴智能导入 */
+const pasteImportOpen = ref<{ preferConnId?: string; prefillRows?: string[][] } | null>(null)
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -1988,6 +1991,12 @@ function onKeydown(e: KeyboardEvent): void {
     e.stopPropagation()
     if (paletteOpen.value) paletteOpen.value = false
     else void openPalette()
+  } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+    // ⌘/Ctrl+Shift+V → Excel/CSV 粘贴智能导入
+    e.preventDefault()
+    e.stopPropagation()
+    const activeConnId = (tabsRef.value?.activeConnId as unknown as { value: string } | undefined)?.value ?? ''
+    pasteImportOpen.value = { preferConnId: activeConnId }
   } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
     // ⌘/Ctrl+Shift+O：全局对象搜索
     e.preventDefault()
@@ -2689,6 +2698,15 @@ onUnmounted(() => unsubMenu?.())
     :conn="aiSchemaRevOpen.conn"
     :database="aiSchemaRevOpen.database"
     @close="aiSchemaRevOpen = null"
+  />
+
+  <!-- Excel/CSV 粘贴智能导入(⌘+Shift+V 触发) -->
+  <PasteImportDialog
+    v-if="pasteImportOpen"
+    :open="!!pasteImportOpen"
+    :prefer-conn-id="pasteImportOpen.preferConnId"
+    :prefill-rows="pasteImportOpen.prefillRows"
+    @close="pasteImportOpen = null"
   />
 
   <!-- 新建数据库 -->

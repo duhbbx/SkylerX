@@ -306,6 +306,12 @@ export interface QueryHistoryEntry {
   /** 耗时（ms） */
   durationMs: number | null
   success: boolean
+  /** 用户给这条历史打的标签(英文逗号分隔存),便于跨连接搜"我之前在 prod 跑过的所有 update" */
+  tags?: string | null
+  /** 用户加的备注 */
+  note?: string | null
+  /** 置顶(1=钉住,0=普通);列表里钉住的永远在最上面 */
+  pinned?: number
 }
 
 /** 测试连接结果。 */
@@ -408,6 +414,18 @@ export interface DataClient {
     cancel(connId: string): Promise<void>
     history(connId: string, limit?: number): Promise<QueryHistoryEntry[]>
     historyClear(connId: string): Promise<void>
+    /** 跨连接搜索历史 SQL/备注/标签;不传 connectionId = 全库搜 */
+    historySearch(
+      query: string,
+      opts?: { connectionId?: string; limit?: number },
+    ): Promise<QueryHistoryEntry[]>
+    /** 更新一条历史的 tags/note/pinned */
+    historyMeta(
+      id: number,
+      patch: { tags?: string | null; note?: string | null; pinned?: number },
+    ): Promise<void>
+    /** 删除单条历史 */
+    historyDelete(id: number): Promise<void>
     // ── 手动提交会话 API ───────────────────────────────────────────
     // session 钉一个长连接，开个 txn；executeInSession 复用之；
     // commitSession 提交并自动开下一个 txn；rollbackSession 同理；

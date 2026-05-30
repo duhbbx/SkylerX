@@ -3,7 +3,7 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import type { DbDialect, QueryResult } from '@db-tool/shared-types'
+import { DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
@@ -23,6 +23,7 @@ import { applyMask, ruleFor } from '../masking'
 import { settings } from '../settings'
 import ChartDialog from './ChartDialog.vue'
 import GeoMapDialog from './GeoMapDialog.vue'
+import JsonTreeNode from './JsonTreeNode.vue'
 import Modal from './Modal.vue'
 import PivotDialog from './PivotDialog.vue'
 import TimelineDialog from './TimelineDialog.vue'
@@ -911,6 +912,59 @@ const cellJsonText = computed(() => {
     return String(v)
   }
 })
+
+// JSON 树视图开关 + 解析后的对象 + JSON_EXTRACT 路径生成
+const jsonViewMode = ref<'pretty' | 'tree'>('pretty')
+const cellJsonParsed = computed<unknown>(() => {
+  const v = viewerRow.value?.[viewer.value?.col ?? '']
+  if (v == null) return null
+  if (typeof v === 'object') return v
+  try {
+    return JSON.parse(String(v))
+  } catch {
+    return null
+  }
+})
+
+/** 把 JSON Path 转方言对应的 extract SQL,复制到剪贴板。 */
+function jsonExtractSql(path: string): string {
+  const col = viewer.value?.col ?? 'col'
+  const dialect = props.dialect
+  // path 形如 '$.a.b[0].c' — 各方言语法
+  if (
+    dialect === DbDialect.PostgreSQL ||
+    dialect === DbDialect.KingbaseES ||
+    dialect === DbDialect.OpenGauss ||
+    dialect === DbDialect.Greenplum ||
+    dialect === DbDialect.CockroachDB
+  ) {
+    // PG: jsonb '#>' '{a,b,0,c}' 或 col->'a'->'b'->0->'c'
+    return `${quoteId(dialect, col)} #> '${pgPath(path)}'`
+  }
+  if (dialect === DbDialect.SqlServer) {
+    return `JSON_VALUE(${quoteId(dialect, col)}, '${path}')`
+  }
+  if (dialect === DbDialect.SQLite) {
+    return `json_extract(${quoteId(dialect, col)}, '${path}')`
+  }
+  // MySQL / MariaDB / OceanBase / TiDB / Doris / ClickHouse
+  return `JSON_EXTRACT(${quoteId(dialect ?? DbDialect.MySQL, col)}, '${path}')`
+}
+
+/** PG #> 需要 `{a,b,0,c}` 形式。 */
+function pgPath(p: string): string {
+  const parts = p
+    .replace(/^\$\.?/, '')
+    .split(/\.|\[(\d+)\]/)
+    .filter(Boolean)
+  return `{${parts.join(',')}}`
+}
+
+function onJsonPathPick(path: string): void {
+  const sql = jsonExtractSql(path)
+  void navigator.clipboard?.writeText(sql)
+  toast.success(`已复制: ${sql}`)
+}
 /** #5：把当前 BLOB 当文件下载到本地（图片用嗅到的 mime，其余 application/octet-stream）。 */
 function downloadBlob(): void {
   const bytes = cellBytes.value
@@ -1442,9 +1496,25 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
           </div>
           <!-- BLOB（非图片）：以 hex dump 渲染（左偏移 / 中部 hex / 右 ASCII），可复制 -->
           <pre v-else-if="cellBytes" class="cell-view hex-view">{{ hexDump(cellBytes) }}</pre>
-          <!-- JSON 单元格：编辑态用 textarea（保留原编辑能力）；只读态显示美化后的 JSON -->
+          <!-- JSON 单元格：编辑态用 textarea(保留原编辑能力);只读态加 Pretty/Tree 切换 -->
           <textarea v-else-if="editable && cellIsJson" v-model="editBuf" class="cell-edit json-edit" spellcheck="false" />
-          <pre v-else-if="cellIsJson" class="cell-view cell-json-view">{{ cellJsonText }}</pre>
+          <template v-else-if="cellIsJson">
+            <div class="json-tabs">
+              <button class="ev-btn" :class="{ on: jsonViewMode === 'pretty' }" @click="jsonViewMode = 'pretty'">Pretty</button>
+              <button class="ev-btn" :class="{ on: jsonViewMode === 'tree' }" @click="jsonViewMode = 'tree'">Tree</button>
+              <span class="hint">Tree 模式:点路径复制 SQL extract</span>
+            </div>
+            <pre v-if="jsonViewMode === 'pretty'" class="cell-view cell-json-view">{{ cellJsonText }}</pre>
+            <div v-else class="json-tree-wrap">
+              <JsonTreeNode
+                :data="cellJsonParsed"
+                path="$"
+                :column="viewer.col ?? 'col'"
+                :dialect="(props.dialect === DbDialect.MySQL || props.dialect === DbDialect.MariaDB ? 'mysql' : 'pg') as 'mysql' | 'pg'"
+                @pick-path="onJsonPathPick"
+              />
+            </div>
+          </template>
           <textarea v-else-if="editable" v-model="editBuf" class="cell-edit" spellcheck="false" />
           <pre v-else class="cell-view">{{ pretty(viewerRow?.[viewer.col]) }}</pre>
           <div class="viewer-actions">
@@ -2366,6 +2436,38 @@ td.rownum:hover {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 12px;
   line-height: 1.5;
+}
+.json-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+.json-tabs .ev-btn {
+  padding: 2px 10px;
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.json-tabs .ev-btn.on {
+  background: rgba(124, 108, 255, 0.22);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.json-tabs .hint {
+  font-size: 10px;
+  color: var(--muted);
+}
+.json-tree-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  max-height: 50vh;
+  overflow: auto;
 }
 .json-edit {
   font-family: ui-monospace, Menlo, monospace;

@@ -43,6 +43,17 @@ const api = {
       ipcRenderer.invoke('connections:history', connId, limit),
     historyClear: (connId: string): Promise<void> =>
       ipcRenderer.invoke('connections:historyClear', connId),
+    historySearch: (
+      query: string,
+      opts?: { connectionId?: string; limit?: number },
+    ): Promise<QueryHistoryEntry[]> =>
+      ipcRenderer.invoke('connections:historySearch', query, opts),
+    historyMeta: (
+      id: number,
+      patch: { tags?: string | null; note?: string | null; pinned?: number },
+    ): Promise<void> => ipcRenderer.invoke('connections:historyMeta', id, patch),
+    historyDelete: (id: number): Promise<void> =>
+      ipcRenderer.invoke('connections:historyDelete', id),
     // ── 手动提交会话 ──
     beginSession: (connId: string, options?: ExecuteOptions): Promise<string> =>
       ipcRenderer.invoke('connections:beginSession', connId, options),
