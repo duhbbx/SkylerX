@@ -412,6 +412,52 @@ export const TREE_ACTIONS: TreeAction[] = [
     },
   },
 
+  // ── ClickHouse 高级 ──
+  {
+    id: 'clickhouse-advanced',
+    label: 'ctx.clickhouse-advanced',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database],
+    onlyDialects: [DbDialect.ClickHouse],
+    run: ({ node, connId, ctrl }) => {
+      const database = node.kind === MetaNodeKind.Database ? node.name : undefined
+      ctrl.openClickHouseAdvanced(connId, database)
+    },
+  },
+  // ── Doris/StarRocks 分区(挂表节点最方便) ──
+  {
+    id: 'mpp-partition',
+    label: 'ctx.mpp-partition',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Table],
+    onlyDialects: [DbDialect.Doris, DbDialect.StarRocks],
+    run: ({ node, connId, ctrl }) => {
+      let database: string | undefined
+      let table: string | undefined
+      if (node.kind === MetaNodeKind.Table) {
+        database = node.path[0]
+        table = node.name
+      } else if (node.kind === MetaNodeKind.Database) {
+        database = node.name
+      }
+      ctrl.openMppPartition(connId, database, table)
+    },
+  },
+  // ── MySQL/MariaDB 高级(binlog/主从/变量) ──
+  {
+    id: 'mysql-advanced',
+    label: 'ctx.mysql-advanced',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection],
+    onlyDialects: [
+      DbDialect.MySQL,
+      DbDialect.MariaDB,
+      DbDialect.OceanBase,
+      DbDialect.TiDB,
+    ],
+    run: ({ connId, ctrl }) => ctrl.openMysqlAdvanced(connId),
+  },
+
   // ── G1 AI 数据库体检 / C5 索引推荐：连接级，挂 Connection 节点右键 ──
   // 对 Redis/Mongo/ES 没有"表/索引"概念,这两个功能无意义,按方言隐藏。
   {

@@ -25,7 +25,8 @@ import Modal from './Modal.vue'
 const props = defineProps<{ result: QueryResult }>()
 const emit = defineEmits<{ close: [] }>()
 
-type ChartKind = 'bar' | 'line' | 'pie'
+// E1:扩 7 种类型(原 bar/line/pie + area/scatter/donut/radar)
+type ChartKind = 'bar' | 'line' | 'pie' | 'area' | 'scatter' | 'donut' | 'radar'
 const kind = ref<ChartKind>('bar')
 
 // 数值列嗅探：第一行中能 Number() 出有限值的列优先选作 yCol
@@ -212,6 +213,116 @@ const pieSlices = computed<PieSlice[]>(() => {
     })
 })
 
+// E1 ── 面积图(area):用 linePath 的形状闭合到 baseline ──
+const areaPath = computed(() => {
+  const n = points.value.length
+  if (!n) return ''
+  const slot = innerW / Math.max(1, n - 1)
+  const baselineY = PAD.t + innerH - (innerH * (0 - yMin.value)) / (yMax.value - yMin.value || 1)
+  const top = points.value
+    .map((p, i) => {
+      const ratio = (p.value - yMin.value) / (yMax.value - yMin.value || 1)
+      const x = PAD.l + i * slot
+      const y = PAD.t + innerH - innerH * ratio
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+  const lastX = PAD.l + (n - 1) * slot
+  return `${top} L${lastX.toFixed(1)},${baselineY.toFixed(1)} L${PAD.l.toFixed(1)},${baselineY.toFixed(1)} Z`
+})
+
+// E1 ── 散点(scatter):同 line 的 (x, y) 计算,只画圆点 ──
+interface ScatterPt { x: number; y: number; label: string; value: number }
+const scatterPts = computed<ScatterPt[]>(() => {
+  const n = points.value.length
+  if (!n) return []
+  const slot = innerW / Math.max(1, n - 1)
+  return points.value.map((p, i) => {
+    const ratio = (p.value - yMin.value) / (yMax.value - yMin.value || 1)
+    return {
+      x: PAD.l + i * slot,
+      y: PAD.t + innerH - innerH * ratio,
+      label: p.label,
+      value: p.value,
+    }
+  })
+})
+
+// E1 ── 雷达(radar):每点作为一个轴,半径 = 归一化值,绘多边形 ──
+interface RadarPoint { x: number; y: number; label: string; value: number; ax: number; ay: number }
+const radarPoints = computed<RadarPoint[]>(() => {
+  const n = points.value.length
+  if (n < 3) return [] // 雷达需要 >=3 个点
+  const cx = W / 2
+  const cy = H / 2 + 10
+  const r = Math.min(innerH / 2, 130)
+  const max = yMax.value || 1
+  return points.value.map((p, i) => {
+    const angle = (i / n) * Math.PI * 2 - Math.PI / 2
+    const ratio = Math.max(0, p.value) / max
+    const ax = cx + r * Math.cos(angle)
+    const ay = cy + r * Math.sin(angle)
+    return {
+      x: cx + r * ratio * Math.cos(angle),
+      y: cy + r * ratio * Math.sin(angle),
+      ax,
+      ay,
+      label: p.label,
+      value: p.value,
+    }
+  })
+})
+
+const radarPath = computed(() => {
+  if (!radarPoints.value.length) return ''
+  return `${radarPoints.value.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} Z`
+})
+
+// E1 ── 环形(donut):基于 pieSlices,但 path 改为 ring(外 R - 内 R) ──
+interface DonutSlice {
+  path: string
+  color: string
+  label: string
+  value: number
+  percent: number
+  midAngle: number
+}
+const donutSlices = computed<DonutSlice[]>(() => {
+  const total = points.value.reduce((a, p) => a + Math.max(0, p.value), 0)
+  if (total <= 0) return []
+  const cx = W / 2
+  const cy = H / 2 + 10
+  const rOut = Math.min(innerH / 2, 130)
+  const rIn = rOut * 0.55
+  let start = -Math.PI / 2
+  return points.value
+    .filter((p) => p.value > 0)
+    .map((p, i) => {
+      const angle = (p.value / total) * Math.PI * 2
+      const end = start + angle
+      const x1o = cx + rOut * Math.cos(start)
+      const y1o = cy + rOut * Math.sin(start)
+      const x2o = cx + rOut * Math.cos(end)
+      const y2o = cy + rOut * Math.sin(end)
+      const x1i = cx + rIn * Math.cos(end)
+      const y1i = cy + rIn * Math.sin(end)
+      const x2i = cx + rIn * Math.cos(start)
+      const y2i = cy + rIn * Math.sin(start)
+      const largeArc = angle > Math.PI ? 1 : 0
+      const path = `M${x1o.toFixed(1)},${y1o.toFixed(1)} A${rOut},${rOut} 0 ${largeArc} 1 ${x2o.toFixed(1)},${y2o.toFixed(1)} L${x1i.toFixed(1)},${y1i.toFixed(1)} A${rIn},${rIn} 0 ${largeArc} 0 ${x2i.toFixed(1)},${y2i.toFixed(1)} Z`
+      const mid = start + angle / 2
+      start = end
+      return {
+        path,
+        color: PALETTE[i % PALETTE.length],
+        label: p.label,
+        value: p.value,
+        percent: p.value / total,
+        midAngle: mid,
+      }
+    })
+})
+
 // ── 导出 PNG（SVG → 序列化 → Image → canvas → toDataURL） ──
 const svgEl = ref<SVGSVGElement>()
 async function exportPng(): Promise<void> {
@@ -269,6 +380,10 @@ async function exportPng(): Promise<void> {
             <button :class="{ on: kind === 'bar' }" @click="kind = 'bar'">📊 {{ t('chart.bar') }}</button>
             <button :class="{ on: kind === 'line' }" @click="kind = 'line'">📈 {{ t('chart.line') }}</button>
             <button :class="{ on: kind === 'pie' }" @click="kind = 'pie'">🥧 {{ t('chart.pie') }}</button>
+            <button :class="{ on: kind === 'area' }" @click="kind = 'area'">⛰ 面积</button>
+            <button :class="{ on: kind === 'scatter' }" @click="kind = 'scatter'">·· 散点</button>
+            <button :class="{ on: kind === 'donut' }" @click="kind = 'donut'">⭕ 环形</button>
+            <button :class="{ on: kind === 'radar' }" @click="kind = 'radar'">📡 雷达</button>
           </div>
         </div>
         <span class="grow" />
@@ -331,6 +446,24 @@ async function exportPng(): Promise<void> {
           </circle>
         </template>
 
+        <!-- 面积图 -->
+        <template v-if="kind === 'area'">
+          <path :d="areaPath" fill="rgba(124,108,255,0.35)" stroke="#7c6cff" stroke-width="1.5" />
+          <circle
+            v-for="(p, i) in scatterPts" :key="'ap' + i"
+            :cx="p.x" :cy="p.y" r="2.5" fill="#7c6cff"
+          ><title>{{ p.label }}: {{ p.value }}</title></circle>
+        </template>
+
+        <!-- 散点 -->
+        <template v-if="kind === 'scatter'">
+          <circle
+            v-for="(p, i) in scatterPts" :key="'sp' + i"
+            :cx="p.x" :cy="p.y" r="5"
+            fill="rgba(124,108,255,0.55)" stroke="#7c6cff" stroke-width="1"
+          ><title>{{ p.label }}: {{ p.value }}</title></circle>
+        </template>
+
         <!-- 饼图 -->
         <template v-if="kind === 'pie'">
           <path
@@ -358,6 +491,64 @@ async function exportPng(): Promise<void> {
               </text>
             </g>
           </g>
+        </template>
+
+        <!-- 环形 -->
+        <template v-if="kind === 'donut'">
+          <path
+            v-for="(s, i) in donutSlices" :key="'ds' + i"
+            :d="s.path" :fill="s.color" stroke="#1d1e22" stroke-width="1"
+          >
+            <title>{{ s.label }}: {{ s.value }} ({{ (s.percent * 100).toFixed(1) }}%)</title>
+          </path>
+          <text :x="W / 2" :y="H / 2 + 10" text-anchor="middle" font-size="14" fill="#cfd0d5" font-family="ui-monospace, monospace">
+            {{ points.length }} 项
+          </text>
+          <g v-for="(s, i) in donutSlices" :key="'dpt' + i">
+            <text
+              v-if="s.percent >= 0.04"
+              :x="W / 2 + 100 * Math.cos(s.midAngle)"
+              :y="H / 2 + 10 + 100 * Math.sin(s.midAngle)"
+              text-anchor="middle"
+              fill="#fff" font-size="10"
+              font-family="ui-monospace, monospace"
+            >{{ (s.percent * 100).toFixed(0) }}%</text>
+          </g>
+          <g>
+            <g v-for="(s, i) in donutSlices" :key="'dlg' + i" :transform="`translate(20, ${24 + i * 18})`">
+              <rect width="12" height="12" :fill="s.color" />
+              <text x="18" y="10" fill="#cfd0d5" font-size="11">
+                {{ s.label.slice(0, 18) }}{{ s.label.length > 18 ? '…' : '' }}
+              </text>
+            </g>
+          </g>
+        </template>
+
+        <!-- 雷达 -->
+        <template v-if="kind === 'radar'">
+          <!-- 背景圈 -->
+          <circle :cx="W / 2" :cy="H / 2 + 10" :r="130" fill="none" stroke="#3a3b40" stroke-width="0.8" />
+          <circle :cx="W / 2" :cy="H / 2 + 10" :r="86" fill="none" stroke="#3a3b40" stroke-width="0.5" stroke-dasharray="2,3" />
+          <circle :cx="W / 2" :cy="H / 2 + 10" :r="44" fill="none" stroke="#3a3b40" stroke-width="0.5" stroke-dasharray="2,3" />
+          <line
+            v-for="(p, i) in radarPoints" :key="'ax' + i"
+            :x1="W / 2" :y1="H / 2 + 10" :x2="p.ax" :y2="p.ay"
+            stroke="#3a3b40" stroke-width="0.8"
+          />
+          <!-- 数据多边形 -->
+          <path :d="radarPath" fill="rgba(124,108,255,0.30)" stroke="#7c6cff" stroke-width="1.5" />
+          <circle
+            v-for="(p, i) in radarPoints" :key="'rp' + i"
+            :cx="p.x" :cy="p.y" r="3" fill="#7c6cff"
+          ><title>{{ p.label }}: {{ p.value }}</title></circle>
+          <!-- 轴标签 -->
+          <text
+            v-for="(p, i) in radarPoints" :key="'rl' + i"
+            :x="p.ax + (p.ax > W/2 ? 10 : -10)"
+            :y="p.ay + (p.ay > H/2 ? 14 : -4)"
+            :text-anchor="p.ax > W/2 ? 'start' : 'end'"
+            fill="#cfd0d5" font-size="10" font-family="ui-monospace, monospace"
+          >{{ p.label.slice(0, 12) }}</text>
         </template>
       </svg>
 

@@ -1350,6 +1350,9 @@ const DICT: Record<string, [string, string]> = {
   'ctx.new-schema': ['新建 Schema…', 'New schema…'],
   'ctx.cluster-topology': ['集群拓扑 / Region', 'Cluster topology'],
   'ctx.pg-advanced': ['扩展 / 复制 / 复制槽', 'Extensions / Replication / Slots'],
+  'ctx.clickhouse-advanced': ['分区 / Mutation / 副本 / TTL', 'Parts / Mutations / Replicas / TTL'],
+  'ctx.mpp-partition': ['分区管理…', 'Partitions…'],
+  'ctx.mysql-advanced': ['Binlog / 主从 / 变量', 'Binlog / Replication / Variables'],
   'ctx.redis-flush-db': ['清空当前库 (FLUSHDB)', 'Flush this database (FLUSHDB)'],
   'ctx.redis-flush-all': ['清空整个实例 (FLUSHALL)', 'Flush entire instance (FLUSHALL)'],
 

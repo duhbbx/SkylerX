@@ -123,6 +123,12 @@ export interface TreeController {
   openClusterTopology(connId: string): void
   /** PG 系:打开扩展/复制/复制槽面板 */
   openPgAdvanced(connId: string, database?: string): void
+  /** ClickHouse:打开分区/Mutation/副本/TTL 面板 */
+  openClickHouseAdvanced(connId: string, database?: string): void
+  /** Doris/StarRocks:打开分区管理 */
+  openMppPartition(connId: string, database?: string, table?: string): void
+  /** MySQL/MariaDB:打开 binlog/主从/变量 面板 */
+  openMysqlAdvanced(connId: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

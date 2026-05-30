@@ -85,6 +85,12 @@ const emit = defineEmits<{
   openClusterTopology: [connId: string]
   /** PG 系:打开扩展/复制/复制槽面板 */
   openPgAdvanced: [connId: string, database?: string]
+  /** ClickHouse 高级 */
+  openClickHouseAdvanced: [connId: string, database?: string]
+  /** Doris/StarRocks 分区 */
+  openMppPartition: [connId: string, database?: string, table?: string]
+  /** MySQL 高级(binlog/主从/变量) */
+  openMysqlAdvanced: [connId: string]
 }>()
 
 // 批量可选的对象类型（与可删除类型一致）
@@ -276,6 +282,9 @@ const controller: TreeController = {
   newSchema: (connId, parent) => emit('newSchema', connId, parent),
   openClusterTopology: (connId) => emit('openClusterTopology', connId),
   openPgAdvanced: (connId, database) => emit('openPgAdvanced', connId, database),
+  openClickHouseAdvanced: (connId, database) => emit('openClickHouseAdvanced', connId, database),
+  openMppPartition: (connId, database, table) => emit('openMppPartition', connId, database, table),
+  openMysqlAdvanced: (connId) => emit('openMysqlAdvanced', connId),
 }
 
 provide(TreeControllerKey, controller)

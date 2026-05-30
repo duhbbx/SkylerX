@@ -7,7 +7,7 @@ import type { DbDialect } from '@db-tool/shared-types'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
-import { alert as appAlert, confirm as appConfirm, toast } from '../dialog'
+import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type ErdData, loadErd } from '../erd'
 import { t } from '../i18n'
 
@@ -41,6 +41,8 @@ const pos = reactive<Record<string, { x: number; y: number }>>({})
 const editMode = ref(false)
 const newTables = ref<NewTable[]>([])
 const newFks = ref<NewFk[]>([])
+/** D1:对现有表追加的新列(ALTER TABLE ADD COLUMN)。key=表名,val=新列数组。 */
+const alterAddCols = ref<Record<string, EditCol[]>>({})
 let seq = 0
 
 // 统一的「框」视图：既有表（只读）+ 新建表（可编辑）
@@ -55,7 +57,8 @@ const boxes = computed<Box[]>(() => {
     id: t.name,
     name: t.name,
     editable: false,
-    columns: t.columns,
+    // D1:把 alterAddCols 注入到现有表的列末尾,带 ghost 标识用于上色
+    columns: [...t.columns, ...((alterAddCols.value[t.name] ?? []) as EditCol[])],
   }))
   const created: Box[] = newTables.value.map((t) => ({
     id: t.id,
@@ -65,6 +68,32 @@ const boxes = computed<Box[]>(() => {
   }))
   return [...existing, ...created]
 })
+
+/** 一列是否是"待 ALTER 加的列"(用于视觉强调)。 */
+function isAlterCol(boxName: string, colName: string): boolean {
+  return !!alterAddCols.value[boxName]?.find((c) => c.name === colName)
+}
+
+/** D1:给现有表追加一列(进入 alterAddCols),等待 applyChanges。 */
+async function addAlterColumn(tableName: string): Promise<void> {
+  const name = await appPrompt({ message: `给表 "${tableName}" 加列,列名:`, defaultValue: 'new_col' })
+  if (!name) return
+  const type = await appPrompt({ message: '列类型(例 varchar(64) / int / timestamp):', defaultValue: 'varchar(64)' })
+  if (!type) return
+  const existing = alterAddCols.value[tableName] ?? []
+  if (existing.find((c) => c.name === name)) {
+    toast.error('该列名已待加')
+    return
+  }
+  alterAddCols.value[tableName] = [...existing, { name, type, pk: false }]
+  toast.success(`已加入待 ALTER 列表: ${name} ${type}`)
+}
+
+/** D1:撤销一列待 ALTER。 */
+function removeAlterColumn(tableName: string, colName: string): void {
+  alterAddCols.value[tableName] = (alterAddCols.value[tableName] ?? []).filter((c) => c.name !== colName)
+  if (!alterAddCols.value[tableName].length) delete alterAddCols.value[tableName]
+}
 
 // 缩放 / 平移
 const zoom = ref(1)
@@ -80,6 +109,7 @@ async function load(): Promise<void> {
     data.value = d
     newTables.value = []
     newFks.value = []
+    alterAddCols.value = {}
     layout(d)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -305,6 +335,12 @@ function buildDdl(onlyNew: boolean): string {
       `ALTER TABLE ${q(f.ft)} ADD FOREIGN KEY (${q(f.fc)}) REFERENCES ${q(f.tt)} (${q(f.tc)});`,
     )
   }
+  // D1:对现有表的 ALTER ADD COLUMN
+  for (const [tableName, cols] of Object.entries(alterAddCols.value)) {
+    for (const c of cols) {
+      parts.push(`ALTER TABLE ${q(tableName)} ADD COLUMN ${q(c.name)} ${c.type};`)
+    }
+  }
   return `${parts.join('\n\n')}\n`
 }
 
@@ -326,7 +362,7 @@ async function generateDdl(): Promise<void> {
 
 const applying = ref(false)
 async function applyChanges(): Promise<void> {
-  if (!newTables.value.length && !newFks.value.length) {
+  if (!newTables.value.length && !newFks.value.length && !Object.keys(alterAddCols.value).length) {
     await appAlert({ message: t('erd.noNew'), variant: 'info' })
     return
   }
@@ -446,7 +482,7 @@ async function applyChanges(): Promise<void> {
             <span v-else>{{ b.name }}</span>
           </div>
           <div class="tbox-cols">
-            <div v-for="(c, ci) in b.columns" :key="ci" class="tcol" :data-box="b.id" :data-col="c.name">
+            <div v-for="(c, ci) in b.columns" :key="ci" class="tcol" :data-box="b.id" :data-col="c.name" :class="{ 'alter-col': !b.editable && isAlterCol(b.name, c.name) }">
               <template v-if="b.editable && editMode">
                 <input v-model="c.name" class="ci ci-n" @mousedown.stop />
                 <input v-model="c.type" class="ci ci-t" @mousedown.stop />
@@ -454,8 +490,15 @@ async function applyChanges(): Promise<void> {
                 <button class="tx" :title="t('erd.delCol')" @mousedown.stop @click="removeColumn(newTables[newTables.findIndex((t) => t.id === b.id)], ci)">×</button>
               </template>
               <template v-else>
-                <span class="cn" :class="{ pk: c.pk }">{{ c.pk ? '🔑 ' : '' }}{{ c.name }}</span>
+                <span class="cn" :class="{ pk: c.pk }">{{ c.pk ? '🔑 ' : '' }}{{ isAlterCol(b.name, c.name) ? '+ ' : '' }}{{ c.name }}</span>
                 <span class="ct">{{ c.type }}</span>
+                <button
+                  v-if="editMode && !b.editable && isAlterCol(b.name, c.name)"
+                  class="tx"
+                  title="撤销该 ALTER 列"
+                  @mousedown.stop
+                  @click="removeAlterColumn(b.name, c.name)"
+                >×</button>
               </template>
               <span
                 v-if="editMode"
@@ -464,8 +507,12 @@ async function applyChanges(): Promise<void> {
                 @mousedown.stop.prevent="portDown(b.id, c.name, $event)"
               />
             </div>
+            <!-- 新建表 → 在内部加列;现有表 → 弹窗 prompt 加 ALTER 列 -->
             <div v-if="b.editable && editMode" class="add-col" @mousedown.stop @click="addColumn(newTables[newTables.findIndex((t) => t.id === b.id)])">
               {{ t('erd.addCol') }}
+            </div>
+            <div v-else-if="!b.editable && editMode" class="add-col" @mousedown.stop @click="addAlterColumn(b.name)">
+              + ALTER 加列…
             </div>
           </div>
         </div>
@@ -604,6 +651,13 @@ async function applyChanges(): Promise<void> {
   padding: 3px 10px;
   font-size: 12px;
   border-top: 1px solid var(--border);
+}
+.tcol.alter-col {
+  background: rgba(124, 108, 255, 0.12);
+}
+.tcol.alter-col .cn {
+  color: var(--accent);
+  font-weight: 600;
 }
 .tcol .cn {
   font-family: ui-monospace, monospace;

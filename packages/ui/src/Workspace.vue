@@ -49,6 +49,9 @@ import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import ClickHouseAdvancedDialog from './components/ClickHouseAdvancedDialog.vue'
+import MppPartitionDialog from './components/MppPartitionDialog.vue'
+import MysqlAdvancedDialog from './components/MysqlAdvancedDialog.vue'
 import ClusterTopologyDialog from './components/ClusterTopologyDialog.vue'
 import MongoAggregationDialog from './components/MongoAggregationDialog.vue'
 import MongoCollectionInfoDialog from './components/MongoCollectionInfoDialog.vue'
@@ -1297,6 +1300,12 @@ const mongoAggOpen = ref<{ conn: ConnectionConfig; database: string; collection:
 const clusterTopoOpen = ref<{ conn: ConnectionConfig } | null>(null)
 /** PG 高级面板(扩展/复制/复制槽) */
 const pgAdvOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
+/** ClickHouse 高级面板(分区/Mutation/副本/TTL) */
+const chAdvOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
+/** Doris/StarRocks 分区管理 */
+const mppPartOpen = ref<{ conn: ConnectionConfig; database?: string; table?: string } | null>(null)
+/** MySQL 高级面板(binlog/主从/变量) */
+const mysqlAdvOpen = ref<{ conn: ConnectionConfig } | null>(null)
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -2104,6 +2113,9 @@ onUnmounted(() => unsubMenu?.())
     @new-schema="onNewSchema"
     @open-cluster-topology="(cid) => client.connections.get(cid).then(c => { clusterTopoOpen = { conn: c } })"
     @open-pg-advanced="(cid, db) => client.connections.get(cid).then(c => { pgAdvOpen = { conn: c, database: db } })"
+    @open-click-house-advanced="(cid, db) => client.connections.get(cid).then(c => { chAdvOpen = { conn: c, database: db } })"
+    @open-mpp-partition="(cid, db, tbl) => client.connections.get(cid).then(c => { mppPartOpen = { conn: c, database: db, table: tbl } })"
+    @open-mysql-advanced="(cid) => client.connections.get(cid).then(c => { mysqlAdvOpen = { conn: c } })"
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
@@ -2549,6 +2561,33 @@ onUnmounted(() => unsubMenu?.())
     :conn="pgAdvOpen.conn"
     :database="pgAdvOpen.database"
     @close="pgAdvOpen = null"
+  />
+
+  <!-- ClickHouse 高级面板 -->
+  <ClickHouseAdvancedDialog
+    v-if="chAdvOpen"
+    :open="!!chAdvOpen"
+    :conn="chAdvOpen.conn"
+    :database="chAdvOpen.database"
+    @close="chAdvOpen = null"
+  />
+
+  <!-- Doris/StarRocks 分区管理 -->
+  <MppPartitionDialog
+    v-if="mppPartOpen"
+    :open="!!mppPartOpen"
+    :conn="mppPartOpen.conn"
+    :database="mppPartOpen.database"
+    :table="mppPartOpen.table"
+    @close="mppPartOpen = null"
+  />
+
+  <!-- MySQL 高级面板 -->
+  <MysqlAdvancedDialog
+    v-if="mysqlAdvOpen"
+    :open="!!mysqlAdvOpen"
+    :conn="mysqlAdvOpen.conn"
+    @close="mysqlAdvOpen = null"
   />
 
   <!-- 新建数据库 -->
