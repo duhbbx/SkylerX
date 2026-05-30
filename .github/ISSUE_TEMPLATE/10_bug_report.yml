@@ -1,5 +1,5 @@
-name: 🐛 Bug Report
-description: Report something that isn't working as expected
+name: 🐛 Detailed Bug Report
+description: Report a complex bug with full context (OS / database / module)
 title: "[Bug] "
 labels:
   - "type: bug"
@@ -8,16 +8,17 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug! Please fill in the sections below — the more detail, the faster we can fix it.
+        Thanks for taking the time to file a detailed report — the more context, the faster we can fix it.
 
         - Search existing issues first: https://github.com/duhbbx/SkylerX/issues?q=is%3Aissue
         - For security issues, please use [Security Advisory](https://github.com/duhbbx/SkylerX/security/advisories/new) instead.
+        - For a simpler report (just version + description), use the **Quick Bug Report** template.
 
   - type: input
     id: version
     attributes:
       label: SkylerX version
-      description: "Find in 关于 / About dialog. e.g. 0.5.0-rc10"
+      description: "Find in About dialog. e.g. 0.5.0-rc11"
       placeholder: "0.5.0-rc10"
     validations:
       required: true
@@ -32,8 +33,8 @@ body:
         - macOS (Intel via Rosetta)
         - Windows 11
         - Windows 10
-        - Linux (Ubuntu / Debian / Deepin / 麒麟 / UOS)
-        - Linux (Fedora / openEuler / 中标麒麟)
+        - Linux (Ubuntu / Debian / Deepin / Kylin / UOS)
+        - Linux (Fedora / openEuler / Zhongbiao Kylin)
         - Linux (Arch / Manjaro)
         - Other
     validations:
@@ -67,8 +68,8 @@ body:
         - Redshift
         - Doris
         - StarRocks
-        - DM (达梦)
-        - KingbaseES (人大金仓)
+        - DM (Dameng)
+        - KingbaseES
         - openGauss
         - TDengine
         - Other (specify in description)

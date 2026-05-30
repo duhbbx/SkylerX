@@ -1,0 +1,37 @@
+name: 🐛 Quick Bug Report
+description: Found a bug? Tell us in just 3 fields — we'll ask follow-ups in the comments
+title: "[Bug] "
+labels:
+  - "type: bug"
+  - "status: needs-triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Just enough to get us started. For complex bugs that need OS / database / feature area, use the **🐛 Detailed Bug Report** template below.
+
+  - type: input
+    id: version
+    attributes:
+      label: SkylerX version
+      description: From the About dialog
+      placeholder: "0.5.0-rc11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What's wrong?
+      description: What were you trying to do and what happened instead?
+      placeholder: |
+        Opened a MySQL connection and the table tree never loaded — just kept spinning.
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot or error message (optional)
+      description: |
+        Drag images here, or paste error text (use the 📋 copy button on error toasts).

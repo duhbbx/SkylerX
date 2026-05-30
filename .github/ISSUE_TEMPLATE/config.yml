@@ -2,12 +2,12 @@
 blank_issues_enabled: false
 
 contact_links:
-  - name: 💬 Discussions / 讨论区
+  - name: 💬 Discussions
     url: https://github.com/duhbbx/SkylerX/discussions
-    about: 有问题想聊但不确定是不是 bug? 来讨论区
-  - name: 📖 Documentation / 文档
+    about: Have a question but not sure if it's a bug? Start a discussion.
+  - name: 📖 Documentation
     url: https://skylerx.skyler.uno
-    about: 安装 / 使用 / 排错文档
+    about: Installation, usage, troubleshooting guides.
   - name: 🔒 Security advisory
     url: https://github.com/duhbbx/SkylerX/security/advisories/new
-    about: 私下报告安全漏洞(不要开公开 issue)
+    about: Report a security vulnerability privately (do not open a public issue).
