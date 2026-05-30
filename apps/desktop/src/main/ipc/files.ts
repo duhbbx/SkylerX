@@ -2,9 +2,9 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { readFile, writeFile } from 'node:fs/promises'
-import { basename } from 'node:path'
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { readFile, writeFile, readdir, stat, mkdir } from 'node:fs/promises'
+import { basename, join, sep } from 'node:path'
+import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
 
 /** 文件读写 IPC 通道名（preload 侧保持一致）。 */
 export const FILE_IPC = {
@@ -12,6 +12,15 @@ export const FILE_IPC = {
   openText: 'files:openText',
   /** 仅选择文件路径(不读内容),用于 SQLite/DuckDB 数据库文件指定 */
   selectFile: 'files:selectFile',
+  // ── 给自定义 SaveFileDialog 用的低级原语(跨平台一致 UI,不走 OS 原生) ──
+  listDir: 'files:listDir',
+  commonDirs: 'files:commonDirs',
+  writeText: 'files:writeText',
+  openPath: 'files:openPath',
+  showInFolder: 'files:showInFolder',
+  mkdir: 'files:mkdir',
+  stat: 'files:stat',
+  pathJoin: 'files:pathJoin',
 } as const
 
 type Filter = { name: string; extensions: string[] }
@@ -81,4 +90,106 @@ export function registerFileIpc(): void {
       return canceled || !filePaths.length ? null : filePaths[0]
     },
   )
+
+  // ── 自定义 SaveFileDialog 用的原语 ────────────────────────────────
+  /** 列目录:返回所有条目的 name/isDirectory/size/mtime/isHidden。 */
+  ipcMain.handle(
+    FILE_IPC.listDir,
+    async (
+      _e,
+      dirPath: string,
+    ): Promise<
+      Array<{
+        name: string
+        isDirectory: boolean
+        size: number
+        mtime: number
+        isHidden: boolean
+      }>
+    > => {
+      try {
+        const items = await readdir(dirPath, { withFileTypes: true })
+        return Promise.all(
+          items.map(async (it) => {
+            const full = join(dirPath, it.name)
+            let size = 0
+            let mtime = 0
+            try {
+              const s = await stat(full)
+              size = s.size
+              mtime = s.mtimeMs
+            } catch {
+              /* 权限不足等 */
+            }
+            return {
+              name: it.name,
+              isDirectory: it.isDirectory(),
+              size,
+              mtime,
+              // Unix-like 隐藏文件 = 点开头;Windows 隐藏属性这里不查(成本高 + 罕用)
+              isHidden: it.name.startsWith('.'),
+            }
+          }),
+        )
+      } catch (e) {
+        throw new Error(`无法读取目录: ${(e as Error).message}`)
+      }
+    },
+  )
+
+  /** 常用位置 + path 分隔符。 */
+  ipcMain.handle(FILE_IPC.commonDirs, () => ({
+    home: app.getPath('home'),
+    desktop: app.getPath('desktop'),
+    documents: app.getPath('documents'),
+    downloads: app.getPath('downloads'),
+    sep,
+  }))
+
+  /** 直接写到指定路径(自定义对话框确认后调用)。 */
+  ipcMain.handle(FILE_IPC.writeText, async (_e, filePath: string, content: string) => {
+    await writeFile(filePath, content, 'utf8')
+    return filePath
+  })
+
+  /** 打开路径(文件用默认程序,文件夹用 Finder/Explorer)。 */
+  ipcMain.handle(FILE_IPC.openPath, async (_e, p: string): Promise<string> => {
+    // shell.openPath 失败时返回错误字符串,成功返回 ''
+    return shell.openPath(p)
+  })
+
+  /** 在文件管理器(Finder/Explorer)里选中文件。 */
+  ipcMain.handle(FILE_IPC.showInFolder, (_e, p: string) => {
+    shell.showItemInFolder(p)
+  })
+
+  /** 新建文件夹(recursive)。 */
+  ipcMain.handle(FILE_IPC.mkdir, async (_e, p: string) => {
+    await mkdir(p, { recursive: true })
+    return p
+  })
+
+  /** stat 文件:返回 size/mtime/isFile/isDirectory;路径不存在返回 null。 */
+  ipcMain.handle(
+    FILE_IPC.stat,
+    async (
+      _e,
+      p: string,
+    ): Promise<{ size: number; mtime: number; isFile: boolean; isDirectory: boolean } | null> => {
+      try {
+        const s = await stat(p)
+        return {
+          size: s.size,
+          mtime: s.mtimeMs,
+          isFile: s.isFile(),
+          isDirectory: s.isDirectory(),
+        }
+      } catch {
+        return null
+      }
+    },
+  )
+
+  /** path.join — renderer 不能直接用 node:path,这里转发。 */
+  ipcMain.handle(FILE_IPC.pathJoin, (_e, ...parts: string[]) => join(...parts))
 }

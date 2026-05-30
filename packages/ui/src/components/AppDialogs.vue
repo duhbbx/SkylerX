@@ -5,8 +5,64 @@
  */
 import { nextTick, ref, watch } from 'vue'
 import { emitChatErrorAsk } from '../chat-bus'
-import { dialogState, dismissToast, toasts } from '../dialog'
+import { useDataClient } from '../data-client'
+import { dialogState, dismissToast, toast, toasts } from '../dialog'
 import { t } from '../i18n'
+import { saveFileState } from '../saveFile'
+import SaveFileDialog from './SaveFileDialog.vue'
+
+const client = useDataClient()
+
+/** "已保存"卡片状态:存绝对路径,提供"打开文件 / 显示在文件夹"按钮。 */
+const savedCard = ref<{ path: string } | null>(null)
+
+async function onSaveFileSubmit(path: string): Promise<void> {
+  const req = saveFileState.req
+  if (!req) return
+  try {
+    const fapi = client.files as unknown as {
+      writeText?: (p: string, c: string) => Promise<string>
+    }
+    if (!fapi.writeText) {
+      toast.error('writeText IPC 不可用')
+      saveFileState.resolve?.(null)
+      saveFileState.open = false
+      return
+    }
+    await fapi.writeText(path, req.content)
+    saveFileState.open = false
+    saveFileState.resolve?.(path)
+    savedCard.value = { path }
+    // 8 秒后自动消失
+    setTimeout(() => {
+      if (savedCard.value?.path === path) savedCard.value = null
+    }, 8000)
+  } catch (e) {
+    toast.error(`保存失败: ${e instanceof Error ? e.message : String(e)}`)
+    saveFileState.resolve?.(null)
+    saveFileState.open = false
+  }
+}
+
+function onSaveFileCancel(): void {
+  saveFileState.open = false
+  saveFileState.resolve?.(null)
+}
+
+async function openSavedFile(): Promise<void> {
+  if (!savedCard.value) return
+  const fapi = client.files as unknown as { openPath?: (p: string) => Promise<string> }
+  const err = await fapi.openPath?.(savedCard.value.path)
+  if (err) toast.error(`打开失败: ${err}`)
+  savedCard.value = null
+}
+
+async function showSavedInFolder(): Promise<void> {
+  if (!savedCard.value) return
+  const fapi = client.files as unknown as { showInFolder?: (p: string) => Promise<void> }
+  await fapi.showInFolder?.(savedCard.value.path)
+  savedCard.value = null
+}
 
 // 自动聚焦：confirm 默认按钮、prompt 输入框
 const inputRef = ref<HTMLInputElement>()
@@ -126,9 +182,87 @@ function onKey(e: KeyboardEvent): void {
       </div>
     </transition-group>
   </div>
+
+  <!-- 自定义保存文件对话框 -->
+  <SaveFileDialog
+    v-if="saveFileState.open"
+    :open="saveFileState.open"
+    :default-name="saveFileState.req?.defaultName ?? ''"
+    :filters="saveFileState.req?.filters"
+    :default-dir="saveFileState.req?.defaultDir"
+    @close="onSaveFileCancel"
+    @save="onSaveFileSubmit"
+  />
+
+  <!-- 保存成功卡片(右下角,8s 自动消失) -->
+  <transition name="toast-slide">
+    <div v-if="savedCard" class="saved-card">
+      <div class="sc-head">
+        <span class="sc-ico">✓</span>
+        <span>已保存</span>
+        <button class="sc-x" @click="savedCard = null">✕</button>
+      </div>
+      <div class="sc-path" :title="savedCard.path">{{ savedCard.path }}</div>
+      <div class="sc-actions">
+        <button class="sc-btn" @click="openSavedFile">打开文件</button>
+        <button class="sc-btn" @click="showSavedInFolder">显示在文件夹</button>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <style scoped>
+/* 保存成功卡片(右下角浮层,优先级比 toast 高一级) */
+.saved-card {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  z-index: 3200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sc-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
+.sc-ico {
+  width: 18px; height: 18px;
+  background: #4caf50; color: #fff;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.sc-x {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; padding: 0 4px; margin-left: auto; font-size: 14px;
+}
+.sc-path {
+  font-family: ui-monospace, monospace;
+  font-size: 11px; color: var(--muted);
+  word-break: break-all;
+  max-height: 50px; overflow: hidden;
+}
+.sc-actions { display: flex; gap: 6px; }
+.sc-btn {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--accent);
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.sc-btn:hover { background: rgba(124, 108, 255, 0.15); }
+/* 简单的 toast-slide 过渡(若已存在则被复用,语义一致) */
+.toast-slide-enter-from { opacity: 0; transform: translateY(20px); }
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.2s ease-out; }
+.toast-slide-leave-to { opacity: 0; transform: translateY(20px); }
+
 .dlg-backdrop {
   position: fixed;
   inset: 0;

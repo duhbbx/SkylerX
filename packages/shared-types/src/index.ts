@@ -462,6 +462,27 @@ export interface DataClient {
       allowCreate?: boolean
       defaultPath?: string
     }): Promise<string | null>
+    /** 自定义 SaveFileDialog 用的低级原语(桌面专属;Web 端按需用 File System Access API 实现) */
+    listDir?(
+      dirPath: string,
+    ): Promise<
+      Array<{ name: string; isDirectory: boolean; size: number; mtime: number; isHidden: boolean }>
+    >
+    commonDirs?(): Promise<{
+      home: string
+      desktop: string
+      documents: string
+      downloads: string
+      sep: string
+    }>
+    writeText?(filePath: string, content: string): Promise<string>
+    openPath?(p: string): Promise<string>
+    showInFolder?(p: string): Promise<void>
+    mkdir?(p: string): Promise<string>
+    stat?(
+      p: string,
+    ): Promise<{ size: number; mtime: number; isFile: boolean; isDirectory: boolean } | null>
+    pathJoin?(...parts: string[]): Promise<string>
   }
   /** 窗口管理（桌面专属；Web 端 noop） */
   window?: {

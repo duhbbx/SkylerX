@@ -92,6 +92,30 @@ const api = {
       allowCreate?: boolean
       defaultPath?: string
     }): Promise<string | null> => ipcRenderer.invoke('files:selectFile', req),
+    // ── 自定义 SaveFileDialog 用的原语 ───────────────────────────
+    listDir: (
+      dirPath: string,
+    ): Promise<
+      Array<{ name: string; isDirectory: boolean; size: number; mtime: number; isHidden: boolean }>
+    > => ipcRenderer.invoke('files:listDir', dirPath),
+    commonDirs: (): Promise<{
+      home: string
+      desktop: string
+      documents: string
+      downloads: string
+      sep: string
+    }> => ipcRenderer.invoke('files:commonDirs'),
+    writeText: (filePath: string, content: string): Promise<string> =>
+      ipcRenderer.invoke('files:writeText', filePath, content),
+    openPath: (p: string): Promise<string> => ipcRenderer.invoke('files:openPath', p),
+    showInFolder: (p: string): Promise<void> => ipcRenderer.invoke('files:showInFolder', p),
+    mkdir: (p: string): Promise<string> => ipcRenderer.invoke('files:mkdir', p),
+    stat: (
+      p: string,
+    ): Promise<{ size: number; mtime: number; isFile: boolean; isDirectory: boolean } | null> =>
+      ipcRenderer.invoke('files:stat', p),
+    pathJoin: (...parts: string[]): Promise<string> =>
+      ipcRenderer.invoke('files:pathJoin', ...parts),
   },
   ai: {
     /** 经主进程做 HTTP；避开渲染层 CORS（DeepSeek/OpenAI/Grok 直发会被预检卡）；
