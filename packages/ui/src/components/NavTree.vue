@@ -656,14 +656,33 @@ const dragState = ref<{ kind: 'conn' | 'group'; id: string } | null>(null)
 const dragOverKey = ref<string | null>(null)
 
 function onConnDragStart(e: DragEvent, root: ConnRoot): void {
+  // 阻止冒泡 — 防被父级 TreeItem 的 @dragstart(若有)吃掉.
+  // 同时 stopImmediatePropagation 避免多个 listener 冲突.
+  e.stopPropagation()
   dragState.value = { kind: 'conn', id: root.id }
-  e.dataTransfer?.setData('text/plain', `conn:${root.id}`)
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    // 设两种 type 兼容性更好(Electron / Safari / Firefox)
+    try {
+      e.dataTransfer.setData('text/plain', `conn:${root.id}`)
+      e.dataTransfer.setData('application/x-skylerx-conn', root.id)
+    } catch {
+      /* 某些环境下 setData 可能失败,不致命 */
+    }
+  }
 }
 function onGroupDragStart(e: DragEvent, name: string): void {
+  e.stopPropagation()
   dragState.value = { kind: 'group', id: name }
-  e.dataTransfer?.setData('text/plain', `group:${name}`)
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    try {
+      e.dataTransfer.setData('text/plain', `group:${name}`)
+      e.dataTransfer.setData('application/x-skylerx-group', name)
+    } catch {
+      /* ignore */
+    }
+  }
 }
 function onDragOver(e: DragEvent, key: string): void {
   if (!dragState.value) return
@@ -908,18 +927,30 @@ function onGroupDrop(targetGroup: string): void {
   color: var(--muted);
   font-size: 11px;
 }
-/* ── 拖拽视觉 ── */
-.conn-drag-wrap {
+/* ── 拖拽视觉 ──
+   draggable=true 时,鼠标 hover 显示 grab cursor 让用户清楚 "可以拖";
+   按住开始拖时变 grabbing.
+   之前用户反馈"拖动无效",一部分原因是没视觉反馈,以为没生效 */
+.conn-drag-wrap,
+.group-row {
   position: relative;
+  cursor: grab;
+}
+.conn-drag-wrap:active,
+.group-row:active {
+  cursor: grabbing;
 }
 .conn-drag-wrap.dragging,
 .group-row.dragging {
-  opacity: 0.4;
+  opacity: 0.35;
+  transform: scale(0.98);
+  transition: transform 0.1s ease-out;
 }
 .conn-drag-wrap.drag-over,
 .group-row.drag-over {
-  /* 顶部一道紫色边表示"会插到这里之前" */
-  box-shadow: inset 0 2px 0 0 var(--accent, #7c6cff);
+  /* 顶部一道粗紫色边 + 背景高亮表示"会插到这里之前", 用户清楚 drop target */
+  box-shadow: inset 0 3px 0 0 var(--accent, #7c6cff);
+  background: rgba(124, 108, 255, 0.08);
 }
 .bulk-bar {
   display: flex;

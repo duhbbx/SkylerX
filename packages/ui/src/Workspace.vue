@@ -203,7 +203,10 @@ async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
   // NoSQL：没有「SQL 查询页」概念，按方言路由到 Mongo/Redis/ES 浏览器
   if (dialectKind(conn.dialect) === DbKind.NoSql) {
     if (conn.dialect === DbDialect.Redis && node?.kind === MetaNodeKind.Database) {
-      tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
+      // Redis driver 里 node.name = 'db0'/'db1',Number 解析为 NaN → 全打开 db0(用户报告"没反应").
+      // node.path[0] 才是数字字符串 '0'/'1'/'2'.
+      const dbIndex = Number(node.path[0] ?? node.name.replace(/^db/, '')) || 0
+      tabsRef.value?.openRedisDb(conn, dbIndex)
       return
     }
     if (

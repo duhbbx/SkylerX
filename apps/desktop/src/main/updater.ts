@@ -179,7 +179,7 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
       version: string
       releaseNotes?: unknown
       releaseDate?: string
-      releaseName?: string
+      releaseName?: string | null
     }) =>
       broadcast({
         kind: 'available',
@@ -198,7 +198,7 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
                     .join('\n\n')
                 : undefined,
           releaseDate: info.releaseDate,
-          releaseName: info.releaseName,
+          releaseName: info.releaseName ?? undefined,
         },
       }),
   )
