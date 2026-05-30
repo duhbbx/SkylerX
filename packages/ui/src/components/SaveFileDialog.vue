@@ -317,6 +317,7 @@ watch(
 
 <template>
   <Modal v-if="open" title="保存文件" width="xl" fixed-height storage-key="save-file-dialog" @close="emit('close')">
+    <div class="save-shell">
     <div class="save-dialog" @keydown="onKeyNav">
       <!-- 左侧:常用位置 + 收藏 + 最近 -->
       <div class="sidebar">
@@ -433,7 +434,8 @@ watch(
       </div>
     </div>
 
-    <template #footer>
+    <!-- 底栏:Modal 没有 footer slot,自带一个,sticky 在 modal-body 底部 -->
+    <div class="dialog-actions">
       <button class="btn-ghost" :disabled="submitting" @click="emit('close')">取消</button>
       <button
         class="btn-primary"
@@ -442,11 +444,22 @@ watch(
       >
         {{ submitting ? '保存中…' : '▶ 保存' }}
       </button>
-    </template>
+    </div>
+    </div>
   </Modal>
 </template>
 
 <style scoped>
+/* shell:把 save-dialog(可滚)+ dialog-actions(固定底栏)堆成 flex 列。
+   Modal.vue 没有 footer slot,这里自带底栏,保证保存/取消按钮始终可见。 */
+.save-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  gap: 10px;
+}
 .save-dialog {
   display: grid;
   /* minmax(0, 1fr) 防止 grid 子项的 min-width: auto 把列撑超过模板分配
@@ -455,10 +468,18 @@ watch(
   grid-template-columns: 200px minmax(0, 1fr);
   gap: 12px;
   width: 100%;
-  height: 100%;
-  min-height: 480px;
+  flex: 1 1 auto;
+  min-height: 0;
   box-sizing: border-box;
   overflow: hidden;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
 }
 .sidebar {
   border-right: 1px solid var(--border);
