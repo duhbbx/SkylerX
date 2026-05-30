@@ -44,6 +44,7 @@ import PlanPanel from './PlanPanel.vue'
 import ResultGrid from './ResultGrid.vue'
 import SnippetsPanel from './SnippetsPanel.vue'
 import SqlEditor from './SqlEditor.vue'
+import ThemedSelect from './ThemedSelect.vue'
 import Watermark from './Watermark.vue'
 
 const client = useDataClient()
@@ -1452,18 +1453,21 @@ defineExpose({
         </Teleport>
       </div>
 
-      <select v-if="topKind === 'database'" v-model="selectedDb" class="ctx" @change="onDbChange">
-        <option value="">{{ t('query.defaultDb') }}</option>
-        <option v-for="d in dbOptions" :key="d" :value="d">{{ d }}</option>
-      </select>
-      <select
+      <ThemedSelect
+        v-if="topKind === 'database'"
+        :model-value="selectedDb"
+        :options="[{ value: '', label: t('query.defaultDb') }, ...dbOptions.map((d) => ({ value: d, label: d }))]"
+        :placeholder="t('query.defaultDb')"
+        :width="170"
+        @update:model-value="(v) => { selectedDb = v; onDbChange() }"
+      />
+      <ThemedSelect
         v-if="schemaOptions.length || topKind === 'schema'"
         v-model="selectedSchema"
-        class="ctx"
-      >
-        <option value="">{{ t('query.defaultSchema') }}</option>
-        <option v-for="s in schemaOptions" :key="s" :value="s">{{ s }}</option>
-      </select>
+        :options="[{ value: '', label: t('query.defaultSchema') }, ...schemaOptions.map((s) => ({ value: s, label: s }))]"
+        :placeholder="t('query.defaultSchema')"
+        :width="170"
+      />
 
       <span
         v-if="env"

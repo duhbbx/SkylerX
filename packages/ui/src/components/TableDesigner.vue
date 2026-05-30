@@ -359,11 +359,11 @@ async function saveAs(): Promise<void> {
           <tr>
             <th>{{ t('designer.h.fieldName') }}</th>
             <th>{{ t('designer.h.type') }}</th>
-            <th>{{ t('designer.h.length') }}</th>
-            <th>{{ t('designer.h.scale') }}</th>
-            <th :title="t('designer.h.allowNull')">NULL</th>
-            <th :title="t('designer.h.pk')">{{ t('designer.h.pk') }}</th>
-            <th>{{ t('designer.h.default') }}</th>
+            <th style="width: 80px">{{ t('designer.h.length') }}</th>
+            <th style="width: 80px">{{ t('designer.h.scale') }}</th>
+            <th style="width: 50px" :title="t('designer.h.allowNull')">NULL</th>
+            <th style="width: 50px" :title="t('designer.h.pk')">{{ t('designer.h.pk') }}</th>
+            <th style="width: 130px">{{ t('designer.h.default') }}</th>
             <th>{{ t('designer.h.comment') }}</th>
           </tr>
         </thead>
@@ -670,28 +670,41 @@ async function saveAs(): Promise<void> {
 .grid tr.sel {
   background: rgba(124, 108, 255, 0.16);
 }
+/* 单元格无缝输入:input/select 撑满 td,等高等宽,边距由 td 控制,
+   不让 width:60px 之类把控件挤成"卡片"独立浮在 cell 内 */
 .grid input:not([type='checkbox']),
 .grid select {
   width: 100%;
+  height: 100%;
+  min-height: 28px;
+  box-sizing: border-box;
   background-color: transparent;
   border: none;
   color: var(--text);
-  padding: 4px;
+  padding: 4px 6px;
   font-size: 13px;
+  font-family: inherit;
 }
 .grid select {
   padding-right: 20px;
   cursor: pointer;
 }
-.grid input.w-xs {
-  width: 60px;
-}
+/* 长度 / 小数点列:不再写死宽度,改让 input 占满 td;
+   td 宽度由 th 上的 style 控制(见 thead) */
+.grid input.w-xs,
 .grid input.w-sm {
-  width: 90px;
+  width: 100%;
+  padding: 4px 6px;
+}
+.grid td {
+  padding: 0; /* 内部 input 已经有 padding,td 不再叠加,避免出现内白边 */
+  vertical-align: middle;
 }
 .grid input:focus,
 .grid select:focus {
-  outline: 1px solid var(--accent);
+  outline: none;
+  background-color: rgba(124, 108, 255, 0.10);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .x {
   background: transparent;
@@ -715,17 +728,29 @@ async function saveAs(): Promise<void> {
   margin-bottom: 10px;
 }
 .opt-row label {
-  width: 60px;
+  /* 之前写死 width:60px,PG 的 'TABLESPACE'/'FILLFACTOR'/'INHERITS'
+     全被截断 → 改 min-width + white-space 保证 label 完整,各对齐良好 */
+  min-width: 140px;
+  flex-shrink: 0;
   color: var(--muted);
   font-size: 13px;
+  white-space: nowrap;
 }
-.opt-row input {
-  flex: 0 0 220px;
+.opt-row input,
+.opt-row select {
+  flex: 1 1 260px;
+  max-width: 320px;
   padding: 6px 10px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
+  font-size: 13px;
+  /* 覆盖前面 .grid input 的全局规则,避免 height:100%/min-height:28px
+     在 options 面板里把控件拉扁 */
+  height: auto;
+  min-height: 0;
+  width: auto;
 }
 .comment-area {
   width: 100%;
