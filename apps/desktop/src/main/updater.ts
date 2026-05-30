@@ -149,9 +149,15 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
   ;(autoUpdater as unknown as { disableWebInstaller: boolean }).disableWebInstaller = false
   ;(autoUpdater as unknown as { verifyUpdateCodeSignature: unknown }).verifyUpdateCodeSignature =
     () => Promise.resolve(null)
+  // 强制 channel = 'latest', 不让 electron-updater 看到 -rc / -beta / -alpha 后缀时
+  // 自动推断成 rc / beta / alpha channel (会去拉 rc.yml/beta.yml 之类, 我们 build
+  // 默认只生成 latest.yml, 导致 prerelease 用户检测不到新版本退化为 '已是最新').
+  // 强制走 latest.yml 后, prerelease → prerelease 升级 + prerelease → stable 升级
+  // 全部走同一条路径, 不再被 channel 自动推断坑.
+  autoUpdater.channel = 'latest'
 
-  // 启动时应用持久化的 channel 选择(默认 github,用户切过 oss-cn 就走那个)
-  void loadChannel().then((c) => applyChannel(c))
+  // loadChannel + applyChannel + 启动 check 必须串行,
+  // 否则 check 时 feed URL 还是默认的 github,跟用户的 OSS 选择不一致.
 
   // UpdateInfo / ProgressInfo 类型来自 builder-util-runtime,这里用 any 规避
   // 跨包类型导入麻烦(electron-updater 6.x 的 d.ts 把它们藏在 sub-package),
@@ -187,6 +193,15 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
     broadcast({ kind: 'downloaded', info: { version: info.version } }),
   )
 
-  // 启动时静默检查一次(不下载,仅探测有无新版)
-  void autoUpdater.checkForUpdates()
+  // 启动时静默检查一次(不下载,仅探测有无新版).
+  // 先 await applyChannel 让 setFeedURL 完成,再 check,避免走错 channel.
+  void (async () => {
+    try {
+      const c = await loadChannel()
+      applyChannel(c)
+      await autoUpdater.checkForUpdates()
+    } catch (e) {
+      broadcast({ kind: 'error', message: e instanceof Error ? e.message : String(e) })
+    }
+  })()
 }
