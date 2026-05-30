@@ -170,6 +170,15 @@ const api = {
     getChannel: (): Promise<'github' | 'oss-cn'> => ipcRenderer.invoke('updates:getChannel'),
     setChannel: (c: 'github' | 'oss-cn'): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('updates:setChannel', c),
+    /** 调试日志:历史 + 实时(updates:log) 给 about 弹框面板展示 */
+    getLogs: (): Promise<Array<{ ts: number; level: string; msg: string }>> =>
+      ipcRenderer.invoke('updates:getLogs'),
+    onLog: (handler: (log: { ts: number; level: string; msg: string }) => void): (() => void) => {
+      const listener = (_e: unknown, log: { ts: number; level: string; msg: string }): void =>
+        handler(log)
+      ipcRenderer.on('updates:log', listener)
+      return () => ipcRenderer.removeListener('updates:log', listener)
+    },
     /** 订阅状态推送;返回取消订阅函数 */
     onStatus: (handler: (s: unknown) => void): (() => void) => {
       const listener = (_e: unknown, s: unknown): void => handler(s)

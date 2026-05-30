@@ -1,61 +1,15 @@
 <script setup lang="ts">
 /**
  * 首页"主要功能"九宫格.
- * 标题刻意短,正文 1 行写卖点,避免堆字.
+ * 9 项 feature 的完整翻译在 i18n.ts 的 ComponentLabels.features 里。
  */
-interface Feature {
-  icon: string
-  title: string
-  desc: string
-}
+import { computed } from 'vue'
+import { useData } from 'vitepress'
+import { getComponentLabels } from '../i18n'
 
-const features: Feature[] = [
-  {
-    icon: '🧠',
-    title: 'AI 助手',
-    desc: 'Anthropic / OpenAI / DeepSeek / Codex / Grok 多家选,内置 7 个专业 Toolbox + 行内补全',
-  },
-  {
-    icon: '🔌',
-    title: '20+ 方言',
-    desc: '主流 SQL + 国产信创(达梦/金仓/openGauss/OceanBase/TiDB)+ NoSQL(Mongo/Redis/ES)',
-  },
-  {
-    icon: '✏️',
-    title: 'Monaco 编辑器',
-    desc: 'SQL 高亮 + 自动补全 + 格式化 + 参数化查询 + 片段库;⌘+Enter 即跑',
-  },
-  {
-    icon: '📊',
-    title: '可视化结果集',
-    desc: '虚拟滚动 + 可编辑 + JSON/BLOB 识别 + 数字列 sparkline + 条件着色',
-  },
-  {
-    icon: '🛡',
-    title: '生产保护',
-    desc: 'prod 标记 + 危险 SQL 二次确认 + SQL Linter + 数据脱敏 / 契约',
-  },
-  {
-    icon: '🔍',
-    title: 'EXPLAIN 可视化',
-    desc: '预估行 vs 实际行,慢算子高亮,可选 ANALYZE 真跑测',
-  },
-  {
-    icon: '🧬',
-    title: '结构对比 / 漂移',
-    desc: '两连接对比 → 自动生成对齐 SQL;Schema 快照 + 演化历史',
-  },
-  {
-    icon: '🛠',
-    title: 'DBA 工具箱',
-    desc: '服务器活动 / KILL / 慢查询日志解析 / 复制延迟监控 / 索引推荐',
-  },
-  {
-    icon: '🇨🇳',
-    title: '信创就绪',
-    desc: '达梦 / 金仓 / openGauss / OceanBase / TiDB / 国密 SM2/SM3/SM4 + 等保合规面板',
-  },
-]
+const { lang } = useData()
+const L = computed(() => getComponentLabels(lang.value))
+const features = computed(() => L.value.features)
 </script>
 
 <template>

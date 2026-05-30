@@ -79,19 +79,67 @@ async function saveChannel(c: UpdateChannel): Promise<void> {
 function applyChannel(c: UpdateChannel): void {
   if (c === 'oss-cn') {
     autoUpdater.setFeedURL({ provider: 'generic', url: OSS_GENERIC_URL })
+    pushLog(`setFeedURL → OSS (generic) ${OSS_GENERIC_URL}`)
   } else {
-    // 走 electron-builder.yml 里的 github publish(默认行为,不需要 setFeedURL)
-    // 但如果先前切到过 oss-cn,要重新指回 github;最稳妥用 channel reload
     autoUpdater.setFeedURL({
       provider: 'github',
       owner: 'duhbbx',
       repo: 'SkylerX',
     })
+    pushLog('setFeedURL → GitHub (duhbbx/SkylerX)')
   }
+}
+
+// ── 调试日志 ─────────────────────────────────────────────────────────
+// 用户报告: 检查更新时不清楚到底用了哪个 channel / 拉哪个 yml,
+// 失败时只看到一句话错误难定位. 维护一个滚动日志(最近 50 条),
+// renderer 'updates:onLog' 订阅 + 'updates:getLogs' 拉历史.
+export interface UpdaterLog {
+  ts: number // unix ms
+  level: 'info' | 'warn' | 'error'
+  msg: string
+}
+const updaterLogs: UpdaterLog[] = []
+const MAX_LOGS = 50
+
+function pushLog(msg: string, level: UpdaterLog['level'] = 'info'): void {
+  const entry: UpdaterLog = { ts: Date.now(), level, msg }
+  updaterLogs.push(entry)
+  if (updaterLogs.length > MAX_LOGS) updaterLogs.shift()
+  const wc = mainWindowRef?.webContents
+  if (wc && !wc.isDestroyed()) wc.send('updates:log', entry)
 }
 
 function broadcast(s: UpdaterStatus): void {
   lastStatus = s
+  // 状态变化时也写进日志 (kind + 关键字段),让面板显示一份完整时间线
+  switch (s.kind) {
+    case 'checking':
+      pushLog('checking for update ...')
+      break
+    case 'available':
+      pushLog(
+        `update available: v${s.info.version}${s.info.releaseDate ? ` (released ${s.info.releaseDate})` : ''}`,
+      )
+      break
+    case 'not-available':
+      pushLog(`up to date (current: v${s.currentVersion})`)
+      break
+    case 'downloading':
+      // download-progress 触发频繁,只每 10% 打一条
+      if (Math.floor(s.percent) % 10 === 0) {
+        pushLog(
+          `downloading ${Math.floor(s.percent)}% @ ${(s.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`,
+        )
+      }
+      break
+    case 'downloaded':
+      pushLog(`downloaded v${s.info.version}, ready to install`)
+      break
+    case 'error':
+      pushLog(s.message, 'error')
+      break
+  }
   // webContents 可能在窗口关闭时不可用,加防御
   const wc = mainWindowRef?.webContents
   if (wc && !wc.isDestroyed()) wc.send('updates:status', s)
@@ -103,6 +151,7 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
   // 4 个 IPC:dev 模式也注册,但 actions 回 { devMode: true } 由 renderer 走 fallback
   // + 2 个 channel IPC: 取/设国内 OSS 镜像还是 GitHub 源
   ipcMain.handle('updates:getStatus', () => lastStatus)
+  ipcMain.handle('updates:getLogs', () => updaterLogs.slice())
   ipcMain.handle('updates:getChannel', async () => await loadChannel())
   ipcMain.handle('updates:setChannel', async (_e, c: UpdateChannel) => {
     if (c !== 'github' && c !== 'oss-cn') return { ok: false, error: 'unknown channel' }
@@ -115,9 +164,13 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
       broadcast({ kind: 'error', message: '开发模式不支持应用内自动更新,请使用打包安装版' })
       return { devMode: true }
     }
+    pushLog(`user clicked "check for updates" (app version: v${app.getVersion()})`)
     broadcast({ kind: 'checking' })
     try {
-      await autoUpdater.checkForUpdates()
+      const r = await autoUpdater.checkForUpdates()
+      // r 可能是 UpdateCheckResult 含 updateInfo + downloadPromise, 这里只 log 版本
+      const v = (r as { updateInfo?: { version?: string } } | null)?.updateInfo?.version
+      if (v) pushLog(`server reports latest version: v${v}`)
       return { ok: true }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

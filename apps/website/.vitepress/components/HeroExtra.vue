@@ -1,13 +1,20 @@
 <script setup lang="ts">
 /**
  * 首页 Hero 区下方补一行徽章/简短价值点.
+ * 文案随 useData().lang 自动切换。
  */
-const points = [
-  '✨ 17 SQL + 3 NoSQL 方言',
-  '🇨🇳 国产信创全家桶',
-  '🤖 多 provider AI 助手',
-  '⚖️ Apache 2.0 开源',
-]
+import { computed } from 'vue'
+import { useData } from 'vitepress'
+import { getComponentLabels } from '../i18n'
+
+const { lang } = useData()
+const L = computed(() => getComponentLabels(lang.value))
+const points = computed(() => [
+  L.value.hero.dialects,
+  L.value.hero.chinese,
+  L.value.hero.multiAi,
+  L.value.hero.license,
+])
 </script>
 
 <template>
