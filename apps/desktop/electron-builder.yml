@@ -24,8 +24,19 @@ win:
       arch:
         - x64
         - arm64
+    # portable = 单一 .exe 免安装,双击即运行,不写注册表/开始菜单,
+    # 适合"放 U 盘就能用"的场景 + 公司网管禁止运行安装程序的环境。
+    # 安装包仍是 nsis 主流方案;portable 只是额外多产一份。
+    - target: portable
+      arch:
+        - x64
+        - arm64
   artifactName: ${productName}-${version}-${arch}-setup.${ext}
   publisherName: Wuhan Skyler Network Technology Co., Ltd.
+
+# portable 的产物名走单独命名,跟 setup 区分开
+portable:
+  artifactName: ${productName}-${version}-${arch}-portable.${ext}
 
 # ── macOS：x64 + arm64 分两份 dmg ──
 # 不用 universal：x64 用户装 universal 多吃一倍体积。两份 dmg 各自下载更省。

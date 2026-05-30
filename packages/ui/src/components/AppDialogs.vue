@@ -88,6 +88,16 @@ async function showSavedInFolder(): Promise<void> {
   savedCard.value = null
 }
 
+/** 复制错误 toast 内容到剪贴板;只 toast 一个 "已复制" 反馈,不挡视线 */
+async function copyToastMsg(text: string): Promise<void> {
+  try {
+    await navigator.clipboard?.writeText(text)
+    toast.success('已复制', 1500)
+  } catch {
+    /* 浏览器禁用 / 无 clipboard */
+  }
+}
+
 // 自动聚焦：confirm 默认按钮、prompt 输入框
 const inputRef = ref<HTMLInputElement>()
 const confirmBtnRef = ref<HTMLButtonElement>()
@@ -193,16 +203,41 @@ function onKey(e: KeyboardEvent): void {
     </div>
   </div>
 
-  <!-- ── Toast 通知（右下角堆叠）── -->
+  <!-- ── Toast 通知（右下角堆叠）──
+       用户报告:错误 toast 一点击就消失,来不及复制错误。改造后:
+        - 错误 toast 不再"点击主体就关",必须按右上角 × 才关
+        - 错误 toast 始终带"复制"按钮(整条错误进剪贴板)
+        - 带 askAi 上下文的错误额外带"✨ 问 AI"按钮(打开右侧 AI 面板带上下文)
+        - 非错误 toast (info/success/warn) 保持原"点击关闭"行为 -->
   <div class="toasts">
     <transition-group name="toast">
-      <div v-for="t in toasts" :key="t.id" class="toast" :class="'v-' + t.variant" @click="dismissToast(t.id)">
+      <div
+        v-for="t in toasts"
+        :key="t.id"
+        class="toast"
+        :class="['v-' + t.variant, { persistent: t.variant === 'danger' }]"
+        @click="t.variant !== 'danger' && dismissToast(t.id)"
+      >
         <span class="toast-ico">{{
           t.variant === 'danger' ? '✗' :
           t.variant === 'warn' ? '!' :
           t.variant === 'success' ? '✓' : 'i'
         }}</span>
         <span class="toast-msg">{{ t.message }}</span>
+        <div v-if="t.variant === 'danger'" class="toast-actions">
+          <button class="toast-act" title="复制错误信息" @click.stop="copyToastMsg(t.message)">
+            📋
+          </button>
+          <button
+            v-if="t.askAi"
+            class="toast-act ai"
+            title="把这条错误连同 SQL / 连接 / 方言一起丢给 AI 分析原因"
+            @click.stop="(emitChatErrorAsk(t.askAi), dismissToast(t.id))"
+          >
+            ✨ 问 AI
+          </button>
+          <button class="toast-act close" title="关闭" @click.stop="dismissToast(t.id)">×</button>
+        </div>
       </div>
     </transition-group>
   </div>
@@ -435,9 +470,9 @@ function onKey(e: KeyboardEvent): void {
 }
 .toast {
   pointer-events: auto;
-  min-width: 240px;
-  max-width: 360px;
-  padding: 8px 12px;
+  min-width: 280px;
+  max-width: 480px;
+  padding: 10px 12px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent, #7c6cff);
@@ -445,10 +480,54 @@ function onKey(e: KeyboardEvent): void {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   font-size: 13px;
   color: var(--text);
-  cursor: pointer;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
+  cursor: pointer; /* 默认整条点击关 (info/success/warn) */
+}
+.toast.persistent {
+  cursor: default; /* 错误 toast 不再点击关 */
+}
+.toast-msg {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  white-space: pre-wrap; /* 多行错误保留换行 */
+}
+.toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-left: 4px;
+}
+.toast-act {
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  line-height: 1.2;
+}
+.toast-act:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.toast-act.ai {
+  background: rgba(124, 108, 255, 0.18);
+  border-color: rgba(124, 108, 255, 0.5);
+  color: var(--accent, #7c6cff);
+}
+.toast-act.ai:hover {
+  background: rgba(124, 108, 255, 0.32);
+}
+.toast-act.close {
+  padding: 3px 9px;
+  font-size: 14px;
+  color: var(--muted);
 }
 .toast.v-warn {
   border-left-color: #e0a020;

@@ -115,6 +115,49 @@ const DICT: Record<string, [string, string]> = {
   'settings.cat.grid': ['数据网格', 'Data grid'],
   'settings.cat.watermark': ['生产水印', 'Production watermark'],
   'settings.cat.ai': ['AI 助手', 'AI Assistant'],
+  'settings.cat.updates': ['应用更新', 'App updates'],
+  'settings.updates.intro': [
+    'SkylerX 内置自动更新(electron-updater)。下面可以切换更新源:中国大陆建议走 OSS 镜像速度更快,海外走 GitHub。',
+    'SkylerX has built-in auto-update (electron-updater). Switch source below: Aliyun OSS mirror for China mainland, GitHub for elsewhere.',
+  ],
+  'settings.updates.channel': ['更新源', 'Update source'],
+  'settings.updates.ossLabel': ['阿里云 OSS (国内)', 'Aliyun OSS (China)'],
+  'settings.updates.githubLabel': ['GitHub Releases (海外)', 'GitHub Releases'],
+  'settings.updates.ossTip': [
+    '阿里云 OSS 上海节点;中国大陆下载速度通常远快于 GitHub',
+    'Aliyun OSS Shanghai node, much faster for China mainland',
+  ],
+  'settings.updates.githubTip': [
+    'GitHub Releases 直链;全球可达,中国大陆可能较慢',
+    'GitHub Releases direct link, worldwide but slow in China mainland',
+  ],
+  'settings.updates.ossDesc': [
+    '当前从 https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/ 检查更新',
+    'Currently checking updates from https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/',
+  ],
+  'settings.updates.githubDesc': [
+    '当前从 github.com/duhbbx/SkylerX/releases 检查更新',
+    'Currently checking updates from github.com/duhbbx/SkylerX/releases',
+  ],
+  'settings.updates.checkNow': ['手动检查', 'Check now'],
+  'settings.updates.checkBtn': ['立即检查更新', 'Check for updates'],
+  'settings.updates.checking': ['检查中…', 'Checking…'],
+  'settings.updates.checkSent': [
+    '已发起检查,有新版本会自动提示',
+    'Check sent; will notify if new version available',
+  ],
+  'settings.updates.checkFail': ['检查失败', 'Check failed'],
+  'settings.updates.switchedOss': ['已切换到国内 OSS 镜像', 'Switched to China OSS mirror'],
+  'settings.updates.switchedGithub': ['已切换到 GitHub 源', 'Switched to GitHub source'],
+  'settings.updates.notAvailable': ['当前环境不支持自动更新', 'Auto-update not available'],
+  'settings.updates.devMode': [
+    '开发模式不支持应用内更新,请使用打包安装版',
+    'Dev mode does not support in-app update; use packaged build',
+  ],
+  'settings.updates.devModeNote': [
+    '⚠ 你在开发模式运行,自动更新无效。打包安装版才能用此功能。',
+    '⚠ Running in dev mode; auto-update is disabled. Only packaged builds support this.',
+  ],
   'settings.ai.active': ['激活的 Provider', 'Active provider'],
   // ── AI 记忆 ──
   'settings.mem.title': ['记忆与画像（A/B/C 三档）', 'Memory & profile (A/B/C tiers)'],
@@ -603,7 +646,10 @@ const DICT: Record<string, [string, string]> = {
     'Pick tables from left → cards appear → check columns to SELECT',
   ],
   'vqd.hintStar': ['未勾任何列时使用 *', 'Using * (no columns selected)'],
-  'vqd.autoJoins': ['自动 JOIN ({n}): 基于列名约定推断', 'Auto JOIN ({n}): inferred from column naming'],
+  'vqd.autoJoins': [
+    '自动 JOIN ({n}): 基于列名约定推断',
+    'Auto JOIN ({n}): inferred from column naming',
+  ],
   'vqd.wherePh': ['WHERE 条件，如 t.status = paid', 'WHERE clause, e.g. t.status = paid'],
   'vqd.orderPh': ['ORDER BY 列，如 created_at DESC', 'ORDER BY clause, e.g. created_at DESC'],
   'vqd.preview': ['SQL 预览', 'SQL preview'],
@@ -831,8 +877,14 @@ const DICT: Record<string, [string, string]> = {
   ],
   'grid.filterColTitle': ['筛选该列（点击勾选可选值）', 'Filter column (click to pick values)'],
   // #5 展开 FK 引用列
-  'grid.expandFkTitle': ['展开 → {ref} 的引用字段（新查询）', 'Expand to {ref} reference fields (new query)'],
-  'query.expandFkNeedTable': ['本结果集非单表查询，无法展开引用列', 'Cannot expand: result is not a single-table query'],
+  'grid.expandFkTitle': [
+    '展开 → {ref} 的引用字段（新查询）',
+    'Expand to {ref} reference fields (new query)',
+  ],
+  'query.expandFkNeedTable': [
+    '本结果集非单表查询，无法展开引用列',
+    'Cannot expand: result is not a single-table query',
+  ],
   'query.expandFkTab': ['{col} → {ref}', '{col} → {ref}'],
   // dbgate 式 Excel 多值过滤面板
   'grid.filterPopTitle': ['筛选「{col}」', 'Filter "{col}"'],
@@ -1214,8 +1266,8 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 用户与权限 PrivilegesDialog ──
   'priv.unsupported': [
-    '该方言暂不支持用户管理（仅 MySQL / PostgreSQL 系）',
-    'User management not supported for this dialect (MySQL / PostgreSQL only)',
+    '该方言暂不支持用户管理（仅 MySQL / PostgreSQL / Oracle / DM / SQL Server）',
+    'User management not supported for this dialect (MySQL / PostgreSQL / Oracle / DM / SQL Server only)',
   ],
   'priv.readFail': ['（读取授权失败：{msg}）', '(failed to read grants: {msg})'],
   'priv.title': ['用户与权限', 'Users & privileges'],
@@ -1270,7 +1322,10 @@ const DICT: Record<string, [string, string]> = {
   'ddl.saveExec': ['保存（执行）', 'Save (run)'],
   'ddl.create': ['创建', 'Create'],
   'ddl.format': ['格式化', 'Format'],
-  'ddl.formatHint': ['按方言格式化 SQL（解析失败保持原样）', 'Format SQL by dialect (no-op on parse failure)'],
+  'ddl.formatHint': [
+    '按方言格式化 SQL（解析失败保持原样）',
+    'Format SQL by dialect (no-op on parse failure)',
+  ],
   'ddl.loadingDef': ['载入定义中…', 'Loading definition…'],
   'ddl.location': ['位置：{target}', 'Location: {target}'],
 
@@ -1338,6 +1393,7 @@ const DICT: Record<string, [string, string]> = {
   'ctx.data-dict-html': ['生成数据字典（HTML）', 'Data dictionary (HTML)'],
   'ctx.toggle-favorite': ['收藏 / 取消收藏', 'Favorite / Unfavorite'],
   'ctx.edit-conn': ['编辑连接', 'Edit connection'],
+  'ctx.duplicate-conn': ['复制连接', 'Duplicate connection'],
   'ctx.toggle-prod': ['标记为生产环境 / 取消标记', 'Mark as production / Unmark'],
   'ctx.refresh': ['刷新', 'Refresh'],
   'ctx.drop-object': ['删除', 'Drop'],
@@ -1499,7 +1555,10 @@ const DICT: Record<string, [string, string]> = {
   'mock.col.kind': ['语义', 'Semantic'],
   'mock.col.extra': ['配置', 'Config'],
   'mock.col.preview': ['示例', 'Sample'],
-  'mock.enumPh': ['用 , 分隔候选，如 paid,shipped,done', 'Comma-separated values, e.g. paid,shipped,done'],
+  'mock.enumPh': [
+    '用 , 分隔候选，如 paid,shipped,done',
+    'Comma-separated values, e.g. paid,shipped,done',
+  ],
   'mock.fixedPh': ['固定值（多个时取第一个）', 'Fixed value (first one used)'],
   'mock.regexPh': ['正则，如 [A-Z]{2}\\d{6}', 'Regex, e.g. [A-Z]{2}\\d{6}'],
   'mock.min': ['min', 'min'],
@@ -1507,10 +1566,19 @@ const DICT: Record<string, [string, string]> = {
   'mock.precision': ['小数位', 'precision'],
   'mock.reroll': ['再抽一次示例', 'Reroll sample'],
   'mock.reset': ['重置', 'Reset'],
-  'mock.resetHint': ['清除本表配置并按列名重新推断', 'Clear saved config and re-detect by column name'],
-  'mock.resetConfirm': ['清除当前表的配置并按列名重新推断？', 'Clear config and re-detect by column name?'],
+  'mock.resetHint': [
+    '清除本表配置并按列名重新推断',
+    'Clear saved config and re-detect by column name',
+  ],
+  'mock.resetConfirm': [
+    '清除当前表的配置并按列名重新推断？',
+    'Clear config and re-detect by column name?',
+  ],
   'mock.save': ['保存配置', 'Save config'],
-  'mock.saveHint': ['配置存到本地，下次打开本表自动加载', 'Config stored locally, auto-loaded next time'],
+  'mock.saveHint': [
+    '配置存到本地，下次打开本表自动加载',
+    'Config stored locally, auto-loaded next time',
+  ],
   'mock.saved': ['配置已保存', 'Config saved'],
   'mock.generate': ['生成 INSERT', 'Generate INSERT'],
   'mock.invalidCount': ['行数无效', 'Invalid row count'],
@@ -1542,10 +1610,7 @@ const DICT: Record<string, [string, string]> = {
     '执行以下命令开启后再回来刷新:',
     'Run the following to enable, then refresh:',
   ],
-  'slowq.windowSinceStart': [
-    '统计窗口:数据库启动以来累计',
-    'Window: accumulated since DB startup',
-  ],
+  'slowq.windowSinceStart': ['统计窗口:数据库启动以来累计', 'Window: accumulated since DB startup'],
 
   // ── Oracle → DM 迁移向导 ──
   'slowq.foot': [
@@ -1586,7 +1651,10 @@ const DICT: Record<string, [string, string]> = {
   ],
   'o2dm.conn.schema': ['源 Schema', 'Source schema'],
   'o2dm.conn.schemaPh': ['留空 = 用连接默认用户', 'empty = use connection default user'],
-  'o2dm.conn.schemaHint': ['Oracle 的 schema 即用户名,大小写敏感', 'Oracle schema = user name, case sensitive'],
+  'o2dm.conn.schemaHint': [
+    'Oracle 的 schema 即用户名,大小写敏感',
+    'Oracle schema = user name, case sensitive',
+  ],
   'o2dm.pick.all': ['全选', 'All'],
   'o2dm.pick.none': ['全不选', 'None'],
   'o2dm.pick.summary': [
@@ -1602,9 +1670,15 @@ const DICT: Record<string, [string, string]> = {
     '正在拉取并翻译 DDL... {d}/{t}',
     'Fetching and translating DDL... {d}/{t}',
   ],
-  'o2dm.preview.warn': ['该对象有翻译告警,建议人工 review', 'Translation warnings on this object — manual review recommended'],
+  'o2dm.preview.warn': [
+    '该对象有翻译告警,建议人工 review',
+    'Translation warnings on this object — manual review recommended',
+  ],
   'o2dm.preview.warns': ['翻译告警', 'Translation warnings'],
-  'o2dm.run.includeData': ['同时迁移数据(每表前 100 行示例)', 'Also migrate data (first 100 rows per table sample)'],
+  'o2dm.run.includeData': [
+    '同时迁移数据(每表前 100 行示例)',
+    'Also migrate data (first 100 rows per table sample)',
+  ],
   'o2dm.run.includeDataHint': [
     '数据迁移为骨架实现,仅作示例;生产迁移请用专门 ETL 工具',
     'Data migration is a skeleton sample only — use a proper ETL tool in production',

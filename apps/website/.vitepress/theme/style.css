@@ -1,0 +1,45 @@
+/**
+ * SkylerX 品牌色覆盖 VitePress 默认主题。
+ * 主色:紫蓝渐变(跟桌面端 --accent 保持一致)
+ */
+:root {
+  --vp-c-brand-1: #7c6cff;
+  --vp-c-brand-2: #6b58f5;
+  --vp-c-brand-3: #5b4ae6;
+  --vp-c-brand-soft: rgba(124, 108, 255, 0.14);
+
+  --vp-button-brand-bg: linear-gradient(135deg, #7c6cff 0%, #5b4ae6 100%);
+  --vp-button-brand-hover-bg: linear-gradient(135deg, #8a7bff 0%, #6b58f5 100%);
+  --vp-button-brand-active-bg: linear-gradient(135deg, #6b58f5 0%, #4a3ad5 100%);
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(135deg, #7c6cff 30%, #41d1ff);
+
+  --vp-home-hero-image-background-image: linear-gradient(
+    -45deg,
+    #7c6cff 30%,
+    #41d1ff
+  );
+  --vp-home-hero-image-filter: blur(60px);
+}
+
+.dark {
+  --vp-c-brand-soft: rgba(124, 108, 255, 0.22);
+}
+
+/* Hero CTA 按钮再大点 */
+.VPHero .actions .VPButton {
+  font-size: 0.95rem !important;
+  padding: 0 22px !important;
+  line-height: 42px !important;
+}
+
+/* 文档 markdown 表格更整齐 */
+.vp-doc table {
+  display: table;
+  width: 100%;
+  margin: 1.2rem 0;
+}
+.vp-doc table th {
+  background: var(--vp-c-bg-soft);
+}

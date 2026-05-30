@@ -32,6 +32,7 @@ const emit = defineEmits<{
   editConn: [string]
   newConn: []
   deleteConn: [string]
+  duplicateConn: [string]
   runSql: [string, string]
   connError: [string, string]
   newObject: [ObjectKind, string, TreeNode]
@@ -98,7 +99,12 @@ const emit = defineEmits<{
   /** 脱敏视图 */
   openMaskingView: [connId: string, database?: string, schema?: string, table?: string]
   /** AI Insights */
-  openAiInsights: [connId: string, prefillSql?: string, prefillError?: string, tab?: 'slow' | 'error']
+  openAiInsights: [
+    connId: string,
+    prefillSql?: string,
+    prefillError?: string,
+    tab?: 'slow' | 'error',
+  ]
   /** AI 反向 schema */
   openAiSchemaReverse: [connId: string, database?: string]
   /** AI 建表助手 */
@@ -129,12 +135,20 @@ interface ConnRoot {
   env?: ConnectionEnv
   /** 方言（用于 TreeItem 显示数据库品牌 logo） */
   dialect: string
+  /** 拖拽排序用 */
+  sortIndex?: number
+  createdAt?: number
 }
 
 const roots = ref<ConnRoot[]>([])
 const expandedGroups = ref<Set<string>>(new Set())
 
-// 按 group 聚合：有分组的归入文件夹，未分组的平铺
+/**
+ * 按 group 聚合,并按 settings.groupOrder 排序:
+ *  - groupOrder 数组里的顺序优先(用户拖动的顺序);未列出的从连接 group 字段冒出来的追加在后
+ *  - 空分组(只在 groupOrder 里出现但没有任何连接)也显示 —— 支持"先建组再分进去"流程
+ *  - 同分组内连接按 sortIndex 升序(缺省走 createdAt)
+ */
 const groupList = computed(() => {
   const m = new Map<string, ConnRoot[]>()
   for (const r of roots.value) {
@@ -143,9 +157,32 @@ const groupList = computed(() => {
     if (arr) arr.push(r)
     else m.set(r.group, [r])
   }
-  return [...m.entries()].map(([name, conns]) => ({ name, conns }))
+  // 把 settings.groupOrder 里"还没冒出来"的空组也加进去 (空数组)
+  for (const g of settings.groupOrder) {
+    if (!m.has(g)) m.set(g, [])
+  }
+  // 排序:先 groupOrder 列表序,然后未列出的按字典序
+  const order = new Map(settings.groupOrder.map((n, i) => [n, i]))
+  const ordered = [...m.entries()].sort(([a], [b]) => {
+    const ia = order.get(a)
+    const ib = order.get(b)
+    if (ia != null && ib != null) return ia - ib
+    if (ia != null) return -1
+    if (ib != null) return 1
+    return a.localeCompare(b)
+  })
+  return ordered.map(([name, conns]) => ({ name, conns: sortRoots(conns) }))
 })
-const ungrouped = computed(() => roots.value.filter((r) => !r.group))
+const ungrouped = computed(() => sortRoots(roots.value.filter((r) => !r.group)))
+
+function sortRoots(arr: ConnRoot[]): ConnRoot[] {
+  return [...arr].sort((a, b) => {
+    const ai = a.sortIndex ?? Number.POSITIVE_INFINITY
+    const bi = b.sortIndex ?? Number.POSITIVE_INFINITY
+    if (ai !== bi) return ai - bi
+    return (a.createdAt ?? 0) - (b.createdAt ?? 0)
+  })
+}
 
 function toggleGroup(name: string): void {
   const s = new Set(expandedGroups.value)
@@ -271,6 +308,7 @@ const controller: TreeController = {
   editConnection: (connId) => emit('editConn', connId),
   newConnection: () => emit('newConn'),
   deleteConnection: (connId) => emit('deleteConn', connId),
+  duplicateConnection: (connId) => emit('duplicateConn', connId),
   runSql: (connId, sql) => emit('runSql', connId, sql),
   async refreshNode(node, connId) {
     node.children = null
@@ -382,25 +420,38 @@ function onGroupContextmenu(e: MouseEvent, groupName: string): void {
 
 async function onNewGroup(): Promise<void> {
   const name = await appPrompt({ message: t('ctx.new-group'), defaultValue: '新分组' })
-  if (!name?.trim()) return
-  // 新建分组的语义 = 立刻在该组下建一个连接;不需要持久化空组
-  emit('newConnInGroup', name.trim())
+  const trimmed = name?.trim()
+  if (!trimmed) return
+  // 持久化空分组到 settings.groupOrder,即使下面还没连接也立刻出现在树里
+  // (旧实现 = 立刻弹"新建连接"对话框,用户报告体验割裂)。
+  if (settings.groupOrder.includes(trimmed)) {
+    toast.warn(`分组 "${trimmed}" 已存在`)
+    return
+  }
+  settings.groupOrder = [...settings.groupOrder, trimmed]
+  expandedGroups.value = new Set([...expandedGroups.value, trimmed])
+  toast.success(`已新建分组: ${trimmed}`)
 }
 
 async function onRenameGroup(oldName: string): Promise<void> {
   const newName = await appPrompt({ message: t('ctx.rename-group'), defaultValue: oldName })
   if (!newName?.trim() || newName.trim() === oldName) return
+  const next = newName.trim()
   try {
     const conns: ConnectionConfig[] = await client.connections.list()
     for (const c of conns) {
       if (c.group === oldName) {
         const full = await client.connections.get(c.id)
-        full.group = newName.trim()
+        full.group = next
         await client.connections.update(full)
       }
     }
+    // 同步 groupOrder: 替换名字,保留位置
+    if (settings.groupOrder.includes(oldName)) {
+      settings.groupOrder = settings.groupOrder.map((g) => (g === oldName ? next : g))
+    }
     await reload()
-    toast.success(`${oldName} → ${newName.trim()}`)
+    toast.success(`${oldName} → ${next}`)
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e))
   }
@@ -423,6 +474,8 @@ async function onDeleteGroup(name: string): Promise<void> {
         await client.connections.update(full)
       }
     }
+    // 从持久化 groupOrder 移除(空组也走这里)
+    settings.groupOrder = settings.groupOrder.filter((g) => g !== name)
     await reload()
     toast.success(`已删除分组 "${name}"`)
   } catch (e) {
@@ -449,6 +502,8 @@ async function reload(): Promise<void> {
     group: c.group,
     env: connEnv(c),
     dialect: c.dialect,
+    sortIndex: c.sortIndex,
+    createdAt: c.createdAt,
   }))
   // 新出现的分组默认展开（保留用户已折叠的）
   const s = new Set(expandedGroups.value)
@@ -582,6 +637,99 @@ defineExpose({
   collapseAll,
 })
 onMounted(reload)
+
+// ─── 拖拽排序 ──────────────────────────────────────────────────────
+// 两个独立的拖拽通道:
+//   1. 连接 row:同组内 / 跨组 / 拖回未分组,用 ConnRoot.id 标识
+//   2. 分组 row:整组排序,改 settings.groupOrder
+// 没用第三方库,简单的 dataTransfer 字符串 + dragenter 高亮足够。
+//
+// 视觉:被拖项 .dragging(半透);hover 时目标 .drag-over(顶/底 2px 紫色边)。
+const dragState = ref<{ kind: 'conn' | 'group'; id: string } | null>(null)
+const dragOverKey = ref<string | null>(null)
+
+function onConnDragStart(e: DragEvent, root: ConnRoot): void {
+  dragState.value = { kind: 'conn', id: root.id }
+  e.dataTransfer?.setData('text/plain', `conn:${root.id}`)
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+function onGroupDragStart(e: DragEvent, name: string): void {
+  dragState.value = { kind: 'group', id: name }
+  e.dataTransfer?.setData('text/plain', `group:${name}`)
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+function onDragOver(e: DragEvent, key: string): void {
+  if (!dragState.value) return
+  e.preventDefault()
+  dragOverKey.value = key
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+}
+function onDragLeave(key: string): void {
+  if (dragOverKey.value === key) dragOverKey.value = null
+}
+function clearDrag(): void {
+  dragState.value = null
+  dragOverKey.value = null
+}
+
+/**
+ * 把连接 drop 到目标连接位置:把源 sortIndex 设为 (prev + target) / 2,
+ * 同时如果跨组需要同步 group 字段。落库后 reload 拉回最新顺序。
+ */
+async function onConnDrop(targetRoot: ConnRoot, targetGroup: string | undefined): Promise<void> {
+  const src = dragState.value
+  clearDrag()
+  if (!src || src.kind !== 'conn' || src.id === targetRoot.id) return
+  try {
+    const full = await client.connections.get(src.id)
+    full.group = targetGroup
+    // 用 target.sortIndex - 0.5 让源插到目标之前;reload 后会按 0.5/1.5/2.5 排好
+    const targetIdx = targetRoot.sortIndex ?? targetRoot.createdAt ?? Date.now()
+    full.sortIndex = targetIdx - 0.5
+    full.updatedAt = Date.now()
+    await client.connections.update(full)
+    await reload()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  }
+}
+
+/** 把连接 drop 到一个分组(整组容器 / 未分组区)末尾。 */
+async function onConnDropToGroup(targetGroup: string | undefined): Promise<void> {
+  const src = dragState.value
+  clearDrag()
+  if (!src || src.kind !== 'conn') return
+  try {
+    const full = await client.connections.get(src.id)
+    full.group = targetGroup
+    // 末尾:max sortIndex + 1;空组就给 0
+    const peers = roots.value.filter((r) => r.group === targetGroup && r.id !== src.id)
+    const max = peers.reduce((m, r) => Math.max(m, r.sortIndex ?? 0), 0)
+    full.sortIndex = max + 1
+    full.updatedAt = Date.now()
+    await client.connections.update(full)
+    await reload()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  }
+}
+
+/** 把分组 drop 到另一分组位置(只改 settings.groupOrder)。 */
+function onGroupDrop(targetGroup: string): void {
+  const src = dragState.value
+  clearDrag()
+  if (!src || src.kind !== 'group' || src.id === targetGroup) return
+  const list = [...settings.groupOrder]
+  // 把所有 known 分组合并 — 包括连接里冒出来但还没 persist 的
+  for (const r of roots.value) if (r.group && !list.includes(r.group)) list.push(r.group)
+  const fromIdx = list.indexOf(src.id)
+  const toIdx = list.indexOf(targetGroup)
+  if (fromIdx === -1 || toIdx === -1) return
+  list.splice(fromIdx, 1)
+  // 拖动后,源插到目标之前
+  list.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, src.id)
+  settings.groupOrder = list
+}
 </script>
 
 <template>
@@ -609,18 +757,56 @@ onMounted(reload)
       <div v-if="!roots.length" class="tree-status">{{ t('nav.empty') }}</div>
 
       <template v-for="g in groupList" :key="'g:' + g.name">
-        <div class="group-row" @click="toggleGroup(g.name)" @contextmenu="onGroupContextmenu($event, g.name)">
+        <!-- 分组行:整组拖拽 + 接收连接 drop(让用户把连接拖进这个组的标题) -->
+        <div
+          class="group-row"
+          :class="{ 'drag-over': dragOverKey === 'g:' + g.name, dragging: dragState?.kind === 'group' && dragState.id === g.name }"
+          draggable="true"
+          @click="toggleGroup(g.name)"
+          @contextmenu="onGroupContextmenu($event, g.name)"
+          @dragstart="onGroupDragStart($event, g.name)"
+          @dragover="onDragOver($event, 'g:' + g.name)"
+          @dragleave="onDragLeave('g:' + g.name)"
+          @drop="dragState?.kind === 'conn' ? onConnDropToGroup(g.name) : onGroupDrop(g.name)"
+          @dragend="clearDrag"
+        >
           <span class="caret">{{ expandedGroups.has(g.name) ? '▾' : '▸' }}</span>
           <span class="folder">📁</span>
           <span class="gname">{{ g.name }}</span>
           <span class="gcount">{{ g.conns.length }}</span>
         </div>
         <div v-show="expandedGroups.has(g.name)">
-          <TreeItem v-for="r in g.conns" :key="r.id" :node="r.node" :conn-id="r.id" :depth="1" :env="r.env" :dialect="r.dialect" />
+          <div
+            v-for="r in g.conns"
+            :key="r.id"
+            class="conn-drag-wrap"
+            :class="{ 'drag-over': dragOverKey === 'c:' + r.id, dragging: dragState?.kind === 'conn' && dragState.id === r.id }"
+            draggable="true"
+            @dragstart="onConnDragStart($event, r)"
+            @dragover="onDragOver($event, 'c:' + r.id)"
+            @dragleave="onDragLeave('c:' + r.id)"
+            @drop="onConnDrop(r, g.name)"
+            @dragend="clearDrag"
+          >
+            <TreeItem :node="r.node" :conn-id="r.id" :depth="1" :env="r.env" :dialect="r.dialect" />
+          </div>
         </div>
       </template>
 
-      <TreeItem v-for="r in ungrouped" :key="r.id" :node="r.node" :conn-id="r.id" :depth="0" :env="r.env" :dialect="r.dialect" />
+      <div
+        v-for="r in ungrouped"
+        :key="r.id"
+        class="conn-drag-wrap"
+        :class="{ 'drag-over': dragOverKey === 'c:' + r.id, dragging: dragState?.kind === 'conn' && dragState.id === r.id }"
+        draggable="true"
+        @dragstart="onConnDragStart($event, r)"
+        @dragover="onDragOver($event, 'c:' + r.id)"
+        @dragleave="onDragLeave('c:' + r.id)"
+        @drop="onConnDrop(r, undefined)"
+        @dragend="clearDrag"
+      >
+        <TreeItem :node="r.node" :conn-id="r.id" :depth="0" :env="r.env" :dialect="r.dialect" />
+      </div>
     </div>
 
     <div v-if="multiSel.size" class="bulk-bar">
@@ -714,6 +900,19 @@ onMounted(reload)
 .group-row .gcount {
   color: var(--muted);
   font-size: 11px;
+}
+/* ── 拖拽视觉 ── */
+.conn-drag-wrap {
+  position: relative;
+}
+.conn-drag-wrap.dragging,
+.group-row.dragging {
+  opacity: 0.4;
+}
+.conn-drag-wrap.drag-over,
+.group-row.drag-over {
+  /* 顶部一道紫色边表示"会插到这里之前" */
+  box-shadow: inset 0 2px 0 0 var(--accent, #7c6cff);
 }
 .bulk-bar {
   display: flex;

@@ -19,6 +19,8 @@ import { computed, nextTick, onUnmounted, ref, useTemplateRef, watch } from 'vue
 interface Option {
   value: string
   label: string
+  /** 可选分组名 — 设了之后下拉里会按 group 渲染浅色 header(类似 native optgroup) */
+  group?: string
 }
 
 const props = defineProps<{
@@ -141,9 +143,20 @@ function onDocMouseDown(e: MouseEvent): void {
   close()
 }
 
-/** 窗口尺寸变化/滚动:关掉避免错位 */
+/** 窗口尺寸变化:关掉避免错位 */
 function onWindowChange(): void {
   if (open.value) close()
+}
+
+/**
+ * 滚动事件: 面板自身的滚动(.ts-list 内部)要保留, 否则用户一滑列表就关掉,
+ * 看不到下面的项。仅当滚动来自面板外部(页面 body / 其他容器)时才关闭。
+ */
+function onScrollOutside(e: Event): void {
+  if (!open.value) return
+  const t = e.target
+  if (t instanceof Element && t.closest('.ts-panel')) return
+  close()
 }
 
 watch(open, async (v) => {
@@ -151,18 +164,18 @@ watch(open, async (v) => {
     await nextTick()
     document.addEventListener('mousedown', onDocMouseDown, true)
     window.addEventListener('resize', onWindowChange)
-    window.addEventListener('scroll', onWindowChange, true)
+    window.addEventListener('scroll', onScrollOutside, true)
   } else {
     document.removeEventListener('mousedown', onDocMouseDown, true)
     window.removeEventListener('resize', onWindowChange)
-    window.removeEventListener('scroll', onWindowChange, true)
+    window.removeEventListener('scroll', onScrollOutside, true)
   }
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', onDocMouseDown, true)
   window.removeEventListener('resize', onWindowChange)
-  window.removeEventListener('scroll', onWindowChange, true)
+  window.removeEventListener('scroll', onScrollOutside, true)
 })
 </script>
 
@@ -202,18 +215,25 @@ onUnmounted(() => {
         @keydown="onKey"
       />
       <div class="ts-list">
-        <div
-          v-for="(o, i) in filtered"
-          :key="o.value"
-          :data-idx="i"
-          class="ts-option"
-          :class="{ on: o.value === modelValue, focus: i === focusedIdx }"
-          @click="pick(o.value)"
-          @mouseenter="focusedIdx = i"
-        >
-          <span class="ts-opt-label">{{ o.label }}</span>
-          <span v-if="o.value === modelValue" class="ts-check">✓</span>
-        </div>
+        <!-- 同 group 的连续项渲染为一段;切换 group 时插一行不可选的 header -->
+        <template v-for="(o, i) in filtered" :key="o.value">
+          <div
+            v-if="o.group && o.group !== filtered[i - 1]?.group"
+            class="ts-group-header"
+          >
+            {{ o.group }}
+          </div>
+          <div
+            :data-idx="i"
+            class="ts-option"
+            :class="{ on: o.value === modelValue, focus: i === focusedIdx }"
+            @click="pick(o.value)"
+            @mouseenter="focusedIdx = i"
+          >
+            <span class="ts-opt-label">{{ o.label }}</span>
+            <span v-if="o.value === modelValue" class="ts-check">✓</span>
+          </div>
+        </template>
         <div v-if="!filtered.length" class="ts-empty">无匹配项</div>
       </div>
     </div>
@@ -343,5 +363,14 @@ onUnmounted(() => {
   color: var(--muted, #888);
   text-align: center;
   font-style: italic;
+}
+.ts-group-header {
+  padding: 6px 12px 2px;
+  color: var(--muted, #888);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.02);
 }
 </style>

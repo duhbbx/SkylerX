@@ -31,6 +31,7 @@
     "better-sqlite3": "^11",
     "ioredis": "^5",
     "mongodb": "^6",
+    "oracledb": "^6",
     "snowflake-sdk": "^2"
   },
   "peerDependenciesMeta": {
@@ -41,6 +42,7 @@
     "better-sqlite3": { "optional": true },
     "ioredis": { "optional": true },
     "mongodb": { "optional": true },
+    "oracledb": { "optional": true },
     "snowflake-sdk": { "optional": true }
   },
   "devDependencies": {

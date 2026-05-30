@@ -46,8 +46,7 @@ const api = {
     historySearch: (
       query: string,
       opts?: { connectionId?: string; limit?: number },
-    ): Promise<QueryHistoryEntry[]> =>
-      ipcRenderer.invoke('connections:historySearch', query, opts),
+    ): Promise<QueryHistoryEntry[]> => ipcRenderer.invoke('connections:historySearch', query, opts),
     historyMeta: (
       id: number,
       patch: { tags?: string | null; note?: string | null; pinned?: number },
@@ -163,6 +162,10 @@ const api = {
       ipcRenderer.invoke('updates:downloadAndInstall'),
     install: (): Promise<{ devMode?: boolean; ok?: boolean }> =>
       ipcRenderer.invoke('updates:install'),
+    /** 更新源 channel:'github' 默认 / 'oss-cn' 阿里云镜像;切完下次启动也会跟随 */
+    getChannel: (): Promise<'github' | 'oss-cn'> => ipcRenderer.invoke('updates:getChannel'),
+    setChannel: (c: 'github' | 'oss-cn'): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('updates:setChannel', c),
     /** 订阅状态推送;返回取消订阅函数 */
     onStatus: (handler: (s: unknown) => void): (() => void) => {
       const listener = (_e: unknown, s: unknown): void => handler(s)

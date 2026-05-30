@@ -19,6 +19,7 @@ import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
 import Modal from './Modal.vue'
+import SqlEditor from './SqlEditor.vue'
 
 const props = defineProps<{
   open: boolean
@@ -81,23 +82,49 @@ const sqlStatements = computed<string[]>(() => {
   const info = supportInfo.value
   if (info === 'pg') {
     let sql = `CREATE SCHEMA ${quoteId(n)}`
-    if (ownerOrPassword.value.trim()) sql += ` AUTHORIZATION ${quoteId(ownerOrPassword.value.trim())}`
+    if (ownerOrPassword.value.trim())
+      sql += ` AUTHORIZATION ${quoteId(ownerOrPassword.value.trim())}`
     out.push(sql)
     if (comment.value.trim())
       out.push(`COMMENT ON SCHEMA ${quoteId(n)} IS ${quoteStr(comment.value.trim())}`)
   } else if (info === 'sqlserver') {
     let sql = `CREATE SCHEMA ${quoteId(n)}`
-    if (ownerOrPassword.value.trim()) sql += ` AUTHORIZATION ${quoteId(ownerOrPassword.value.trim())}`
+    if (ownerOrPassword.value.trim())
+      sql += ` AUTHORIZATION ${quoteId(ownerOrPassword.value.trim())}`
     out.push(sql)
   } else if (info === 'snowflake') {
     let sql = `CREATE SCHEMA ${quoteId(n)}`
     if (comment.value.trim()) sql += ` COMMENT = ${quoteStr(comment.value.trim())}`
     out.push(sql)
   } else if (info === 'oracle') {
-    // Schema = User;必须有密码
+    // Schema = User; 必须有密码
     const pwd = ownerOrPassword.value.trim() || 'CHANGE_ME_123'
-    out.push(`CREATE USER ${quoteId(n)} IDENTIFIED BY ${quoteId(pwd)}`)
-    // 简化:不自动给权限,用户按需手动 GRANT
+    // Oracle 用户名:
+    //  - 合法 unquoted 标识符(只含字母/数字/_/$/#,字母开头)→ 不加引号,Oracle 自动转大写
+    //    避免「用双引号导致的小写名,后续 ALTER USER xxx 找不到」之类的坑
+    //  - 含特殊字符 / 中文 / 想保留小写 → 用户自己在 SQL 预览里加双引号
+    //  - 密码同理:不加引号让 Oracle 按身份验证默认处理(纯文字密码常态)
+    const safeIdent = (s: string): string => (/^[A-Za-z][A-Za-z0-9_$#]*$/.test(s) ? s : quoteId(s))
+    const u = safeIdent(n)
+    const p = safeIdent(pwd)
+    // 默认表空间 + QUOTA UNLIMITED 防止 ORA-01950(新用户 USERS 上 quota=0,
+    // 一插入就报"insufficient quota on tablespace USERS")。
+    out.push(
+      `CREATE USER ${u} IDENTIFIED BY ${p} DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP QUOTA UNLIMITED ON USERS`,
+    )
+    // 开发场景下"用户=schema"的默认授权:
+    //  - CONNECT/RESOURCE:登录 + 基础对象(table/index/sequence)
+    //  - UNLIMITED TABLESPACE:任意表空间无配额限制(简化 12c+ 多表空间场景)
+    //  - 显式 DDL 权限:Oracle 12c+ RESOURCE 不再含 CREATE VIEW / SEQUENCE 等,补齐开发常用
+    //  - 不给 SELECT ANY TABLE / DBA / SYSDBA,保持"只能玩自己 schema"
+    //  用户可在 SQL 预览里裁掉不需要的。
+    out.push(
+      `GRANT CONNECT, RESOURCE, UNLIMITED TABLESPACE,
+            CREATE VIEW, CREATE SYNONYM, CREATE SEQUENCE,
+            CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE,
+            CREATE MATERIALIZED VIEW, CREATE DATABASE LINK
+       TO ${u}`,
+    )
   }
   return out
 })
@@ -126,7 +153,16 @@ async function submit(): Promise<void> {
     emit('created', name.value.trim())
     emit('close')
   } catch (e) {
-    toast.error(`创建失败: ${e instanceof Error ? e.message : String(e)}`)
+    const errMsg = e instanceof Error ? e.message : String(e)
+    toast.error(`创建失败: ${errMsg}`, {
+      askAi: {
+        sql: sqlText.value,
+        error: errMsg,
+        connId: props.conn.id,
+        connName: props.conn.name,
+        dialect: props.conn.dialect,
+      },
+    })
   } finally {
     submitting.value = false
   }
@@ -183,7 +219,9 @@ const ownerHint = computed(() =>
 
       <div class="row">
         <label class="lbl">SQL 预览 (可编辑)</label>
-        <textarea v-model="sqlText" class="ta sql" spellcheck="false" rows="6" />
+        <div class="sql-wrap">
+          <SqlEditor v-model="sqlText" />
+        </div>
       </div>
     </div>
 
@@ -226,6 +264,12 @@ const ownerHint = computed(() =>
   resize: vertical;
   min-height: 100px;
   white-space: pre;
+}
+.sql-wrap {
+  height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
 }
 .meta {
   font-size: 11px;

@@ -92,6 +92,8 @@ export interface TreeController {
   editConnection(connId: string): void
   newConnection(): void
   deleteConnection(connId: string): void
+  /** 复制连接:基于现有 connId 克隆一份新 ID 的配置,名字追加"(副本)",落库后刷新树 */
+  duplicateConnection(connId: string): void
   runSql(connId: string, sql: string): void
   refreshNode(node: TreeNode, connId: string): void
   copyText(text: string): void
@@ -134,7 +136,12 @@ export interface TreeController {
   /** 脱敏视图生成 */
   openMaskingView(connId: string, database?: string, schema?: string, table?: string): void
   /** AI 慢 SQL 优化 + 错误根因 */
-  openAiInsights(connId: string, prefillSql?: string, prefillError?: string, tab?: 'slow' | 'error'): void
+  openAiInsights(
+    connId: string,
+    prefillSql?: string,
+    prefillError?: string,
+    tab?: 'slow' | 'error',
+  ): void
   /** AI 反向工程 schema(从 sample 推断) */
   openAiSchemaReverse(connId: string, database?: string): void
   /** AI 建表助手(对话式) */

@@ -174,6 +174,132 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # ──────────────────────────────────────────────────────────────────────
+  # OSS 镜像上传 (国内分发加速 + electron-updater 国内 channel)
+  #
+  # 当前配置 bucket: skylerx-build (华东 2 上海)
+  # 触发: 仅 tag v* (跟 GitHub Release 一致)
+  #
+  # 目录结构:
+  #   oss://skylerx-build/releases/v0.5.0/        永久存档
+  #     ├── SkylerX-0.5.0-*-setup.exe             安装包
+  #     ├── SkylerX-0.5.0-*-portable.exe          Windows 绿色版 (免安装)
+  #     ├── SkylerX-0.5.0-*.dmg / .AppImage / .deb / .rpm / ...
+  #     └── latest*.yml                           electron-updater 国内通道清单
+  #   oss://skylerx-build/releases/latest/        最新版镜像 (固定 URL)
+  #     └── 同上,每次发布覆盖
+  #
+  # 公开 URL 形如:
+  #   https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/v0.5.0/SkylerX-0.5.0-arm64-setup.exe
+  #   https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/SkylerX-0.5.0-arm64.dmg
+  #
+  # app 端切到国内更新源:
+  #   autoUpdater.setFeedURL({
+  #     provider: 'generic',
+  #     url: 'https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/'
+  #   })
+  # 会去读上面 latest.yml / latest-mac.yml / latest-linux.yml
+  #
+  # GitHub Secrets (用户通过 gh CLI 配置 — 见 README):
+  #   - OSS_BUCKET            ("skylerx-build")
+  #   - OSS_ENDPOINT          ("oss-cn-shanghai.aliyuncs.com")
+  #   - OSS_ACCESS_KEY_ID     (RAM 子账号 AK)
+  #   - OSS_ACCESS_KEY_SECRET (RAM 子账号 SK)
+  #
+  # 若 secrets 未配置,该 job 会优雅跳过,不会失败构建。
+  # ──────────────────────────────────────────────────────────────────────
+  release-mirror-oss:
+    name: Mirror to Aliyun OSS
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'duhbbx/SkylerX'
+    runs-on: ubuntu-latest
+    # secrets 不能在 step.if 直接引用,先吊到 env 再判 env.OSS_BUCKET
+    env:
+      OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+      OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Warn if OSS secrets missing
+        if: env.OSS_BUCKET == '' || env.OSS_ACCESS_KEY_ID == ''
+        run: |
+          echo "::warning::OSS_BUCKET / OSS_ACCESS_KEY_ID 未配置, 跳过 OSS 镜像上传"
+          echo "首次启用执行 gh CLI 配置: 见 README 或 .github/workflows/build-desktop.yml 注释"
+
+      # 把全部 7 个 matrix 的 artifact 下载到 dist/
+      # 缺 secrets 时直接退出,避免下载产生不必要的 IO
+      - name: Download all artifacts
+        if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          # 我们只关心 skylerx-* 这些命名的 artifact (其它 SignPath unsigned-* 跳过)
+          pattern: skylerx-*
+          merge-multiple: true
+
+      - name: List artifacts
+        if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
+        run: ls -la dist/
+
+      # 生成 index.json — 文档站国内下载页 (DownloadMatrix) 读这个,
+      # 替代 GitHub releases API (国内访问慢/被限流)。
+      # 字段跟 GH API 形状近似(name/size/url),DownloadMatrix 双源切换无差异处理。
+      - name: Generate OSS index.json
+        if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const tag = process.env.GITHUB_REF_NAME;
+            const base = 'https://${{ env.OSS_BUCKET }}.${{ env.OSS_ENDPOINT }}/releases/' + tag;
+            const dist = 'dist';
+            const assets = fs.readdirSync(dist)
+              .filter(f => !/\.blockmap$/.test(f) && !/index\.json$/.test(f) && fs.statSync(path.join(dist, f)).isFile())
+              .map(f => {
+                const stat = fs.statSync(path.join(dist, f));
+                return { name: f, size: stat.size, url: base + '/' + f };
+              });
+            const idx = {
+              tag_name: tag,
+              published_at: new Date().toISOString(),
+              source: 'oss-cn-shanghai',
+              assets,
+            };
+            fs.writeFileSync(path.join(dist, 'index.json'), JSON.stringify(idx, null, 2));
+            console.log('generated index.json with', assets.length, 'assets');
+          "
+          cat dist/index.json | head -30
+
+      # manyuanrong/setup-ossutil: 3.0 是当前 stable, 装 ossutil 1.7+
+      - name: Setup ossutil
+        if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
+        uses: manyuanrong/setup-ossutil@v3.0
+        with:
+          endpoint: ${{ env.OSS_ENDPOINT }}
+          access-key-id: ${{ env.OSS_ACCESS_KEY_ID }}
+          access-key-secret: ${{ env.OSS_ACCESS_KEY_SECRET }}
+
+      # 上传到 releases/<tag>/ + releases/latest/ 双路径
+      # 排除项:
+      #   *.blockmap  — electron-updater 的增量差分文件,自动更新场景才需要,
+      #                 网页直接下载无意义,排掉省 OSS 流量(单文件 ~10MB,8 个架构 80MB)
+      # 保留项:
+      #   latest*.yml — electron-updater 必读;app 端 setFeedURL('.../latest/') 后会自动取
+      #   所有产物文件(.dmg/.exe/.AppImage/.deb/.rpm/.pacman/.tar.gz)
+      - name: Upload to OSS (tagged + latest)
+        if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "::notice::Uploading to oss://${OSS_BUCKET}/releases/${TAG}/ and /latest/"
+          ossutil cp -rf dist/ "oss://${OSS_BUCKET}/releases/${TAG}/" \
+            --exclude "*.blockmap"
+          # latest/ 镜像: 用户可永远靠 /releases/latest/ 拿当前最新版
+          ossutil cp -rf dist/ "oss://${OSS_BUCKET}/releases/latest/" \
+            --exclude "*.blockmap"
+          echo "::notice::Done. Download base: https://${OSS_BUCKET}.${OSS_ENDPOINT}/releases/${TAG}/"
+
 # 备注：
 # - loong64（龙芯）需要换 electron-loongarch64 fork + 交叉编译 better-sqlite3 等原生模块，
 #   electron-builder 也不原生支持 loong64 包格式，需要 patch 或换 FPM。单独立 PR 做。

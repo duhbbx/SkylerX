@@ -3,7 +3,7 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { confirm as appConfirm, toast } from '../dialog'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
 import { addFact, clearFacts, clearVectorMemory, removeFact } from '../memory'
@@ -23,7 +23,7 @@ import Modal from './Modal.vue'
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ initialSection?: SectionId }>()
 
-type SectionId = 'general' | 'editor' | 'grid' | 'watermark' | 'ai'
+type SectionId = 'general' | 'editor' | 'grid' | 'watermark' | 'ai' | 'updates'
 
 const SECTIONS: { id: SectionId; icon: string; labelKey: string }[] = [
   { id: 'general', icon: '⚙', labelKey: 'settings.cat.general' },
@@ -31,7 +31,80 @@ const SECTIONS: { id: SectionId; icon: string; labelKey: string }[] = [
   { id: 'grid', icon: '▦', labelKey: 'settings.cat.grid' },
   { id: 'watermark', icon: '⚠', labelKey: 'settings.cat.watermark' },
   { id: 'ai', icon: '✨', labelKey: 'settings.cat.ai' },
+  { id: 'updates', icon: '⬇', labelKey: 'settings.cat.updates' },
 ]
+
+// ─── 应用更新 (electron-updater 通道) ─────────────────────────────────────
+type UpdateChannel = 'github' | 'oss-cn'
+interface UpdatesApi {
+  getStatus: () => Promise<unknown>
+  check: () => Promise<{ devMode?: boolean; ok?: boolean; error?: string }>
+  downloadAndInstall: () => Promise<{ devMode?: boolean; ok?: boolean; error?: string }>
+  install: () => Promise<{ devMode?: boolean; ok?: boolean }>
+  getChannel: () => Promise<UpdateChannel>
+  setChannel: (c: UpdateChannel) => Promise<{ ok: boolean; error?: string }>
+  onStatus: (handler: (s: unknown) => void) => () => void
+}
+function updatesApi(): UpdatesApi | null {
+  const w = window as unknown as { api?: { updates?: UpdatesApi } }
+  return w.api?.updates ?? null
+}
+
+const updateChannel = ref<UpdateChannel>('github')
+const updateStatus = ref<string>('')
+const updateChecking = ref(false)
+const updatePackagedMode = ref(true) // 默认假装是 packaged,dev 模式 check() 返回 devMode 时切回
+
+onMounted(async () => {
+  const api = updatesApi()
+  if (!api) return
+  try {
+    updateChannel.value = await api.getChannel()
+  } catch {
+    /* preload 老版本可能没暴露 getChannel,降级 */
+  }
+})
+
+async function onChangeChannel(c: UpdateChannel): Promise<void> {
+  if (c === updateChannel.value) return
+  const api = updatesApi()
+  if (!api) {
+    toast.warn(t('settings.updates.notAvailable'))
+    return
+  }
+  const r = await api.setChannel(c)
+  if (r.ok) {
+    updateChannel.value = c
+    toast.success(
+      c === 'oss-cn' ? t('settings.updates.switchedOss') : t('settings.updates.switchedGithub'),
+    )
+  } else {
+    toast.error(r.error ?? 'unknown error')
+  }
+}
+
+async function onCheckUpdates(): Promise<void> {
+  const api = updatesApi()
+  if (!api) {
+    toast.warn(t('settings.updates.notAvailable'))
+    return
+  }
+  updateChecking.value = true
+  updateStatus.value = t('settings.updates.checking')
+  try {
+    const r = await api.check()
+    if (r.devMode) {
+      updatePackagedMode.value = false
+      updateStatus.value = t('settings.updates.devMode')
+    } else if (r.ok) {
+      updateStatus.value = t('settings.updates.checkSent')
+    } else {
+      updateStatus.value = r.error ?? t('settings.updates.checkFail')
+    }
+  } finally {
+    updateChecking.value = false
+  }
+}
 const active = ref<SectionId>(props.initialSection ?? 'general')
 
 const PAGE_SIZES = [50, 100, 200, 500, 1000]
@@ -382,6 +455,54 @@ function watermarkPreviewSvg(): string {
               </label>
               <p class="note">{{ t('settings.mem.cNote') }}</p>
             </template>
+          </div>
+        </template>
+
+        <!-- 应用更新 (electron-updater channel + 手动检查) -->
+        <template v-if="active === 'updates'">
+          <h3>{{ t('settings.cat.updates') }}</h3>
+          <p class="note">{{ t('settings.updates.intro') }}</p>
+
+          <div class="row col">
+            <span class="lbl">{{ t('settings.updates.channel') }}</span>
+            <div class="upd-channel">
+              <button
+                type="button"
+                class="upd-ch-btn"
+                :class="{ on: updateChannel === 'oss-cn' }"
+                :title="t('settings.updates.ossTip')"
+                @click="onChangeChannel('oss-cn')"
+              >
+                🇨🇳 {{ t('settings.updates.ossLabel') }}
+              </button>
+              <button
+                type="button"
+                class="upd-ch-btn"
+                :class="{ on: updateChannel === 'github' }"
+                :title="t('settings.updates.githubTip')"
+                @click="onChangeChannel('github')"
+              >
+                🌐 {{ t('settings.updates.githubLabel') }}
+              </button>
+            </div>
+            <p class="note small">
+              {{ updateChannel === 'oss-cn'
+                ? t('settings.updates.ossDesc')
+                : t('settings.updates.githubDesc') }}
+            </p>
+          </div>
+
+          <div class="row col">
+            <span class="lbl">{{ t('settings.updates.checkNow') }}</span>
+            <div class="upd-check">
+              <button class="primary sm" :disabled="updateChecking" @click="onCheckUpdates">
+                {{ updateChecking ? t('settings.updates.checking') : t('settings.updates.checkBtn') }}
+              </button>
+              <span v-if="updateStatus" class="upd-status">{{ updateStatus }}</span>
+            </div>
+            <p v-if="!updatePackagedMode" class="note small warn">
+              {{ t('settings.updates.devModeNote') }}
+            </p>
           </div>
         </template>
       </section>
@@ -777,5 +898,71 @@ h3.sub {
 }
 .actions button {
   padding: 6px 16px;
+}
+
+/* ── 应用更新 section ── */
+.row.col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.row.col .lbl {
+  width: auto;
+}
+.upd-channel {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  background: var(--bg);
+  align-self: flex-start;
+}
+.upd-ch-btn {
+  border: none;
+  background: transparent;
+  padding: 5px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: inherit;
+}
+.upd-ch-btn.on {
+  background: var(--accent, #7c6cff);
+  color: #fff;
+  font-weight: 600;
+}
+.upd-ch-btn:not(.on):hover {
+  color: var(--text);
+}
+.upd-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.primary.sm {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: var(--accent, #7c6cff);
+  color: #fff;
+  border: 1px solid var(--accent, #7c6cff);
+  cursor: pointer;
+  font-family: inherit;
+}
+.primary.sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.upd-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+.note.small {
+  font-size: 11px;
+  margin: 0;
+}
+.note.small.warn {
+  color: var(--err, #e04050);
 }
 </style>

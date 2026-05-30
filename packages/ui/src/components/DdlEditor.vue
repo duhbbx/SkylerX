@@ -56,7 +56,12 @@ defineExpose({ isDirty })
 /** 编辑模式：拉取现有对象定义为可执行 DDL。 */
 async function loadDefinition(): Promise<void> {
   if (!isEdit || !props.node) return
-  const q = objectDdlQuery(props.dialect, props.objectKind, objectRef(props.dialect, props.node))
+  const q = objectDdlQuery(
+    props.dialect,
+    props.objectKind,
+    objectRef(props.dialect, props.node),
+    props.node,
+  )
   if (!q) {
     error.value = t('ddl.unsupported')
     return
@@ -75,7 +80,8 @@ async function loadDefinition(): Promise<void> {
     } else if (q.mode === 'viewdef') {
       code.value = (q.prefix ?? '') + String(row.ddl ?? '')
     } else {
-      code.value = String(row.ddl ?? '')
+      // 'funcdef' (PG) 或 'oracle-ddl' — 都直接读 row.ddl
+      code.value = String(row.ddl ?? '').trim()
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

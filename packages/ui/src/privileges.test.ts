@@ -32,9 +32,13 @@ describe('buildGrant / buildRevoke', () => {
 })
 
 describe('listUsersQuery', () => {
-  it('targets mysql.user / pg_roles, null for others', () => {
+  it('returns dialect-specific user queries; null only for truly unsupported', () => {
     expect(listUsersQuery(DbDialect.MySQL)).toContain('mysql.user')
     expect(listUsersQuery(DbDialect.PostgreSQL)).toContain('pg_roles')
-    expect(listUsersQuery(DbDialect.Oracle)).toBeNull()
+    // Oracle 现在已支持(用 all_users + oracle_maintained 过滤)
+    expect(listUsersQuery(DbDialect.Oracle)).toContain('all_users')
+    expect(listUsersQuery(DbDialect.SqlServer)).toContain('sys.database_principals')
+    // ClickHouse / Snowflake 等仍未支持
+    expect(listUsersQuery(DbDialect.ClickHouse)).toBeNull()
   })
 })

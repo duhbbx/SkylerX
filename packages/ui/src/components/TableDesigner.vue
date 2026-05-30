@@ -24,6 +24,7 @@ import { prompt as appPrompt } from '../dialog'
 import { t } from '../i18n'
 import { splitStatements } from '../sqlSplit'
 import SqlEditor from './SqlEditor.vue'
+import ThemedSelect from './ThemedSelect.vue'
 import type { TreeNode } from './treeNode'
 
 const client = useDataClient()
@@ -39,9 +40,20 @@ const props = withDefaults(
   }>(),
   { mode: 'create', node: undefined },
 )
-const emit = defineEmits<{ created: []; cancel: [] }>()
+/**
+ * created 事件携带 `keepOpen` 标记:
+ *  - true (新建保存成功): tab 不关,内部转 alter 模式让用户继续改
+ *  - false / 未传 (改表保存成功 / 新建出错等): 沿用旧行为,父组件决定关不关
+ */
+const emit = defineEmits<{ created: [opts?: { keepOpen?: boolean }]; cancel: [] }>()
 
-const isAlter = computed(() => props.mode === 'alter')
+/**
+ * runtimeMode: 创建模式保存成功后会切到 'alter',让 tab 直接转为"修改表",而不是被关掉。
+ * 之所以不直接用 props.mode (会随父组件 tab.mode 变化), 是因为我们想让 tab 维持原样,
+ * 仅在本地维持一个状态过渡。父组件接收 'created' 事件后做相应 refreshTarget 即可。
+ */
+const runtimeMode = ref<'create' | 'alter'>(props.mode === 'alter' ? 'alter' : 'create')
+const isAlter = computed(() => runtimeMode.value === 'alter')
 const tableName = ref('')
 const spec = reactive(emptyTableSpec())
 const original = ref<ColumnDef[]>([]) // 改表模式：加载时的列快照，用于 diff
@@ -90,6 +102,28 @@ const indexTypes = isMysql
   : isPg
     ? ['btree', 'hash', 'gin', 'gist']
     : []
+
+// 静态下拉选项 — 抽到顶层避免每次 render 重新建数组(ThemedSelect prop 引用稳定)
+const FK_ACTION_OPTS = [
+  { value: '', label: '—' },
+  { value: 'CASCADE', label: 'CASCADE' },
+  { value: 'SET NULL', label: 'SET NULL' },
+  { value: 'RESTRICT', label: 'RESTRICT' },
+  { value: 'NO ACTION', label: 'NO ACTION' },
+]
+const FK_MATCH_OPTS = [
+  { value: '', label: '—' },
+  { value: 'FULL', label: 'FULL' },
+  { value: 'PARTIAL', label: 'PARTIAL' },
+  { value: 'SIMPLE', label: 'SIMPLE' },
+]
+const ROW_FORMAT_OPTS = [
+  { value: '', label: '(default)' },
+  { value: 'DYNAMIC', label: 'DYNAMIC' },
+  { value: 'COMPRESSED', label: 'COMPRESSED' },
+  { value: 'COMPACT', label: 'COMPACT' },
+  { value: 'REDUNDANT', label: 'REDUNDANT' },
+]
 
 const busy = ref(false)
 const error = ref<string | null>(null)
@@ -270,6 +304,7 @@ function resetTable(): void {
 async function run(stmts: string[]): Promise<void> {
   busy.value = true
   error.value = null
+  const wasCreate = !isAlter.value // 记录本次保存前的模式,用于决定是否要"转 alter"
   try {
     for (const stmt of stmts) {
       await client.connections.execute(props.connId, stmt, [], {
@@ -277,8 +312,21 @@ async function run(stmts: string[]): Promise<void> {
         schema: props.ctx.schema,
       })
     }
-    resetDirtyBaseline() // 保存成功 → 基线对齐，关闭 tab 时不再提示
-    emit('created')
+    resetDirtyBaseline() // 保存成功 → 基线对齐,关闭 tab 时不再提示
+    if (wasCreate) {
+      // ── 新建模式保存成功 → tab 不关,直接切到 alter 让用户继续改 ──
+      // 把刚写入的列/索引/外键作为 "original" 快照,后续编辑用作 diff 基线。
+      runtimeMode.value = 'alter'
+      original.value = spec.columns.map((c) => ({ ...c, originalName: c.name }))
+      // 标记每个 column 的 originalName,让 buildAlterTable 把它认成"现有列",不再重复 ADD COLUMN
+      spec.columns = spec.columns.map((c) => ({ ...c, originalName: c.name }))
+      originalIndexes.value = spec.indexes.map((x) => ({ ...x }))
+      originalForeignKeys.value = spec.foreignKeys.map((x) => ({ ...x }))
+      resetDirtyBaseline()
+      emit('created', { keepOpen: true })
+    } else {
+      emit('created')
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     inner.value = 'sql'
@@ -420,10 +468,12 @@ async function saveAs(): Promise<void> {
               <td><input v-model="ix.name" /></td>
               <td><input v-model="ix.columns" :placeholder="t('designer.idxColsPh')" :title="t('designer.idxColsTitle')" /></td>
               <td>
-                <select v-model="ix.type">
-                  <option value="">—</option>
-                  <option v-for="ty in indexTypes" :key="ty" :value="ty">{{ ty }}</option>
-                </select>
+                <ThemedSelect
+                  :model-value="ix.type ?? ''"
+                  :options="[{ value: '', label: '—' }, ...indexTypes.map((ty) => ({ value: ty, label: ty }))]"
+                  :width="110"
+                  @update:model-value="(v) => (ix.type = v)"
+                />
               </td>
               <td class="c"><input v-model="ix.unique" type="checkbox" /></td>
               <td v-if="isPg"><input v-model="ix.where" :placeholder="t('designer.wherePh')" /></td>
@@ -446,22 +496,28 @@ async function saveAs(): Promise<void> {
               <td><input v-model="fk.refTable" /></td>
               <td><input v-model="fk.refColumns" /></td>
               <td>
-                <select v-model="fk.onDelete">
-                  <option value="">—</option>
-                  <option>CASCADE</option><option>SET NULL</option><option>RESTRICT</option><option>NO ACTION</option>
-                </select>
+                <ThemedSelect
+                  :model-value="fk.onDelete ?? ''"
+                  :options="FK_ACTION_OPTS"
+                  :width="120"
+                  @update:model-value="(v) => (fk.onDelete = v)"
+                />
               </td>
               <td>
-                <select v-model="fk.onUpdate">
-                  <option value="">—</option>
-                  <option>CASCADE</option><option>SET NULL</option><option>RESTRICT</option><option>NO ACTION</option>
-                </select>
+                <ThemedSelect
+                  :model-value="fk.onUpdate ?? ''"
+                  :options="FK_ACTION_OPTS"
+                  :width="120"
+                  @update:model-value="(v) => (fk.onUpdate = v)"
+                />
               </td>
               <td v-if="isPg">
-                <select v-model="fk.match">
-                  <option value="">—</option>
-                  <option>FULL</option><option>PARTIAL</option><option>SIMPLE</option>
-                </select>
+                <ThemedSelect
+                  :model-value="fk.match ?? ''"
+                  :options="FK_MATCH_OPTS"
+                  :width="100"
+                  @update:model-value="(v) => (fk.match = v)"
+                />
               </td>
               <td v-if="isPg" class="c"><input v-model="fk.deferrable" type="checkbox" /></td>
               <td class="c"><button class="x" @click="spec.foreignKeys.splice(i, 1)">×</button></td>
@@ -513,13 +569,12 @@ async function saveAs(): Promise<void> {
           <div class="opt-row"><label>{{ t('designer.colCollation') }}</label><input v-model="spec.collation" placeholder="utf8mb4_unicode_ci" /></div>
           <div class="opt-row">
             <label>{{ t('designer.rowFormat') }}</label>
-            <select v-model="spec.rowFormat">
-              <option value="">(default)</option>
-              <option value="DYNAMIC">DYNAMIC</option>
-              <option value="COMPRESSED">COMPRESSED</option>
-              <option value="COMPACT">COMPACT</option>
-              <option value="REDUNDANT">REDUNDANT</option>
-            </select>
+            <ThemedSelect
+              :model-value="spec.rowFormat ?? ''"
+              :options="ROW_FORMAT_OPTS"
+              :width="180"
+              @update:model-value="(v) => (spec.rowFormat = v)"
+            />
           </div>
           <div class="opt-row"><label>{{ t('designer.autoIncStart') }}</label><input v-model="spec.autoIncStart" placeholder="1" type="text" /></div>
         </template>

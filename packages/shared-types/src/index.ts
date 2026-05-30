@@ -130,6 +130,11 @@ export interface ConnectionConfig {
   extra?: Record<string, unknown>
   createdAt?: number
   updatedAt?: number
+  /**
+   * 用户拖拽排序索引。NavTree 渲染连接列表时按 sortIndex 升序;缺省 = 按 createdAt。
+   * 用浮点(0.5 类小数)使得"复制连接"可以插队到原位置之后,不需要重排全列表。
+   */
+  sortIndex?: number
 }
 
 /** 连接环境标记：用于导航树着色与生产库误操作防护（存于 ConnectionConfig.extra.env）。 */
