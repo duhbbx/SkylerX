@@ -211,7 +211,7 @@ async function exportCsv(): Promise<void> {
 }
 .sql {
   flex: 1;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

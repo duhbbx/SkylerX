@@ -660,7 +660,7 @@ async function applyChanges(): Promise<void> {
   font-weight: 600;
 }
 .tcol .cn {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .tcol .cn.pk {
   font-weight: 600;

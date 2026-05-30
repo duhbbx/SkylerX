@@ -478,7 +478,7 @@ function openInTab(): void {
   cursor: pointer;
 }
 .card-cols li label:hover { background: rgba(124, 108, 255, 0.06); }
-.cname { flex: 1; font-family: ui-monospace, monospace; }
+.cname { flex: 1; font-family: var(--font-mono); }
 .ctype { color: var(--muted); font-size: 10px; }
 .pk {
   background: rgba(255, 200, 64, 0.18);
@@ -510,7 +510,7 @@ function openInTab(): void {
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 .preview {
@@ -534,7 +534,7 @@ function openInTab(): void {
   padding: 8px 12px;
   flex: 1;
   overflow: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   color: var(--text);

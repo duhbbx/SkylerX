@@ -111,13 +111,13 @@ async function loadHistory(): Promise<void> {
 .rh { min-width: 720px; min-height: 380px; max-height: 70vh; display: flex; flex-direction: column; gap: 8px; }
 .cfg, .pk-info { display: flex; align-items: center; gap: 8px; }
 .lbl { font-size: 12px; color: var(--muted); }
-.cfg input, .pk-info code { padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; }
+.cfg input, .pk-info code { padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; font-family: var(--font-mono); }
 .cfg input { flex: 1; }
 .cfg .primary { padding: 5px 14px; background: var(--accent, #7c6cff); color: #fff; border: 1px solid var(--accent, #7c6cff); border-radius: 4px; cursor: pointer; font-size: 12px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 .result { flex: 1; overflow: auto; }
 .muted { color: var(--muted); font-size: 11px; }
 .mini-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
-.mini-tbl th, .mini-tbl td { border: 1px solid var(--border); padding: 3px 6px; font-family: ui-monospace, monospace; white-space: nowrap; }
+.mini-tbl th, .mini-tbl td { border: 1px solid var(--border); padding: 3px 6px; font-family: var(--font-mono); white-space: nowrap; }
 .mini-tbl th { background: var(--panel); position: sticky; top: 0; }
 </style>

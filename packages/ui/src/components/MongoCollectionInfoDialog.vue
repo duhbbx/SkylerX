@@ -269,7 +269,7 @@ watch(tab, async (t) => {
 .grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; }
-.mono { font-family: ui-monospace, monospace; word-break: break-all; }
+.mono { font-family: var(--font-mono); word-break: break-all; }
 .k { width: 240px; color: var(--muted); }
 .empty-row { text-align: center; color: var(--muted); font-style: italic; }
 .idx-list { max-height: 240px; overflow: auto; }
@@ -277,7 +277,7 @@ watch(tab, async (t) => {
 .ni-title { font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
 .ni-row { display: flex; gap: 4px; margin-bottom: 4px; }
 .ni-opts { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
-.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; }
+.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-family: var(--font-mono); font-size: 12px; }
 .ni-row .ip { flex: 1; }
 .lbl-inline { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
 .x-btn { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 0 6px; }

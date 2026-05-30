@@ -269,7 +269,7 @@ onUnmounted(() => controller?.abort())
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   box-sizing: border-box;
 }
@@ -292,7 +292,7 @@ onUnmounted(() => controller?.abort())
 .model {
   font-size: 11px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .link {
   margin-left: auto;
@@ -323,7 +323,7 @@ onUnmounted(() => controller?.abort())
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .ans-actions {

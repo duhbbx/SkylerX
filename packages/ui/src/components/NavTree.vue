@@ -496,15 +496,22 @@ function onMenuPick(action: TreeAction): void {
 async function reload(): Promise<void> {
   const conns: ConnectionConfig[] = await client.connections.list()
   const prev = new Map(roots.value.map((r) => [r.id, r.node]))
-  roots.value = conns.map((c) => ({
-    id: c.id,
-    node: prev.get(c.id) ?? rootNode(c.name || t('common.untitled')),
-    group: c.group,
-    env: connEnv(c),
-    dialect: c.dialect,
-    sortIndex: c.sortIndex,
-    createdAt: c.createdAt,
-  }))
+  roots.value = conns.map((c) => {
+    // 已有 root 复用 TreeNode 实例保留展开状态/子节点缓存,但要同步刷新 name —
+    // 用户报告:编辑连接改了名字后导航树仍是旧名,根因就是这里直接 reuse 不同步 name。
+    const reused = prev.get(c.id)
+    const node = reused ?? rootNode(c.name || t('common.untitled'))
+    if (reused) reused.name = c.name || t('common.untitled')
+    return {
+      id: c.id,
+      node,
+      group: c.group,
+      env: connEnv(c),
+      dialect: c.dialect,
+      sortIndex: c.sortIndex,
+      createdAt: c.createdAt,
+    }
+  })
   // 新出现的分组默认展开（保留用户已折叠的）
   const s = new Set(expandedGroups.value)
   const known = new Set(roots.value.map((r) => r.group).filter(Boolean) as string[])

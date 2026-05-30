@@ -233,7 +233,7 @@ function preview(h: Hit): void {
 }
 .path {
   flex: 1;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .path .col {
   color: var(--accent, #7c6cff);

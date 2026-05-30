@@ -334,7 +334,7 @@ watch(
   color: var(--text);
   padding: 6px 10px;
   font-size: 13px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .ta.sql {
   resize: vertical;

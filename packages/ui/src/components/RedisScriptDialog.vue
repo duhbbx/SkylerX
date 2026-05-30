@@ -281,7 +281,7 @@ watch(tab, (t) => {
   <Modal v-if="open" :title="`Lua / Functions  ·  ${conn.name || conn.dialect}`" width="xl" fixed-height storage-key="redis-script" @close="emit('close')">
     <div class="tabs">
       <button :class="{ on: tab === 'lua' }" @click="tab = 'lua'">Lua 脚本</button>
-      <button :class="{ on: tab === 'functions' }" @click="tab = 'functions'">Functions (7+)</button>
+      <button :class="{ on: tab === 'functions' }" @click="tab = 'functions'">函数库 (Redis 7+)</button>
     </div>
 
     <!-- Lua -->
@@ -290,20 +290,20 @@ watch(tab, (t) => {
         <div class="lua-left">
           <textarea v-model="luaCode" class="code" spellcheck="false" />
           <div class="kv-row">
-            <label>KEYS (空格分):
+            <label>KEYS 参数 (用空格分隔):
               <input v-model="luaKeys" class="ip" />
             </label>
-            <label>ARGV (空格分):
+            <label>ARGV 参数 (用空格分隔):
               <input v-model="luaArgv" class="ip" />
             </label>
           </div>
           <div class="btn-row">
-            <button class="btn-primary" :disabled="luaRunning" @click="runLuaEval">▶ EVAL</button>
-            <button class="btn" @click="loadLua">SCRIPT LOAD</button>
-            <button class="btn" :disabled="!luaSha" @click="runLuaSha">EVALSHA {{ luaSha?.slice(0, 8) ?? '—' }}</button>
-            <button class="btn" @click="flushScripts">SCRIPT FLUSH</button>
+            <button class="btn-primary" :disabled="luaRunning" @click="runLuaEval">▶ 执行 (EVAL)</button>
+            <button class="btn" @click="loadLua" title="把脚本预编译到服务端,返回 SHA 用于 EVALSHA">注入到服务端 (SCRIPT LOAD)</button>
+            <button class="btn" :disabled="!luaSha" @click="runLuaSha">按 SHA 执行 (EVALSHA {{ luaSha?.slice(0, 8) ?? '—' }})</button>
+            <button class="btn" @click="flushScripts" title="清空服务端缓存的所有脚本">清空脚本缓存 (SCRIPT FLUSH)</button>
             <span class="spacer" />
-            <button class="btn" @click="saveCurrentLua">💾 保存</button>
+            <button class="btn" @click="saveCurrentLua">💾 保存到本地</button>
           </div>
           <div v-if="luaResult" class="result" :class="{ err: !luaResult.ok }">
             <span v-if="luaResult.ms != null" class="ms">{{ luaResult.ms }} ms</span>
@@ -311,8 +311,8 @@ watch(tab, (t) => {
           </div>
         </div>
         <div class="lua-right">
-          <div class="side-title">已保存({{ saved.length }})</div>
-          <div v-if="!saved.length" class="empty">未保存</div>
+          <div class="side-title">已保存脚本 ({{ saved.length }})</div>
+          <div v-if="!saved.length" class="empty">暂无保存的脚本</div>
           <div v-for="s in saved" :key="s.id" class="saved-row">
             <span class="sr-name" @click="applySaved(s)">{{ s.name }}</span>
             <button class="x-btn" @click="deleteSaved(s)">✕</button>
@@ -325,9 +325,9 @@ watch(tab, (t) => {
     <div v-else class="body">
       <div class="fn-layout">
         <div class="fn-left">
-          <div class="side-title">已加载库</div>
+          <div class="side-title">已加载的函数库</div>
           <button class="btn" :disabled="fnLoading" @click="loadFnList">🔄 刷新</button>
-          <div v-if="!fnLibs.length" class="empty">无</div>
+          <div v-if="!fnLibs.length" class="empty">服务端尚未加载任何函数库</div>
           <div v-for="lib in fnLibs" :key="lib.library_name" class="lib-row">
             <div class="lib-head">
               <span class="lib-name" @click="viewLibCode(lib)">{{ lib.library_name }}</span>
@@ -343,12 +343,15 @@ watch(tab, (t) => {
           <textarea v-model="fnCode" class="code" spellcheck="false" />
           <div class="btn-row">
             <label class="lbl-inline">
-              <input v-model="fnReplace" type="checkbox" /> REPLACE
+              <input v-model="fnReplace" type="checkbox" />
+              覆盖同名库 (REPLACE)
             </label>
-            <button class="btn-primary" @click="loadFn">▶ FUNCTION LOAD</button>
+            <button class="btn-primary" @click="loadFn">▶ 加载到服务端 (FUNCTION LOAD)</button>
           </div>
           <div class="meta">
-            提示:库代码首行需 <code>#!lua name=&lt;libname&gt;</code>;函数用 <code>redis.register_function('name', fn)</code> 注册;调用用 <code>FCALL name 0 arg1 arg2</code>。
+            提示:库代码首行需声明 <code>#!lua name=&lt;libname&gt;</code>;在代码里用
+            <code>redis.register_function('函数名', 函数体)</code> 注册函数;之后用
+            <code>FCALL 函数名 0 参数1 参数2</code> 调用。
           </div>
         </div>
       </div>
@@ -368,10 +371,10 @@ watch(tab, (t) => {
 .lua-layout, .fn-layout { display: grid; grid-template-columns: 1fr 240px; gap: 12px; }
 .lua-right, .fn-left { display: flex; flex-direction: column; gap: 4px; }
 .fn-layout { grid-template-columns: 240px 1fr; }
-.code { width: 100%; min-height: 220px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text); resize: vertical; }
+.code { width: 100%; min-height: 220px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text); resize: vertical; }
 .kv-row { display: flex; gap: 8px; margin-top: 8px; }
 .kv-row label { flex: 1; font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
-.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; }
+.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; color: var(--text); font-family: var(--font-mono); font-size: 12px; }
 .btn-row { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 .lbl-inline { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
 .btn, .btn-primary, .btn-ghost { padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; background: var(--bg); color: var(--text); }
@@ -380,18 +383,18 @@ watch(tab, (t) => {
 .spacer { flex: 1; }
 .result { margin-top: 8px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; max-height: 200px; overflow: auto; }
 .result.err { border-color: rgba(224, 64, 80, 0.4); background: rgba(224, 64, 80, 0.06); }
-.result pre { margin: 0; font-size: 11px; font-family: ui-monospace, monospace; white-space: pre-wrap; }
+.result pre { margin: 0; font-size: 11px; font-family: var(--font-mono); white-space: pre-wrap; }
 .ms { display: inline-block; padding: 1px 6px; margin-right: 6px; font-size: 10px; border-radius: 3px; background: rgba(124, 108, 255, 0.18); color: var(--accent); }
 .side-title { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; margin: 8px 0 4px; }
 .empty { color: var(--muted); font-size: 11px; padding: 8px; }
 .saved-row, .lib-row { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; background: var(--panel); border-radius: 4px; }
 .saved-row { flex-direction: row; align-items: center; gap: 4px; }
-.sr-name, .lib-name { flex: 1; cursor: pointer; font-size: 12px; font-family: ui-monospace, monospace; color: var(--accent); }
+.sr-name, .lib-name { flex: 1; cursor: pointer; font-size: 12px; font-family: var(--font-mono); color: var(--accent); }
 .sr-name:hover, .lib-name:hover { text-decoration: underline; }
 .lib-head { display: flex; align-items: center; gap: 6px; }
 .lib-engine { font-size: 10px; color: var(--muted); }
 .lib-funcs { display: flex; flex-wrap: wrap; gap: 3px; }
-.fn-tag { font-size: 10px; padding: 1px 5px; background: rgba(124, 108, 255, 0.18); border-radius: 2px; color: var(--text); font-family: ui-monospace, monospace; }
+.fn-tag { font-size: 10px; padding: 1px 5px; background: rgba(124, 108, 255, 0.18); border-radius: 2px; color: var(--text); font-family: var(--font-mono); }
 .x-btn { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 12px; }
 .x-btn:hover { color: #e04050; }
 .meta { font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.5; }

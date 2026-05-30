@@ -400,39 +400,41 @@ async function saveAs(): Promise<void> {
       </button>
     </div>
 
-    <div class="inner-body">
-      <!-- 字段 -->
-      <table v-if="inner === 'fields'" class="grid">
-        <thead>
-          <tr>
-            <th>{{ t('designer.h.fieldName') }}</th>
-            <th>{{ t('designer.h.type') }}</th>
-            <th style="width: 80px">{{ t('designer.h.length') }}</th>
-            <th style="width: 80px">{{ t('designer.h.scale') }}</th>
-            <th style="width: 50px" :title="t('designer.h.allowNull')">NULL</th>
-            <th style="width: 50px" :title="t('designer.h.pk')">{{ t('designer.h.pk') }}</th>
-            <th style="width: 130px">{{ t('designer.h.default') }}</th>
-            <th>{{ t('designer.h.comment') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(c, i) in spec.columns"
-            :key="i"
-            :class="{ sel: selected === i }"
-            @click="selected = i"
-          >
-            <td><input v-model="c.name" /></td>
-            <td><input v-model="c.type" list="type-list" /></td>
-            <td><input v-model="c.length" class="w-xs" /></td>
-            <td><input v-model="c.scale" class="w-xs" /></td>
-            <td class="c"><input v-model="c.nullable" type="checkbox" /></td>
-            <td class="c"><input v-model="c.primaryKey" type="checkbox" /></td>
-            <td><input v-model="c.defaultValue" class="w-sm" /></td>
-            <td><input v-model="c.comment" /></td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="inner-body" :class="{ 'fields-tab': inner === 'fields' }">
+      <!-- 字段: 表格独立滚动区, 字段属性 sticky 在底部 -->
+      <div v-if="inner === 'fields'" class="fields-scroll">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>{{ t('designer.h.fieldName') }}</th>
+              <th>{{ t('designer.h.type') }}</th>
+              <th style="width: 80px">{{ t('designer.h.length') }}</th>
+              <th style="width: 80px">{{ t('designer.h.scale') }}</th>
+              <th style="width: 50px" :title="t('designer.h.allowNull')">NULL</th>
+              <th style="width: 50px" :title="t('designer.h.pk')">{{ t('designer.h.pk') }}</th>
+              <th style="width: 130px">{{ t('designer.h.default') }}</th>
+              <th>{{ t('designer.h.comment') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(c, i) in spec.columns"
+              :key="i"
+              :class="{ sel: selected === i }"
+              @click="selected = i"
+            >
+              <td><input v-model="c.name" /></td>
+              <td><input v-model="c.type" list="type-list" /></td>
+              <td><input v-model="c.length" class="w-xs" /></td>
+              <td><input v-model="c.scale" class="w-xs" /></td>
+              <td class="c"><input v-model="c.nullable" type="checkbox" /></td>
+              <td class="c"><input v-model="c.primaryKey" type="checkbox" /></td>
+              <td><input v-model="c.defaultValue" class="w-sm" /></td>
+              <td><input v-model="c.comment" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <div v-if="inner === 'fields' && selCol" class="field-props">
         <div class="fp-title">{{ t('designer.fieldProps', { name: selCol.name || '—' }) }}</div>
         <label v-if="isMysql" class="fp"><input v-model="selCol.unsigned" type="checkbox" /> {{ t('designer.unsigned') }}</label>
@@ -703,6 +705,24 @@ async function saveAs(): Promise<void> {
   overflow: auto;
   padding: 10px;
 }
+/*
+ * 字段 tab 特殊布局:表格区独立滚动,字段属性面板固定在底部不随滚动.
+ *  - inner-body.fields-tab → flex 列, padding: 0(由内部子元素负责)
+ *  - .fields-scroll        → flex 1 + overflow:auto, 只让 grid 滚
+ *  - .field-props          → flex-none, 沉在底部, 边框/背景跟主题
+ */
+.inner-body.fields-tab {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.inner-body.fields-tab .fields-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
 .grid {
   width: 100%;
   border-collapse: collapse;
@@ -826,9 +846,11 @@ async function saveAs(): Promise<void> {
   flex-wrap: wrap;
   align-items: center;
   gap: 14px;
-  padding: 10px 8px;
-  margin-top: 8px;
+  padding: 10px 14px;
+  margin-top: 0;
   border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex: none; /* 沉在底部,不参与滚动 */
 }
 .field-props .fp-title {
   width: 100%;

@@ -138,6 +138,10 @@ const api = {
      *  常用于在两个连接 / 两条 SQL 之间做侧对照 */
     newSession: (): Promise<void> => ipcRenderer.invoke('window:newSession'),
   },
+  system: {
+    /** 主进程读取 package.json 的真实版本(替代 renderer 硬编码) */
+    getVersion: (): Promise<string> => ipcRenderer.invoke('system:getVersion'),
+  },
   menu: {
     /**
      * 订阅主进程发来的菜单命令。主进程的非系统菜单项（"打开设置"、"切换 AI 聊天" 等）

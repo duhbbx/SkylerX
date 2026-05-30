@@ -590,10 +590,10 @@ watch(
   cursor: pointer;
   font-size: 12px;
   padding: 2px 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .cr-link:hover { background: rgba(124, 108, 255, 0.10); border-radius: 3px; }
-.cr-sep { color: var(--muted); font-family: ui-monospace, monospace; padding: 0 2px; }
+.cr-sep { color: var(--muted); font-family: var(--font-mono); padding: 0 2px; }
 .spacer { flex: 0; }
 .search-ip {
   width: 140px;
@@ -619,7 +619,7 @@ watch(
 .name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .size, .time {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap; /* 时间用 24 小时制 YYYY-MM-DD HH:mm:ss,固定宽度,不换行 */
@@ -629,10 +629,10 @@ watch(
 .footer-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 4px 0; border-top: 1px solid var(--border); }
 .fn-row { display: flex; align-items: center; gap: 8px; }
 .fn-lbl { font-size: 11px; color: var(--muted); width: 50px; }
-.fn-ip, .fn-sel { flex: 1; padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; }
+.fn-ip, .fn-sel { flex: 1; padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; font-family: var(--font-mono); }
 .conflict { color: #ff9800; font-size: 11px; padding: 2px 0; }
 .target-preview { font-size: 11px; color: var(--muted); }
-.target-preview code { background: var(--panel); padding: 1px 6px; border-radius: 2px; font-family: ui-monospace, monospace; }
+.target-preview code { background: var(--panel); padding: 1px 6px; border-radius: 2px; font-family: var(--font-mono); }
 .btn-primary, .btn-ghost { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; }
 .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-ghost { background: transparent; color: var(--muted); }

@@ -408,7 +408,7 @@ onMounted(() => {
 .progress { display: flex; align-items: center; gap: 8px; }
 .progress .bar { flex: 1; height: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
 .progress .bar > div { height: 100%; background: var(--accent, #7c6cff); transition: width 0.2s; }
-.progress .prog-text { font-family: ui-monospace, monospace; font-size: 11px; min-width: 80px; text-align: right; }
+.progress .prog-text { font-family: var(--font-mono); font-size: 11px; min-width: 80px; text-align: right; }
 .err-list {
   background: rgba(224, 64, 80, 0.06);
   border: 1px solid var(--err, #e04050);
@@ -420,7 +420,7 @@ onMounted(() => {
 .err-head { font-size: 12px; color: var(--err, #e04050); font-weight: 600; margin-bottom: 6px; }
 .err-list pre {
   margin: 2px 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;

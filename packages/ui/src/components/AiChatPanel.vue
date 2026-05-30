@@ -837,7 +837,7 @@ function onKeydown(e: KeyboardEvent): void {
   color: var(--text);
   padding: 1px 5px;
   border-radius: 3px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .md :deep(pre) {
@@ -885,7 +885,7 @@ function onKeydown(e: KeyboardEvent): void {
 .part-sql pre {
   margin: 0;
   padding: 8px 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -926,7 +926,7 @@ function onKeydown(e: KeyboardEvent): void {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -944,7 +944,7 @@ function onKeydown(e: KeyboardEvent): void {
   gap: 8px;
 }
 .elapsed {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-style: normal;
   color: var(--accent, #7c6cff);
@@ -988,7 +988,7 @@ function onKeydown(e: KeyboardEvent): void {
 .model {
   font-size: 10px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .model.unconf {
   color: var(--err, #e04050);

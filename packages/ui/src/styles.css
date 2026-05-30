@@ -7,7 +7,31 @@
   --accent: #7c6cff;
   --ok: #4caf50;
   --err: #ef5350;
-  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+  /*
+   * 全局字体栈:
+   *  - 苹果系优先 -apple-system / PingFang SC(中文)
+   *  - Windows: "Segoe UI Variable Text" (Win11) → "Segoe UI" (Win10) → "Microsoft YaHei UI"
+   *    Microsoft YaHei UI 比 Microsoft YaHei 更紧凑、字形更现代,Win10/11 内置
+   *  - 中文: PingFang SC (mac) / "Microsoft YaHei UI" (Win) / Noto Sans CJK (Linux)
+   *  - 末尾 "Segoe UI Emoji", "Apple Color Emoji" 让 🎯⚠️ 等 emoji 在 Windows 不再显示 □/?
+   */
+  font-family:
+    -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable Text", "Segoe UI",
+    "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Noto Sans CJK SC", "Source Han Sans SC",
+    "Helvetica Neue", Arial, sans-serif,
+    "Segoe UI Emoji", "Apple Color Emoji", "Twemoji Mozilla";
+
+  /*
+   * 等宽字体 (代码块 / SQL 编辑器 / 对齐数字用):
+   *  - macOS: ui-monospace → SF Mono
+   *  - Windows: Cascadia Code (Win11 内置, 比 Consolas 现代) → Consolas (Win10) → 微软雅黑兜底
+   *  - Linux: JetBrains Mono / Fira Code / DejaVu Sans Mono
+   * 中文等宽 fallback "Microsoft YaHei UI" 避免 Consolas 显示中文出现奇怪间距。
+   */
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "Fira Code", "SF Mono", Menlo,
+    Monaco, Consolas, "DejaVu Sans Mono", "Microsoft YaHei UI", "PingFang SC", monospace;
 }
 
 /* 浅色主题（data-theme="light" 时覆盖变量） */

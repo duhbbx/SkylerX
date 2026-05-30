@@ -222,7 +222,7 @@ watch(
 .turn.user .bubble { background: rgba(124, 108, 255, 0.12); }
 .bubble.dim { color: var(--muted); font-style: italic; }
 .input-bar { display: flex; gap: 8px; padding: 8px 0; align-items: stretch; }
-.input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
+.input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-family: var(--font-mono); font-size: 12px; resize: vertical; }
 .btn, .btn-primary, .btn-ghost { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; }
 .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-ghost { background: transparent; color: var(--muted); }

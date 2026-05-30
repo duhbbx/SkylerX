@@ -278,7 +278,7 @@ function openInQuery(): void {
   flex-wrap: wrap;
 }
 .cch {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .cch.add {
@@ -308,7 +308,7 @@ function openInQuery(): void {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
 }

@@ -225,7 +225,7 @@ UPDATE ${qt} SET ${c} = NULL WHERE ${c} IS NOT NULL ${filter};`
 .content { display: flex; flex-direction: column; gap: 10px; }
 .hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; }
-.chips button { padding: 3px 10px; font-size: 11px; background: transparent; border: 1px solid var(--border); border-radius: 12px; color: var(--text); cursor: pointer; font-family: ui-monospace, monospace; }
+.chips button { padding: 3px 10px; font-size: 11px; background: transparent; border: 1px solid var(--border); border-radius: 12px; color: var(--text); cursor: pointer; font-family: var(--font-mono); }
 .chips button.on { background: var(--accent, #7c6cff); color: #fff; border-color: var(--accent, #7c6cff); }
 .actions { display: flex; gap: 8px; }
 .actions button { padding: 5px 14px; font-size: 12px; background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--text); cursor: pointer; }
@@ -236,5 +236,5 @@ UPDATE ${qt} SET ${c} = NULL WHERE ${c} IS NOT NULL ${filter};`
 .row select, .row input { flex: 1; padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
 .dup-result { font-size: 12px; }
 .mini-tbl { width: 100%; border-collapse: collapse; }
-.mini-tbl th, .mini-tbl td { border: 1px solid var(--border); padding: 3px 6px; font-family: ui-monospace, monospace; font-size: 11px; }
+.mini-tbl th, .mini-tbl td { border: 1px solid var(--border); padding: 3px 6px; font-family: var(--font-mono); font-size: 11px; }
 </style>

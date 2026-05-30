@@ -339,7 +339,7 @@ function fmtTime(ts: number): string {
 }
 .snap-item:hover { background: rgba(124, 108, 255, 0.08); }
 .snap-item.on { background: rgba(124, 108, 255, 0.16); }
-.snap-time { font-family: ui-monospace, monospace; font-size: 12px; }
+.snap-time { font-family: var(--font-mono); font-size: 12px; }
 .snap-note { flex: 1; font-size: 12px; }
 .snap-count { font-size: 11px; color: var(--muted); }
 .ghost.sm { padding: 2px 8px; font-size: 11px; }
@@ -358,7 +358,7 @@ function fmtTime(ts: number): string {
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .diff-item.on { background: rgba(124, 108, 255, 0.18); }
@@ -388,7 +388,7 @@ function fmtTime(ts: number): string {
   margin: 0;
   padding: 8px 10px;
   background: var(--bg);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;

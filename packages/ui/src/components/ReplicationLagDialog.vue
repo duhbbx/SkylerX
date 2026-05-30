@@ -459,7 +459,7 @@ function headerLabel(name: string): string {
   border-radius: 4px;
   background: var(--panel);
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   text-transform: uppercase;
   font-size: 11px;
 }
@@ -485,7 +485,7 @@ function headerLabel(name: string): string {
 .err {
   padding: 16px;
   color: var(--err, #e04050);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
 }
@@ -505,7 +505,7 @@ function headerLabel(name: string): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .repl-tbl th {
   background: var(--panel);
@@ -531,7 +531,7 @@ function headerLabel(name: string): string {
   margin-bottom: 8px;
   font-size: 12px;
   color: var(--err, #e04050);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   max-height: 120px;
   overflow: auto;
 }

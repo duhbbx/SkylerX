@@ -362,7 +362,7 @@ defineExpose({
 }
 .enable-sql {
   margin: 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -405,7 +405,7 @@ defineExpose({
   background: rgba(124, 108, 255, 0.18);
 }
 .c-sql {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -423,7 +423,7 @@ defineExpose({
 }
 .full-sql {
   margin: 0 0 8px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -472,7 +472,7 @@ defineExpose({
 .explain-grid {
   max-height: 200px;
   overflow: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 .ex-head,

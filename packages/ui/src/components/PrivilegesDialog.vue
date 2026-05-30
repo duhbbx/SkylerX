@@ -237,7 +237,7 @@ function openInQuery(): void {
   font-size: 13px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .urow:hover {
   background: rgba(124, 108, 255, 0.12);
@@ -258,7 +258,7 @@ function openInQuery(): void {
 }
 .grow {
   display: block;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 1px 0;
 }
@@ -289,7 +289,7 @@ function openInQuery(): void {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
 }

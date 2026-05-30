@@ -43,3 +43,9 @@
 .vp-doc table th {
   background: var(--vp-c-bg-soft);
 }
+
+/* Hero 图 + 文档图片提示可点开放大 — 只换光标,不做 transform 避免与 Hero 渐变光晕动画打架 */
+.VPHero img,
+.vp-doc img:not(a img) {
+  cursor: zoom-in;
+}

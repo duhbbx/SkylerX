@@ -289,7 +289,7 @@ watch(
 
 <style scoped>
 .ctrl { display: flex; align-items: center; gap: 6px; padding: 0 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
-.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; }
+.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: var(--font-mono); }
 .ip-mini { width: 100px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-size: 11px; }
 .ip-tiny { width: 50px; padding: 2px 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-size: 11px; }
 .btn, .btn-primary, .btn-ghost { padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; background: var(--bg); color: var(--text); }
@@ -301,9 +301,9 @@ watch(
 .grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; }
-.mono { font-family: ui-monospace, monospace; }
+.mono { font-family: var(--font-mono); }
 tr.no-mask td { color: var(--muted); }
 .sql-pane { display: flex; flex-direction: column; gap: 4px; }
 .lbl { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
-.sql { width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text); resize: vertical; }
+.sql { width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text); resize: vertical; }
 </style>

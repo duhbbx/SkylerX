@@ -309,7 +309,7 @@ function fmtBytes(n: number): string {
 .grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; }
-.mono { font-family: ui-monospace, monospace; word-break: break-all; }
+.mono { font-family: var(--font-mono); word-break: break-all; }
 .info { color: var(--accent); }
 .ms-card { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); border-radius: 6px; margin-bottom: 10px; }
 .lbl { font-size: 11px; color: var(--muted); font-weight: 600; }
@@ -322,13 +322,13 @@ function fmtBytes(n: number): string {
 .bl-row:hover { background: rgba(124, 108, 255, 0.12); }
 .sub-bar { display: flex; align-items: center; gap: 8px; padding: 4px 0 8px; }
 .lbl-inline { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
-.ip-mini, .ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; }
+.ip-mini, .ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: var(--font-mono); }
 .ip-mini { width: 80px; }
 .ip { flex: 1; }
 .health-bar { display: flex; gap: 8px; padding: 8px; background: var(--panel); border-radius: 6px; margin-bottom: 10px; }
-.hp { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-family: ui-monospace, monospace; background: rgba(224, 64, 80, 0.18); color: var(--err, #e04050); }
+.hp { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-family: var(--font-mono); background: rgba(224, 64, 80, 0.18); color: var(--err, #e04050); }
 .hp.ok { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
-.kv .info-k { color: var(--muted); width: 280px; font-family: ui-monospace, monospace; font-size: 11px; }
+.kv .info-k { color: var(--muted); width: 280px; font-family: var(--font-mono); font-size: 11px; }
 .kv .info-v { font-size: 11px; }
 .seg { display: flex; gap: 4px; }
 .seg button { padding: 3px 10px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; background: var(--bg); color: var(--muted); }

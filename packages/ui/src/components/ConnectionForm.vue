@@ -654,7 +654,7 @@ async function remove(): Promise<void> {
   border-radius: 6px;
   color: var(--text);
   padding: 6px 8px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   resize: vertical;
 }
@@ -737,7 +737,7 @@ async function remove(): Promise<void> {
   padding: 6px 8px;
   background: rgba(0, 0, 0, 0.18);
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;

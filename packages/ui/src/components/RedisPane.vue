@@ -1475,7 +1475,7 @@ watch(
   flex: none;
 }
 .crumb {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--accent);
 }
@@ -1531,7 +1531,7 @@ watch(
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .keys-footer {
@@ -1555,7 +1555,7 @@ watch(
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .cmd-out {
@@ -1565,7 +1565,7 @@ watch(
   padding: 6px 10px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .cmd-out.err {
@@ -1622,7 +1622,7 @@ watch(
   color: #fff;
   border-radius: 3px;
   flex: none;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .type-tag.dim {
   background: rgba(180, 180, 180, 0.4) !important;
@@ -1631,7 +1631,7 @@ watch(
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .value {
   flex: 1;
@@ -1648,14 +1648,14 @@ watch(
   border-bottom: 1px solid var(--border);
 }
 .vh-name {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text);
   word-break: break-all;
 }
 .vh-type {
   font-size: 11px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .empty {
   padding: 20px;
@@ -1677,7 +1677,7 @@ watch(
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -1686,7 +1686,7 @@ watch(
   border-collapse: collapse;
   width: 100%;
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .grid th,
 .grid td {
@@ -1713,7 +1713,7 @@ watch(
 }
 .vh-ttl {
   font-size: 11px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--muted);
 }
 .vh-ttl b {
@@ -1763,7 +1763,7 @@ watch(
   font-size: 11px;
   padding: 2px 8px;
   cursor: pointer;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .mini-btn.on {
   background: rgba(124, 108, 255, 0.22);
@@ -1786,7 +1786,7 @@ watch(
 .kr-ttl {
   font-size: 10px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   flex: none;
   margin-left: auto;
   padding-left: 6px;
@@ -1815,7 +1815,7 @@ watch(
   border: 1px solid var(--accent);
   border-radius: 6px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   resize: vertical;
 }
@@ -1827,7 +1827,7 @@ watch(
   color: var(--text);
   padding: 2px 6px;
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .cell-ip:disabled {
   opacity: 0.6;
@@ -1871,7 +1871,7 @@ tr.add td {
   padding: 2px 8px;
   border-radius: 4px;
   cursor: pointer;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .ev-btn:hover {
   background: rgba(124, 108, 255, 0.14);
@@ -1897,7 +1897,7 @@ tr.add td {
 .metric-val {
   margin-top: 4px;
   font-size: 22px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
   font-weight: 600;
 }
@@ -1917,7 +1917,7 @@ tr.add td {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .bm-row {
   display: flex;
@@ -1940,11 +1940,11 @@ tr.add td {
   border-radius: 4px;
   color: var(--text);
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .bm-out {
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--text);
 }
 .bm-out b {
@@ -1956,7 +1956,7 @@ tr.add td {
   color: var(--muted);
 }
 .stream-grid .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
   white-space: nowrap;
 }

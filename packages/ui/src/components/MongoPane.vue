@@ -519,7 +519,7 @@ async function commitEdits(): Promise<void> {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .crumb .db {
@@ -576,7 +576,7 @@ async function commitEdits(): Promise<void> {
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .opts {
@@ -634,7 +634,7 @@ async function commitEdits(): Promise<void> {
   border-collapse: collapse;
   width: 100%;
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .grid th,
 .grid td {
@@ -684,7 +684,7 @@ async function commitEdits(): Promise<void> {
   border-radius: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   resize: vertical;
 }
@@ -711,7 +711,7 @@ async function commitEdits(): Promise<void> {
 .raw {
   margin: 0;
   padding: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;

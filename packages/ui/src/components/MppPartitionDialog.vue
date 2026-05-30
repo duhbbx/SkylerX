@@ -228,7 +228,7 @@ const COLS_TO_SHOW = [
 .ctrl { display: flex; align-items: center; gap: 10px; padding: 0 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
 .spacer { flex: 1; }
 .lbl-inline { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
-.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; min-width: 140px; }
+.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: var(--font-mono); min-width: 140px; }
 .btn, .btn-primary, .btn-ghost { padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; background: var(--bg); color: var(--text); }
 .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-ghost { background: transparent; color: var(--muted); padding: 6px 14px; font-size: 13px; }
@@ -238,7 +238,7 @@ const COLS_TO_SHOW = [
 .grid { width: 100%; border-collapse: collapse; font-size: 11px; }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 3px 6px; text-align: left; vertical-align: top; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; font-size: 10px; }
-.mono { font-family: ui-monospace, monospace; word-break: break-all; }
+.mono { font-family: var(--font-mono); word-break: break-all; }
 .mini-btn { padding: 2px 8px; font-size: 10px; border: 1px solid var(--border); border-radius: 3px; cursor: pointer; background: var(--bg); color: var(--text); }
 .mini-btn.danger { color: #e04050; border-color: rgba(224, 64, 80, 0.4); }
 </style>

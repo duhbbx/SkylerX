@@ -230,7 +230,7 @@ async function editNote(e: QueryHistoryEntry): Promise<void> {
 }
 .sql {
   flex: 1;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -282,7 +282,7 @@ async function editNote(e: QueryHistoryEntry): Promise<void> {
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .history-item.slow {
   background: rgba(224, 64, 80, 0.06);
@@ -326,7 +326,7 @@ async function editNote(e: QueryHistoryEntry): Promise<void> {
   background: rgba(124, 108, 255, 0.18);
   border-radius: 2px;
   font-size: 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
 }
 .note { font-size: 11px; flex: none; }

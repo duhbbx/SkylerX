@@ -181,11 +181,11 @@ onUnmounted(stop)
 .form { display: flex; flex-direction: column; gap: 12px; }
 .ctrl { display: flex; align-items: center; gap: 12px; }
 .lbl-inline { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
-.ip-mini { width: 70px; padding: 3px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; }
+.ip-mini { width: 70px; padding: 3px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: var(--font-mono); font-size: 12px; }
 .meta { font-size: 11px; color: var(--muted); }
 .hint { padding: 8px 12px; background: var(--panel); border-radius: 6px; font-size: 11px; color: var(--muted); line-height: 1.6; }
-.hint code { background: var(--bg); padding: 1px 6px; border-radius: 3px; font-family: ui-monospace, monospace; }
-.grid { width: 100%; border-collapse: collapse; font-size: 12px; font-family: ui-monospace, monospace; }
+.hint code { background: var(--bg); padding: 1px 6px; border-radius: 3px; font-family: var(--font-mono); }
+.grid { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--font-mono); }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; font-family: inherit; }
 .btn-primary, .btn-danger, .btn-ghost { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; cursor: pointer; }

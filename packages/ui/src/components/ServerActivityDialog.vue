@@ -314,7 +314,7 @@ onBeforeUnmount(() => {
 .err {
   padding: 16px;
   color: var(--err, #e04050);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
 }
@@ -332,7 +332,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .act-tbl th { background: var(--panel); font-weight: 600; position: sticky; top: 0; }
 .act-tbl td.op { padding: 2px 6px; white-space: nowrap; }

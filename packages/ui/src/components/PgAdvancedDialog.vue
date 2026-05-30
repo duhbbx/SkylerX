@@ -417,7 +417,7 @@ watch(
 .grid { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px; }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; }
-.mono { font-family: ui-monospace, monospace; word-break: break-all; }
+.mono { font-family: var(--font-mono); word-break: break-all; }
 .comment { color: var(--muted); font-size: 11px; }
 tr.installed { background: rgba(76, 175, 80, 0.06); }
 tr.inactive td { color: var(--muted); }
@@ -426,7 +426,7 @@ tr.inactive td { color: var(--muted); }
 .mini-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .mini-btn.danger { color: #e04050; border-color: rgba(224, 64, 80, 0.4); }
 .mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.mini-tag { display: inline-block; padding: 0 4px; margin-right: 2px; font-size: 9px; border-radius: 2px; background: rgba(124, 108, 255, 0.18); color: var(--text); font-family: ui-monospace, monospace; }
+.mini-tag { display: inline-block; padding: 0 4px; margin-right: 2px; font-size: 9px; border-radius: 2px; background: rgba(124, 108, 255, 0.18); color: var(--text); font-family: var(--font-mono); }
 .sub-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 6px; }
 .lbl { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
 </style>

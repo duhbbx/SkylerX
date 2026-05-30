@@ -13,6 +13,7 @@ import {
 } from '@db-tool/shared-types'
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { aiInlineDefaultEnabled, registerAiInlineCompletion } from '../aiInline'
 import { emitChatSqlExecuted } from '../chat-bus'
 import { ENV_META, connEnv, connReadOnly, initialCommitMode, isReadOnlyStatement } from '../connEnv'
 import { isConnectionError } from '../connError'
@@ -28,15 +29,14 @@ import {
 import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
 import { addQueryFavorite } from '../favorites'
-import { aiInlineDefaultEnabled, registerAiInlineCompletion } from '../aiInline'
 import { t } from '../i18n'
 import { type Suggestion, monaco } from '../monaco-setup'
 import { notify } from '../notifications'
-import { lintStatements } from '../sqlLint'
 import { type PlanNode, parsePgPlan, planQuery } from '../plan'
 import { pluginBuiltinSnippets } from '../plugins'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
+import { lintStatements } from '../sqlLint'
 import { splitStatements } from '../sqlSplit'
 import HistoryPanel from './HistoryPanel.vue'
 import Modal from './Modal.vue'
@@ -1588,7 +1588,7 @@ defineExpose({
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   margin: 0 0 12px;
@@ -1605,7 +1605,7 @@ defineExpose({
 }
 .prow .pname {
   width: 120px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--accent);
 }
 .prow input {
@@ -1683,9 +1683,11 @@ defineExpose({
   margin: 0 2px;
 }
 /* ── 提交模式切换按钮（点一下 auto / manual 互切，颜色随状态） ── */
+/* Windows 用户报告:之前 ui-monospace fallback 到 Consolas, "自动提交"中文显示偏窄不协调.
+   换成主字体栈跟其他按钮统一. */
 .toolbar button.commit-mode-toggle {
   font-weight: 500;
-  font-family: ui-monospace, monospace;
+  font-family: inherit;
   font-size: 11px;
   padding: 2px 8px;
 }
@@ -1722,7 +1724,7 @@ defineExpose({
   padding: 3px 8px;
   font-size: 11px;
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   flex: none;
 }
 .toolbar .txn-badge.clean {

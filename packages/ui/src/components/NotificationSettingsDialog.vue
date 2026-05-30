@@ -399,7 +399,7 @@ function onFieldChange(): void {
 .events .num {
   width: 72px;
   padding: 2px 6px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;

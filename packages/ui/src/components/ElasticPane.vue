@@ -283,7 +283,7 @@ watch(
   flex: none;
 }
 .crumb {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--accent);
 }
@@ -332,7 +332,7 @@ watch(
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .opts {
@@ -393,7 +393,7 @@ watch(
   border-collapse: collapse;
   width: 100%;
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .grid th,
 .grid td {
@@ -423,7 +423,7 @@ watch(
 .raw {
   margin: 0;
   padding: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;

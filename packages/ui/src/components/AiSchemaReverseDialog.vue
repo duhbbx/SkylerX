@@ -208,7 +208,7 @@ watch(
 .seg { display: inline-flex; gap: 4px; }
 .seg button { padding: 4px 12px; font-size: 11px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; background: var(--bg); color: var(--muted); }
 .seg button.on { background: rgba(124, 108, 255, 0.18); color: var(--text); border-color: var(--accent); }
-.ip, .code, .sql { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; }
+.ip, .code, .sql { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-family: var(--font-mono); font-size: 12px; }
 .code, .sql { resize: vertical; }
 .run-row, .exec-row { flex-direction: row; align-items: center; gap: 10px; }
 .btn-primary, .btn-ghost { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; }

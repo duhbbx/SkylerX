@@ -206,7 +206,7 @@ function importJson(): void {
 .row > span { width: 100px; font-size: 12px; color: var(--muted); }
 .row input { flex: 1; padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; min-height: 24px; }
-.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: rgba(124, 108, 255, 0.14); border-radius: 12px; font-size: 11px; font-family: ui-monospace, monospace; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: rgba(124, 108, 255, 0.14); border-radius: 12px; font-size: 11px; font-family: var(--font-mono); }
 .chip button { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0; }
 .chip code { color: var(--text); }
 .add-row { display: flex; gap: 4px; }
@@ -219,7 +219,7 @@ function importJson(): void {
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 .item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .c-name { font-weight: 600; }
-.c-table code { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
+.c-table code { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .c-rules { flex: 1; font-size: 11px; color: var(--muted); }
 .ghost.sm { padding: 2px 8px; font-size: 11px; background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--text); cursor: pointer; }
 .hint { font-size: 11px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border); }

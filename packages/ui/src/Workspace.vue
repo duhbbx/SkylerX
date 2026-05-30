@@ -1530,7 +1530,20 @@ async function onAiChatRun(sql: string, connId: string): Promise<void> {
   const conn = await client.connections.get(connId)
   tabsRef.value?.runSql(conn, sql)
 }
-const APP_VERSION = '0.1.0'
+/**
+ * 真实版本号 — 启动时从主进程 system:getVersion IPC 拉取(打包时 CI 已经把 tag 同步到 package.json)
+ * dev / web 端 IPC 不可用时回退到 'dev'
+ */
+const APP_VERSION = ref('dev')
+void (async () => {
+  try {
+    const sys = (window as unknown as { api?: { system?: { getVersion: () => Promise<string> } } })
+      .api?.system
+    if (sys) APP_VERSION.value = await sys.getVersion()
+  } catch {
+    /* 保持 'dev' */
+  }
+})()
 /**
  * 更新 UI 状态(完全由 main 进程的 updates:status 事件驱动)。
  * - dev 模式下 main 端 autoUpdater 不启用,IPC 会回 devMode=true,UI 退回 GitHub 链接
@@ -1603,7 +1616,10 @@ async function checkForUpdateBrowserFallback(): Promise<void> {
   const timer = setTimeout(() => ac.abort(), 10_000)
   try {
     const res = await fetch('https://api.github.com/repos/duhbbx/SkylerX/releases/latest', {
-      headers: { accept: 'application/vnd.github+json', 'user-agent': `SkylerX/${APP_VERSION}` },
+      headers: {
+        accept: 'application/vnd.github+json',
+        'user-agent': `SkylerX/${APP_VERSION.value}`,
+      },
       signal: ac.signal,
     })
     if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
@@ -3092,7 +3108,7 @@ onUnmounted(() => unsubMenu?.())
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   margin: 0 0 12px;
@@ -3148,7 +3164,7 @@ onUnmounted(() => unsubMenu?.())
   border-bottom: none;
 }
 .sc-table kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   padding: 2px 7px;
   border: 1px solid var(--border);
@@ -3314,7 +3330,7 @@ onUnmounted(() => unsubMenu?.())
 .upd-bps {
   font-size: 11px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .dep-sec {
   font-size: 12px;
@@ -3327,7 +3343,7 @@ onUnmounted(() => unsubMenu?.())
   font-size: 13px;
   border-radius: 6px;
   cursor: pointer;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .dep-row:hover {
   background: rgba(124, 108, 255, 0.14);

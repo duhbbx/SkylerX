@@ -155,7 +155,7 @@ function fmtNum(n: number): string {
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text);
 }
 .tbl-wrap { flex: 1; overflow: auto; }
-.piv-tbl { border-collapse: collapse; font-size: 12px; font-family: ui-monospace, monospace; }
+.piv-tbl { border-collapse: collapse; font-size: 12px; font-family: var(--font-mono); }
 .piv-tbl th, .piv-tbl td { border: 1px solid var(--border); padding: 4px 10px; text-align: right; }
 .piv-tbl th { background: var(--panel); font-weight: 600; position: sticky; top: 0; }
 .piv-tbl td.row-key { text-align: left; font-weight: 600; background: var(--bg); }

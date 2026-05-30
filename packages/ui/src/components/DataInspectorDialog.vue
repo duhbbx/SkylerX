@@ -409,10 +409,10 @@ void switchTab('sample')
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin-bottom: 12px; }
 .stat-card { padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
 .stat-lbl { font-size: 11px; color: var(--muted); }
-.stat-val { font-size: 14px; font-weight: 600; font-family: ui-monospace, monospace; word-break: break-all; }
+.stat-val { font-size: 14px; font-weight: 600; font-family: var(--font-mono); word-break: break-all; }
 .topn h4 { margin: 12px 0 6px; font-size: 12px; color: var(--muted); }
 .topn table, .prof-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-.topn th, .topn td, .prof-tbl th, .prof-tbl td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; font-family: ui-monospace, monospace; }
+.topn th, .topn td, .prof-tbl th, .prof-tbl td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; font-family: var(--font-mono); }
 .topn th, .prof-tbl th { background: var(--panel); font-weight: 600; }
 .prof-tbl td.warn { color: #e0a020; font-weight: 600; }
 .prof-tbl td.ok { color: #4caf50; }

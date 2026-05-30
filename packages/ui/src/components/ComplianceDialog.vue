@@ -379,7 +379,7 @@ defineExpose({ runAll, runOne, exportReport, results })
   padding-left: 88px;
 }
 .row .evi code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   background: var(--bg);
   padding: 1px 4px;

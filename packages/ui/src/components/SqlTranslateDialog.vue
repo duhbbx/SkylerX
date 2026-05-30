@@ -280,7 +280,7 @@ onUnmounted(() => controller?.abort())
   width: 100%;
   min-height: 140px;
   resize: vertical;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   padding: 10px;
   background: var(--bg);
@@ -294,7 +294,7 @@ onUnmounted(() => controller?.abort())
 }
 .err {
   color: var(--err, #e04050);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .result {
@@ -335,7 +335,7 @@ onUnmounted(() => controller?.abort())
   overflow: auto;
   margin: 0;
   padding: 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   background: var(--bg);
   white-space: pre;
@@ -375,7 +375,7 @@ onUnmounted(() => controller?.abort())
   background: var(--bg);
   padding: 1px 4px;
   border-radius: 3px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .md :deep(pre) {
