@@ -152,6 +152,22 @@ onMounted(async () => {
 })
 
 const platformIcon: Record<string, string> = { macos: '', windows: '⊞', linux: '🐧' }
+
+/** 给 Umami 上报下载点击,看哪个平台/源/版本最受欢迎。失败静默(没装 Umami 也不影响下载)。 */
+function trackDownload(row: Row): void {
+  const w = window as unknown as { umami?: { track: (n: string, p?: Record<string, unknown>) => void } }
+  try {
+    w.umami?.track('download', {
+      platform: row.platform,
+      arch: row.arch,
+      format: row.format,
+      source: source.value,
+      version: info.value?.tag_name ?? 'unknown',
+    })
+  } catch {
+    /* ignore */
+  }
+}
 </script>
 
 <template>
@@ -214,7 +230,7 @@ const platformIcon: Record<string, string> = { macos: '', windows: '⊞', linux:
           <td>{{ r.label }}</td>
           <td>
             <template v-if="findAsset(r)">
-              <a class="dl-mx-link" :href="findAsset(r)!.url" target="_blank" rel="noopener">
+              <a class="dl-mx-link" :href="findAsset(r)!.url" target="_blank" rel="noopener" @click="trackDownload(r)">
                 下载 <span class="dl-mx-size">({{ bytes(findAsset(r)!.size) }})</span>
               </a>
             </template>

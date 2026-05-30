@@ -32,7 +32,11 @@ win:
         - x64
         - arm64
   artifactName: ${productName}-${version}-${arch}-setup.${ext}
-  publisherName: Wuhan Skyler Network Technology Co., Ltd.
+  # publisherName 暂时去掉 — 设了之后 electron-updater 会严格校验签名,
+  # 没签 exe 时报 "not signed by the application owner" 拒绝更新.
+  # 走 SignPath.io 配齐 Windows 代码签名证书后再加回(那时它会校验匹配).
+  # 申请通过见 db-tool-private/SIGNING-SETUP.md「Windows 段」.
+  # publisherName: Wuhan Skyler Network Technology Co., Ltd.
 
 # portable 的产物名走单独命名,跟 setup 区分开
 portable:
