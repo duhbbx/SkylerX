@@ -1,0 +1,80 @@
+name: ✨ Feature Request
+description: Suggest a new feature or improvement
+title: "[Feature] "
+labels:
+  - "type: feature"
+  - "status: needs-triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your idea! Tell us what you'd like to see, and why.
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Feature area
+      multiple: true
+      options:
+        - Connection / SSH / SSL
+        - Navigation tree / sidebar
+        - SQL Editor / completions
+        - Query execution / results
+        - Result grid / inline edit / filter / export
+        - Table designer
+        - DDL editor (view / function / procedure)
+        - ER diagram
+        - Import / export
+        - Data transfer
+        - AI features
+        - Redis pane
+        - MongoDB pane
+        - Elasticsearch pane
+        - Settings dialog
+        - Auto-update / installer
+        - Mock data generator
+        - PII / masking / security
+        - Privileges / user management
+        - Backup / restore
+        - Query history / operation log
+        - Snippets / favorites
+        - Shortcuts / key bindings
+        - i18n / translations
+        - UI / theme / font
+        - Performance
+        - Documentation site
+        - New database dialect support
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: User story — what are you doing today that's painful?
+      placeholder: |
+        "When I'm reviewing 50+ tables in a PG schema, I have to manually scroll
+         through the tree to find the one I'm looking for. There's no fuzzy search."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How do you think it should work? Sketches / mockups very welcome.
+      placeholder: |
+        "Add ⌘+P like VSCode's quick open — type a few chars and jump to any object."
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other tools that do this, workarounds you tried
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context / mockups
+      placeholder: Drag images, link to similar features in other tools

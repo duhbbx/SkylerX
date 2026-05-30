@@ -1,0 +1,123 @@
+name: 🗄️ Database-specific issue
+description: A bug or limitation specific to one database dialect
+title: "[DB] "
+labels:
+  - "type: bug"
+  - "module: connection"
+  - "status: needs-triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when the issue **only happens with one specific database** (e.g. Oracle DDL parsing, ClickHouse partition support, Redis cluster mode).
+        For generic bugs use the Bug Report template instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: SkylerX version
+      placeholder: "0.5.0-rc10"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      multiple: false
+      options:
+        - MySQL
+        - MariaDB
+        - PostgreSQL
+        - Oracle
+        - SQL Server
+        - SQLite
+        - DuckDB
+        - MongoDB
+        - Redis
+        - Elasticsearch
+        - ClickHouse
+        - Snowflake
+        - BigQuery
+        - TiDB
+        - OceanBase
+        - CockroachDB
+        - Greenplum
+        - Redshift
+        - Doris
+        - StarRocks
+        - DM (达梦)
+        - KingbaseES (人大金仓)
+        - openGauss
+        - TDengine
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: input
+    id: db-version
+    attributes:
+      label: Database server version
+      description: Exact version helps a lot (e.g. PostgreSQL 16.2, Oracle 23ai Free, ClickHouse 24.8)
+      placeholder: "PostgreSQL 16.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      multiple: false
+      options:
+        - Local (Docker / native install)
+        - On-premise server
+        - Cloud (AWS RDS / Aliyun RDS / Azure / GCP)
+        - Managed service (Supabase / Neon / Tencent Cloud)
+        - Cluster (multi-node)
+        - Embedded (SQLite / DuckDB file)
+        - Other
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      placeholder: "Cannot list materialized views — they don't appear in the navigation tree."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro-sql
+    attributes:
+      label: Reproduction setup (DDL / sample SQL)
+      description: Minimal SQL someone can run on a fresh instance to reproduce
+      render: sql
+      placeholder: |
+        CREATE TABLE t (id INT PRIMARY KEY, name VARCHAR(50));
+        CREATE MATERIALIZED VIEW mv AS SELECT id, name FROM t;
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps in SkylerX
+      placeholder: |
+        1. Connect to the above database
+        2. Expand the schema in the tree
+        3. Only the table appears, no "Materialized Views" group
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs Actual
+      placeholder: |
+        Expected: a "物化视图" / "Materialized Views" group containing `mv`
+        Actual: nothing about materialized views in the tree
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors / logs (optional)
+      description: Stack traces, server logs, network requests

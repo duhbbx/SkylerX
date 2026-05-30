@@ -1,0 +1,159 @@
+name: 🐛 Bug Report
+description: Report something that isn't working as expected
+title: "[Bug] "
+labels:
+  - "type: bug"
+  - "status: needs-triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in the sections below — the more detail, the faster we can fix it.
+
+        - Search existing issues first: https://github.com/duhbbx/SkylerX/issues?q=is%3Aissue
+        - For security issues, please use [Security Advisory](https://github.com/duhbbx/SkylerX/security/advisories/new) instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: SkylerX version
+      description: "Find in 关于 / About dialog. e.g. 0.5.0-rc10"
+      placeholder: "0.5.0-rc10"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      multiple: false
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel via Rosetta)
+        - Windows 11
+        - Windows 10
+        - Linux (Ubuntu / Debian / Deepin / 麒麟 / UOS)
+        - Linux (Fedora / openEuler / 中标麒麟)
+        - Linux (Arch / Manjaro)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database dialect (if applicable)
+      description: Pick the database you were using when the bug occurred
+      multiple: false
+      options:
+        - "N/A — not database-specific"
+        - MySQL
+        - MariaDB
+        - PostgreSQL
+        - Oracle
+        - SQL Server
+        - SQLite
+        - DuckDB
+        - MongoDB
+        - Redis
+        - Elasticsearch
+        - ClickHouse
+        - Snowflake
+        - BigQuery
+        - TiDB
+        - OceanBase
+        - CockroachDB
+        - Greenplum
+        - Redshift
+        - Doris
+        - StarRocks
+        - DM (达梦)
+        - KingbaseES (人大金仓)
+        - openGauss
+        - TDengine
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Feature area
+      description: Which part of SkylerX did you hit the bug in?
+      multiple: true
+      options:
+        - Connection / SSH / SSL
+        - Navigation tree / sidebar
+        - SQL Editor / completions
+        - Query execution / results
+        - Result grid / inline edit / filter / export
+        - Table designer (create / alter)
+        - DDL editor (view / function / procedure)
+        - ER diagram
+        - Import / export (CSV / Excel / SQL)
+        - Data transfer (cross-connection)
+        - AI features
+        - Redis pane / key browser
+        - MongoDB pane / aggregation
+        - Elasticsearch pane
+        - Settings dialog
+        - Auto-update / installer
+        - Mock data generator
+        - PII scanner / masking
+        - Privileges / user management
+        - Backup / restore
+        - Query history / operation log
+        - Snippets / favorites
+        - Shortcuts / key bindings
+        - i18n / translations
+        - UI / theme / font
+        - Performance / memory
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Concise description of the bug
+      placeholder: "Clicked 'Run Query' on a MySQL connection and the app froze for 30 seconds before showing a generic error."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal numbered steps
+      placeholder: |
+        1. Open a MySQL connection
+        2. In the SQL editor, type `SELECT * FROM big_table LIMIT 100000`
+        3. Click "Run"
+        4. App freezes for 30s
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: Query should return within a few seconds or be cancellable
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / logs / error message (optional but helpful)
+      description: |
+        - Screenshots help a lot.
+        - For errors: copy the full error text (use the 📋 button on error toasts).
+        - Main process logs: `%APPDATA%\@db-tool\desktop\logs\main.log` (Windows) or `~/Library/Logs/@db-tool/desktop/main.log` (macOS)
+      placeholder: "Paste error text / drag screenshots here"
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Workarounds, related issues, recent changes that might be relevant
