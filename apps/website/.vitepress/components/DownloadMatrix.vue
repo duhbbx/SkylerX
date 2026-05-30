@@ -92,6 +92,13 @@ const rows: Row[] = [
   },
   {
     platform: 'linux',
+    arch: 'x64',
+    format: '.pacman',
+    label: 'Arch / Manjaro',
+    match: (n) => /\.pacman$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
+  },
+  {
+    platform: 'linux',
     arch: 'arm64',
     format: '.AppImage',
     label: 'Linux ARM64',
