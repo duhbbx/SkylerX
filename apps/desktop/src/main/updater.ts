@@ -159,12 +159,13 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
   ;(autoUpdater as unknown as { disableWebInstaller: boolean }).disableWebInstaller = false
   ;(autoUpdater as unknown as { verifyUpdateCodeSignature: unknown }).verifyUpdateCodeSignature =
     () => Promise.resolve(null)
-  // 强制 channel = 'latest', 不让 electron-updater 看到 -rc / -beta / -alpha 后缀时
-  // 自动推断成 rc / beta / alpha channel (会去拉 rc.yml/beta.yml 之类, 我们 build
-  // 默认只生成 latest.yml, 导致 prerelease 用户检测不到新版本退化为 '已是最新').
-  // 强制走 latest.yml 后, prerelease → prerelease 升级 + prerelease → stable 升级
-  // 全部走同一条路径, 不再被 channel 自动推断坑.
+  // 强制 channel = 'latest' 让所有版本都走 latest.yml,不被 prerelease 后缀
+  // 自动推断成 rc/beta/alpha channel 误拉 rc.yml 等(我们 build 默认只生成 latest.yml).
+  // 配合 allowPrerelease=true,让 GitHub provider 接受 -rc 后缀的 release(否则报
+  // "No published versions on GitHub" — 它默认 channel=latest+allowPrerelease=false
+  // 时只看 stable release,而仓库现在全是 v0.5.0-rc* prerelease tag).
   autoUpdater.channel = 'latest'
+  autoUpdater.allowPrerelease = true
 
   // loadChannel + applyChannel + 启动 check 必须串行,
   // 否则 check 时 feed URL 还是默认的 github,跟用户的 OSS 选择不一致.
