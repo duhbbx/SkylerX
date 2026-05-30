@@ -188,15 +188,15 @@ watch(
 .stage-card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
 .sc-head { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
 .sc-num { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
-.sc-op { font-family: ui-monospace, monospace; color: var(--accent); font-size: 12px; font-weight: 600; }
+.sc-op { font-family: var(--font-mono); color: var(--accent); font-size: 12px; font-weight: 600; }
 .spacer { flex: 1; }
 .x-btn { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 12px; }
 .x-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .x-btn:hover:not(:disabled) { color: var(--accent); }
-.sc-code { width: 100%; min-height: 70px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); resize: vertical; }
+.sc-code { width: 100%; min-height: 70px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text); resize: vertical; }
 .add-grid { padding: 6px; background: rgba(124, 108, 255, 0.06); border-radius: 6px; }
 .tmpls { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
-.tmpl-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--accent); font-family: ui-monospace, monospace; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+.tmpl-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--accent); font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; cursor: pointer; }
 .tmpl-btn:hover { background: rgba(124, 108, 255, 0.18); }
 .run-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel); border-radius: 6px; }
 .btn-primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); padding: 4px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
@@ -204,9 +204,9 @@ watch(
 .ip-mini { width: 60px; padding: 3px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
 .meta { font-size: 11px; color: var(--muted); }
 .preview summary { font-size: 11px; cursor: pointer; color: var(--muted); }
-.pp-json { margin-top: 4px; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-family: ui-monospace, monospace; font-size: 10px; max-height: 200px; overflow: auto; max-width: 400px; }
+.pp-json { margin-top: 4px; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-family: var(--font-mono); font-size: 10px; max-height: 200px; overflow: auto; max-width: 400px; }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
 .err-banner { padding: 10px; background: rgba(224, 64, 80, 0.08); border: 1px solid rgba(224, 64, 80, 0.4); border-radius: 6px; color: var(--err, #e04050); font-size: 12px; }
-.result-json { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: ui-monospace, monospace; font-size: 11px; max-height: 500px; overflow: auto; margin: 0; }
+.result-json { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 11px; max-height: 500px; overflow: auto; margin: 0; }
 .btn-ghost { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; }
 </style>

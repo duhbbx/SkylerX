@@ -15,9 +15,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── macOS：Intel 用 macos-13、Apple Silicon 用 macos-latest（M-series）──
-          # 都是 native build，原生模块直接重编不需要交叉。
-          - { name: mac-x64,    os: macos-13,         eb_args: '--mac --x64',    npm_arch: x64    }
+          # ── macOS：只构建 Apple Silicon (M 系) 版本 ──
+          # 用户决定不再为 Intel Mac 出包 (M1 起已 5 年,Intel Mac 用户极少;同时省 ~6 min CI 时间)
+          # 老 Intel Mac 用户可走 Rosetta 跑 arm64 dmg(性能/体积有损但能用),或自行编译
           - { name: mac-arm64,  os: macos-latest,     eb_args: '--mac --arm64',  npm_arch: arm64  }
 
           # ── Windows：x64 native；arm64 在 x64 runner 上交叉打包 ──

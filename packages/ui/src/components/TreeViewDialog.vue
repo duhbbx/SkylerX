@@ -120,7 +120,7 @@ const flat = computed(() => {
 .cfg label { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
 .cfg select { padding: 3px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
 .muted { color: var(--muted); font-size: 11px; margin-left: auto; }
-.tree-body { flex: 1; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 12px; }
+.tree-body { flex: 1; overflow-y: auto; font-family: var(--font-mono); font-size: 12px; }
 .tnode { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
 .tip { color: var(--muted); }
 .tlabel { font-weight: 600; cursor: help; }

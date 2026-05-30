@@ -196,7 +196,7 @@ watch(
 .row { display: flex; flex-direction: column; gap: 4px; }
 .row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .lbl { font-size: 11px; color: var(--muted); font-weight: 600; }
-.code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text); resize: vertical; }
+.code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text); resize: vertical; }
 .code.small { font-size: 11px; }
 .run-row { display: flex; align-items: center; gap: 8px; }
 .btn-primary, .btn-ghost { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; }

@@ -396,8 +396,8 @@ watch([connId, database, tableName], () => {
 .row.inline { flex-direction: row; gap: 14px; align-items: center; }
 .lbl { font-size: 11px; color: var(--muted); font-weight: 600; }
 .lbl-inline { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
-.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; }
-.ip-mini { width: auto; min-width: 100px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-size: 11px; font-family: ui-monospace, monospace; }
+.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; color: var(--text); font-size: 12px; font-family: var(--font-mono); }
+.ip-mini { width: auto; min-width: 100px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-size: 11px; font-family: var(--font-mono); }
 .btn, .btn-primary, .btn-ghost { padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; background: var(--bg); color: var(--text); }
 .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-ghost { background: transparent; color: var(--muted); padding: 6px 14px; font-size: 13px; }
@@ -405,8 +405,8 @@ watch([connId, database, tableName], () => {
 .map-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
 .map-tbl th, .map-tbl td { padding: 3px 6px; border-bottom: 1px solid var(--border); text-align: left; }
 .map-tbl th { background: var(--panel); color: var(--muted); }
-.mono { font-family: ui-monospace, monospace; word-break: break-all; }
+.mono { font-family: var(--font-mono); word-break: break-all; }
 .sample { color: var(--accent); }
 .meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
-.sql { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-family: ui-monospace, monospace; font-size: 11px; max-height: 200px; overflow: auto; }
+.sql { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-family: var(--font-mono); font-size: 11px; max-height: 200px; overflow: auto; }
 </style>

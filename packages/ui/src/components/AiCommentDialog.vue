@@ -513,7 +513,7 @@ defineExpose({ ask: askAi })
   background: rgba(224, 64, 80, 0.08);
   padding: 8px 12px;
   border-radius: 6px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   word-break: break-word;
 }
@@ -592,7 +592,7 @@ defineExpose({ ask: askAi })
   text-align: center;
 }
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .dim {

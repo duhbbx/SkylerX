@@ -104,7 +104,7 @@ function onPickPath(): void {
 </template>
 
 <style scoped>
-.jt-node { font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.6; }
+.jt-node { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
 .jt-row { display: flex; align-items: baseline; gap: 4px; padding: 0 4px; cursor: pointer; }
 .jt-row:hover { background: rgba(124, 108, 255, 0.08); }
 .caret { width: 12px; color: var(--accent); flex: none; font-size: 10px; }
@@ -121,7 +121,7 @@ function onPickPath(): void {
   font-size: 10px;
   color: var(--muted);
   opacity: 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   padding: 0 4px;
   border-radius: 2px;
   user-select: all;

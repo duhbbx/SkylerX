@@ -284,7 +284,7 @@ onMounted(() => {
 .meta {
   font-size: 12px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .spacer {
   flex: 1 1 auto;
@@ -308,7 +308,7 @@ onMounted(() => {
   color: var(--err, #e04050);
 }
 .err-msg {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   max-width: 80%;
   word-break: break-word;
@@ -366,7 +366,7 @@ table.hints td {
 table.hints th.num,
 table.hints td.num {
   text-align: right;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 table.hints tr.done {
   opacity: 0.55;
@@ -383,7 +383,7 @@ table.hints tr.done {
   padding: 1px 6px;
   margin-right: 4px;
   margin-bottom: 3px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 .reason {
@@ -394,7 +394,7 @@ table.hints tr.done {
   overflow-wrap: anywhere;
 }
 .ddl code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   /* 不再 break-all：默认按词边界换行，只有变态长 token 才强制断 */
   white-space: pre-wrap;

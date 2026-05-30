@@ -228,7 +228,7 @@ const totalMatched = computed(() => hits.value.length)
   border-radius: 6px;
   color: var(--text);
   padding: 6px 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .db-head {
@@ -247,7 +247,7 @@ const totalMatched = computed(() => hits.value.length)
   padding: 4px 6px;
   text-align: center;
   font-size: 11px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   background: var(--bg);
 }
@@ -286,7 +286,7 @@ const totalMatched = computed(() => hits.value.length)
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .grid th,
 .grid td {

@@ -284,7 +284,7 @@ watch(
   color: var(--text);
   padding: 6px 10px;
   font-size: 13px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .ta {
   resize: vertical;
@@ -317,7 +317,7 @@ watch(
 .tc-hint {
   font-size: 10px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   margin-top: 2px;
 }
 .ttl-row {

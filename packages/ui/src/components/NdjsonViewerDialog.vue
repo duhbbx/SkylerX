@@ -259,7 +259,7 @@ th, td {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 320px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 th { font-weight: 600; color: var(--text); }
 tr.active { background: rgba(124, 108, 255, 0.10); }
@@ -268,7 +268,7 @@ tbody tr:hover { background: rgba(124, 108, 255, 0.05); }
   width: 40px;
   color: var(--muted);
   text-align: right;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .table-col {
   font-weight: 600;
@@ -304,7 +304,7 @@ tbody tr:hover { background: rgba(124, 108, 255, 0.05); }
   margin: 0;
   padding: 8px 12px;
   overflow: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
 }

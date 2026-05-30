@@ -150,7 +150,7 @@ onMounted(load)
   background: var(--panel);
 }
 .head .title {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 .head .ghost {

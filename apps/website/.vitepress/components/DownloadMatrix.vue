@@ -37,16 +37,10 @@ const rows: Row[] = [
     platform: 'macos',
     arch: 'arm64',
     format: '.dmg',
-    label: 'macOS Apple Silicon',
+    label: 'macOS (Apple Silicon + Rosetta)',
     match: (n) => /\.dmg$/i.test(n) && /arm64/i.test(n),
   },
-  {
-    platform: 'macos',
-    arch: 'x64',
-    format: '.dmg',
-    label: 'macOS Intel',
-    match: (n) => /\.dmg$/i.test(n) && /(x64|x86_64|amd64)/i.test(n),
-  },
+  // Intel Mac 不再发独立包 — Apple Silicon 已 5 年, Intel 用户可走 Rosetta 跑 arm64 dmg
   {
     platform: 'windows',
     arch: 'x64',

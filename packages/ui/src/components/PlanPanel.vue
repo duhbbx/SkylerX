@@ -143,7 +143,7 @@ function isSkewed(node: PlanNode): boolean {
 }
 .plabel {
   font-weight: 600;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .pnode.slow .plabel { color: var(--err, #e04050); }
 .pdetail {
@@ -165,7 +165,7 @@ function isSkewed(node: PlanNode): boolean {
 .plan-text {
   margin: 0;
   padding: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre;
   overflow: auto;

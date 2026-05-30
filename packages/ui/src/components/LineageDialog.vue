@@ -93,6 +93,6 @@ function fmtTime(ts: number): string {
 .col h4 { margin: 0 0 6px; font-size: 12px; color: var(--accent, #7c6cff); }
 .muted { color: var(--muted); font-size: 11px; }
 .entry { padding: 4px 0; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; }
-.ts { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; flex: none; }
-.sql { font-family: ui-monospace, monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ts { font-size: 10px; color: var(--muted); font-family: var(--font-mono); flex: none; }
+.sql { font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

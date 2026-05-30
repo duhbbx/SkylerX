@@ -287,7 +287,7 @@ function isOverridden(id: string): boolean {
 }
 .col-key {
   width: 35%;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   position: relative;
 }
 .col-act {

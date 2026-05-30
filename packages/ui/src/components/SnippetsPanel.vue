@@ -182,7 +182,7 @@ async function applyAndPick(sql: string): Promise<void> {
 }
 .snip-sql {
   display: block;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
   white-space: nowrap;

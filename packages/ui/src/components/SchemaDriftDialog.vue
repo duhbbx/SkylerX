@@ -752,7 +752,7 @@ async function execScript(): Promise<void> {
 }
 .col-h .cnt {
   margin-left: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--text);
 }
 .col-body {
@@ -791,7 +791,7 @@ async function execScript(): Promise<void> {
 }
 .t-name {
   flex: 1;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .badges {
   display: flex;
@@ -802,7 +802,7 @@ async function execScript(): Promise<void> {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   background: rgba(124, 108, 255, 0.18);
   color: var(--text);
 }
@@ -862,7 +862,7 @@ async function execScript(): Promise<void> {
   flex: 1;
   margin: 0;
   padding: 6px 8px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -908,7 +908,7 @@ async function execScript(): Promise<void> {
   flex: 1;
   margin: 0;
   padding: 8px 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   overflow: auto;

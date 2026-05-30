@@ -617,7 +617,7 @@ function watermarkPreviewSvg(): string {
   padding: 3px 0;
 }
 .mask-row .m-name { width: 90px; }
-.mask-row .m-pat { flex: 1; font-family: ui-monospace, monospace; font-size: 12px; }
+.mask-row .m-pat { flex: 1; font-family: var(--font-mono); font-size: 12px; }
 .mask-row .m-kind { width: 90px; }
 .mask-row input, .mask-row select {
   padding: 3px 6px;
@@ -883,7 +883,7 @@ h3.sub {
   position: absolute;
   left: 12px;
   top: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--muted);
   font-size: 12px;
 }

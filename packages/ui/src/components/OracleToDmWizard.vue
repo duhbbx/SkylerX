@@ -766,7 +766,7 @@ input:focus {
   align-items: center;
   gap: 6px;
   padding: 2px 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .obj input {
@@ -837,7 +837,7 @@ input:focus {
   background: rgba(0, 150, 200, 0.85);
 }
 .nm {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -864,7 +864,7 @@ input:focus {
   flex: 1;
   min-height: 200px;
   resize: none;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   padding: 10px;
   background: var(--bg);
@@ -920,7 +920,7 @@ input:focus {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .run-row {
@@ -964,7 +964,7 @@ input:focus {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   overflow: auto;

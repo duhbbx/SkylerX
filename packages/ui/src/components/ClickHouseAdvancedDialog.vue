@@ -411,7 +411,7 @@ const activeParts = computed(() => parts.value.filter((p) => p.active))
 .tabs button { background: transparent; border: 1px solid transparent; color: var(--muted); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
 .tabs button.on { background: rgba(124, 108, 255, 0.18); border-color: var(--accent); color: var(--text); }
 .spacer { flex: 1; }
-.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; width: 100px; }
+.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: var(--font-mono); width: 100px; }
 .btn, .btn-ghost { padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; background: var(--bg); color: var(--text); }
 .btn-ghost { background: transparent; color: var(--muted); padding: 6px 14px; font-size: 13px; }
 .body { flex: 1; overflow: auto; max-height: 65vh; }
@@ -421,7 +421,7 @@ const activeParts = computed(() => parts.value.filter((p) => p.active))
 .grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; }
-.mono { font-family: ui-monospace, monospace; word-break: break-all; }
+.mono { font-family: var(--font-mono); word-break: break-all; }
 tr.inactive td { color: var(--muted); background: rgba(140, 140, 140, 0.05); }
 tr.done td { background: rgba(76, 175, 80, 0.05); }
 tr.failed td { background: rgba(224, 64, 80, 0.06); }

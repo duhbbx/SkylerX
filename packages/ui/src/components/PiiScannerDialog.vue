@@ -338,7 +338,7 @@ const groupedByTable = computed(() => {
   margin-bottom: 8px;
 }
 .spacer { flex: 1; }
-.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: ui-monospace, monospace; width: 130px; }
+.ip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text); font-size: 12px; font-family: var(--font-mono); width: 130px; }
 .ip-mini { width: 60px; padding: 3px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 11px; }
 .lbl-inline { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 .btn, .btn-primary, .btn-danger, .btn-ghost { padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 12px; background: var(--bg); color: var(--text); }
@@ -354,13 +354,13 @@ const groupedByTable = computed(() => {
 .grid { width: 100%; border-collapse: collapse; font-size: 12px; }
 .grid th, .grid td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 .grid th { background: var(--panel); color: var(--muted); position: sticky; top: 0; }
-.mono { font-family: ui-monospace, monospace; word-break: break-all; }
+.mono { font-family: var(--font-mono); word-break: break-all; }
 tr.rule-email td { background: rgba(76, 175, 80, 0.04); }
 tr.rule-phone td { background: rgba(255, 152, 0, 0.04); }
 tr.rule-idCard td { background: rgba(224, 64, 80, 0.05); }
 tr.rule-bankCard td { background: rgba(224, 64, 80, 0.08); }
 tr.rule-default td { background: rgba(124, 108, 255, 0.06); }
-.tag { display: inline-block; padding: 1px 6px; border-radius: 3px; color: #fff; font-size: 10px; font-family: ui-monospace, monospace; background: #888; }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 3px; color: #fff; font-size: 10px; font-family: var(--font-mono); background: #888; }
 .tag[data-kind='email'] { background: #4caf50; }
 .tag[data-kind='phone'] { background: #ff9800; }
 .tag[data-kind='idCard'], .tag[data-kind='bankCard'] { background: #e04050; }

@@ -446,7 +446,7 @@ async function copyAddr(svr: ServerRow): Promise<void> {
 .s-addr {
   color: var(--text);
   cursor: pointer;
-  font-family: ui-monospace, SF Mono, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 .s-addr:hover {
   color: var(--accent);
@@ -495,7 +495,7 @@ async function copyAddr(svr: ServerRow): Promise<void> {
   border-radius: 3px;
 }
 .t-meta.locality {
-  font-family: ui-monospace, SF Mono, Consolas, monospace;
+  font-family: var(--font-mono);
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -531,7 +531,7 @@ async function copyAddr(svr: ServerRow): Promise<void> {
   color: var(--muted);
 }
 .u-id {
-  font-family: ui-monospace, SF Mono, Consolas, monospace;
+  font-family: var(--font-mono);
   color: var(--text);
 }
 .u-pool {
@@ -541,7 +541,7 @@ async function copyAddr(svr: ServerRow): Promise<void> {
   border-radius: 3px;
 }
 .u-loc {
-  font-family: ui-monospace, SF Mono, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 .u-type {
   font-size: 10px;

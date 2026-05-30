@@ -784,14 +784,14 @@ function smartValue(k: string, v: string): string {
 .info-k {
   width: 240px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .info-v {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   word-break: break-all;
 }
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .sub-bar {
   display: flex;
@@ -810,7 +810,7 @@ function smartValue(k: string, v: string): string {
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--text);
 }
 .cfg-row {

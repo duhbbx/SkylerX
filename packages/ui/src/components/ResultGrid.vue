@@ -765,7 +765,7 @@ function askAiAboutError(): void {
  */
 function openColumnFilter(col: string, btnEl: HTMLElement): void {
   const rect = btnEl.getBoundingClientRect()
-  const base = (props.editable ? localRows.value : props.result?.rows ?? []) as Row[]
+  const base = (props.editable ? localRows.value : (props.result?.rows ?? [])) as Row[]
   const all = new Set<string>()
   for (const r of base) {
     const v = r[col]
@@ -1063,7 +1063,8 @@ const summaryRow = computed<Record<string, string>>(() => {
 
 // ── 列头 sparkline + 条件着色 ──
 type ColInfo = { name: string; dataType: string }
-const NUMERIC_TYPE_RE = /INT|NUMERIC|DECIMAL|FLOAT|DOUBLE|REAL|NUMBER|BIGINT|SMALLINT|TINYINT|SERIAL|MONEY/i
+const NUMERIC_TYPE_RE =
+  /INT|NUMERIC|DECIMAL|FLOAT|DOUBLE|REAL|NUMBER|BIGINT|SMALLINT|TINYINT|SERIAL|MONEY/i
 function isNumericCol(col: ColInfo): boolean {
   if (NUMERIC_TYPE_RE.test(col.dataType ?? '')) return true
   // 类型缺失时按值嗅探：抽前 20 行,全部能 Number 化即视作数字列
@@ -1674,7 +1675,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
   padding: 16px;
   color: var(--err);
   white-space: pre-wrap;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 /* ── 错误卡片：错误消息 + SQL + 连接分块展示，附 复制 / 问 AI 按钮 ── */
@@ -1734,7 +1735,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
   color: var(--err, #e04050);
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -1756,7 +1757,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1911,6 +1912,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
 }
 .cfp-x:hover { color: var(--text); }
 .cfp-search {
+  /* margin 左右各 10,popup 宽 280, input 需要 box-sizing: border-box + width calc 才不超出 */
   margin: 8px 10px 4px;
   padding: 4px 8px;
   background: var(--bg);
@@ -1918,6 +1920,9 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
   border-radius: 4px;
   color: var(--text);
   font-size: 12px;
+  box-sizing: border-box;
+  width: calc(100% - 20px);
+  font-family: inherit;
 }
 .cfp-actions {
   display: flex;
@@ -1970,7 +1975,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .cfp-empty {
   padding: 12px;
@@ -1998,7 +2003,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
   overflow: auto;
   margin: 0;
   padding: 10px 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre;
 }
@@ -2015,7 +2020,7 @@ tfoot tr.summary td {
   bottom: 0;
   background: var(--panel);
   border-top: 2px solid var(--border);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
@@ -2023,7 +2028,7 @@ tfoot tr.summary td {
 table {
   border-collapse: collapse;
   font-size: 13px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 th,
 td {
@@ -2087,12 +2092,12 @@ td.cell-large::after {
 }
 td.cell-json {
   color: #b48cff;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 td.cell-blob {
   color: #4caf50;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-style: italic;
 }
@@ -2321,7 +2326,7 @@ td.rownum:hover {
   border-radius: 6px;
   color: var(--text);
   padding: 10px 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   resize: vertical;
 }
@@ -2335,7 +2340,7 @@ td.rownum:hover {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .row-detail {
@@ -2382,7 +2387,7 @@ td.rownum:hover {
   cursor: not-allowed;
 }
 .hex-view {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
   letter-spacing: 0;
@@ -2435,11 +2440,11 @@ td.rownum:hover {
 .cell-image-meta {
   font-size: 11px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .cell-json-view {
   color: #b48cff;
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -2476,7 +2481,7 @@ td.rownum:hover {
   overflow: auto;
 }
 .json-edit {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 .rev-fks {

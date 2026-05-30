@@ -388,7 +388,7 @@ async function runImport(): Promise<void> {
   flex-wrap: wrap;
 }
 .fname {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .chk {
@@ -419,7 +419,7 @@ async function runImport(): Promise<void> {
   margin-bottom: 6px;
 }
 .tcol {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .arrow {

@@ -740,7 +740,7 @@ table.cols tr.pk {
 }
 .type {
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   word-break: break-word;
 }
 .kind-sel,
@@ -754,7 +754,7 @@ table.cols tr.pk {
   color: var(--text);
   font-size: 12px;
 }
-.ext-in.mono { font-family: ui-monospace, monospace; }
+.ext-in.mono { font-family: var(--font-mono); }
 .range-row {
   display: inline-flex;
   align-items: center;
@@ -786,7 +786,7 @@ table.cols tr.pk {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: var(--text);
 }
 .reroll {

@@ -246,9 +246,9 @@ function previewCols(card: Card): string[] {
   border-radius: 4px;
   color: var(--text);
   font-size: 12px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
-.row textarea { font-family: ui-monospace, monospace; resize: vertical; }
+.row textarea { font-family: var(--font-mono); resize: vertical; }
 .edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .edit-actions button {
   padding: 5px 14px;
@@ -289,7 +289,7 @@ function previewCols(card: Card): string[] {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -303,7 +303,7 @@ function previewCols(card: Card): string[] {
   background: rgba(224, 64, 80, 0.10);
   color: var(--err, #e04050);
   border-radius: 4px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .card-meta {
   display: flex;
@@ -320,7 +320,7 @@ function previewCols(card: Card): string[] {
   border: 1px solid var(--border);
   padding: 2px 6px;
   text-align: left;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

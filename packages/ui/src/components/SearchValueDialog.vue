@@ -234,7 +234,7 @@ async function runSearch(): Promise<void> {
 .bar { display: flex; gap: 6px; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .bar select, .bar input { padding: 4px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
 .bar .grow { flex: 1; }
-.bar .tf { width: 160px; font-family: ui-monospace, monospace; }
+.bar .tf { width: 160px; font-family: var(--font-mono); }
 .bar .primary {
   padding: 5px 14px;
   font-size: 13px;
@@ -250,7 +250,7 @@ async function runSearch(): Promise<void> {
 .hit {
   display: flex; align-items: center; gap: 4px;
   padding: 4px 8px; border-bottom: 1px solid var(--border);
-  cursor: pointer; font-family: ui-monospace, monospace; font-size: 12px;
+  cursor: pointer; font-family: var(--font-mono); font-size: 12px;
 }
 .hit:hover { background: rgba(124, 108, 255, 0.10); }
 .hit.on { background: rgba(124, 108, 255, 0.18); }
@@ -260,6 +260,6 @@ async function runSearch(): Promise<void> {
 .preview { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 .mini-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
-.mini-tbl th, .mini-tbl td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; font-family: ui-monospace, monospace; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.mini-tbl th, .mini-tbl td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; font-family: var(--font-mono); white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .mini-tbl th { background: var(--panel); position: sticky; top: 0; }
 </style>

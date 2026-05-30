@@ -325,7 +325,7 @@ watch(
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 10px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text);
 }
@@ -382,7 +382,7 @@ watch(
 .err-body {
   margin: 0;
   font-size: 11px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   max-height: 120px;
   overflow: auto;
   white-space: pre-wrap;

@@ -83,6 +83,9 @@ app.whenReady().then(() => {
   registerAiIpc()
   // #15 让渲染层能开新窗口；新窗口跟主窗口共享 sqlite 数据 + 各自独立的 Vue 状态
   ipcMain.handle('window:newSession', () => spawnExtraWindow())
+  // 真实的 app 版本(从 package.json 读;打包时 CI 已经按 tag 同步过)
+  // 替代 renderer 里硬编码的 '0.1.0' 占位
+  ipcMain.handle('system:getVersion', () => app.getVersion())
   // 菜单要拿到主窗口的 webContents 才能 send 命令到渲染层，所以先建窗后建菜单
   const mainWindow = createWindow()
   setupMenu(mainWindow)

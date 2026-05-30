@@ -301,7 +301,7 @@ function onKey(e: KeyboardEvent): void {
   cursor: pointer; padding: 0 4px; margin-left: auto; font-size: 14px;
 }
 .sc-path {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; color: var(--muted);
   word-break: break-all;
   max-height: 50px; overflow: hidden;
