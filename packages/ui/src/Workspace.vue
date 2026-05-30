@@ -1553,7 +1553,15 @@ void (async () => {
 type UpdaterStatus =
   | { kind: 'idle' }
   | { kind: 'checking' }
-  | { kind: 'available'; info: { version: string; releaseNotes?: string } }
+  | {
+      kind: 'available'
+      info: {
+        version: string
+        releaseNotes?: string
+        releaseDate?: string
+        releaseName?: string
+      }
+    }
   | { kind: 'not-available'; currentVersion: string }
   | {
       kind: 'downloading'
@@ -1671,6 +1679,18 @@ function onUpdateBtnClick(): void {
   const s = updateStatus.value
   if (s.kind === 'available' || s.kind === 'downloaded') void downloadAndInstallUpdate()
   else if (s.kind !== 'checking' && s.kind !== 'downloading') void checkForUpdate()
+}
+
+/** ISO 时间转 "2026-05-30 18:30" 这种可读格式;失败回退原值 */
+function formatReleaseDate(iso: string): string {
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return iso
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  } catch {
+    return iso
+  }
 }
 // 快捷键参考表
 const SHORTCUTS: { k: string; label: string }[] = [
@@ -2975,8 +2995,24 @@ onUnmounted(() => unsubMenu?.())
             <span v-else-if="updateStatus.kind === 'not-available'" class="upd-ok">
               {{ t('about.upToDate') }}
             </span>
-            <span v-else-if="updateStatus.kind === 'available'" class="upd-new">
-              发现新版本 v{{ updateStatus.info.version }}
+            <span v-else-if="updateStatus.kind === 'available'" class="upd-new-block">
+              <span class="upd-new">✨ 发现新版本 v{{ updateStatus.info.version }}</span>
+              <span v-if="updateStatus.info.releaseDate" class="upd-date">
+                发布于 {{ formatReleaseDate(updateStatus.info.releaseDate) }}
+              </span>
+              <details v-if="updateStatus.info.releaseNotes?.trim()" class="upd-notes">
+                <summary>查看更新说明</summary>
+                <pre class="upd-notes-body">{{ updateStatus.info.releaseNotes }}</pre>
+              </details>
+              <a
+                v-else
+                class="upd-notes-link"
+                :href="`https://github.com/duhbbx/SkylerX/releases/tag/v${updateStatus.info.version}`"
+                target="_blank"
+                rel="noopener"
+              >
+                在 GitHub 查看完整 Release Notes →
+              </a>
             </span>
             <span v-else-if="updateStatus.kind === 'downloaded'" class="upd-new">
               v{{ updateStatus.info.version }} 已下载,点按钮重启完成安装
@@ -3327,6 +3363,56 @@ onUnmounted(() => unsubMenu?.())
   color: var(--accent);
   font-size: 12px;
   flex: none;
+}
+/* available 时整块详细信息布局 */
+.upd-new-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 100%;
+  font-size: 12px;
+  min-width: 0;
+}
+.upd-new-block .upd-new {
+  font-weight: 600;
+}
+.upd-date {
+  color: var(--muted);
+  font-size: 11px;
+}
+.upd-notes {
+  margin-top: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-width: 100%;
+}
+.upd-notes > summary {
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--accent);
+  user-select: none;
+}
+.upd-notes > summary:hover {
+  background: rgba(124, 108, 255, 0.08);
+}
+.upd-notes-body {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+  color: var(--text);
+  line-height: 1.5;
+}
+.upd-notes-link {
+  font-size: 11px;
+  color: var(--accent);
 }
 .upd-progress {
   display: inline-flex;
