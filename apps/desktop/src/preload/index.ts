@@ -114,6 +114,25 @@ const api = {
       return () => ipcRenderer.removeListener('menu:command', listener)
     },
   },
+  /**
+   * 应用内自动更新(electron-updater 通道)。
+   * dev 模式下 check/downloadAndInstall 返回 { devMode: true },renderer 据此降级到 GitHub 链接。
+   */
+  updates: {
+    getStatus: (): Promise<unknown> => ipcRenderer.invoke('updates:getStatus'),
+    check: (): Promise<{ devMode?: boolean; ok?: boolean; error?: string }> =>
+      ipcRenderer.invoke('updates:check'),
+    downloadAndInstall: (): Promise<{ devMode?: boolean; ok?: boolean; error?: string }> =>
+      ipcRenderer.invoke('updates:downloadAndInstall'),
+    install: (): Promise<{ devMode?: boolean; ok?: boolean }> =>
+      ipcRenderer.invoke('updates:install'),
+    /** 订阅状态推送;返回取消订阅函数 */
+    onStatus: (handler: (s: unknown) => void): (() => void) => {
+      const listener = (_e: unknown, s: unknown): void => handler(s)
+      ipcRenderer.on('updates:status', listener)
+      return () => ipcRenderer.removeListener('updates:status', listener)
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

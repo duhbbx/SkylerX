@@ -1381,40 +1381,121 @@ async function onAiChatRun(sql: string, connId: string): Promise<void> {
   tabsRef.value?.runSql(conn, sql)
 }
 const APP_VERSION = '0.1.0'
-const updateState = ref<{ checking: boolean; latest?: string; error?: string }>({ checking: false })
+/**
+ * 更新 UI 状态(完全由 main 进程的 updates:status 事件驱动)。
+ * - dev 模式下 main 端 autoUpdater 不启用,IPC 会回 devMode=true,UI 退回 GitHub 链接
+ * - packaged 模式下 main 自动 forward checking/available/downloading/downloaded/error 事件,
+ *   downloading 时显示进度条,downloaded 后按钮变"立即重启安装"
+ */
+type UpdaterStatus =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'available'; info: { version: string; releaseNotes?: string } }
+  | { kind: 'not-available'; currentVersion: string }
+  | { kind: 'downloading'; percent: number; bytesPerSecond: number; transferred: number; total: number }
+  | { kind: 'downloaded'; info: { version: string } }
+  | { kind: 'error'; message: string }
+
+const updateStatus = ref<UpdaterStatus>({ kind: 'idle' })
+const updateDevMode = ref(false)
+// dev 模式 fallback:从 GitHub API 拉 latest tag 给用户看(同样会被 CSP 拦,
+// connect-src 已开 api.github.com 解掉),不能下载安装,只给个链接
+const updateDevLatest = ref<string | null>(null)
+const updateDevError = ref<string | null>(null)
+
+const desktopApi = (): {
+  updates?: {
+    check: () => Promise<{ devMode?: boolean; ok?: boolean; error?: string }>
+    downloadAndInstall: () => Promise<{ devMode?: boolean; ok?: boolean; error?: string }>
+    install: () => Promise<{ devMode?: boolean; ok?: boolean }>
+    getStatus: () => Promise<UpdaterStatus>
+    onStatus: (cb: (s: UpdaterStatus) => void) => () => void
+  }
+} | null => (typeof window !== 'undefined' ? ((window as unknown as { api?: unknown }).api as never) ?? null : null)
+
 async function checkForUpdate(): Promise<void> {
-  updateState.value = { checking: true }
-  // 10s 超时:GitHub API 偶尔慢/被代理拦截,fetch 不超时会一直 spinner。
+  const api = desktopApi()
+  if (!api?.updates) {
+    // 非桌面端(理论上不会走到,Workspace 当前仅 desktop 用),走老的 fetch fallback
+    await checkForUpdateBrowserFallback()
+    return
+  }
+  updateStatus.value = { kind: 'checking' }
+  const r = await api.updates.check()
+  if (r.devMode) {
+    updateDevMode.value = true
+    await checkForUpdateBrowserFallback()
+  } else if (r.error) {
+    updateStatus.value = { kind: 'error', message: r.error }
+  }
+  // 成功:具体 status 通过 onStatus 事件回流,不在这里赋值
+}
+
+async function downloadAndInstallUpdate(): Promise<void> {
+  const api = desktopApi()
+  if (!api?.updates) return
+  const r = await api.updates.downloadAndInstall()
+  if (r.error) updateStatus.value = { kind: 'error', message: r.error }
+}
+
+/** dev 模式或非桌面端:跑老的 GitHub API fetch,只为显示"有无新版"。 */
+async function checkForUpdateBrowserFallback(): Promise<void> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), 10_000)
   try {
     const res = await fetch('https://api.github.com/repos/duhbbx/SkylerX/releases/latest', {
-      headers: {
-        accept: 'application/vnd.github+json',
-        // GitHub 要求 UA;Chromium 默认 UA 一般够用,显式给一个稳一点
-        'user-agent': `SkylerX/${APP_VERSION}`,
-      },
+      headers: { accept: 'application/vnd.github+json', 'user-agent': `SkylerX/${APP_VERSION}` },
       signal: ac.signal,
     })
     if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
     const data = (await res.json()) as { tag_name?: string; name?: string }
-    const latest = (data.tag_name ?? data.name ?? '').replace(/^v/, '')
-    updateState.value = { checking: false, latest }
+    updateDevLatest.value = (data.tag_name ?? data.name ?? '').replace(/^v/, '')
+    updateDevError.value = null
   } catch (e) {
-    // 网络层错误(代理/防火墙/DNS)在 Chromium 是 "Failed to fetch",在 Node 是 "fetch failed";
-    // 都把"可能原因"提示给用户,避免一行干瘪报错没人能看懂。
     const raw = e instanceof Error ? e.message : String(e)
     const isAbort = e instanceof Error && e.name === 'AbortError'
-    const isNetwork = /failed to fetch|fetch failed|network|ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(raw)
-    const msg = isAbort
-      ? '请求超时(>10s)。检查网络/代理是否能访问 api.github.com'
-      : isNetwork
-        ? `网络不可达: ${raw}\n可能原因:本地代理拦截、GFW、DNS 解析失败`
-        : raw
-    updateState.value = { checking: false, error: msg }
+    updateDevError.value = isAbort ? '请求超时(>10s)' : raw
   } finally {
     clearTimeout(timer)
   }
+}
+
+// 启动时订阅 main 推过来的更新状态,组件卸载时取消
+let unsubUpdateStatus: (() => void) | null = null
+onMounted(() => {
+  const api = desktopApi()
+  if (!api?.updates) return
+  // 拉一次当前状态(可能 main 已经做完一轮启动检查)
+  void api.updates.getStatus().then((s) => {
+    if (s && (s as UpdaterStatus).kind) updateStatus.value = s as UpdaterStatus
+  })
+  unsubUpdateStatus = api.updates.onStatus((s) => {
+    updateStatus.value = s as UpdaterStatus
+  })
+})
+onUnmounted(() => {
+  unsubUpdateStatus?.()
+  unsubUpdateStatus = null
+})
+
+const updateBtnLabel = computed(() => {
+  switch (updateStatus.value.kind) {
+    case 'checking':
+      return t('about.checking')
+    case 'downloading':
+      return `下载中 ${Math.round(updateStatus.value.percent)}%`
+    case 'downloaded':
+      return '立即重启安装'
+    case 'available':
+      return `下载并安装 v${updateStatus.value.info.version}`
+    default:
+      return t('about.check')
+  }
+})
+function onUpdateBtnClick(): void {
+  const s = updateStatus.value
+  if (s.kind === 'available' || s.kind === 'downloaded') void downloadAndInstallUpdate()
+  else if (s.kind !== 'checking' && s.kind !== 'downloading') void checkForUpdate()
 }
 // 快捷键参考表
 const SHORTCUTS: { k: string; label: string }[] = [
@@ -2462,20 +2543,45 @@ onUnmounted(() => unsubMenu?.())
         <div class="about-row">
           <span>{{ t('about.update') }}</span>
           <span class="upd-cell">
-            <button class="ghost" :disabled="updateState.checking" @click="checkForUpdate">
-              {{ updateState.checking ? t('about.checking') : t('about.check') }}
+            <button
+              class="ghost"
+              :disabled="updateStatus.kind === 'checking' || updateStatus.kind === 'downloading'"
+              @click="onUpdateBtnClick"
+            >
+              {{ updateBtnLabel }}
             </button>
-            <template v-if="updateState.error">
-              <span class="upd-err">{{ updateState.error }}</span>
-            </template>
-            <template v-else-if="updateState.latest">
-              <span v-if="updateState.latest === APP_VERSION" class="upd-ok">{{ t('about.upToDate') }}</span>
-              <a
-                v-else
-                :href="`https://github.com/duhbbx/SkylerX/releases/tag/v${updateState.latest}`"
-                target="_blank"
-                rel="noopener"
-              >{{ t('about.newer', { v: updateState.latest }) }}</a>
+
+            <!-- 进度条:仅 downloading 时显示 -->
+            <span v-if="updateStatus.kind === 'downloading'" class="upd-progress">
+              <span class="upd-bar"><span class="upd-bar-fill" :style="{ width: `${updateStatus.percent}%` }" /></span>
+              <span class="upd-bps">{{ (updateStatus.bytesPerSecond / 1024 / 1024).toFixed(1) }} MB/s</span>
+            </span>
+
+            <span v-else-if="updateStatus.kind === 'not-available'" class="upd-ok">
+              {{ t('about.upToDate') }}
+            </span>
+            <span v-else-if="updateStatus.kind === 'available'" class="upd-new">
+              发现新版本 v{{ updateStatus.info.version }}
+            </span>
+            <span v-else-if="updateStatus.kind === 'downloaded'" class="upd-new">
+              v{{ updateStatus.info.version }} 已下载,点按钮重启完成安装
+            </span>
+            <span v-else-if="updateStatus.kind === 'error'" class="upd-err">
+              {{ updateStatus.message }}
+            </span>
+
+            <!-- dev 模式 fallback:autoUpdater 不可用,只能看版本号 + 跳 GitHub -->
+            <template v-if="updateDevMode">
+              <span v-if="updateDevError" class="upd-err">{{ updateDevError }}</span>
+              <template v-else-if="updateDevLatest">
+                <span v-if="updateDevLatest === APP_VERSION" class="upd-ok">{{ t('about.upToDate') }}</span>
+                <a
+                  v-else
+                  :href="`https://github.com/duhbbx/SkylerX/releases/tag/v${updateDevLatest}`"
+                  target="_blank"
+                  rel="noopener"
+                >dev 模式:在 GitHub 下载 v{{ updateDevLatest }}</a>
+              </template>
             </template>
           </span>
         </div>
@@ -2740,6 +2846,37 @@ onUnmounted(() => unsubMenu?.())
 .upd-err {
   color: var(--err, #e04050);
   font-size: 12px;
+}
+.upd-new {
+  color: var(--accent);
+  font-size: 12px;
+}
+.upd-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.upd-bar {
+  position: relative;
+  display: inline-block;
+  width: 120px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.upd-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  transition: width 0.15s ease-out;
+}
+.upd-bps {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
 }
 .dep-sec {
   font-size: 12px;

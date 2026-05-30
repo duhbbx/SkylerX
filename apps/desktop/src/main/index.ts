@@ -86,7 +86,7 @@ app.whenReady().then(() => {
   // 菜单要拿到主窗口的 webContents 才能 send 命令到渲染层，所以先建窗后建菜单
   const mainWindow = createWindow()
   setupMenu(mainWindow)
-  setupAutoUpdate()
+  setupAutoUpdate(mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
