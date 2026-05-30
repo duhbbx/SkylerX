@@ -263,10 +263,10 @@ async function doSave(): Promise<void> {
   try {
     emit('save', path)
     // 记到 recent
-    const next = [currentDir.value, ...recentDirs.value.filter((d) => d !== currentDir.value)].slice(
-      0,
-      5,
-    )
+    const next = [
+      currentDir.value,
+      ...recentDirs.value.filter((d) => d !== currentDir.value),
+    ].slice(0, 5)
     recentDirs.value = next
     localStorage.setItem(LS_RECENT, JSON.stringify(next))
   } finally {
@@ -318,7 +318,13 @@ function onKeyNav(e: KeyboardEvent): void {
 
 onMounted(async () => {
   const fapi = client.files as unknown as {
-    commonDirs?: () => Promise<{ home: string; desktop: string; documents: string; downloads: string; sep: string }>
+    commonDirs?: () => Promise<{
+      home: string
+      desktop: string
+      documents: string
+      downloads: string
+      sep: string
+    }>
   }
   const dirs = await fapi.commonDirs?.()
   if (dirs) {
@@ -328,12 +334,17 @@ onMounted(async () => {
   // 载入收藏/最近
   try {
     favorites.value = JSON.parse(localStorage.getItem(LS_FAV) ?? '[]')
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   try {
     recentDirs.value = JSON.parse(localStorage.getItem(LS_RECENT) ?? '[]')
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   // 默认目录
-  const initDir = props.defaultDir || recentDirs.value[0] || homes.value.documents || homes.value.home
+  const initDir =
+    props.defaultDir || recentDirs.value[0] || homes.value.documents || homes.value.home
   fileName.value = props.defaultName
   if (initDir) await loadDir(initDir)
 })
@@ -352,7 +363,10 @@ watch(
 </script>
 
 <template>
-  <Modal v-if="open" :title="titleText" width="xl" fixed-height storage-key="save-file-dialog" @close="emit('close')">
+  <!-- topmost: 文件选择对话框等同 OS 原生 file dialog 性质, 必须盖在任何打开它的父弹窗之上
+       (包括 ThemedSelect popup / appConfirm 等). 否则用户报告:
+       "folder chooser dialog opens behind the original pop-up" -->
+  <Modal v-if="open" topmost :title="titleText" width="xl" fixed-height storage-key="save-file-dialog" @close="emit('close')">
     <div class="save-shell">
     <div class="save-dialog" @keydown="onKeyNav">
       <!-- 左侧:常用位置 + 收藏 + 最近 -->
