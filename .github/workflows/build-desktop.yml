@@ -60,10 +60,25 @@ jobs:
           python-version: '3.11'
 
       # rpm / fakeroot：electron-builder 打 .rpm 必备
-      # libarchive-tools：提供 bsdtar，fpm 打 .pacman 需要（缺这个会 exit 127）
+      # libarchive-tools 已废弃(pacman target 删了),只保留 rpm + fakeroot
       - name: Install Linux packaging tools
         if: startsWith(matrix.os, 'ubuntu')
-        run: sudo apt-get update && sudo apt-get install -y rpm fakeroot libarchive-tools
+        run: sudo apt-get update && sudo apt-get install -y rpm fakeroot
+
+      # ── 缓存 electron 二进制 + electron-builder downloads(linux 收益最大)──
+      # ~/.cache/electron         Electron 主程序 zip(每架构 ~100MB)
+      # ~/.cache/electron-builder AppImage tools / 7za / fpm 等工具链
+      # 只在 Linux 加: Windows / macOS cache 路径不一样, 收益小复杂度高.
+      - name: Cache electron downloads (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ matrix.name }}-${{ hashFiles('apps/desktop/package.json') }}
+          restore-keys: |
+            electron-${{ matrix.name }}-
 
       # tag push 时根据 git tag 同步 apps/desktop/package.json 的 version，
       # 让产物文件名（${productName}-${version}-…）跟 tag 对齐。手工/分支触发下 noop。
@@ -149,7 +164,6 @@ jobs:
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
             apps/desktop/release/*.rpm
-            apps/desktop/release/*.pacman
             apps/desktop/release/*.tar.gz
             apps/desktop/release/*.zip
             apps/desktop/release/*.yml
@@ -200,7 +214,6 @@ jobs:
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
             apps/desktop/release/*.rpm
-            apps/desktop/release/*.pacman
             apps/desktop/release/*.tar.gz
             apps/desktop/release/*.zip
             apps/desktop/release/latest*.yml
