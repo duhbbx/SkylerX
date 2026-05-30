@@ -9,6 +9,57 @@ permissions:
   contents: write
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────
+  # Release notes — 用 DeepSeek (V3) 总结 commit log 成中英双语 markdown.
+  #
+  # 跟 build matrix 并行跑, ~10-20s 完成:
+  #   - release-notes 先到时: gh release create with notes, 后到的 build attach
+  #     看到 release 已存在 → patch + 追加 assets (body 不动)
+  #   - build 先到时: softprops/action-gh-release 自动 create release with body=空,
+  #     等 release-notes 后到时 gh release edit --notes-file 把 body 补上
+  # 不需要 needs 串行依赖, race condition 安全.
+  #
+  # 失败降级: 脚本本身在 DeepSeek API down / DEEPSEEK_API_KEY 没配时, fallback
+  # 到 raw commit list (`## Changes\n- xxx (hash)\n...`), CI 不挂, 用户能手动补救.
+  # ──────────────────────────────────────────────────────────────────────
+  release-notes:
+    name: Generate release notes
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 — 拿全 git 历史, 才能 git log <prev>..<cur> + git describe 找上一个 tag
+          fetch-depth: 0
+
+      - name: Generate notes from commits
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          bash scripts/generate-release-notes.sh "${GITHUB_REF_NAME}" > RELEASE_NOTES.md
+          echo "── Generated RELEASE_NOTES.md ──"
+          cat RELEASE_NOTES.md
+          echo "────────────────────────────────"
+
+      - name: Create or update GitHub Release with notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # -rc / -beta / -alpha tag 标记 prerelease, 让 electron-updater channel 推断 + 用户筛选好用
+          PRE_FLAG=""
+          if [[ "$TAG" =~ -(rc|beta|alpha) ]]; then PRE_FLAG="--prerelease"; fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # build attach 步骤先到时已 create 过空 body 的 release, 这里只 edit body
+            gh release edit "$TAG" --notes-file RELEASE_NOTES.md
+            echo "edited existing release $TAG"
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file RELEASE_NOTES.md $PRE_FLAG
+            echo "created release $TAG"
+          fi
+
   build:
     name: ${{ matrix.name }}
     strategy:
@@ -208,14 +259,16 @@ jobs:
       # softprops/action-gh-release：v2 是当前 stable。
       # 同时 attach rc/beta/alpha yml 避免 electron-updater prerelease channel 推断坑
       #
-      # generate_release_notes: true → GitHub 自动从上次 tag 到现在的 commits + PR
-      # 生成 release notes (Markdown body),app 端 electron-updater 拉这个作为 releaseNotes
-      # 显示在 about 弹框,让用户看到这次更新做了啥再决定是否安装.
+      # body / generate_release_notes 都不传:
+      #   - release-notes job 已经用 DeepSeek 生成好中英双语 body 并 create release
+      #   - softprops v2 在 release 已存在 + 未传 body 时 patch 模式不动 body, 只 upload files
+      #   - softprops 先到时 release 还不存在, 会 create with body=空, 等 release-notes
+      #     job 后到时 gh release edit --notes-file 补 body. body 字段最终由 release-notes
+      #     job 写入, electron-updater 拉这个 body 作为 releaseNotes 显示在 about 弹框.
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
           files: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.exe

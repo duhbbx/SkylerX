@@ -1,0 +1,5 @@
+# SkylerX 官网 — 允许全部爬虫,sitemap 指引
+User-agent: *
+Allow: /
+
+Sitemap: https://skylerx.skyler.uno/sitemap.xml

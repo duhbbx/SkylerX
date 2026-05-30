@@ -409,6 +409,68 @@ export const PT: LocaleLabels = {
 }
 
 /* ---------------------------------------------------------------------------
+ * 各 locale 的 SEO meta: 站点 description + OG title + OG description.
+ * VitePress 默认所有 locale 共享顶层 description,这组给每个 locale 显式覆盖,
+ * 利于英文 / 西语 / 日语 等搜索引擎抓取本地化摘要。
+ * ------------------------------------------------------------------------ */
+export interface LocaleMeta {
+  /** 站点 description(SEO meta description) */
+  description: string
+  /** OG title(社交分享标题) */
+  ogTitle: string
+  /** OG description(社交分享摘要) */
+  ogDescription: string
+}
+
+export const LOCALE_META: Record<string, LocaleMeta> = {
+  'zh-CN': {
+    description: '开源跨平台数据库管理工具 · 支持 20+ SQL/NoSQL 方言 · AI 加持 · Navicat / DBeaver 替代',
+    ogTitle: 'SkylerX — 开源数据库管理工具',
+    ogDescription: '20+ SQL/NoSQL 方言 · 国产数据库全家桶 · AI 助手 · 跨平台桌面端',
+  },
+  'en-US': {
+    description: 'Open-source cross-platform database tool — 20+ SQL/NoSQL dialects with AI assistance. A free Navicat / DBeaver alternative.',
+    ogTitle: 'SkylerX — Open-source database tool',
+    ogDescription: '20+ SQL/NoSQL dialects · Chinese DB family · AI assistant · Cross-platform desktop',
+  },
+  'es-ES': {
+    description: 'Herramienta multiplataforma de gestión de bases de datos de código abierto — 20+ dialectos SQL/NoSQL con asistencia de IA. Alternativa libre a Navicat / DBeaver.',
+    ogTitle: 'SkylerX — Herramienta de BD de código abierto',
+    ogDescription: '20+ dialectos SQL/NoSQL · Familia china de BD · Asistente IA · Escritorio multiplataforma',
+  },
+  'fr-FR': {
+    description: 'Outil de gestion de bases de données multiplateforme open source — 20+ dialectes SQL/NoSQL avec assistance IA. Alternative libre à Navicat / DBeaver.',
+    ogTitle: 'SkylerX — Outil de BD open source',
+    ogDescription: '20+ dialectes SQL/NoSQL · Familles BD chinoises · Assistant IA · Bureau multiplateforme',
+  },
+  'ja-JP': {
+    description: 'オープンソースのクロスプラットフォーム データベース管理ツール — 20+ SQL/NoSQL 方言対応、AI 支援、Navicat / DBeaver の無料代替。',
+    ogTitle: 'SkylerX — オープンソース データベースツール',
+    ogDescription: '20+ SQL/NoSQL 方言 · 中国国産 DB ファミリ · AI アシスタント · クロスプラットフォーム デスクトップ',
+  },
+  'ko-KR': {
+    description: '오픈소스 크로스 플랫폼 데이터베이스 관리 도구 — 20+ SQL/NoSQL 방언, AI 어시스턴트, Navicat / DBeaver의 무료 대안.',
+    ogTitle: 'SkylerX — 오픈소스 데이터베이스 도구',
+    ogDescription: '20+ SQL/NoSQL 방언 · 중국 국산 DB 패밀리 · AI 어시스턴트 · 크로스 플랫폼 데스크톱',
+  },
+  'pt-BR': {
+    description: 'Ferramenta multiplataforma de gerenciamento de banco de dados de código aberto — 20+ dialetos SQL/NoSQL com assistência de IA. Alternativa livre ao Navicat / DBeaver.',
+    ogTitle: 'SkylerX — Ferramenta de BD open source',
+    ogDescription: '20+ dialetos SQL/NoSQL · Família de BDs chinesas · Assistente IA · Desktop multiplataforma',
+  },
+}
+
+/** 取某 locale 的 head meta 标签(给 config.ts locales[*].head 用)。 */
+export function makeLocaleHead(lang: string): Array<[string, Record<string, string>]> {
+  const m = LOCALE_META[lang] ?? LOCALE_META['zh-CN']
+  return [
+    ['meta', { name: 'description', content: m.description }],
+    ['meta', { property: 'og:title', content: m.ogTitle }],
+    ['meta', { property: 'og:description', content: m.ogDescription }],
+  ]
+}
+
+/* ---------------------------------------------------------------------------
  * ComponentLabels: 给 .vitepress/components/*.vue 用的运行时翻译表.
  *
  * 与 LocaleLabels(nav/sidebar)分开维护,避免一个超大接口。
