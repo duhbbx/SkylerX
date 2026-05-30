@@ -52,12 +52,10 @@ body:
     id: problem
     attributes:
       label: What problem are you trying to solve?
-      description: User story — what are you doing today that's painful?
+      description: User story — what are you doing today that's painful? (optional)
       placeholder: |
         "When I'm reviewing 50+ tables in a PG schema, I have to manually scroll
          through the tree to find the one I'm looking for. There's no fuzzy search."
-    validations:
-      required: true
 
   - type: textarea
     id: solution

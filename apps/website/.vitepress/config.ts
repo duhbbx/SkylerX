@@ -114,6 +114,56 @@ export default defineConfig({
               },
             },
           },
+          es: {
+            translations: {
+              button: { buttonText: 'Buscar', buttonAriaLabel: 'Buscar' },
+              modal: {
+                noResultsText: 'Sin resultados',
+                resetButtonTitle: 'Reiniciar',
+                footer: { selectText: 'seleccionar', navigateText: 'navegar', closeText: 'cerrar' },
+              },
+            },
+          },
+          fr: {
+            translations: {
+              button: { buttonText: 'Rechercher', buttonAriaLabel: 'Rechercher' },
+              modal: {
+                noResultsText: 'Aucun résultat',
+                resetButtonTitle: 'Réinitialiser',
+                footer: { selectText: 'sélectionner', navigateText: 'naviguer', closeText: 'fermer' },
+              },
+            },
+          },
+          ja: {
+            translations: {
+              button: { buttonText: '検索', buttonAriaLabel: '検索' },
+              modal: {
+                noResultsText: '一致する結果がありません',
+                resetButtonTitle: 'リセット',
+                footer: { selectText: '選択', navigateText: '移動', closeText: '閉じる' },
+              },
+            },
+          },
+          ko: {
+            translations: {
+              button: { buttonText: '검색', buttonAriaLabel: '검색' },
+              modal: {
+                noResultsText: '검색 결과 없음',
+                resetButtonTitle: '초기화',
+                footer: { selectText: '선택', navigateText: '이동', closeText: '닫기' },
+              },
+            },
+          },
+          pt: {
+            translations: {
+              button: { buttonText: 'Buscar', buttonAriaLabel: 'Buscar' },
+              modal: {
+                noResultsText: 'Nenhum resultado',
+                resetButtonTitle: 'Limpar',
+                footer: { selectText: 'selecionar', navigateText: 'navegar', closeText: 'fechar' },
+              },
+            },
+          },
         },
       },
     },

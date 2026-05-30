@@ -4,24 +4,49 @@
  *  - 自动识别浏览器平台 + 架构
  *  - 直链 GitHub Releases 最新版
  *  - 跳转到 /download 看完整下载矩阵
+ *
+ * i18n:用 useData().lang 拿当前 locale,所有外显文案都来自 ComponentLabels.download。
+ * 同时根据 lang 给下载页 href 加上正确的 locale 前缀(/en/download 等)。
  */
 import { computed, onMounted, ref } from 'vue'
+import { useData } from 'vitepress'
 import { type DownloadSource, detectSource } from './downloadSource'
+import { getComponentLabels } from '../i18n'
+
+const { lang } = useData()
+const L = computed(() => getComponentLabels(lang.value))
+
+/** zh-CN → '', en-US → '/en', etc. — 与 config.ts 的 locales 注册前缀对齐,
+ *  这样英文页点按钮跳到 /en/download 而不是 / 下的中文下载页. */
+const localePrefix = computed(() => {
+  const m: Record<string, string> = {
+    'zh-CN': '',
+    'en-US': '/en',
+    'es-ES': '/es',
+    'fr-FR': '/fr',
+    'ja-JP': '/ja',
+    'ko-KR': '/ko',
+    'pt-BR': '/pt',
+  }
+  return m[lang.value] ?? ''
+})
 
 interface Detected {
+  /** 已经本地化好的展示 label, e.g. "macOS arm64" / "All platforms" */
   label: string
   platform: 'macos' | 'windows' | 'linux' | 'unknown'
   arch: 'arm64' | 'x64' | 'unknown'
 }
 
-const detected = ref<Detected>({ label: '当前平台', platform: 'unknown', arch: 'unknown' })
+const detected = ref<Detected>({ label: '', platform: 'unknown', arch: 'unknown' })
 // 顶部 hero 按钮跳到 /download,目的是给用户看到 toggle + 区域提示;
 // 这里只展示当前默认源(国内/海外),不影响实际跳转 URL
 const source = ref<DownloadSource>('github')
 
 function detect(): Detected {
+  const pmap = L.value.download.platforms
   if (typeof navigator === 'undefined') {
-    return { label: '查看所有版本', platform: 'unknown', arch: 'unknown' }
+    return { label: pmap.unknown, platform: 'unknown', arch: 'unknown' }
   }
   const ua = navigator.userAgent
   const platform = /Mac/i.test(ua)
@@ -44,12 +69,14 @@ function detect(): Detected {
             'arm64'
           : 'x64'
   const labelMap: Record<string, string> = {
-    macos: 'macOS',
-    windows: 'Windows',
-    linux: 'Linux',
-    unknown: '所有平台',
+    macos: pmap.macos,
+    windows: pmap.windows,
+    linux: pmap.linux,
+    unknown: pmap.unknown,
   }
-  return { label: `${labelMap[platform]} ${arch}`.trim(), platform, arch }
+  const labelBase = labelMap[platform]
+  const label = platform === 'unknown' ? labelBase : `${labelBase} ${arch}`.trim()
+  return { label, platform, arch }
 }
 
 onMounted(() => {
@@ -59,24 +86,32 @@ onMounted(() => {
 
 const href = computed(() => {
   const p = detected.value.platform
-  if (p === 'unknown') return '/download'
+  const base = `${localePrefix.value}/download`
+  if (p === 'unknown') return base
   // 直跳下载页 + 锚点高亮对应平台;真正下载按钮在那里(从 GitHub Releases 拉具体文件名)
-  return `/download#${p}`
+  return `${base}#${p}`
 })
 
 const ctaText = computed(() => {
   const p = detected.value.platform
-  if (p === 'unknown') return '查看所有下载'
-  return `下载(${detected.value.label})`
+  if (p === 'unknown') return L.value.download.seeAll
+  return L.value.download.download(detected.value.label)
 })
+
+const regionTitle = computed(() =>
+  source.value === 'oss' ? L.value.download.cnTip : L.value.download.intlTip,
+)
+const regionText = computed(() =>
+  source.value === 'oss' ? L.value.download.cnMirror : L.value.download.githubSrc,
+)
 </script>
 
 <template>
   <a class="dl-btn" :href="href">
     <span class="dl-icon">⬇</span>
     <span class="dl-text">{{ ctaText }}</span>
-    <span class="dl-region" :title="source === 'oss' ? '中国大陆默认走阿里云 OSS 镜像,下载页可手动切到 GitHub' : '海外默认走 GitHub Releases,下载页可手动切到 OSS 镜像'">
-      {{ source === 'oss' ? '· 🇨🇳 镜像' : '· 🌐 GitHub' }}
+    <span class="dl-region" :title="regionTitle">
+      {{ regionText }}
     </span>
   </a>
 </template>

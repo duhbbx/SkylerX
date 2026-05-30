@@ -5,26 +5,31 @@
  *  - kind:sql / nosql
  *  - tag:协议兼容 / 国产信创 / 列存 / 时序 / 云 DW / 本地文件
  *  - driver:npm 包名(惰性 import)
+ *
+ * i18n 策略:tag 用中文做 stable internal key,渲染时通过 L.db.tags[k] 翻译。
+ * notes 字段是 'oracleThin' / 'obOracle' 的 enum,同样在 i18n 里查。
  */
+import { computed } from 'vue'
+import { useData } from 'vitepress'
+import { getComponentLabels, type DbTagKey } from '../i18n'
+
+const { lang } = useData()
+const L = computed(() => getComponentLabels(lang.value))
+
+type NoteKey = 'oracleThin' | 'obOracle'
 interface DbEntry {
   name: string
   kind: 'sql' | 'nosql'
-  tags: string[]
+  tags: DbTagKey[]
   driver: string
-  notes?: string
+  noteKey?: NoteKey
 }
 
 const entries: DbEntry[] = [
   { name: 'MySQL', kind: 'sql', tags: ['主流'], driver: 'mysql2' },
   { name: 'MariaDB', kind: 'sql', tags: ['MySQL 协议兼容'], driver: 'mysql2' },
   { name: 'PostgreSQL', kind: 'sql', tags: ['主流'], driver: 'pg' },
-  {
-    name: 'Oracle',
-    kind: 'sql',
-    tags: ['主流'],
-    driver: 'oracledb',
-    notes: 'thin 模式,SYSDBA 角色支持',
-  },
+  { name: 'Oracle', kind: 'sql', tags: ['主流'], driver: 'oracledb', noteKey: 'oracleThin' },
   { name: 'SQL Server', kind: 'sql', tags: ['主流'], driver: 'mssql' },
   { name: '达梦 DM', kind: 'sql', tags: ['国产信创'], driver: 'dmdb' },
   { name: '人大金仓 Kingbase', kind: 'sql', tags: ['国产信创', 'PG 协议兼容'], driver: 'pg' },
@@ -34,7 +39,7 @@ const entries: DbEntry[] = [
     kind: 'sql',
     tags: ['国产信创', 'MySQL 协议兼容'],
     driver: 'mysql2',
-    notes: 'Oracle 租户也可连',
+    noteKey: 'obOracle',
   },
   { name: 'TiDB', kind: 'sql', tags: ['国产信创', 'MySQL 协议兼容'], driver: 'mysql2' },
   { name: 'Apache Doris', kind: 'sql', tags: ['列存 OLAP', 'MySQL 协议兼容'], driver: 'mysql2' },
@@ -53,7 +58,7 @@ const entries: DbEntry[] = [
   { name: 'Elasticsearch', kind: 'nosql', tags: ['搜索引擎'], driver: '@elastic/elasticsearch' },
 ]
 
-const tagColors: Record<string, string> = {
+const tagColors: Record<DbTagKey, string> = {
   主流: 'g',
   国产信创: 'r',
   'MySQL 协议兼容': 'b',
@@ -83,7 +88,7 @@ defineProps<{ compact?: boolean }>()
     >
       <div class="db-name">
         {{ e.name }}
-        <span class="db-kind" :class="e.kind">{{ e.kind === 'sql' ? 'SQL' : 'NoSQL' }}</span>
+        <span class="db-kind" :class="e.kind">{{ e.kind === 'sql' ? L.db.sql : L.db.nosql }}</span>
       </div>
       <div v-if="!compact && e.tags.length" class="db-tags">
         <span
@@ -91,10 +96,10 @@ defineProps<{ compact?: boolean }>()
           :key="t"
           class="db-tag"
           :class="`c-${tagColors[t] ?? 'g'}`"
-        >{{ t }}</span>
+        >{{ L.db.tags[t] ?? t }}</span>
       </div>
-      <div v-if="!compact" class="db-driver">驱动 <code>{{ e.driver }}</code></div>
-      <div v-if="!compact && e.notes" class="db-notes">{{ e.notes }}</div>
+      <div v-if="!compact" class="db-driver">{{ L.db.driver }} <code>{{ e.driver }}</code></div>
+      <div v-if="!compact && e.noteKey" class="db-notes">{{ L.db.notes[e.noteKey] }}</div>
     </div>
   </div>
 </template>

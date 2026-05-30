@@ -1646,23 +1646,62 @@ async function checkForUpdateBrowserFallback(): Promise<void> {
   }
 }
 
-// 启动时订阅 main 推过来的更新状态,组件卸载时取消
+// 启动时订阅 main 推过来的更新状态 + 日志,组件卸载时取消
+interface UpdaterLog {
+  ts: number
+  level: 'info' | 'warn' | 'error'
+  msg: string
+}
+const updateLogs = ref<UpdaterLog[]>([])
+const showUpdateLogs = ref(false)
+
 let unsubUpdateStatus: (() => void) | null = null
+let unsubUpdateLog: (() => void) | null = null
 onMounted(() => {
-  const api = desktopApi()
+  const api = desktopApi() as {
+    updates?: {
+      getStatus: () => Promise<unknown>
+      onStatus: (cb: (s: unknown) => void) => () => void
+      getLogs?: () => Promise<UpdaterLog[]>
+      onLog?: (cb: (log: UpdaterLog) => void) => () => void
+    }
+  } | null
   if (!api?.updates) return
-  // 拉一次当前状态(可能 main 已经做完一轮启动检查)
   void api.updates.getStatus().then((s) => {
     if (s && (s as UpdaterStatus).kind) updateStatus.value = s as UpdaterStatus
   })
   unsubUpdateStatus = api.updates.onStatus((s) => {
     updateStatus.value = s as UpdaterStatus
   })
+  // 调试日志:启动时拉历史 + 实时订阅追加
+  void api.updates.getLogs?.().then((logs) => {
+    if (logs) updateLogs.value = logs.slice(-50)
+  })
+  unsubUpdateLog =
+    api.updates.onLog?.((log) => {
+      updateLogs.value = [...updateLogs.value.slice(-49), log]
+    }) ?? null
 })
 onUnmounted(() => {
   unsubUpdateStatus?.()
   unsubUpdateStatus = null
+  unsubUpdateLog?.()
+  unsubUpdateLog = null
 })
+function fmtLogTime(ts: number): string {
+  const d = new Date(ts)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+async function copyUpdateLogs(): Promise<void> {
+  const text = updateLogs.value.map((l) => `${fmtLogTime(l.ts)} [${l.level}] ${l.msg}`).join('\n')
+  try {
+    await navigator.clipboard?.writeText(text)
+    toast.success('日志已复制', 1500)
+  } catch {
+    /* ignore */
+  }
+}
 
 const updateBtnLabel = computed(() => {
   switch (updateStatus.value.kind) {
@@ -3039,6 +3078,20 @@ onUnmounted(() => unsubMenu?.())
             </template>
           </span>
         </div>
+        <!-- 检查更新调试日志面板:显示 setFeedURL 走 OSS 还是 GitHub / 拉哪个 yml / 服务器返回什么版本 / 错误细节 -->
+        <div v-if="updateLogs.length" class="about-row upd-log-row">
+          <span>调试日志</span>
+          <span class="upd-log-cell">
+            <button class="upd-log-toggle" @click="showUpdateLogs = !showUpdateLogs">
+              {{ showUpdateLogs ? '收起' : `展开 (${updateLogs.length} 条)` }}
+            </button>
+            <button v-if="showUpdateLogs" class="upd-log-toggle" @click="copyUpdateLogs">📋 复制</button>
+            <pre v-if="showUpdateLogs" class="upd-log-body">
+              <template v-for="l in updateLogs" :key="l.ts + ':' + l.msg">{{ fmtLogTime(l.ts) }} [{{ l.level }}] {{ l.msg }}
+</template>
+            </pre>
+          </span>
+        </div>
       </div>
     </div>
   </Modal>
@@ -3416,6 +3469,45 @@ onUnmounted(() => unsubMenu?.())
 .upd-notes-link {
   font-size: 11px;
   color: var(--accent);
+}
+.upd-log-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  max-width: 380px;
+}
+.upd-log-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  align-self: flex-end;
+}
+.upd-log-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.upd-log-body {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  text-align: left;
 }
 .upd-progress {
   display: inline-flex;
