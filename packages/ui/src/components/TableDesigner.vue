@@ -137,11 +137,29 @@ const alterStmts = computed(() =>
     : [],
 )
 const ddl = computed(() => {
+  // 预览前先看有没有不完整的列(只 name 没 type 之类). 用户报告:
+  // 预览看到的 SQL 看似正常但实际丢了未完整列, 误以为"SQL 不对".
+  // 在预览顶部用 SQL 注释列出被跳过的列,让用户立刻意识到.
+  const skipped: string[] = []
+  spec.columns.forEach((c, i) => {
+    const hasName = c.name.trim() !== ''
+    const hasType = c.type.trim() !== ''
+    if ((hasName || hasType) && !(hasName && hasType)) {
+      skipped.push(t('designer.col.skippedHint', { row: i + 1, name: c.name.trim() || '?' }))
+    }
+  })
+  const warning =
+    skipped.length > 0
+      ? `${t('designer.preview.warningHeader')}\n${skipped.map((s) => `--   ${s}`).join('\n')}\n\n`
+      : ''
   if (isAlter.value)
-    return alterStmts.value.length
-      ? alterStmts.value.map((s) => `${s};`).join('\n')
-      : t('designer.noChanges')
-  return buildCreateTable(props.dialect, props.ctx, tableName.value, spec)
+    return (
+      warning +
+      (alterStmts.value.length
+        ? alterStmts.value.map((s) => `${s};`).join('\n')
+        : t('designer.noChanges'))
+    )
+  return warning + buildCreateTable(props.dialect, props.ctx, tableName.value, spec)
 })
 const target = [props.ctx.database, props.ctx.schema].filter(Boolean).join(' / ')
 const previewText = ref('')
@@ -335,8 +353,38 @@ async function run(stmts: string[]): Promise<void> {
   }
 }
 
+/**
+ * 校验字段列表是否完整可生成 SQL.
+ * 用户报告:之前用 some(至少 1 列完整)校验,其他半截行被 buildCreateTable 静默丢弃,
+ * 用户以为它们入库了 → 实际 SQL 缺列.
+ * 规则:
+ *  - 完全空白行(name + type 都空) → 跳过(initial empty row)
+ *  - 部分填(name 或 type 任一缺失) → 报错列出
+ *  - 至少要有 1 行完整
+ */
+function validateColumns(): { ok: boolean; issues: string[] } {
+  const issues: string[] = []
+  spec.columns.forEach((c, i) => {
+    const hasName = c.name.trim() !== ''
+    const hasType = c.type.trim() !== ''
+    if (!hasName && !hasType) return // 整行空白,跳过
+    if (!hasName) issues.push(t('designer.col.missingName', { row: i + 1 }))
+    if (!hasType)
+      issues.push(t('designer.col.missingType', { row: i + 1, name: c.name.trim() || '?' }))
+  })
+  const complete = spec.columns.filter((c) => c.name.trim() && c.type.trim())
+  if (!complete.length) issues.push(t('designer.needField'))
+  return { ok: !issues.length, issues }
+}
+
 async function save(): Promise<void> {
   if (isAlter.value) {
+    const v = validateColumns()
+    if (!v.ok) {
+      error.value = v.issues.join('\n')
+      gotoFields()
+      return
+    }
     if (!alterStmts.value.length) {
       error.value = t('designer.noApply')
       inner.value = 'sql'
@@ -350,8 +398,9 @@ async function save(): Promise<void> {
     gotoFields()
     return
   }
-  if (!spec.columns.some((c) => c.name.trim() && c.type.trim())) {
-    error.value = t('designer.needField')
+  const v = validateColumns()
+  if (!v.ok) {
+    error.value = v.issues.join('\n')
     gotoFields()
     return
   }
