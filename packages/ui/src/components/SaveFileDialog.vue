@@ -446,10 +446,16 @@ watch(
 <style scoped>
 .save-dialog {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  /* minmax(0, 1fr) 防止 grid 子项的 min-width: auto 把列撑超过模板分配
+     (grid 子项默认 min-width 是 auto,内容超时会顶开 1fr 列,sidebar 视觉
+     上像延伸到了右侧主区) */
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 12px;
+  width: 100%;
   height: 100%;
   min-height: 480px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .sidebar {
   border-right: 1px solid var(--border);
@@ -458,6 +464,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  max-width: 200px;
 }
 .sb-title { font-size: 10px; color: var(--muted); text-transform: uppercase; padding: 6px 4px 2px; font-weight: 600; }
 .sb-item {
@@ -472,8 +480,24 @@ watch(
 }
 .sb-item:hover { background: rgba(124, 108, 255, 0.10); }
 .sb-item.on { background: rgba(124, 108, 255, 0.22); color: var(--accent); }
-.main { display: flex; flex-direction: column; min-width: 0; gap: 8px; }
-.toolbar { display: flex; align-items: center; gap: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* 关键:让 1fr 列能正确收缩,不被 grid 内容撑超 */
+  gap: 8px;
+  overflow: hidden;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.toolbar .tb-btn { flex-shrink: 0; }
+.toolbar .hidden-toggle { flex-shrink: 0; white-space: nowrap; }
 .tb-btn {
   padding: 3px 10px;
   font-size: 12px;
@@ -486,7 +510,15 @@ watch(
 .tb-btn:hover { background: rgba(124, 108, 255, 0.10); }
 .tb-btn.on { background: rgba(124, 108, 255, 0.22); border-color: var(--accent); color: var(--accent); }
 .tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.crumb { display: flex; gap: 0; flex: 1; overflow-x: auto; align-items: center; }
+.crumb {
+  display: flex;
+  gap: 0;
+  flex: 1 1 auto;
+  min-width: 0; /* 关键:flex 子项默认 min-width: auto,会被内容撑超 */
+  overflow-x: auto;
+  align-items: center;
+  white-space: nowrap;
+}
 .cr-link {
   background: transparent;
   border: none;
@@ -499,7 +531,16 @@ watch(
 .cr-link:hover { background: rgba(124, 108, 255, 0.10); border-radius: 3px; }
 .cr-sep { color: var(--muted); font-family: ui-monospace, monospace; padding: 0 2px; }
 .spacer { flex: 0; }
-.search-ip { width: 140px; padding: 3px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
+.search-ip {
+  width: 140px;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+}
 .hidden-toggle { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
 .list-wrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 4px; min-height: 280px; }
 .grid { width: 100%; border-collapse: collapse; font-size: 12px; }
