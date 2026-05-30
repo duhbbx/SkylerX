@@ -373,9 +373,16 @@ function closeConnTabs(connId: string): void {
   if (!tabs.value.some((t) => t.id === activeId.value)) activeId.value = tabs.value[0]?.id ?? 0
 }
 
-function onCreated(tab: Tab): void {
+/**
+ * 设计器/DDL 编辑器保存成功的统一回调。
+ *
+ * `keepOpen=true`(TableDesigner 新建保存): 不关 tab,内部已切到 alter 模式,
+ *   只刷新树即可,让用户继续在同一 tab 改这个新表。
+ * `keepOpen=false`(改表 / DDL 编辑器保存等): 沿用旧行为,关掉 tab。
+ */
+function onCreated(tab: Tab, opts?: { keepOpen?: boolean }): void {
   if (tab.refreshTarget) emit('refresh', tab.refreshTarget, tab.conn.id)
-  close(tab.id)
+  if (!opts?.keepOpen) close(tab.id)
 }
 
 /** 暴露给父组件用：当前激活 tab 的连接 id（用于右侧 AI 聊天默认连接跟随）；computed 自带响应式 */
@@ -534,7 +541,7 @@ watch(tabs, saveLayout, { deep: true })
             :ctx="t.ctx!"
             :mode="t.mode === 'alter' ? 'alter' : 'create'"
             :node="t.node"
-            @created="onCreated(t)"
+            @created="(opts) => onCreated(t, opts)"
             @cancel="close(t.id)"
           />
           <TableStructure

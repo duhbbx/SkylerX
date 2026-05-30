@@ -17,6 +17,7 @@
 import type { ConnectionConfig } from '@db-tool/shared-types'
 import { computed, onMounted, ref, watch } from 'vue'
 import { askAiChat } from '../ai'
+import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
 import { t } from '../i18n'
 import {
@@ -28,7 +29,11 @@ import {
   previewSample,
 } from '../mockgen'
 import { settings } from '../settings'
+import { splitStatements } from '../sqlSplit'
 import Modal from './Modal.vue'
+import ThemedSelect from './ThemedSelect.vue'
+
+const client = useDataClient()
 
 const props = defineProps<{
   conn: ConnectionConfig
@@ -52,9 +57,7 @@ const count = ref(20)
 const cfg = ref<Record<string, MockColumn['semantic']>>({})
 const previewSeed = ref(0) // 改了配置就 bump 触发预览重算
 
-const STORAGE_KEY = computed(
-  () => `skylerx.mockcfg.${props.conn.id}::${props.tableRef}`,
-)
+const STORAGE_KEY = computed(() => `skylerx.mockcfg.${props.conn.id}::${props.tableRef}`)
 
 // 把配置 + 基础列合并成 MockColumn 列表
 const columns = computed<MockColumn[]>(() =>
@@ -73,15 +76,13 @@ const previews = computed(() => {
   return out
 })
 
-// 按 group 折叠的 kind 选项
-const groupedKinds = computed(() => {
-  const groups: Record<string, typeof SEMANTIC_KINDS> = {}
-  for (const k of SEMANTIC_KINDS) {
-    if (!groups[k.group]) groups[k.group] = []
-    groups[k.group]!.push(k)
-  }
-  return groups
-})
+/**
+ * 扁平化给 ThemedSelect 用 — 它通过 option.group 字段识别分组并插 header。
+ * 注意保持 SEMANTIC_KINDS 原顺序(用户的"人 → 联系 → 地址 …"心智),不要按 kind 排序。
+ */
+const kindOptions = computed(() =>
+  SEMANTIC_KINDS.map((k) => ({ value: k.kind, label: k.labelKey, group: k.group })),
+)
 
 // ─── 持久化 ────────────────────────────────────────────────────────
 
@@ -223,7 +224,10 @@ ${kindList}
 
 Notes:
   - For Chinese context columns (name/姓名 → name_cn, 手机/phone → phone_cn, 身份证 → id_card_cn, 地址 → address_cn etc.) prefer the _cn variants.
-  - If unsure, pick "auto".
+  - DO NOT pick "auto" — it produces meaningless random text. Always pick a concrete kind.
+  - For integer-ish numeric columns (Oracle NUMBER without scale, INT/BIGINT, count, age, status, etc.) pick "integer".
+  - For money/price/amount/cost columns pick "money"; for decimal/float pick "decimal".
+  - For ID-like primary keys (NUMBER + [PK], or any int + [PK]) pick "integer" — caller auto-increments PKs.
   - For status/state/role columns prefer "enum" (caller will fill values later).
   - For description/content/remark/note prefer "lorem_cn".
 
@@ -288,7 +292,24 @@ function generate(): void {
   emit('close')
 }
 
-/** 直接执行:不打开查询页,父组件接管真正执行(用 client.connections.execute) */
+// ─── 直接执行(带进度,弹框不关) ────────────────────────────────────
+// 改前: emit('execute', sql) 然后父组件执行并立刻 emit('close') —— 用户看不到进度,
+//        且一旦关掉弹框就丢失了已配置的 mock 规则。
+// 改后: 在 dialog 内分段执行(splitStatements 切分 INSERT chunks),按已执行 chunk 数
+//       更新进度条。用户可随时按"取消"中止;成功后弹框不会自动关,用户决定继续调
+//       配置还是手动关。
+//       (仍保留 emit('execute') 兼容旧调用方,但 SkylerX 内已不再依赖它。)
+
+const execProgress = ref<null | {
+  done: number // 已成功执行的 chunk 数
+  total: number // 总 chunk 数
+  rowsDone: number // 已写入行数
+  rowsTotal: number // 目标总行数
+  state: 'running' | 'success' | 'error' | 'cancelled'
+  error?: string
+}>(null)
+let cancelExec = false
+
 async function execute(): Promise<void> {
   const sql = buildSql()
   if (!sql) return
@@ -299,7 +320,62 @@ async function execute(): Promise<void> {
     }))
   )
     return
+
+  // 把 SQL 按 ; 切成 INSERT chunk;buildMockInserts 每 chunk 默认 100 行
+  const stmts = splitStatements(sql).filter((s) => s.trim())
+  const rowsPerChunk = 100
+  cancelExec = false
+  execProgress.value = {
+    done: 0,
+    total: stmts.length,
+    rowsDone: 0,
+    rowsTotal: count.value,
+    state: 'running',
+  }
+
+  for (let i = 0; i < stmts.length; i++) {
+    if (cancelExec) {
+      execProgress.value = { ...execProgress.value, state: 'cancelled' }
+      toast.warn(`已取消,已写入 ${execProgress.value.rowsDone} 行`)
+      return
+    }
+    try {
+      await client.connections.execute(props.conn.id, stmts[i])
+      const rowsDone = Math.min((i + 1) * rowsPerChunk, count.value)
+      execProgress.value = { ...execProgress.value, done: i + 1, rowsDone }
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e)
+      execProgress.value = {
+        ...execProgress.value,
+        state: 'error',
+        error: errMsg,
+      }
+      // 出错的 INSERT 通常是某个 chunk 触发了约束 / 类型不兼容,把 SQL+连接信息
+      // 一起丢给 AI 最快能定位(NOT NULL 列没值 / FK 不存在 / 类型不匹配等)
+      toast.error(`执行失败: ${errMsg.slice(0, 100)}`, {
+        askAi: {
+          sql: stmts[i],
+          error: errMsg,
+          connId: props.conn.id,
+          connName: props.conn.name,
+          dialect: props.conn.dialect,
+        },
+      })
+      return
+    }
+  }
+
+  execProgress.value = { ...execProgress.value, state: 'success' }
+  toast.success(`已写入 ${count.value} 行到 ${props.tableRef}`)
+  // 兼容老版本订阅 execute 的父组件(实际已不依赖 SQL,只是个完成事件)
   emit('execute', sql)
+}
+
+function cancelExecution(): void {
+  cancelExec = true
+}
+function clearProgress(): void {
+  execProgress.value = null
 }
 
 /** 手动加载已保存配置(覆盖当前未保存的) */
@@ -357,8 +433,33 @@ async function loadFromSaved(): Promise<void> {
         <button class="ghost" title="从保存配置加载(覆盖当前)" @click="loadFromSaved">
           加载
         </button>
-        <button class="primary" @click="generate">{{ t('mock.generate') }}</button>
-        <button class="primary" title="直接执行,不打开查询页" @click="execute">▶ 直接执行</button>
+        <button class="primary" :disabled="execProgress?.state === 'running'" @click="generate">{{ t('mock.generate') }}</button>
+        <button class="primary" title="直接执行,不打开查询页" :disabled="execProgress?.state === 'running'" @click="execute">▶ 直接执行</button>
+      </div>
+
+      <!-- 直接执行进度条:运行中显示进度+取消; 终态(成功/失败/取消)显示总结+关闭. -->
+      <div v-if="execProgress" class="progress-bar" :class="execProgress.state">
+        <div class="pg-track">
+          <div class="pg-fill" :style="{ width: ((execProgress.done / Math.max(1, execProgress.total)) * 100) + '%' }" />
+        </div>
+        <div class="pg-meta">
+          <span class="pg-text">
+            <template v-if="execProgress.state === 'running'">
+              正在写入 {{ execProgress.rowsDone }} / {{ execProgress.rowsTotal }} 行 ({{ execProgress.done }} / {{ execProgress.total }} 批)
+            </template>
+            <template v-else-if="execProgress.state === 'success'">
+              ✓ 完成:{{ execProgress.rowsDone }} 行已写入 {{ tableRef }}
+            </template>
+            <template v-else-if="execProgress.state === 'cancelled'">
+              ⊘ 已取消,已写入 {{ execProgress.rowsDone }} 行
+            </template>
+            <template v-else>
+              ✗ 失败 (已写 {{ execProgress.rowsDone }} 行):{{ execProgress.error }}
+            </template>
+          </span>
+          <button v-if="execProgress.state === 'running'" class="ghost sm" @click="cancelExecution">取消</button>
+          <button v-else class="ghost sm" @click="clearProgress">关闭进度</button>
+        </div>
       </div>
 
       <!-- 列配置表格 -->
@@ -388,17 +489,13 @@ async function loadFromSaved(): Promise<void> {
               </td>
               <td class="type">{{ c.type }}</td>
               <td>
-                <select
-                  :value="kindOf(c.name)"
-                  class="kind-sel"
-                  @change="setKind(c.name, ($event.target as HTMLSelectElement).value as SemanticKind)"
-                >
-                  <optgroup v-for="(items, g) in groupedKinds" :key="g" :label="g">
-                    <option v-for="k in items" :key="k.kind" :value="k.kind">
-                      {{ k.labelKey }}
-                    </option>
-                  </optgroup>
-                </select>
+                <ThemedSelect
+                  :model-value="kindOf(c.name)"
+                  :options="kindOptions"
+                  :width="180"
+                  :max-height="360"
+                  @update:model-value="(v) => setKind(c.name, v as SemanticKind)"
+                />
               </td>
               <td>
                 <!-- enum: CSV 候选 -->
@@ -511,6 +608,59 @@ async function loadFromSaved(): Promise<void> {
   font-size: 12px;
 }
 .spacer { flex: 1; }
+.progress-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex: none;
+}
+.progress-bar.success {
+  border-color: rgba(76, 175, 80, 0.5);
+  background: rgba(76, 175, 80, 0.06);
+}
+.progress-bar.error {
+  border-color: rgba(224, 64, 80, 0.5);
+  background: rgba(224, 64, 80, 0.06);
+}
+.progress-bar.cancelled {
+  border-color: rgba(255, 152, 0, 0.5);
+  background: rgba(255, 152, 0, 0.06);
+}
+.pg-track {
+  height: 6px;
+  background: var(--bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pg-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease-out;
+}
+.progress-bar.success .pg-fill {
+  background: #4caf50;
+}
+.progress-bar.error .pg-fill {
+  background: var(--err, #e04050);
+}
+.pg-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.pg-text {
+  flex: 1;
+  color: var(--text);
+}
+.pg-meta .sm {
+  padding: 3px 10px !important;
+  font-size: 11px !important;
+}
 .bar button {
   padding: 5px 12px;
   font-size: 12px;
@@ -549,14 +699,17 @@ async function loadFromSaved(): Promise<void> {
 table.cols {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  /* auto 让浏览器按内容自适应:列名/类型不会被截短,语义/配置在剩余空间里自由扩展
+     (旧 fixed 18%/14%/22%/30%/16% 把短列名也强拉成 18% 浪费空间,长列名又被切掉) */
+  table-layout: auto;
   font-size: 12px;
 }
-table.cols col.c-name { width: 18%; }
-table.cols col.c-type { width: 14%; }
-table.cols col.c-kind { width: 22%; }
-table.cols col.c-extra { width: 30%; }
-table.cols col.c-preview { width: 16%; }
+/* min-width 是"宁可让窄列再窄一点"的下限,实际宽度由 auto 决定 */
+table.cols col.c-name { min-width: 100px; }
+table.cols col.c-type { min-width: 90px; }
+table.cols col.c-kind { min-width: 180px; }
+table.cols col.c-extra { min-width: 220px; }
+table.cols col.c-preview { min-width: 140px; }
 table.cols thead {
   position: sticky;
   top: 0;
@@ -607,16 +760,19 @@ table.cols tr.pk {
   align-items: center;
   gap: 4px;
   width: 100%;
+  flex-wrap: nowrap; /* range 区域 min~max 不要折行 */
 }
+.range-row .num-in { width: auto; flex: 1 1 0; min-width: 60px; }
 .num-in { width: 80px; }
-.num-in.tiny { width: 56px; }
-.dash { color: var(--muted); }
+.num-in.tiny { width: 56px; flex: 0 0 56px; }
+.dash { color: var(--muted); flex: none; }
 .null-prob {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   margin-top: 4px;
   font-size: 11px;
+  white-space: nowrap; /* "NULL 0" 不要被压成两行 */
 }
 /* td 保持 table-cell — 之前 display:flex 把 cell 脱出表行流,导致与其它列错位 */
 .preview {

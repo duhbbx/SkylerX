@@ -64,7 +64,84 @@ export interface TreeAction {
   excludeKind?: DbKind
   /** 仅在这些方言出现(白名单)。空 = 所有方言。 */
   onlyDialects?: DbDialect[]
+  /** 在这些方言中隐藏(黑名单)。比 onlyDialects 反向,典型: Oracle/DM "新建数据库"无意义。 */
+  excludeDialects?: DbDialect[]
   run: (ctx: NodeActionContext) => void
+}
+
+/**
+ * 系统库 / 系统 schema 名(用于在右键里隐藏 DROP 之类的危险动作)。
+ * 用户可以"看到"但不能"删除":防止误删 mysql.user / pg_catalog / SYS 等。
+ */
+const SYSTEM_DATABASE_NAMES = new Set<string>([
+  // MySQL/MariaDB/OceanBase/TiDB
+  'mysql',
+  'information_schema',
+  'performance_schema',
+  'sys',
+  'oceanbase',
+  // PostgreSQL 系
+  'postgres',
+  'template0',
+  'template1',
+  // SQL Server
+  'master',
+  'tempdb',
+  'msdb',
+  'model',
+])
+const SYSTEM_SCHEMA_NAMES = new Set<string>([
+  // PostgreSQL
+  'pg_catalog',
+  'information_schema',
+  'pg_toast',
+  // SQL Server
+  'sys',
+  'INFORMATION_SCHEMA',
+  'guest',
+  // Oracle 内置(覆盖 Oracle Free 23ai / EE 常见的系统 schema; 真正运行时
+  // 再用 oracle_maintained='N' 过滤掉,这里只是 drop 拦截兜底)
+  'SYS',
+  'SYSTEM',
+  'SYSAUX',
+  'OUTLN',
+  'MDSYS',
+  'ORDSYS',
+  'XDB',
+  'CTXSYS',
+  'DBSNMP',
+  'APPQOSSYS',
+  'GSMADMIN_INTERNAL',
+  'ANONYMOUS',
+  'AUDSYS',
+  'DIP',
+  'GSMCATUSER',
+  'GSMUSER',
+  'ORACLE_OCM',
+  'REMOTE_SCHEDULER_AGENT',
+  'SYSBACKUP',
+  'SYSDG',
+  'SYSKM',
+  'SYSRAC',
+  'WMSYS',
+  'XS$NULL',
+  'LBACSYS',
+  'OLAPSYS',
+  'ORDDATA',
+  'ORDPLUGINS',
+  'SI_INFORMTN_SCHEMA',
+  'FLOWS_FILES',
+  'APEX_PUBLIC_USER',
+])
+
+function isSystemSchemaOrDb(node: TreeNode): boolean {
+  if (node.kind === MetaNodeKind.Database) return SYSTEM_DATABASE_NAMES.has(node.name)
+  if (node.kind === MetaNodeKind.Schema) {
+    // Oracle 实际由 backend 标 detail.system 更准(oracle_maintained='Y');没标也按名单兜底
+    if ((node as { detail?: { system?: boolean } }).detail?.system) return true
+    return SYSTEM_SCHEMA_NAMES.has(node.name)
+  }
+  return false
 }
 
 /** 菜单条目：动作 或 分隔符。 */
@@ -83,14 +160,18 @@ export const TREE_ACTIONS: TreeAction[] = [
     kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
     run: ({ node, connId, ctrl }) => ctrl.newQuery(node, connId),
   },
-  // 新建数据库 — 连接节点。文件型/Oracle 等不支持的方言由 dialog 内 unsupportedReason 处理
-  // NoSQL 通过 excludeKind 隐藏。
+  // 新建数据库 — 连接节点。
+  // - Oracle/DM: "数据库" 在 Oracle 是实例级,要 DBA + DBCA + 数据文件; 在 SkylerX 内
+  //   应该新建 schema(用户) 代替,所以菜单直接不出现(走 new-schema)。
+  // - NoSQL 通过 excludeKind 隐藏。
+  // - 其他不支持的(如 SQLite/DuckDB 文件型)由 NewDatabaseDialog 内 unsupportedReason 处理。
   {
     id: 'new-database',
     label: 'ctx.new-database',
     section: 'create',
     kinds: [MetaNodeKind.Connection],
     excludeKind: DbKind.NoSql,
+    excludeDialects: [DbDialect.Oracle, DbDialect.DM],
     run: ({ node, connId, ctrl }) => ctrl.newDatabase(connId, node),
   },
   // 新建 Schema — 只在 PG 系 / SQL Server / Snowflake / Oracle / DM 出现
@@ -449,12 +530,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     label: 'ctx.mysql-advanced',
     section: 'meta',
     kinds: [MetaNodeKind.Connection],
-    onlyDialects: [
-      DbDialect.MySQL,
-      DbDialect.MariaDB,
-      DbDialect.OceanBase,
-      DbDialect.TiDB,
-    ],
+    onlyDialects: [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.TiDB],
     run: ({ connId, ctrl }) => ctrl.openMysqlAdvanced(connId),
   },
 
@@ -649,6 +725,15 @@ export const TREE_ACTIONS: TreeAction[] = [
     kinds: [MetaNodeKind.Connection],
     run: ({ connId, ctrl }) => ctrl.editConnection(connId),
   },
+  // 复制连接 — 同方言/同 host/同 user/同密码,只换 id + 名字加"(副本)"。常用于
+  // 给同一台机不同库做多个会话标签,或基于一个生产连接快速派生一个只读账号副本。
+  {
+    id: 'duplicate-conn',
+    label: 'ctx.duplicate-conn',
+    section: 'conn',
+    kinds: [MetaNodeKind.Connection],
+    run: ({ connId, ctrl }) => ctrl.duplicateConnection(connId),
+  },
   {
     id: 'toggle-prod',
     label: 'ctx.toggle-prod',
@@ -766,6 +851,8 @@ export const TREE_ACTIONS: TreeAction[] = [
       MetaNodeKind.Schema,
     ],
     danger: true,
+    // 系统库 / 系统 schema 永远不显示 DROP,避免误删 mysql.user/pg_catalog/SYS 等
+    enabled: (n) => !isSystemSchemaOrDb(n),
     run: ({ node, connId, ctrl }) => ctrl.dropObject(node, connId),
   },
   {
@@ -795,6 +882,7 @@ export function actionsFor(node: TreeNode, dialect?: DbDialect): TreeAction[] {
     if (!a.kinds.includes(node.kind)) return false
     if (a.enabled && !a.enabled(node)) return false
     if (dialect && a.onlyDialects && !a.onlyDialects.includes(dialect)) return false
+    if (dialect && a.excludeDialects?.includes(dialect)) return false
     if (kind && a.excludeKind === kind) return false
     return true
   })

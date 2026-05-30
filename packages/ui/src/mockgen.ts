@@ -104,37 +104,427 @@ export interface MockColumn {
 
 // 100 个常见姓 + 80 个常见双字名（组合空间 8000+，对 1k 行足够）
 const SURNAME_CN = [
-  '王','李','张','刘','陈','杨','黄','赵','吴','周','徐','孙','马','朱','胡','郭','何','高','林','罗',
-  '郑','梁','谢','宋','唐','许','韩','冯','邓','曹','彭','曾','肖','田','董','袁','潘','蔡','蒋','余',
-  '于','杜','叶','程','魏','苏','吕','丁','任','沈','姚','卢','姜','崔','钟','谭','陆','汪','范','金',
-  '石','廖','贾','夏','韦','付','方','白','邹','孟','熊','秦','邱','江','尹','薛','闫','段','雷','侯',
-  '龙','史','陶','黎','贺','顾','毛','郝','龚','邵','万','钱','严','覃','武','戴','莫','孔','向','汤',
+  '王',
+  '李',
+  '张',
+  '刘',
+  '陈',
+  '杨',
+  '黄',
+  '赵',
+  '吴',
+  '周',
+  '徐',
+  '孙',
+  '马',
+  '朱',
+  '胡',
+  '郭',
+  '何',
+  '高',
+  '林',
+  '罗',
+  '郑',
+  '梁',
+  '谢',
+  '宋',
+  '唐',
+  '许',
+  '韩',
+  '冯',
+  '邓',
+  '曹',
+  '彭',
+  '曾',
+  '肖',
+  '田',
+  '董',
+  '袁',
+  '潘',
+  '蔡',
+  '蒋',
+  '余',
+  '于',
+  '杜',
+  '叶',
+  '程',
+  '魏',
+  '苏',
+  '吕',
+  '丁',
+  '任',
+  '沈',
+  '姚',
+  '卢',
+  '姜',
+  '崔',
+  '钟',
+  '谭',
+  '陆',
+  '汪',
+  '范',
+  '金',
+  '石',
+  '廖',
+  '贾',
+  '夏',
+  '韦',
+  '付',
+  '方',
+  '白',
+  '邹',
+  '孟',
+  '熊',
+  '秦',
+  '邱',
+  '江',
+  '尹',
+  '薛',
+  '闫',
+  '段',
+  '雷',
+  '侯',
+  '龙',
+  '史',
+  '陶',
+  '黎',
+  '贺',
+  '顾',
+  '毛',
+  '郝',
+  '龚',
+  '邵',
+  '万',
+  '钱',
+  '严',
+  '覃',
+  '武',
+  '戴',
+  '莫',
+  '孔',
+  '向',
+  '汤',
 ]
 const GIVEN_CN = [
-  '伟','芳','娜','秀英','敏','静','丽','强','磊','洋','艳','勇','军','杰','涛','明','超','秀兰','霞','平',
-  '刚','桂英','颖','建国','建华','建军','志强','红梅','志明','志华','文君','文涛','文博','文杰','嘉欣','嘉怡','嘉豪','子轩','子涵','子墨',
-  '宇航','宇轩','梓涵','雨涵','欣怡','欣然','若曦','思琪','思雨','晓东','晓明','晓敏','晓红','志刚','志勇','志斌','建军','学军','学文','春燕',
-  '春梅','春兰','秋萍','秋月','冬梅','夏雨','秀梅','秀英','秀华','秀丽','婷婷','悦悦','可可','贝贝','乐乐','阳阳','妍妍','洋洋','龙龙','虎虎',
+  '伟',
+  '芳',
+  '娜',
+  '秀英',
+  '敏',
+  '静',
+  '丽',
+  '强',
+  '磊',
+  '洋',
+  '艳',
+  '勇',
+  '军',
+  '杰',
+  '涛',
+  '明',
+  '超',
+  '秀兰',
+  '霞',
+  '平',
+  '刚',
+  '桂英',
+  '颖',
+  '建国',
+  '建华',
+  '建军',
+  '志强',
+  '红梅',
+  '志明',
+  '志华',
+  '文君',
+  '文涛',
+  '文博',
+  '文杰',
+  '嘉欣',
+  '嘉怡',
+  '嘉豪',
+  '子轩',
+  '子涵',
+  '子墨',
+  '宇航',
+  '宇轩',
+  '梓涵',
+  '雨涵',
+  '欣怡',
+  '欣然',
+  '若曦',
+  '思琪',
+  '思雨',
+  '晓东',
+  '晓明',
+  '晓敏',
+  '晓红',
+  '志刚',
+  '志勇',
+  '志斌',
+  '建军',
+  '学军',
+  '学文',
+  '春燕',
+  '春梅',
+  '春兰',
+  '秋萍',
+  '秋月',
+  '冬梅',
+  '夏雨',
+  '秀梅',
+  '秀英',
+  '秀华',
+  '秀丽',
+  '婷婷',
+  '悦悦',
+  '可可',
+  '贝贝',
+  '乐乐',
+  '阳阳',
+  '妍妍',
+  '洋洋',
+  '龙龙',
+  '虎虎',
 ]
-const FIRST_EN = ['Alice','Bob','Carol','David','Emma','Frank','Grace','Henry','Ivy','Jack','Kate','Leo','Mia','Nick','Olivia','Peter','Quinn','Rachel','Sam','Tina']
-const LAST_EN = ['Smith','Johnson','Williams','Brown','Jones','Garcia','Miller','Davis','Rodriguez','Martinez','Hernandez','Lopez','Wilson','Anderson','Thomas','Taylor','Moore','Jackson','Martin','Lee']
-const PROVINCE_CN = ['北京','上海','广东','江苏','浙江','山东','河南','四川','湖北','湖南','河北','福建','安徽','陕西','辽宁','江西','重庆','广西','云南','贵州','山西','吉林','黑龙江','天津','新疆','内蒙古','甘肃','海南','宁夏','青海','西藏']
+const FIRST_EN = [
+  'Alice',
+  'Bob',
+  'Carol',
+  'David',
+  'Emma',
+  'Frank',
+  'Grace',
+  'Henry',
+  'Ivy',
+  'Jack',
+  'Kate',
+  'Leo',
+  'Mia',
+  'Nick',
+  'Olivia',
+  'Peter',
+  'Quinn',
+  'Rachel',
+  'Sam',
+  'Tina',
+]
+const LAST_EN = [
+  'Smith',
+  'Johnson',
+  'Williams',
+  'Brown',
+  'Jones',
+  'Garcia',
+  'Miller',
+  'Davis',
+  'Rodriguez',
+  'Martinez',
+  'Hernandez',
+  'Lopez',
+  'Wilson',
+  'Anderson',
+  'Thomas',
+  'Taylor',
+  'Moore',
+  'Jackson',
+  'Martin',
+  'Lee',
+]
+const PROVINCE_CN = [
+  '北京',
+  '上海',
+  '广东',
+  '江苏',
+  '浙江',
+  '山东',
+  '河南',
+  '四川',
+  '湖北',
+  '湖南',
+  '河北',
+  '福建',
+  '安徽',
+  '陕西',
+  '辽宁',
+  '江西',
+  '重庆',
+  '广西',
+  '云南',
+  '贵州',
+  '山西',
+  '吉林',
+  '黑龙江',
+  '天津',
+  '新疆',
+  '内蒙古',
+  '甘肃',
+  '海南',
+  '宁夏',
+  '青海',
+  '西藏',
+]
 const CITY_CN_BY_PROVINCE: Record<string, string[]> = {
-  北京: ['朝阳','海淀','西城','东城','丰台','石景山','通州','大兴','顺义','昌平'],
-  上海: ['浦东','黄浦','静安','徐汇','长宁','普陀','虹口','杨浦','闵行','宝山'],
-  广东: ['广州','深圳','东莞','佛山','珠海','中山','惠州','汕头','江门','茂名'],
-  江苏: ['南京','苏州','无锡','常州','南通','扬州','徐州','盐城','镇江','泰州'],
-  浙江: ['杭州','宁波','温州','嘉兴','绍兴','金华','台州','湖州','丽水','衢州'],
-  湖北: ['武汉','宜昌','襄阳','黄冈','十堰','荆州','孝感','黄石','咸宁','随州'],
+  北京: ['朝阳', '海淀', '西城', '东城', '丰台', '石景山', '通州', '大兴', '顺义', '昌平'],
+  上海: ['浦东', '黄浦', '静安', '徐汇', '长宁', '普陀', '虹口', '杨浦', '闵行', '宝山'],
+  广东: ['广州', '深圳', '东莞', '佛山', '珠海', '中山', '惠州', '汕头', '江门', '茂名'],
+  江苏: ['南京', '苏州', '无锡', '常州', '南通', '扬州', '徐州', '盐城', '镇江', '泰州'],
+  浙江: ['杭州', '宁波', '温州', '嘉兴', '绍兴', '金华', '台州', '湖州', '丽水', '衢州'],
+  湖北: ['武汉', '宜昌', '襄阳', '黄冈', '十堰', '荆州', '孝感', '黄石', '咸宁', '随州'],
 }
-const ROADS_CN = ['中山路','人民路','解放路','建设大道','和平大道','光谷大道','珞瑜路','武珞路','洪山路','武胜路','江汉路','华中路','学院路','体育路','友谊路','长江路','长安街','南京东路','淮海中路','陆家嘴路']
-const COMPANY_SUFFIX_CN = ['有限公司','科技有限公司','网络科技有限公司','信息技术有限公司','贸易有限公司','工程有限公司','文化传播有限公司','咨询有限公司','投资有限公司','集团有限公司']
-const COMPANY_PREFIX_CN = ['斯凯勒','华信','明远','汇通','创联','智联','宏达','飞翔','启明','蓝天','腾飞','晟达','广宇','环球','安信','锐意','新元','德隆','华盛','金辉']
-const JOBS_CN = ['软件工程师','前端工程师','后端工程师','测试工程师','运维工程师','数据分析师','产品经理','项目经理','UI 设计师','架构师','技术总监','人事专员','财务主管','销售经理','市场总监','客户经理','行政助理']
-const LOREM_CN_WORDS = ['这是','一段','测试','内容','用于','演示','数据','生成','功能','请勿','直接','用于','生产环境','SkylerX','支持','多种','数据库','类型','非常','方便','开发','调试','使用','体验','流畅']
-const LOREM_EN_WORDS = ['lorem','ipsum','dolor','sit','amet','consectetur','adipiscing','elit','sed','do','eiusmod','tempor','incididunt','ut','labore','et','dolore','magna','aliqua','enim']
-const COLORS = ['#FF5733','#33C1FF','#75FF33','#FFC133','#FF33A8','#33FFD1','#A833FF','#FF8C33','#33FF8C','#B833FF']
-const EMOJIS = ['😀','😎','🚀','💯','🎉','🌟','🔥','✨','💡','🎯','📊','🛠','🎨','🌈','⚡']
+const ROADS_CN = [
+  '中山路',
+  '人民路',
+  '解放路',
+  '建设大道',
+  '和平大道',
+  '光谷大道',
+  '珞瑜路',
+  '武珞路',
+  '洪山路',
+  '武胜路',
+  '江汉路',
+  '华中路',
+  '学院路',
+  '体育路',
+  '友谊路',
+  '长江路',
+  '长安街',
+  '南京东路',
+  '淮海中路',
+  '陆家嘴路',
+]
+const COMPANY_SUFFIX_CN = [
+  '有限公司',
+  '科技有限公司',
+  '网络科技有限公司',
+  '信息技术有限公司',
+  '贸易有限公司',
+  '工程有限公司',
+  '文化传播有限公司',
+  '咨询有限公司',
+  '投资有限公司',
+  '集团有限公司',
+]
+const COMPANY_PREFIX_CN = [
+  '斯凯勒',
+  '华信',
+  '明远',
+  '汇通',
+  '创联',
+  '智联',
+  '宏达',
+  '飞翔',
+  '启明',
+  '蓝天',
+  '腾飞',
+  '晟达',
+  '广宇',
+  '环球',
+  '安信',
+  '锐意',
+  '新元',
+  '德隆',
+  '华盛',
+  '金辉',
+]
+const JOBS_CN = [
+  '软件工程师',
+  '前端工程师',
+  '后端工程师',
+  '测试工程师',
+  '运维工程师',
+  '数据分析师',
+  '产品经理',
+  '项目经理',
+  'UI 设计师',
+  '架构师',
+  '技术总监',
+  '人事专员',
+  '财务主管',
+  '销售经理',
+  '市场总监',
+  '客户经理',
+  '行政助理',
+]
+const LOREM_CN_WORDS = [
+  '这是',
+  '一段',
+  '测试',
+  '内容',
+  '用于',
+  '演示',
+  '数据',
+  '生成',
+  '功能',
+  '请勿',
+  '直接',
+  '用于',
+  '生产环境',
+  'SkylerX',
+  '支持',
+  '多种',
+  '数据库',
+  '类型',
+  '非常',
+  '方便',
+  '开发',
+  '调试',
+  '使用',
+  '体验',
+  '流畅',
+]
+const LOREM_EN_WORDS = [
+  'lorem',
+  'ipsum',
+  'dolor',
+  'sit',
+  'amet',
+  'consectetur',
+  'adipiscing',
+  'elit',
+  'sed',
+  'do',
+  'eiusmod',
+  'tempor',
+  'incididunt',
+  'ut',
+  'labore',
+  'et',
+  'dolore',
+  'magna',
+  'aliqua',
+  'enim',
+]
+const COLORS = [
+  '#FF5733',
+  '#33C1FF',
+  '#75FF33',
+  '#FFC133',
+  '#FF33A8',
+  '#33FFD1',
+  '#A833FF',
+  '#FF8C33',
+  '#33FF8C',
+  '#B833FF',
+]
+const EMOJIS = [
+  '😀',
+  '😎',
+  '🚀',
+  '💯',
+  '🎉',
+  '🌟',
+  '🔥',
+  '✨',
+  '💡',
+  '🎯',
+  '📊',
+  '🛠',
+  '🎨',
+  '🌈',
+  '⚡',
+]
 
 // ─── 工具 ───────────────────────────────────────────────────────────
 
@@ -158,13 +548,24 @@ function uuid(): string {
 /** 中国大陆 18 位身份证（前 17 位随机，校验位按 GB11643-1999 算）。 */
 function idCardCn(): string {
   // 6 位地区码 + 8 位生日 + 3 位顺序 + 1 位校验
-  const region = pick(['110101','110102','310101','440101','420100','510100','330100','320100','370100','220100'])
+  const region = pick([
+    '110101',
+    '110102',
+    '310101',
+    '440101',
+    '420100',
+    '510100',
+    '330100',
+    '320100',
+    '370100',
+    '220100',
+  ])
   const year = randInt(1960, 2005)
   const month = randInt(1, 12)
   const day = randInt(1, 28)
   const seq = pad(randInt(0, 999), 3)
   const body = `${region}${year}${pad(month, 2)}${pad(day, 2)}${seq}`
-  const W = [7,9,10,5,8,4,2,1,6,3,7,9,10,5,8,4,2]
+  const W = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
   const M = '10X98765432'
   let sum = 0
   for (let i = 0; i < 17; i++) sum += (body.charCodeAt(i) - 48) * (W[i] as number)
@@ -173,7 +574,25 @@ function idCardCn(): string {
 
 /** 中国手机号：3 位段号（13/14/15/16/17/18/19）+ 8 位随机数字 */
 function phoneCn(): string {
-  const seg = pick(['138','139','135','136','158','159','188','187','176','155','156','177','199','166','170','171','178'])
+  const seg = pick([
+    '138',
+    '139',
+    '135',
+    '136',
+    '158',
+    '159',
+    '188',
+    '187',
+    '176',
+    '155',
+    '156',
+    '177',
+    '199',
+    '166',
+    '170',
+    '171',
+    '178',
+  ])
   return seg + String(randInt(0, 99999999)).padStart(8, '0')
 }
 /** 美式电话 (NNN) NNN-NNNN */
@@ -182,7 +601,7 @@ function phoneUs(): string {
 }
 /** 银行卡 16 位（Luhn 校验通过） */
 function bankCardCn(): string {
-  const prefix = pick(['622848','622202','622700','622588','621700','622666'])
+  const prefix = pick(['622848', '622202', '622700', '622588', '621700', '622666'])
   const body = prefix + String(randInt(0, 999999999)).padStart(9, '0')
   // Luhn 校验位
   let sum = 0
@@ -202,7 +621,7 @@ function postcodeCn(): string {
 }
 /** 车牌：省 + 字母 + 5 位字母数字 */
 function plateCn(): string {
-  const p = pick(['京','沪','粤','苏','浙','鄂','川','鲁','豫','闽'])
+  const p = pick(['京', '沪', '粤', '苏', '浙', '鄂', '川', '鲁', '豫', '闽'])
   const letter = String.fromCharCode(65 + randInt(0, 25))
   let rest = ''
   for (let i = 0; i < 5; i++) {
@@ -238,7 +657,8 @@ export function applyRegex(pattern: string): string {
     let literal: string | null = null
 
     if (tk === '\\d') charset = '0123456789'.split('')
-    else if (tk === '\\w') charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'.split('')
+    else if (tk === '\\w')
+      charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'.split('')
     else if (tk === '\\s') charset = [' ']
     else if (tk.startsWith('[') && tk.endsWith(']')) {
       const inner = tk.slice(1, -1)
@@ -264,10 +684,16 @@ export function applyRegex(pattern: string): string {
     // 看下一个 token 是不是量词
     const next = tokens[i + 1]
     let n = 1
-    if (next === '+') { n = randInt(1, 6); i++ }
-    else if (next === '*') { n = randInt(0, 6); i++ }
-    else if (next === '?') { n = randInt(0, 1); i++ }
-    else if (next && /^\{\d+(?:,\d+)?\}$/.test(next)) {
+    if (next === '+') {
+      n = randInt(1, 6)
+      i++
+    } else if (next === '*') {
+      n = randInt(0, 6)
+      i++
+    } else if (next === '?') {
+      n = randInt(0, 1)
+      i++
+    } else if (next && /^\{\d+(?:,\d+)?\}$/.test(next)) {
       const qm = /^\{(\d+)(?:,(\d+))?\}$/.exec(next) as RegExpExecArray
       const lo = Number(qm[1])
       const hi = qm[2] ? Number(qm[2]) : lo
@@ -311,7 +737,8 @@ const GENERATORS: Partial<Record<SemanticKind, Gen>> = {
   },
   province_cn: () => pick(PROVINCE_CN),
   postcode_cn: () => postcodeCn(),
-  company_cn: () => `${pick(COMPANY_PREFIX_CN)}${pick(['', '智能', '网络', '科技', '数字'])}${pick(COMPANY_SUFFIX_CN)}`,
+  company_cn: () =>
+    `${pick(COMPANY_PREFIX_CN)}${pick(['', '智能', '网络', '科技', '数字'])}${pick(COMPANY_SUFFIX_CN)}`,
   job_cn: () => pick(JOBS_CN),
   url: () => `https://example.com/${Math.random().toString(36).slice(2, 8)}`,
   domain: () => `${Math.random().toString(36).slice(2, 8)}.com`,
@@ -381,8 +808,17 @@ const TYPE_FALLBACK: { re: RegExp; kind: SemanticKind }[] = [
   { re: /\bdate\b/i, kind: 'date' },
   { re: /\btime\b/i, kind: 'time' },
   { re: /bool/i, kind: 'boolean' },
-  { re: /serial|int(eger)?|bigint|smallint|tinyint/i, kind: 'integer' },
-  { re: /decimal|numeric|float|double|real|money/i, kind: 'decimal' },
+  // Oracle: NUMBER 大部分实际是整数(id/count/age/status...),只有 NUMBER(p,s) 才是小数,
+  //         但驱动只给我们裸 "NUMBER" 没有 scale 信息;按业务比例归 integer 更不容易出 643.75
+  //         这种"id 主键变成小数"的反直觉结果。需要小数的列名(price/amount/cost/money/...)
+  //         由上面 NAME_PATTERNS 拦截,精度由 range.precision 控制。
+  // PG: serial; MySQL: int/bigint/...; SQLServer: int/bigint
+  {
+    re: /serial|int(eger)?|bigint|smallint|tinyint|binary_integer|pls_integer|^number$|\bnumber\b/i,
+    kind: 'integer',
+  },
+  // 真·小数: 显式 decimal/float/double/numeric/binary_float
+  { re: /decimal|numeric|float|double|real|money|binary_(float|double)/i, kind: 'decimal' },
   // 字符串类兜底用英文短词，跟旧 API 行为一致（兼容现有测试）
   { re: /char|text|string|nvarchar/i, kind: 'word_en' },
 ]
@@ -432,7 +868,7 @@ function mockValueByConfig(col: MockColumn, i: number): string {
   return `'${randStr()}'`
 }
 
-const WORDS = ['alpha','bravo','delta','echo','kilo','lima','nova','zulu','orion','vega']
+const WORDS = ['alpha', 'bravo', 'delta', 'echo', 'kilo', 'lima', 'nova', 'zulu', 'orion', 'vega']
 function randStr(): string {
   return `${pick(WORDS)}_${randInt(0, 999)}`
 }

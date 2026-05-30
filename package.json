@@ -10,6 +10,9 @@
   "scripts": {
     "dev:desktop": "pnpm --filter @db-tool/desktop dev",
     "build:desktop": "pnpm --filter @db-tool/desktop build",
+    "dev:website": "pnpm --filter @db-tool/website dev",
+    "build:website": "pnpm --filter @db-tool/website build",
+    "preview:website": "pnpm --filter @db-tool/website preview",
     "build:packages": "pnpm --filter \"./packages/**\" build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",

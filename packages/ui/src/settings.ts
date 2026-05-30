@@ -110,6 +110,14 @@ export interface Settings {
    * 降序排列；关闭则保持驱动返回的字典序。明细见 nav-usage.ts。
    */
   navSortByUsage: boolean
+
+  /**
+   * 用户在 NavTree 里的分组顺序(支持空分组持久化)。
+   *  - 用户点"新建分组" → 名字进这里;即使该分组下没有任何连接也会显示。
+   *  - 拖动分组改顺序 → 重写整个数组。
+   *  - 未在此数组里的分组(从连接的 group 字段冒出来的)默认追加在末尾。
+   */
+  groupOrder: string[]
 }
 
 const KEY = 'skylerx.settings'
@@ -153,6 +161,7 @@ const DEFAULTS: Settings = {
   maskingRules: structuredClone(DEFAULT_MASK_RULES),
   keyBindings: {},
   navSortByUsage: false,
+  groupOrder: [],
 }
 
 interface LegacySettings {

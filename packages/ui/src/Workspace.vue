@@ -17,52 +17,49 @@ import AiAssistantDialog from './components/AiAssistantDialog.vue'
 import AiChatPanel from './components/AiChatPanel.vue'
 import AiCommentDialog from './components/AiCommentDialog.vue'
 import AiHealthCheckDialog from './components/AiHealthCheckDialog.vue'
+import AiInsightsDialog from './components/AiInsightsDialog.vue'
+import AiSchemaArchitectDialog from './components/AiSchemaArchitectDialog.vue'
+import AiSchemaReverseDialog from './components/AiSchemaReverseDialog.vue'
 import AiToolboxDialog from './components/AiToolboxDialog.vue'
 import AppDialogs from './components/AppDialogs.vue'
 import BackupRestoreDialog from './components/BackupRestoreDialog.vue'
+import ClickHouseAdvancedDialog from './components/ClickHouseAdvancedDialog.vue'
+import ClusterTopologyDialog from './components/ClusterTopologyDialog.vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
+import ComplianceDialog from './components/ComplianceDialog.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
 import DashboardDialog from './components/DashboardDialog.vue'
 import DataContractDialog from './components/DataContractDialog.vue'
 import DataDiffDialog from './components/DataDiffDialog.vue'
 import DataFixupDialog from './components/DataFixupDialog.vue'
 import DataInspectorDialog from './components/DataInspectorDialog.vue'
+import DataMaskingViewDialog from './components/DataMaskingViewDialog.vue'
 import DataTransferDialog from './components/DataTransferDialog.vue'
 import ExportOptionsDialog from './components/ExportOptionsDialog.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import IndexRecommenderDialog from './components/IndexRecommenderDialog.vue'
 import KeyBindingsDialog from './components/KeyBindingsDialog.vue'
 import LineageDialog from './components/LineageDialog.vue'
+import MockDataDialog from './components/MockDataDialog.vue'
 import Modal from './components/Modal.vue'
+import MongoAggregationDialog from './components/MongoAggregationDialog.vue'
+import MongoCollectionInfoDialog from './components/MongoCollectionInfoDialog.vue'
+import MppPartitionDialog from './components/MppPartitionDialog.vue'
+import MysqlAdvancedDialog from './components/MysqlAdvancedDialog.vue'
 import NavTree from './components/NavTree.vue'
+import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
 import NewDatabaseDialog from './components/NewDatabaseDialog.vue'
 import NewSchemaDialog from './components/NewSchemaDialog.vue'
 import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
-import MockDataDialog from './components/MockDataDialog.vue'
-import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
-import ComplianceDialog from './components/ComplianceDialog.vue'
-import OracleToDmWizard from './components/OracleToDmWizard.vue'
-import SlowQueryDialog from './components/SlowQueryDialog.vue'
-import VisualQueryDialog from './components/VisualQueryDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
+import OracleToDmWizard from './components/OracleToDmWizard.vue'
+import PasteImportDialog from './components/PasteImportDialog.vue'
+import PgAdvancedDialog from './components/PgAdvancedDialog.vue'
+import PiiScannerDialog from './components/PiiScannerDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
-import AiInsightsDialog from './components/AiInsightsDialog.vue'
-import AiSchemaArchitectDialog from './components/AiSchemaArchitectDialog.vue'
-import PasteImportDialog from './components/PasteImportDialog.vue'
-import WorkspaceExportDialog from './components/WorkspaceExportDialog.vue'
-import AiSchemaReverseDialog from './components/AiSchemaReverseDialog.vue'
-import DataMaskingViewDialog from './components/DataMaskingViewDialog.vue'
-import PiiScannerDialog from './components/PiiScannerDialog.vue'
-import ClickHouseAdvancedDialog from './components/ClickHouseAdvancedDialog.vue'
-import MppPartitionDialog from './components/MppPartitionDialog.vue'
-import MysqlAdvancedDialog from './components/MysqlAdvancedDialog.vue'
-import ClusterTopologyDialog from './components/ClusterTopologyDialog.vue'
-import MongoAggregationDialog from './components/MongoAggregationDialog.vue'
-import MongoCollectionInfoDialog from './components/MongoCollectionInfoDialog.vue'
-import PgAdvancedDialog from './components/PgAdvancedDialog.vue'
 import RedisBigKeysDialog from './components/RedisBigKeysDialog.vue'
 import RedisImportExportDialog from './components/RedisImportExportDialog.vue'
 import RedisMonitorDialog from './components/RedisMonitorDialog.vue'
@@ -79,7 +76,10 @@ import SearchValueDialog from './components/SearchValueDialog.vue'
 import ServerActivityDialog from './components/ServerActivityDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import SlowQueryDialog from './components/SlowQueryDialog.vue'
 import SqlTranslateDialog from './components/SqlTranslateDialog.vue'
+import VisualQueryDialog from './components/VisualQueryDialog.vue'
+import WorkspaceExportDialog from './components/WorkspaceExportDialog.vue'
 import type { TreeNode } from './components/treeNode'
 import { useDataClient } from './data-client'
 import {
@@ -368,6 +368,35 @@ async function onDeleteConn(id: string): Promise<void> {
   tabsRef.value?.closeConnTabs(id)
 }
 
+/**
+ * 复制连接:
+ *  - 拷一份完整配置(含密码/SSH/SSL/extra),生成新 id 与名字"<原名> (副本)"。
+ *  - 同时把 sortIndex 设为"在原连接之后",保证副本紧挨原条目;后续拖动可任意调整。
+ *  - 不自动打开新连接窗,只 toast 提示,符合"复制不动手"原则;用户随时双击打开。
+ */
+async function onDuplicateConn(id: string): Promise<void> {
+  try {
+    const src = await client.connections.get(id)
+    // 深拷贝避免后端被 mutate;extra 单独复制
+    const dup = {
+      ...src,
+      id: crypto.randomUUID(),
+      name: `${src.name || '未命名'} (副本)`,
+      sortIndex: typeof src.sortIndex === 'number' ? src.sortIndex + 0.5 : undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      extra: src.extra ? { ...src.extra } : undefined,
+      ssh: src.ssh ? { ...src.ssh } : undefined,
+      ssl: src.ssl ? { ...src.ssl } : undefined,
+    }
+    await client.connections.create(dup)
+    await navRef.value?.reload()
+    toast.success(`已复制: ${dup.name}`)
+  } catch (e) {
+    toast.error(`复制失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 // 连接打不开 / 查询报连接级错误 → 自动弹出该连接的编辑弹窗（已开则不重复弹）
 function onConnError(connId: string, message: string): void {
   if (editing.value) return
@@ -544,26 +573,15 @@ function onMockGenerated(sql: string): void {
   )
 }
 
-/** Mock 数据 → 直接执行(不开查询页),拆 INSERT 语句逐条 execute */
-async function onMockExecute(sql: string): Promise<void> {
-  if (!mockState.value) return
-  const conn = mockState.value.conn
-  const stmts = sql.split(/;\s*(?:\n|$)/).map((s) => s.trim().replace(/;$/, '')).filter(Boolean)
-  let ok = 0
-  let fail = 0
-  let firstErr = ''
-  for (const s of stmts) {
-    try {
-      await client.connections.execute(conn.id, s, [], {})
-      ok++
-    } catch (e) {
-      fail++
-      if (!firstErr) firstErr = e instanceof Error ? e.message : String(e)
-    }
-  }
-  if (fail) toast.error(`成功 ${ok} · 失败 ${fail}: ${firstErr}`)
-  else toast.success(`成功插入 ${ok} 段`)
-  mockState.value = null
+/**
+ * Mock 数据 → 直接执行的完成通知(不开查询页)。
+ *
+ * 真正的逐条 INSERT 执行已经下放到 MockDataDialog 内部实现(它需要展示进度+取消),
+ * 这里只是个兼容钩子;dialog 跑完后会 emit('execute', sql),我们不再关闭弹框,
+ * 让用户继续调整 mock 配置或手动 ×。
+ */
+async function onMockExecute(_sql: string): Promise<void> {
+  // no-op: dialog 自管进度/toast/状态,不需要在 Workspace 重复执行
 }
 
 // 表统计信息 → 弹窗展示行数 / 数据 / 索引占用
@@ -657,6 +675,29 @@ async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
       )
       const row = (r.rows as Record<string, unknown>[])[0] ?? {}
       ddl = String(row['Create Table'] ?? row['Create View'] ?? Object.values(row)[1] ?? '')
+    } else if (['oracle', 'dm'].includes(conn.dialect)) {
+      // Oracle/DM 用 dbms_metadata.get_ddl('TABLE', name, schema), 比 列拼装 完整(含索引/约束/默认值)
+      // 失败回退到 buildCreateFromColumns,避免 SELECT_CATALOG_ROLE 缺权限时阻塞
+      const schema = node.path[node.path.length - 2] ?? ''
+      const name = node.name
+      const esc = (s: string) => s.replace(/'/g, "''").toUpperCase()
+      try {
+        const r = await client.connections.execute(
+          connId,
+          `SELECT dbms_metadata.get_ddl('TABLE', '${esc(name)}', '${esc(schema)}') AS "ddl" FROM dual`,
+        )
+        ddl = String((r.rows[0] as Record<string, unknown> | undefined)?.ddl ?? '').trim()
+      } catch {
+        /* 没权限,落到下面的 buildCreateFromColumns */
+      }
+      if (!ddl) {
+        const cols = await client.connections.metadata(connId, {
+          parentKind: MetaNodeKind.Group,
+          path: [...node.path],
+          group: 'columns',
+        })
+        ddl = buildCreateFromColumns(conn.dialect, node.sqlName ?? node.name, cols)
+      }
     } else {
       const cols = await client.connections.metadata(connId, {
         parentKind: MetaNodeKind.Group,
@@ -759,7 +800,7 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
   const kind = node.kind as ObjectKind
-  const q = objectDdlQuery(conn.dialect, kind, objectRef(conn.dialect, node))
+  const q = objectDdlQuery(conn.dialect, kind, objectRef(conn.dialect, node), node)
   if (!q) {
     await appAlert({ message: t('ws.noDef'), variant: 'warn' })
     return
@@ -777,7 +818,8 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
     } else if (q.mode === 'viewdef') {
       ddl = (q.prefix ?? '') + String(row.ddl ?? '')
     } else {
-      ddl = String(row.ddl ?? '')
+      // 'funcdef' (PG) 或 'oracle-ddl'
+      ddl = String(row.ddl ?? '').trim()
     }
     if (!ddl) {
       await appAlert({ message: t('ws.noDef'), variant: 'warn' })
@@ -1328,9 +1370,15 @@ const redisScriptOpen = ref<{ conn: ConnectionConfig; dbIndex?: number } | null>
 /** Redis 实时监控(INFO stats 轮询) */
 const redisMonitorOpen = ref<{ conn: ConnectionConfig } | null>(null)
 /** Mongo 集合 stats/索引 面板 */
-const mongoCollInfoOpen = ref<{ conn: ConnectionConfig; database: string; collection: string } | null>(null)
+const mongoCollInfoOpen = ref<{
+  conn: ConnectionConfig
+  database: string
+  collection: string
+} | null>(null)
 /** Mongo aggregation pipeline 弹窗 */
-const mongoAggOpen = ref<{ conn: ConnectionConfig; database: string; collection: string } | null>(null)
+const mongoAggOpen = ref<{ conn: ConnectionConfig; database: string; collection: string } | null>(
+  null,
+)
 /** OB/TiDB 集群拓扑 */
 const clusterTopoOpen = ref<{ conn: ConnectionConfig } | null>(null)
 /** PG 高级面板(扩展/复制/复制槽) */
@@ -1494,7 +1542,13 @@ type UpdaterStatus =
   | { kind: 'checking' }
   | { kind: 'available'; info: { version: string; releaseNotes?: string } }
   | { kind: 'not-available'; currentVersion: string }
-  | { kind: 'downloading'; percent: number; bytesPerSecond: number; transferred: number; total: number }
+  | {
+      kind: 'downloading'
+      percent: number
+      bytesPerSecond: number
+      transferred: number
+      total: number
+    }
   | { kind: 'downloaded'; info: { version: string } }
   | { kind: 'error'; message: string }
 
@@ -1513,7 +1567,10 @@ const desktopApi = (): {
     getStatus: () => Promise<UpdaterStatus>
     onStatus: (cb: (s: UpdaterStatus) => void) => () => void
   }
-} | null => (typeof window !== 'undefined' ? ((window as unknown as { api?: unknown }).api as never) ?? null : null)
+} | null =>
+  typeof window !== 'undefined'
+    ? (((window as unknown as { api?: unknown }).api as never) ?? null)
+    : null
 
 async function checkForUpdate(): Promise<void> {
   const api = desktopApi()
@@ -1877,12 +1934,10 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   } else if (item.id.startsWith('act:compliance:')) {
     const cid = item.id.slice('act:compliance:'.length)
     void openCompliance(cid)
-  }
-  else if (item.id.startsWith('act:vqd:')) {
+  } else if (item.id.startsWith('act:vqd:')) {
     const cid = item.id.slice('act:vqd:'.length)
     void openVqd(cid)
-  }
-  else if (item.id.startsWith('act:search-value:')) {
+  } else if (item.id.startsWith('act:search-value:')) {
     const cid = item.id.slice('act:search-value:'.length)
     searchValueOpen.value = { connId: cid }
   } else if (item.id === 'act:contracts') contractOpen.value = true
@@ -1988,7 +2043,8 @@ function onKeydown(e: KeyboardEvent): void {
     if (now - lastShiftAt < DOUBLE_SHIFT_WINDOW_MS) {
       lastShiftAt = 0
       // 双击命中:打开全文搜索;连接 id 用当前活跃 tab 的连接,没有则空
-      const activeConnId = (tabsRef.value?.activeConnId as unknown as { value: string } | undefined)?.value ?? ''
+      const activeConnId =
+        (tabsRef.value?.activeConnId as unknown as { value: string } | undefined)?.value ?? ''
       searchValueOpen.value = { connId: activeConnId }
       e.preventDefault()
       e.stopPropagation()
@@ -2023,7 +2079,8 @@ function onKeydown(e: KeyboardEvent): void {
     // ⌘/Ctrl+Shift+V → Excel/CSV 粘贴智能导入
     e.preventDefault()
     e.stopPropagation()
-    const activeConnId = (tabsRef.value?.activeConnId as unknown as { value: string } | undefined)?.value ?? ''
+    const activeConnId =
+      (tabsRef.value?.activeConnId as unknown as { value: string } | undefined)?.value ?? ''
     pasteImportOpen.value = { preferConnId: activeConnId }
   } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
     // ⌘/Ctrl+Shift+O：全局对象搜索
@@ -2161,6 +2218,7 @@ onUnmounted(() => unsubMenu?.())
     @select-conn="onSelectConn"
     @new-query="onNewQuery"
     @delete-conn="onDeleteConn"
+    @duplicate-conn="onDuplicateConn"
     @run-sql="onRunSql"
     @conn-error="onConnError"
     @new-object="onNewObject"
@@ -2980,6 +3038,45 @@ onUnmounted(() => unsubMenu?.())
 .confirm p {
   margin: 0 0 12px;
   font-size: 14px;
+}
+/*
+ * 删除/二次确认 modal 的按钮布局: 危险按钮(删除)推到左,取消推到右
+ * 防回车误删 — 用户的 Enter 默认会聚焦在第一个按钮,把它放在左、远离右下角"取消"
+ * 是用户报告的"删除放左边、取消放右边"统一规范。
+ */
+.confirm .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.confirm .actions .danger {
+  margin-right: auto; /* 推到最左 */
+}
+.confirm .actions button {
+  padding: 6px 16px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.confirm .actions .danger {
+  background: var(--err, #e04050);
+  color: #fff;
+  border-color: var(--err, #e04050);
+}
+.confirm .actions .danger:hover {
+  filter: brightness(1.1);
+}
+.confirm .actions .danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.confirm .actions .ghost {
+  background: transparent;
+  color: var(--text);
+}
+.confirm .actions .ghost:hover {
+  background: rgba(124, 108, 255, 0.1);
 }
 .confirm .cascade {
   display: flex;

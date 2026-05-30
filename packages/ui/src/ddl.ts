@@ -189,18 +189,23 @@ export function objectRef(dialect: DbDialect, node: TreeNode): string {
   }
 }
 
-/** 取对象定义 DDL 的查询 + 结果解析方式（支持 MySQL / PG 的 视图/函数/过程）。 */
+/** 取对象定义 DDL 的查询 + 结果解析方式（支持 MySQL / PG / Oracle 的 视图/函数/过程/触发器）。 */
 export interface ObjectDdlFetch {
   sql: string
-  mode: 'showCreate' | 'viewdef' | 'funcdef'
+  mode: 'showCreate' | 'viewdef' | 'funcdef' | 'oracle-ddl'
   /** viewdef 模式：拼到 pg_get_viewdef 结果前的前缀 */
   prefix?: string
 }
 
+/**
+ * @param ref 对 mysql 是 quoteId(name);对 pg/oracle 是 quoteId(schema).quoteId(name)
+ * @param node 可选;Oracle 用 node.path 拿大写的 schema/name(dbms_metadata 区分大小写)
+ */
 export function objectDdlQuery(
   dialect: DbDialect,
   kind: ObjectKind,
   ref: string,
+  node?: TreeNode,
 ): ObjectDdlFetch | null {
   const fam = familyOf(dialect)
   if (fam === 'mysql') {
@@ -226,6 +231,38 @@ export function objectDdlQuery(
     if (kind === 'function' || kind === 'procedure')
       return { sql: `SELECT pg_get_functiondef('${ref}'::regproc) AS ddl`, mode: 'funcdef' }
     return null
+  }
+  if (fam === 'oracle') {
+    // dbms_metadata.get_ddl 返回 CLOB; oracle.ts 设了 fetchAsString=[CLOB] 后能直接读 string
+    // 名字需要大写: Oracle 内部 schema/object 名都以大写存,带引号时区分大小写
+    const oraType =
+      kind === 'view'
+        ? 'VIEW'
+        : kind === 'function'
+          ? 'FUNCTION'
+          : kind === 'procedure'
+            ? 'PROCEDURE'
+            : kind === 'trigger'
+              ? 'TRIGGER'
+              : null
+    if (!oraType) return null
+    // 优先从 node.path 拿 schema/name(精确大小写);没有 node 时反解析 ref
+    let schema: string
+    let name: string
+    if (node?.path && node.path.length >= 2) {
+      schema = node.path[node.path.length - 2]
+      name = node.path[node.path.length - 1]
+    } else {
+      // ref = "S"."N",去引号
+      const m = ref.match(/^"?([^".]+)"?\.\s*"?([^".]+)"?$/)
+      schema = m?.[1] ?? ''
+      name = m?.[2] ?? ref
+    }
+    const esc = (s: string) => s.replace(/'/g, "''").toUpperCase()
+    return {
+      sql: `SELECT dbms_metadata.get_ddl('${oraType}', '${esc(name)}', '${esc(schema)}') AS "ddl" FROM dual`,
+      mode: 'oracle-ddl',
+    }
   }
   return null
 }

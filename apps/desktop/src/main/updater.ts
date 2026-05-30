@@ -35,6 +35,51 @@ export type UpdaterStatus =
 let lastStatus: UpdaterStatus = { kind: 'idle' }
 let mainWindowRef: BrowserWindow | null = null
 
+/**
+ * 更新源选择 — 解决国内用户连 github.com 慢/被墙的问题。
+ *  - 'github'  → 默认,跟 electron-builder.yml 的 publish 一致 (GitHub Releases)
+ *  - 'oss-cn'  → 阿里云 OSS 镜像 (上海),CI 已把同套产物 + latest*.yml 同步到这里
+ *
+ * 用户在 设置 → 应用更新 切换;切完调 updates:setChannel IPC,主进程持久化到
+ * userData/updater-channel.json,下次启动也走该源。
+ */
+export type UpdateChannel = 'github' | 'oss-cn'
+
+const OSS_GENERIC_URL = 'https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/'
+
+import { promises as fs } from 'node:fs'
+import { join } from 'node:path'
+
+function channelFilePath(): string {
+  return join(app.getPath('userData'), 'updater-channel.json')
+}
+async function loadChannel(): Promise<UpdateChannel> {
+  try {
+    const raw = await fs.readFile(channelFilePath(), 'utf8')
+    const p = JSON.parse(raw) as { channel?: UpdateChannel }
+    return p.channel === 'oss-cn' ? 'oss-cn' : 'github'
+  } catch {
+    return 'github'
+  }
+}
+async function saveChannel(c: UpdateChannel): Promise<void> {
+  await fs.writeFile(channelFilePath(), JSON.stringify({ channel: c }))
+}
+
+function applyChannel(c: UpdateChannel): void {
+  if (c === 'oss-cn') {
+    autoUpdater.setFeedURL({ provider: 'generic', url: OSS_GENERIC_URL })
+  } else {
+    // 走 electron-builder.yml 里的 github publish(默认行为,不需要 setFeedURL)
+    // 但如果先前切到过 oss-cn,要重新指回 github;最稳妥用 channel reload
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'duhbbx',
+      repo: 'SkylerX',
+    })
+  }
+}
+
 function broadcast(s: UpdaterStatus): void {
   lastStatus = s
   // webContents 可能在窗口关闭时不可用,加防御
@@ -46,7 +91,15 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
   mainWindowRef = mainWindow
 
   // 4 个 IPC:dev 模式也注册,但 actions 回 { devMode: true } 由 renderer 走 fallback
+  // + 2 个 channel IPC: 取/设国内 OSS 镜像还是 GitHub 源
   ipcMain.handle('updates:getStatus', () => lastStatus)
+  ipcMain.handle('updates:getChannel', async () => await loadChannel())
+  ipcMain.handle('updates:setChannel', async (_e, c: UpdateChannel) => {
+    if (c !== 'github' && c !== 'oss-cn') return { ok: false, error: 'unknown channel' }
+    await saveChannel(c)
+    if (app.isPackaged) applyChannel(c)
+    return { ok: true }
+  })
   ipcMain.handle('updates:check', async () => {
     if (!app.isPackaged) {
       broadcast({ kind: 'error', message: '开发模式不支持应用内自动更新,请使用打包安装版' })
@@ -89,6 +142,9 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
 
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+
+  // 启动时应用持久化的 channel 选择(默认 github,用户切过 oss-cn 就走那个)
+  void loadChannel().then((c) => applyChannel(c))
 
   // UpdateInfo / ProgressInfo 类型来自 builder-util-runtime,这里用 any 规避
   // 跨包类型导入麻烦(electron-updater 6.x 的 d.ts 把它们藏在 sub-package),
