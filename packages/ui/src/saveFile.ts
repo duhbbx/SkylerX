@@ -21,12 +21,22 @@
  */
 import { reactive } from 'vue'
 
+/**
+ * 'save'           写文件(默认):有 content,确认后写盘 → resolve(path)
+ * 'pick-existing'  只选已存在文件:用户点列表里的文件就 resolve(path),不写
+ * 'pick-or-create' 选已有或填新名(SQLite/DuckDB 新建库场景):resolve(path),不写
+ */
+export type SaveDialogMode = 'save' | 'pick-existing' | 'pick-or-create'
+
 export interface SaveFileRequest {
-  defaultName: string
-  /** 文本或二进制内容;二进制建议 Uint8Array(xlsx/png/blob 等场景) */
-  content: string | Uint8Array
+  /** save / pick-or-create 模式的默认文件名;pick-existing 模式可空 */
+  defaultName?: string
+  /** save 模式需要;pick 模式不传 */
+  content?: string | Uint8Array
   filters?: { name: string; extensions: string[] }[]
   defaultDir?: string
+  /** 默认 save */
+  mode?: SaveDialogMode
 }
 
 interface SaveFileState {
@@ -71,11 +81,11 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
         accept: { 'application/octet-stream': f.extensions.map((e) => `.${e}`) },
       }))
       const handle = await showSaveFilePicker({
-        suggestedName: req.defaultName,
+        suggestedName: req.defaultName ?? 'export',
         types: types.length ? types : undefined,
       })
       const writable = await handle.createWritable()
-      await writable.write(req.content)
+      await writable.write(req.content!)
       await writable.close()
       return handle.name // 浏览器 API 不暴露绝对路径,只有文件名
     } catch (e) {
@@ -93,12 +103,13 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = req.defaultName
+    const name = req.defaultName ?? 'export'
+    a.download = name
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     setTimeout(() => URL.revokeObjectURL(url), 1000)
-    return req.defaultName
+    return name
   } catch {
     return null
   }
@@ -113,11 +124,75 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
  */
 export function saveFileWithDialog(req: SaveFileRequest): Promise<string | null> {
   if (!hasFsCapability()) {
-    return saveFileWithBrowserFallback(req)
+    return saveFileWithBrowserFallback({ ...req, mode: 'save' } as SaveFileRequest & { content: string | Uint8Array })
   }
   return new Promise((resolve) => {
-    saveFileState.req = req
+    saveFileState.req = { ...req, mode: req.mode ?? 'save' }
     saveFileState.resolve = resolve
     saveFileState.open = true
   })
+}
+
+/**
+ * 仅"选择文件路径"(不写内容):
+ *  - allowCreate: true  → 允许选不存在的文件名(SQLite/DuckDB 新建库)
+ *  - allowCreate: false → 只能选已存在的文件
+ *
+ * 桌面端 → 弹自定义 SaveFileDialog;Web 端 → showOpenFilePicker(File System Access API)。
+ */
+export function selectFileWithDialog(req: {
+  filters?: { name: string; extensions: string[] }[]
+  allowCreate?: boolean
+  defaultDir?: string
+  defaultName?: string
+}): Promise<string | null> {
+  if (!hasFsCapability()) {
+    return selectFileBrowserFallback(req)
+  }
+  return new Promise((resolve) => {
+    saveFileState.req = {
+      mode: req.allowCreate ? 'pick-or-create' : 'pick-existing',
+      filters: req.filters,
+      defaultDir: req.defaultDir,
+      defaultName: req.defaultName ?? '',
+    }
+    saveFileState.resolve = resolve
+    saveFileState.open = true
+  })
+}
+
+/** Web 端 fallback for selectFile:用 showOpenFilePicker / showSaveFilePicker。 */
+async function selectFileBrowserFallback(req: {
+  filters?: { name: string; extensions: string[] }[]
+  allowCreate?: boolean
+  defaultName?: string
+}): Promise<string | null> {
+  const win = window as unknown as {
+    showOpenFilePicker?: (opts: unknown) => Promise<Array<{ name: string }>>
+    showSaveFilePicker?: (opts: unknown) => Promise<{ name: string }>
+  }
+  const types = (req.filters ?? []).map((f) => ({
+    description: f.name,
+    accept: { 'application/octet-stream': f.extensions.map((e) => `.${e}`) },
+  }))
+  try {
+    if (req.allowCreate && win.showSaveFilePicker) {
+      const h = await win.showSaveFilePicker({
+        suggestedName: req.defaultName ?? '',
+        types: types.length ? types : undefined,
+      })
+      return h.name
+    }
+    if (win.showOpenFilePicker) {
+      const handles = await win.showOpenFilePicker({
+        multiple: false,
+        types: types.length ? types : undefined,
+      })
+      return handles[0]?.name ?? null
+    }
+    return null
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') return null
+    return null
+  }
 }

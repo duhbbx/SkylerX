@@ -26,7 +26,7 @@ export function useDataClient(): DataClient {
   return cached
 }
 
-/** 用自定义 SaveFileDialog 覆盖原生 saveText,保持其它接口透传。 */
+/** 用自定义 SaveFileDialog 覆盖原生 saveText / selectFile,保持其它接口透传。 */
 function wrap(real: DataClient): DataClient {
   return {
     ...real,
@@ -36,6 +36,12 @@ function wrap(real: DataClient): DataClient {
         // 惰性 import 避免循环依赖(saveFile.ts → SaveFileDialog → useDataClient)
         const { saveFileWithDialog } = await import('./saveFile')
         return saveFileWithDialog(req)
+      },
+      selectFile: async (req) => {
+        // SQLite/DuckDB 选库文件路径(allowCreate=true 时允许新名):
+        // 同样走自定义 SaveFileDialog,体验跨平台一致。
+        const { selectFileWithDialog } = await import('./saveFile')
+        return selectFileWithDialog(req ?? {})
       },
     },
   }

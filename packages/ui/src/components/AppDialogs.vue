@@ -19,10 +19,23 @@ const savedCard = ref<{ path: string } | null>(null)
 async function onSaveFileSubmit(path: string): Promise<void> {
   const req = saveFileState.req
   if (!req) return
+  // pick 模式:不写文件,只返回所选 path
+  if (req.mode === 'pick-existing' || req.mode === 'pick-or-create') {
+    saveFileState.open = false
+    saveFileState.resolve?.(path)
+    return
+  }
+  // save 模式:正常写盘 + 弹"已保存"卡片
   try {
     const fapi = client.files as unknown as {
       writeText?: (p: string, c: string) => Promise<string>
       writeBinary?: (p: string, b: Uint8Array | ArrayBuffer) => Promise<string>
+    }
+    if (req.content == null) {
+      toast.error('save 模式必须提供 content')
+      saveFileState.resolve?.(null)
+      saveFileState.open = false
+      return
     }
     if (req.content instanceof Uint8Array) {
       if (!fapi.writeBinary) {
@@ -194,13 +207,14 @@ function onKey(e: KeyboardEvent): void {
     </transition-group>
   </div>
 
-  <!-- 自定义保存文件对话框 -->
+  <!-- 自定义保存文件对话框(同时承载 save / pick-existing / pick-or-create 三种模式) -->
   <SaveFileDialog
     v-if="saveFileState.open"
     :open="saveFileState.open"
     :default-name="saveFileState.req?.defaultName ?? ''"
     :filters="saveFileState.req?.filters"
     :default-dir="saveFileState.req?.defaultDir"
+    :mode="saveFileState.req?.mode ?? 'save'"
     @close="onSaveFileCancel"
     @save="onSaveFileSubmit"
   />

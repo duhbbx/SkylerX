@@ -21,6 +21,7 @@ import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import Modal from './Modal.vue'
 
 type Filter = { name: string; extensions: string[] }
+type Mode = 'save' | 'pick-existing' | 'pick-or-create'
 
 const props = defineProps<{
   open: boolean
@@ -29,7 +30,23 @@ const props = defineProps<{
   filters?: Filter[]
   /** 默认开始目录;不传用 localStorage 上次目录,再不传用 Documents */
   defaultDir?: string
+  /** 模式:save 写文件 / pick-existing 选已有 / pick-or-create 选或新建 */
+  mode?: Mode
 }>()
+
+const mode = computed<Mode>(() => props.mode ?? 'save')
+const isPickExisting = computed(() => mode.value === 'pick-existing')
+const isPickAny = computed(() => mode.value === 'pick-existing' || mode.value === 'pick-or-create')
+const titleText = computed(() => {
+  if (mode.value === 'pick-existing') return '选择文件'
+  if (mode.value === 'pick-or-create') return '选择或新建文件'
+  return '保存文件'
+})
+const confirmText = computed(() => {
+  if (mode.value === 'pick-existing') return '▶ 选定'
+  if (mode.value === 'pick-or-create') return '▶ 选定路径'
+  return '▶ 保存'
+})
 
 const emit = defineEmits<{
   close: []
@@ -191,6 +208,19 @@ async function pickItem(it: DirItem): Promise<void> {
   }
 }
 
+/** pick-existing 模式下双击文件直接选定返回。 */
+async function dblClickItem(it: DirItem): Promise<void> {
+  if (it.isDirectory) {
+    await loadDir(joinPath(currentDir.value, it.name))
+  } else if (isPickAny.value) {
+    fileName.value = it.name
+    await doSave()
+  } else {
+    // save 模式双击文件:把文件名填到输入框,等用户点保存(避免误操作)
+    fileName.value = it.name
+  }
+}
+
 async function newFolder(): Promise<void> {
   const name = await appPrompt({ message: '新文件夹名:', defaultValue: 'New Folder' })
   if (!name?.trim()) return
@@ -218,8 +248,14 @@ function isFav(): boolean {
 
 async function doSave(): Promise<void> {
   if (!fileNameFinal.value || !currentDir.value) return
+  // pick-existing 模式:确认所选确实存在
+  if (isPickExisting.value && !nameConflict.value) {
+    toast.warn('请选择一个已存在的文件')
+    return
+  }
   const path = targetPath.value
-  if (nameConflict.value) {
+  // 只有 save 模式才弹覆盖确认;pick 模式选已有/新建文件路径都不写文件
+  if (mode.value === 'save' && nameConflict.value) {
     if (!(await appConfirm({ message: `${fileNameFinal.value} 已存在,覆盖?`, variant: 'warn' })))
       return
   }
@@ -316,7 +352,7 @@ watch(
 </script>
 
 <template>
-  <Modal v-if="open" title="保存文件" width="xl" fixed-height storage-key="save-file-dialog" @close="emit('close')">
+  <Modal v-if="open" :title="titleText" width="xl" fixed-height storage-key="save-file-dialog" @close="emit('close')">
     <div class="save-shell">
     <div class="save-dialog" @keydown="onKeyNav">
       <!-- 左侧:常用位置 + 收藏 + 最近 -->
@@ -399,7 +435,7 @@ watch(
                 :key="it.name"
                 :class="{ folder: it.isDirectory, selected: selectedIdx === i }"
                 @click="selectedIdx = i; pickItem(it)"
-                @dblclick="pickItem(it)"
+                @dblclick="dblClickItem(it)"
               >
                 <td class="name-cell">
                   <span class="ico">{{ it.isDirectory ? '📁' : '📄' }}</span>
@@ -426,9 +462,13 @@ watch(
               </option>
             </select>
           </div>
-          <div v-if="nameConflict" class="conflict">⚠ 文件已存在,保存将覆盖</div>
+          <!-- 冲突提示只在 save 模式;pick 模式存在反而是好事(说明用户选到了已有文件) -->
+          <div v-if="mode === 'save' && nameConflict" class="conflict">⚠ 文件已存在,保存将覆盖</div>
+          <div v-if="isPickExisting && fileNameFinal && !nameConflict" class="conflict">
+            ⚠ 该文件不存在;本模式只能选已存在文件
+          </div>
           <div class="target-preview">
-            保存到: <code>{{ targetPath || '—' }}</code>
+            {{ mode === 'save' ? '保存到' : '选择' }}: <code>{{ targetPath || '—' }}</code>
           </div>
         </div>
       </div>
@@ -439,10 +479,10 @@ watch(
       <button class="btn-ghost" :disabled="submitting" @click="emit('close')">取消</button>
       <button
         class="btn-primary"
-        :disabled="submitting || !fileNameFinal || !currentDir"
+        :disabled="submitting || !fileNameFinal || !currentDir || (isPickExisting && !nameConflict)"
         @click="doSave"
       >
-        {{ submitting ? '保存中…' : '▶ 保存' }}
+        {{ submitting ? '处理中…' : confirmText }}
       </button>
     </div>
     </div>
