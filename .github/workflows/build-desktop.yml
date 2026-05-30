@@ -155,8 +155,25 @@ jobs:
             apps/desktop/release/*.yml
           if-no-files-found: ignore
 
+      # Prerelease channel yml(build job 里也生成一份给 GitHub Release attach 用)
+      # 详细说明见 release-mirror-oss job 里同名 step
+      - name: Duplicate latest*.yml as rc/beta/alpha channels (for GH Release)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          for src in apps/desktop/release/latest*.yml; do
+            [ -f "$src" ] || continue
+            base=$(basename "$src" | sed 's/^latest/CH/')
+            for ch in rc beta alpha; do
+              dst="apps/desktop/release/$(echo "$base" | sed "s/^CH/$ch/")"
+              cp "$src" "$dst"
+            done
+          done
+          ls apps/desktop/release/*.yml | sort
+
       # tag v* 触发：把安装包挂到对应 GitHub Release（所有 matrix 各自追加，不冲突）
       # softprops/action-gh-release：v2 是当前 stable。
+      # 同时 attach rc/beta/alpha yml 避免 electron-updater prerelease channel 推断坑
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -171,6 +188,9 @@ jobs:
             apps/desktop/release/*.tar.gz
             apps/desktop/release/*.zip
             apps/desktop/release/latest*.yml
+            apps/desktop/release/rc*.yml
+            apps/desktop/release/beta*.yml
+            apps/desktop/release/alpha*.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
