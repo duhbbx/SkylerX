@@ -83,10 +83,13 @@ import WorkspaceExportDialog from './components/WorkspaceExportDialog.vue'
 import type { TreeNode } from './components/treeNode'
 import { useDataClient } from './data-client'
 import {
+  type BulkSqlChunk,
   type ObjectKind,
   type SqlTemplateKind,
   type TableContext,
   type TableStats,
+  buildBulkDrop,
+  buildBulkTruncate,
   buildDrop,
   buildSqlTemplate,
   contextOfNode,
@@ -96,6 +99,7 @@ import {
   erdContext,
   existingForeignKeysQuery,
   extractDefinition,
+  familyOf,
   formatBytes,
   incomingForeignKeysQuery,
   objectDdlQuery,
@@ -160,6 +164,52 @@ const bulkDropState = ref<{
   done: number
   error: string | null
 } | null>(null)
+
+/**
+ * Generic per-chunk batch run state (#25). Used for TRUNCATE, DDL export, etc.
+ * — anywhere we have a precomputed list of SQL chunks to run sequentially
+ * with fail-fast semantics. The progress panel reuses the same template
+ * shape (label list + done counter + cancel).
+ */
+const bulkRunState = ref<{
+  title: string
+  /** Pre-rendered label for each chunk in the order they'll execute. */
+  labels: string[]
+  /** Per-chunk async runner. Throws on error → halt. */
+  run: (i: number) => Promise<void>
+  busy: boolean
+  done: number
+  error: string | null
+  /** Optional cleanup once everything succeeded (reload tree etc). */
+  onDone?: () => void | Promise<void>
+} | null>(null)
+
+/** Pop the generic bulk-run modal closed. */
+function dismissBulkRun(): void {
+  bulkRunState.value = null
+}
+
+/**
+ * Sequential fail-fast runner. Public so the modal's "继续" button can re-call
+ * after the user fixes whatever upstream issue caused the error.
+ */
+async function confirmBulkRun(): Promise<void> {
+  const b = bulkRunState.value
+  if (!b) return
+  b.busy = true
+  b.error = null
+  try {
+    for (let i = b.done; i < b.labels.length; i++) {
+      await b.run(i)
+      b.done = i + 1
+    }
+    await b.onDone?.()
+    bulkRunState.value = null
+  } catch (e) {
+    b.error = e instanceof Error ? e.message : String(e)
+    b.busy = false
+  }
+}
 
 // CSV 导入对话框
 const importing = ref<{
@@ -1247,27 +1297,47 @@ async function onBulkDrop(items: { connId: string; node: TreeNode }[]): Promise<
   bulkDropState.value = { items: resolved, cascade: false, busy: false, done: 0, error: null }
 }
 
-// 顺序执行批量删除；中途失败保留进度（done）便于「继续」重试
+/**
+ * 顺序执行批量删除 — 用 buildBulkDrop() 把同 (connId, kind, schema) 的对象
+ * 聚合成一条多目标 DROP, 减少 round trip (#25). 不能 batch 的方言 (Oracle/DM/SQLite)
+ * 自动退化为单条循环. 任一 chunk 报错即停, done 计数保留, 用户改完可"继续".
+ */
 async function confirmBulkDrop(): Promise<void> {
   const b = bulkDropState.value
   if (!b) return
   b.busy = true
   b.error = null
   const parents = new Map<TreeNode, string>()
+  // Bucket by (connId, dialect). All items in one bucket share a driver and
+  // can be planned together by buildBulkDrop.
+  const byConn = new Map<
+    string,
+    { dialect: DbDialect; items: { connId: string; node: TreeNode }[] }
+  >()
+  for (let i = b.done; i < b.items.length; i++) {
+    const it = b.items[i]
+    let arr = byConn.get(it.connId)
+    if (!arr) {
+      arr = { dialect: it.dialect, items: [] }
+      byConn.set(it.connId, arr)
+    }
+    arr.items.push({ connId: it.connId, node: it.node })
+    if (it.node.parent) parents.set(it.node.parent, it.connId)
+  }
+  // Build the SQL plan per connection. Each chunk's `count` is the number of
+  // original nodes covered; we use that to advance `b.done` in lockstep.
+  const plan: { connId: string; chunk: BulkSqlChunk }[] = []
+  for (const [connId, group] of byConn) {
+    const chunks = buildBulkDrop(group.dialect, group.items, b.cascade)
+    for (const c of chunks) plan.push({ connId, chunk: c.chunk })
+  }
   try {
-    for (let i = b.done; i < b.items.length; i++) {
-      const it = b.items[i]
-      const r = buildDrop(it.dialect, it.node, b.cascade)
-      if (!r) {
-        b.done = i + 1
-        continue
-      }
-      await client.connections.execute(it.connId, r.sql, [], {
-        database: r.ctx.database,
-        schema: r.ctx.schema,
+    for (const p of plan) {
+      await client.connections.execute(p.connId, p.chunk.sql, [], {
+        database: p.chunk.ctx.database,
+        schema: p.chunk.ctx.schema,
       })
-      b.done = i + 1
-      if (it.node.parent) parents.set(it.node.parent, it.connId)
+      b.done += p.chunk.count
     }
     bulkDropState.value = null
     navRef.value?.clearMulti()
@@ -1275,6 +1345,332 @@ async function confirmBulkDrop(): Promise<void> {
   } catch (e) {
     b.error = e instanceof Error ? e.message : String(e)
     b.busy = false
+  }
+}
+
+// ── 批量 TRUNCATE (#25) ──
+async function onBulkTruncate(items: { connId: string; node: TreeNode }[]): Promise<void> {
+  if (!items.length) return
+  const ok = await appConfirm({
+    title: t('common.confirm'),
+    message: `确定 TRUNCATE ${items.length} 张表? 表里数据全清, 不可回滚.`,
+    variant: 'warn',
+  })
+  if (!ok) return
+  // Resolve dialect per connection.
+  const connCache = new Map<string, ConnectionConfig>()
+  const byConn = new Map<
+    string,
+    { dialect: DbDialect; items: { connId: string; node: TreeNode }[] }
+  >()
+  for (const it of items) {
+    let conn = connCache.get(it.connId)
+    if (!conn) {
+      conn = await client.connections.get(it.connId)
+      connCache.set(it.connId, conn)
+    }
+    let arr = byConn.get(it.connId)
+    if (!arr) {
+      arr = { dialect: conn.dialect, items: [] }
+      byConn.set(it.connId, arr)
+    }
+    arr.items.push(it)
+  }
+  // Plan: ask buildBulkTruncate per (conn, dialect).
+  const plan: { connId: string; chunk: BulkSqlChunk }[] = []
+  for (const [connId, group] of byConn) {
+    for (const c of buildBulkTruncate(group.dialect, group.items)) {
+      plan.push({ connId, chunk: c.chunk })
+    }
+  }
+  if (!plan.length) return
+  const labels = plan.map((p) =>
+    p.chunk.count > 1
+      ? `TRUNCATE ${p.chunk.names.length} 张表 (${p.chunk.names.join(', ')})`
+      : `TRUNCATE ${p.chunk.names[0]}`,
+  )
+  bulkRunState.value = {
+    title: '批量 TRUNCATE',
+    labels,
+    run: async (i) => {
+      const p = plan[i]
+      await client.connections.execute(p.connId, p.chunk.sql, [], {
+        database: p.chunk.ctx.database,
+        schema: p.chunk.ctx.schema,
+      })
+    },
+    busy: false,
+    done: 0,
+    error: null,
+    onDone: () => navRef.value?.clearMulti(),
+  }
+}
+
+// ── 批量复制 SELECT 模板 (#25) ──
+async function onBulkCopySelect(items: { connId: string; node: TreeNode }[]): Promise<void> {
+  // Resolve dialect once per conn so we can fully qualify identifiers.
+  const connCache = new Map<string, ConnectionConfig>()
+  const lines: string[] = []
+  for (const it of items) {
+    let conn = connCache.get(it.connId)
+    if (!conn) {
+      conn = await client.connections.get(it.connId)
+      connCache.set(it.connId, conn)
+    }
+    const ref = it.node.sqlName ?? quoteId(conn.dialect, it.node.name)
+    lines.push(`SELECT * FROM ${ref};`)
+  }
+  const text = lines.join('\n')
+  try {
+    await navigator.clipboard?.writeText(text)
+    toast.success(`已复制 ${lines.length} 条 SELECT 模板`, 2000)
+  } catch (e) {
+    reportError(e, { tag: 'bulk-copy-select' })
+  }
+}
+
+// ── 批量导出 DDL (#25) ──
+async function onBulkExportDdl(items: { connId: string; node: TreeNode }[]): Promise<void> {
+  if (!items.length) return
+  const connCache = new Map<string, ConnectionConfig>()
+  // Build a single .sql blob: for each object, SHOW CREATE / pg_get_viewdef /
+  // dbms_metadata.get_ddl etc. Run them sequentially with fail-fast, but
+  // collect any per-item failure as a SQL comment so the user can keep going.
+  const labels = items.map((it) => `${it.node.kind} · ${it.node.sqlName ?? it.node.name}`)
+  const sections: string[] = []
+  bulkRunState.value = {
+    title: '批量导出 DDL',
+    labels,
+    run: async (i) => {
+      const it = items[i]
+      let conn = connCache.get(it.connId)
+      if (!conn) {
+        conn = await client.connections.get(it.connId)
+        connCache.set(it.connId, conn)
+      }
+      // Tables: use copyDdl path which already exists via DDL pipeline.
+      // For other kinds, lean on objectDdlQuery from ddl.ts.
+      const ddl = await fetchObjectDdl(conn, it.node)
+      const header = `-- ${it.node.kind.toUpperCase()}: ${it.node.sqlName ?? it.node.name}`
+      sections.push(`${header}\n${ddl ?? '-- (无法获取 DDL)'}\n`)
+    },
+    busy: false,
+    done: 0,
+    error: null,
+    onDone: async () => {
+      const content = sections.join('\n')
+      const filename = `skylerx_ddl_${new Date().toISOString().slice(0, 10)}.sql`
+      try {
+        const w = window as unknown as {
+          api?: {
+            files?: {
+              saveText: (req: { defaultName: string; content: string }) => Promise<string | null>
+            }
+          }
+        }
+        const saved = await w.api?.files?.saveText?.({ defaultName: filename, content })
+        if (saved) toast.success(`DDL 已写到 ${saved}`, 3000)
+      } catch (e) {
+        // Fall back to copying to clipboard so the user can still rescue it.
+        try {
+          await navigator.clipboard?.writeText(content)
+          toast.warn('保存失败,已复制到剪贴板', 3000)
+        } catch (ee) {
+          reportError(ee, { tag: 'bulk-export-ddl-fallback-copy' })
+        }
+      }
+      navRef.value?.clearMulti()
+    },
+  }
+}
+
+/**
+ * Best-effort DDL fetch for a single object. Reuses the same SHOW CREATE /
+ * pg_get_viewdef / dbms_metadata.get_ddl paths the DDL editor uses, but
+ * trimmed to "give me a string" semantics.
+ */
+async function fetchObjectDdl(conn: ConnectionConfig, node: TreeNode): Promise<string | null> {
+  if (node.kind === MetaNodeKind.Table) {
+    // SHOW CREATE TABLE / equivalent
+    try {
+      const family = familyOf(conn.dialect)
+      if (family === 'mysql') {
+        const r = await client.connections.execute(
+          conn.id,
+          `SHOW CREATE TABLE ${node.sqlName ?? node.name}`,
+        )
+        const row = r.rows[0] as Record<string, unknown> | undefined
+        if (!row) return null
+        const key = Object.keys(row).find((k) => /^create/i.test(k))
+        return key ? String(row[key]) : null
+      }
+      if (family === 'pg') {
+        // pg_get_tabledef is non-standard; we fall back to a column-list reconstruct.
+        const ctx = node.path
+        const schema = ctx.length >= 2 ? ctx[ctx.length - 2] : 'public'
+        const r = await client.connections.execute(
+          conn.id,
+          `SELECT column_name, data_type, is_nullable, column_default
+           FROM information_schema.columns
+           WHERE table_schema = '${schema}' AND table_name = '${node.name}'
+           ORDER BY ordinal_position`,
+        )
+        if (!r.rows.length) return null
+        const cols = r.rows.map((c) => {
+          const cc = c as Record<string, unknown>
+          const def = cc.column_default ? ` DEFAULT ${String(cc.column_default)}` : ''
+          const nn = cc.is_nullable === 'NO' ? ' NOT NULL' : ''
+          return `  ${cc.column_name} ${cc.data_type}${nn}${def}`
+        })
+        return `CREATE TABLE ${node.sqlName ?? `"${schema}"."${node.name}"`} (\n${cols.join(',\n')}\n);`
+      }
+    } catch {
+      return null
+    }
+    return null
+  }
+  // Views / functions / procedures / triggers — use the existing query
+  const ref = node.sqlName ?? node.name
+  const q = objectDdlQuery(
+    conn.dialect,
+    node.kind as 'view' | 'function' | 'procedure' | 'trigger',
+    ref,
+    node,
+  )
+  if (!q) return null
+  try {
+    const r = await client.connections.execute(conn.id, q.sql)
+    const row = r.rows[0] as Record<string, unknown> | undefined
+    if (!row) return null
+    if (q.mode === 'showCreate') {
+      const key = Object.keys(row).find((k) => /^create/i.test(k))
+      return key ? String(row[key]) : null
+    }
+    return String(row.ddl ?? '')
+  } catch {
+    return null
+  }
+}
+
+// ── 连接级批量操作 (#25) ──
+async function onBulkDeleteConnections(connIds: string[]): Promise<void> {
+  if (!connIds.length) return
+  const ok = await appConfirm({
+    title: t('common.confirm'),
+    message: `确定删除 ${connIds.length} 个连接? 此操作不可撤销 (连接配置 + 本地缓存的密码一并清除).`,
+    variant: 'danger',
+  })
+  if (!ok) return
+  const errors: string[] = []
+  for (const id of connIds) {
+    try {
+      await client.connections.remove(id)
+      tabsRef.value?.closeConnTabs(id)
+    } catch (e) {
+      errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+  await navRef.value?.reload()
+  navRef.value?.clearMulti()
+  if (errors.length) {
+    reportError(new Error(`部分连接删除失败:\n${errors.join('\n')}`), { tag: 'bulk-delete-conn' })
+  } else {
+    toast.success(`已删除 ${connIds.length} 个连接`)
+  }
+}
+
+async function onBulkMoveToGroup(connIds: string[]): Promise<void> {
+  if (!connIds.length) return
+  // Collect existing groups + offer "新分组..." sentinel.
+  const all = await client.connections.list()
+  const existingGroups = new Set<string>()
+  for (const c of all) if (c.group) existingGroups.add(c.group)
+  for (const g of settings.groupOrder) existingGroups.add(g)
+  const choices = [...existingGroups].sort()
+  const NEW = '__NEW_GROUP__'
+  const UNGROUPED = '__UNGROUPED__'
+  // Use a simple prompt — pick from a comma-separated list or enter a new
+  // name. Reasonable until we add a dedicated picker dialog.
+  const hint = `可选分组: ${UNGROUPED}(取消分组) | ${choices.join(' | ')}\n输入新分组名直接创建.`
+  const picked = await appPrompt({
+    title: '移动到分组',
+    message: hint,
+    defaultValue: choices[0] ?? '',
+    placeholder: '分组名 (或 __UNGROUPED__)',
+  })
+  if (picked == null) return
+  const trimmed = picked.trim()
+  const targetGroup: string | undefined =
+    trimmed === '' || trimmed === UNGROUPED ? undefined : trimmed
+  // Persist new group name in settings.groupOrder if it's brand new.
+  if (targetGroup && !choices.includes(targetGroup)) {
+    settings.groupOrder = [...settings.groupOrder, targetGroup]
+  }
+  const errors: string[] = []
+  for (const id of connIds) {
+    try {
+      const full = await client.connections.get(id)
+      full.group = targetGroup
+      await client.connections.update(full)
+    } catch (e) {
+      errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+  await navRef.value?.reload()
+  navRef.value?.clearMulti()
+  if (errors.length) {
+    reportError(new Error(`部分移动失败:\n${errors.join('\n')}`), { tag: 'bulk-move-group' })
+  } else {
+    toast.success(`已移动 ${connIds.length} 个连接`)
+  }
+  void NEW // silence unused
+}
+
+async function onBulkTestConnections(connIds: string[]): Promise<void> {
+  if (!connIds.length) return
+  const labels: string[] = []
+  const tests: Array<() => Promise<{ id: string; ok: boolean; msg: string; ms?: number }>> = []
+  for (const id of connIds) {
+    const full = await client.connections.get(id)
+    labels.push(`测试 ${full.name}`)
+    tests.push(async () => {
+      try {
+        const r = await client.connections.test(full)
+        return {
+          id,
+          ok: r.ok,
+          msg: r.ok
+            ? `OK ${r.serverVersion ?? ''} (${r.latencyMs ?? '?'} ms)`
+            : r.message || '失败',
+          ms: r.latencyMs,
+        }
+      } catch (e) {
+        return { id, ok: false, msg: e instanceof Error ? e.message : String(e) }
+      }
+    })
+  }
+  // Parallel run (max 6 at a time to avoid clobbering the user's network).
+  const concurrency = Math.min(6, tests.length)
+  const results: { id: string; ok: boolean; msg: string }[] = []
+  let cursor = 0
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (cursor < tests.length) {
+        const i = cursor++
+        results.push(await tests[i]())
+      }
+    }),
+  )
+  const okCount = results.filter((r) => r.ok).length
+  const failed = results.filter((r) => !r.ok)
+  navRef.value?.clearMulti()
+  if (failed.length === 0) {
+    toast.success(`全部 ${okCount} 个连接通过`, 3000)
+  } else {
+    const summary = failed.map((r) => `- ${r.id}: ${r.msg}`).join('\n')
+    reportError(new Error(`${failed.length} / ${connIds.length} 失败:\n${summary}`), {
+      tag: 'bulk-test-conn',
+    })
   }
 }
 
@@ -2469,6 +2865,12 @@ onMounted(async () => {
     @export-schema-sql="onExportSchemaSql"
     @transfer-data="onTransferData"
     @bulk-drop="onBulkDrop"
+    @bulk-truncate="onBulkTruncate"
+    @bulk-copy-select="onBulkCopySelect"
+    @bulk-export-ddl="onBulkExportDdl"
+    @bulk-delete-connections="onBulkDeleteConnections"
+    @bulk-move-to-group="onBulkMoveToGroup"
+    @bulk-test-connections="onBulkTestConnections"
     @open-redis-key="onOpenRedisKey"
     @delete-redis-key="onDeleteRedisKey"
     @flush-redis-db="onFlushRedisDb"
@@ -2599,6 +3001,38 @@ onMounted(async () => {
           }}
         </button>
         <button class="ghost" @click="bulkDropState = null">{{ t('common.cancel') }}</button>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Generic batch-run progress modal (#25) — used by TRUNCATE / DDL export.
+       Shows the planned actions in order, ticks them off as each succeeds.
+       On error, halts with the message + a "继续" button so the user can
+       resume after fixing the root cause. -->
+  <Modal v-if="bulkRunState" :title="bulkRunState.title" @close="dismissBulkRun">
+    <div class="confirm">
+      <p>{{ `共 ${bulkRunState.labels.length} 个动作, 顺序执行 — 任一报错即停.` }}</p>
+      <ul class="bulk-list">
+        <li
+          v-for="(label, i) in bulkRunState.labels"
+          :key="i"
+          :class="{ gone: i < bulkRunState.done, current: i === bulkRunState.done && bulkRunState.busy }"
+        >{{ label }}</li>
+      </ul>
+      <div v-if="bulkRunState.error" class="banner err">
+        {{ `第 ${bulkRunState.done + 1} / ${bulkRunState.labels.length} 失败: ${bulkRunState.error}` }}
+      </div>
+      <div class="actions">
+        <button class="primary" :disabled="bulkRunState.busy" @click="confirmBulkRun">
+          {{
+            bulkRunState.busy
+              ? `执行中 ${bulkRunState.done} / ${bulkRunState.labels.length}`
+              : bulkRunState.error
+                ? '继续'
+                : `开始 (${bulkRunState.labels.length})`
+          }}
+        </button>
+        <button class="ghost" :disabled="bulkRunState.busy" @click="dismissBulkRun">{{ t('common.cancel') }}</button>
       </div>
     </div>
   </Modal>

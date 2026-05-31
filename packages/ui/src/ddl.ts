@@ -736,6 +736,218 @@ export function dropSupportsCascade(dialect: DbDialect, kind: string): boolean {
   return cascadeSuffix(familyOf(dialect), kind, true) !== ''
 }
 
+/**
+ * Group of items that share the same `(connId, ctx, kind, batchable)` slot →
+ * one SQL statement per group when the dialect supports comma-separated
+ * targets; one statement per item when it doesn't.
+ *
+ * Returned by buildBulkDrop / buildBulkTruncate so the caller can execute
+ * each chunk inside a single round-trip + transaction (#25).
+ */
+export interface BulkSqlChunk {
+  /** Statement to execute (may target multiple objects in one go). */
+  sql: string
+  /** Execution context: database + schema for routing/SET search_path. */
+  ctx: TableContext
+  /** Number of objects covered by this single SQL statement (for progress). */
+  count: number
+  /** Object names included (for per-item ✓/✗ UI when count > 1). */
+  names: string[]
+}
+
+/**
+ * Which (family, kind) pairs let us list multiple targets in one DROP
+ * statement. Listed pairs save N-1 round trips per bulk action.
+ *
+ * - mysql:    DROP TABLE/VIEW/TRIGGER/EVENT/INDEX (comma-separated)
+ *             DROP FUNCTION/PROCEDURE only takes one name → sequential.
+ * - pg:       DROP TABLE/VIEW/SEQUENCE/INDEX/FUNCTION/PROCEDURE/TRIGGER
+ *             all support comma-separated targets.
+ * - sqlserver: DROP TABLE/VIEW/PROCEDURE/TRIGGER comma-separated;
+ *             DROP FUNCTION one-at-a-time (different signature handling).
+ * - oracle/dm: no multi-target DROP at all — always sequential.
+ */
+function dropSupportsMultiTarget(fam: Family, kind: string): boolean {
+  if (fam === 'mysql') return ['table', 'view', 'trigger', 'event', 'sequence'].includes(kind)
+  if (fam === 'pg')
+    return ['table', 'view', 'sequence', 'function', 'procedure', 'trigger'].includes(kind)
+  if (fam === 'sqlserver') return ['table', 'view', 'procedure', 'trigger'].includes(kind)
+  return false // oracle / dm and anything else: sequential
+}
+
+/**
+ * Build a minimal set of DROP statements for a batch of nodes.
+ *
+ * Strategy:
+ *  1. Group items by (connId, ctx, kind) — within a group, all rows share
+ *     schema + dialect + object kind, so a single multi-target DROP works
+ *     when the family allows it.
+ *  2. For families that allow `DROP TABLE a, b, c [CASCADE]` style, emit
+ *     ONE chunk per group → one round trip executes the whole group.
+ *  3. For Oracle / DM / SQLite and the mysql-DROP-FUNCTION case, emit one
+ *     chunk per node — caller loops with fail-fast semantics (#25 spec).
+ *
+ * Skipped items (unsupported `node.kind`, no schema for triggers, ...) are
+ * silently dropped from the output; caller can diff input vs sum-of-counts
+ * to surface them in the UI.
+ */
+export function buildBulkDrop(
+  dialect: DbDialect,
+  items: { connId: string; node: TreeNode }[],
+  cascade = false,
+): { connId: string; chunk: BulkSqlChunk }[] {
+  const fam = familyOf(dialect)
+  const q = (id: string) => quoteId(dialect, id)
+  const cs = (kind: string): string => cascadeSuffix(fam, kind, cascade)
+
+  // Step 1: bucket by (connId | kind | schema | database). Keep the original
+  // node refs so the per-item names list reflects input order.
+  type Bucket = {
+    connId: string
+    kind: string
+    ctx: TableContext
+    nodes: TreeNode[]
+  }
+  const buckets = new Map<string, Bucket>()
+  for (const it of items) {
+    if (!buildDrop(dialect, it.node, cascade)) continue // skip undroppable
+    const ctx = deriveContext(dialect, it.node)
+    const key = [
+      it.connId,
+      it.node.kind,
+      ctx.database ?? '',
+      ctx.schema ?? '',
+      // Triggers carry their owning table in path[-2] — keep buckets per-table
+      it.node.kind === 'trigger' ? (it.node.path[it.node.path.length - 2] ?? '') : '',
+    ].join('|')
+    let b = buckets.get(key)
+    if (!b) {
+      b = { connId: it.connId, kind: it.node.kind, ctx, nodes: [] }
+      buckets.set(key, b)
+    }
+    b.nodes.push(it.node)
+  }
+
+  const out: { connId: string; chunk: BulkSqlChunk }[] = []
+  for (const b of buckets.values()) {
+    const names = b.nodes.map((n) => n.name)
+    if (dropSupportsMultiTarget(fam, b.kind) && b.nodes.length > 1) {
+      // Native multi-target DROP. PG / MySQL / SQL Server.
+      const targets = b.nodes.map((n) => n.sqlName ?? q(n.name)).join(', ')
+      const prefix =
+        b.kind === 'trigger' && fam === 'pg'
+          ? // PG: DROP TRIGGER name ON table → can't batch across triggers on different tables
+            // (we bucketed by owning table already). Build per-table batched DROP.
+            (() => {
+              const tbl = b.nodes[0].path[b.nodes[0].path.length - 2]
+              return `DROP TRIGGER ${b.nodes.map((n) => q(n.name)).join(', ')} ON ${q(tbl)}`
+            })()
+          : `DROP ${kindKeyword(b.kind, fam)} ${targets}`
+      out.push({
+        connId: b.connId,
+        chunk: { sql: `${prefix}${cs(b.kind)}`, ctx: b.ctx, count: b.nodes.length, names },
+      })
+    } else {
+      // Sequential fallback — one chunk per node.
+      for (const n of b.nodes) {
+        const r = buildDrop(dialect, n, cascade)
+        if (!r) continue
+        out.push({
+          connId: b.connId,
+          chunk: { sql: r.sql, ctx: r.ctx, count: 1, names: [n.name] },
+        })
+      }
+    }
+  }
+  return out
+}
+
+/** SQL keyword for a node kind, varies per dialect for a few. */
+function kindKeyword(kind: string, _fam: Family): string {
+  switch (kind) {
+    case 'table':
+      return 'TABLE'
+    case 'view':
+      return 'VIEW'
+    case 'sequence':
+      return 'SEQUENCE'
+    case 'function':
+      return 'FUNCTION'
+    case 'procedure':
+      return 'PROCEDURE'
+    case 'trigger':
+      return 'TRIGGER'
+    case 'event':
+      return 'EVENT'
+    default:
+      return kind.toUpperCase()
+  }
+}
+
+/**
+ * Build TRUNCATE statements for a batch of table nodes.
+ *
+ * - PG supports `TRUNCATE TABLE a, b, c [CASCADE]` natively → one round trip
+ *   per (connId, schema). CASCADE optional.
+ * - MySQL only truncates one table per statement → sequential.
+ * - SQL Server only truncates one per statement → sequential.
+ * - Oracle: `TRUNCATE TABLE name` one at a time → sequential.
+ * - SQLite: no TRUNCATE; emit `DELETE FROM name` (no row-count returned but
+ *   removes everything; same semantic for our UI).
+ *
+ * Non-table nodes are silently skipped.
+ */
+export function buildBulkTruncate(
+  dialect: DbDialect,
+  items: { connId: string; node: TreeNode }[],
+  cascade = false,
+): { connId: string; chunk: BulkSqlChunk }[] {
+  const fam = familyOf(dialect)
+  const q = (id: string) => quoteId(dialect, id)
+  const onlyTables = items.filter((it) => it.node.kind === 'table')
+  if (!onlyTables.length) return []
+
+  // Bucket by (connId, ctx) so PG can emit one TRUNCATE per (schema, db)
+  type Bucket = { connId: string; ctx: TableContext; nodes: TreeNode[] }
+  const buckets = new Map<string, Bucket>()
+  for (const it of onlyTables) {
+    const ctx = deriveContext(dialect, it.node)
+    const key = [it.connId, ctx.database ?? '', ctx.schema ?? ''].join('|')
+    let b = buckets.get(key)
+    if (!b) {
+      b = { connId: it.connId, ctx, nodes: [] }
+      buckets.set(key, b)
+    }
+    b.nodes.push(it.node)
+  }
+
+  const out: { connId: string; chunk: BulkSqlChunk }[] = []
+  for (const b of buckets.values()) {
+    const names = b.nodes.map((n) => n.name)
+    if (fam === 'pg' && b.nodes.length > 1) {
+      const targets = b.nodes.map((n) => n.sqlName ?? q(n.name)).join(', ')
+      const suffix = cascade ? ' CASCADE' : ''
+      out.push({
+        connId: b.connId,
+        chunk: {
+          sql: `TRUNCATE TABLE ${targets}${suffix}`,
+          ctx: b.ctx,
+          count: b.nodes.length,
+          names,
+        },
+      })
+      continue
+    }
+    // Sequential fallback (mysql, sqlserver, oracle, dm, sqlite)
+    for (const n of b.nodes) {
+      const ref = n.sqlName ?? q(n.name)
+      const sql = dialect === DbDialect.SQLite ? `DELETE FROM ${ref}` : `TRUNCATE TABLE ${ref}`
+      out.push({ connId: b.connId, chunk: { sql, ctx: b.ctx, count: 1, names: [n.name] } })
+    }
+  }
+  return out
+}
+
 /** 生成某节点的 DROP 语句 + 执行上下文；不可删除的节点返回 null。 */
 export function buildDrop(
   dialect: DbDialect,

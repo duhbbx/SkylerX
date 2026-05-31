@@ -21,9 +21,17 @@ export interface TreeController {
   isSelected(node: TreeNode, connId: string): boolean
   /** Ctrl/⌘ 点击：把对象节点加入/移出批量选择集（仅可删除的对象类型） */
   toggleMulti(node: TreeNode, connId: string): void
+  /** Ctrl/⌘ 点击连接节点：连接级多选 (跟 toggleMulti 互斥, 各自的批量操作不同) */
+  toggleMultiConn(connId: string): void
   /** 该节点是否在批量选择集中 */
   isMultiSelected(node: TreeNode, connId: string): boolean
-  /** 清空批量选择集 */
+  /** 该连接是否在连接级多选集中 */
+  isMultiSelectedConn(connId: string): boolean
+  /** Shift+click 范围选择 — 从最后一次单击锚点到当前节点的可见连续区间加入选择 */
+  rangeSelect(node: TreeNode, connId: string): void
+  /** Shift+click 范围选择 — 连接节点版 */
+  rangeSelectConn(connId: string): void
+  /** 清空批量选择集 (包括连接级) */
   clearMulti(): void
   /** 双击：打开节点（连接→打开连接；表/视图→查询前 200 行；其余由调用方展开） */
   openNode(node: TreeNode, connId: string): void

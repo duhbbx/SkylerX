@@ -71,6 +71,18 @@ const emit = defineEmits<{
   openSettings: []
   toggleAiChat: []
   bulkDrop: [{ connId: string; node: TreeNode }[]]
+  /** 批量 TRUNCATE TABLE (#25). 只对 table 类型节点有意义. */
+  bulkTruncate: [{ connId: string; node: TreeNode }[]]
+  /** 批量复制 SELECT * FROM <name>; 模板, 便于贴进查询页 (#25). */
+  bulkCopySelect: [{ connId: string; node: TreeNode }[]]
+  /** 批量导出 CREATE DDL 到单个 .sql 文件 (#25). */
+  bulkExportDdl: [{ connId: string; node: TreeNode }[]]
+  /** 批量删除连接节点 (Connection kind) (#25). */
+  bulkDeleteConnections: [string[]]
+  /** 批量把连接移动到某分组(undefined = 未分组) (#25). */
+  bulkMoveToGroup: [string[]]
+  /** 批量并行测试连接 (#25). */
+  bulkTestConnections: [string[]]
   /** Redis 专属:双击 key 节点 → 打开对应 db 的 RedisPane 并定位 key */
   openRedisKey: [connId: string, dbIndex: number, key: string]
   /** Redis 专属:右键删除 key */
@@ -116,7 +128,8 @@ const emit = defineEmits<{
   openWorkspaceExport: []
 }>()
 
-// 批量可选的对象类型（与可删除类型一致）
+// 批量可选的对象类型(与可删除类型一致). Connection 单独走另一套(connection multi-set)
+// 因为连接没有 TreeNode.kind, 用空字符串占位 + 单独的 multiSelConn.
 const MULTI_KINDS: MetaNodeKind[] = [
   MetaNodeKind.Table,
   MetaNodeKind.View,
@@ -125,9 +138,26 @@ const MULTI_KINDS: MetaNodeKind[] = [
   MetaNodeKind.Sequence,
   MetaNodeKind.Trigger,
   MetaNodeKind.Event,
+  MetaNodeKind.Database,
+  MetaNodeKind.Schema,
+  MetaNodeKind.Index,
 ]
 // 批量选择集：key → {node, connId}（保留 connId 以支持跨连接批量）
 const multiSel = reactive(new Map<string, { node: TreeNode; connId: string }>())
+
+/**
+ * 批量选连接(独立于 multiSel — connection 没有 TreeNode 概念).
+ * key = connectionId. 用户 Ctrl-click 连接条目时进这个集合;
+ * 跟 multiSel 互斥(一次只能批量一种家族).
+ */
+const multiSelConn = reactive(new Set<string>())
+
+/**
+ * 最后一次单击的节点 key, 用于 Shift-click 范围选择 — Shift+click 会从
+ * lastClickedKey 到当前节点的可见连续区间全部加进选择. visibleFlat 计算缓存了
+ * 当前可见节点的扁平顺序, 区间端点都用 nodeKey 索引.
+ */
+const lastClickedKey = ref<string | null>(null)
 
 interface ConnRoot {
   id: string
@@ -175,6 +205,29 @@ const groupList = computed(() => {
   return ordered.map(([name, conns]) => ({ name, conns: sortRoots(conns) }))
 })
 const ungrouped = computed(() => sortRoots(roots.value.filter((r) => !r.group)))
+
+/**
+ * Visible flat list of expandable / selectable object-nodes inside connections,
+ * in DOM order. Used by Shift+click range select (#25) — controller.rangeSelect
+ * walks the visible nodes between the anchor and the clicked one, adding each
+ * eligible object to multiSel.
+ *
+ * Only includes nodes whose ancestors are all expanded (so collapsed branches
+ * don't surprise-multi-select dozens of hidden tables).
+ */
+const visibleObjectFlat = computed<{ node: TreeNode; connId: string }[]>(() => {
+  const out: { node: TreeNode; connId: string }[] = []
+  function visit(node: TreeNode, connId: string): void {
+    out.push({ node, connId })
+    if (!node.expanded) return
+    for (const c of node.children ?? []) visit(c, connId)
+  }
+  for (const r of roots.value) {
+    if (!r.node.expanded) continue
+    for (const c of r.node.children ?? []) visit(c, r.id)
+  }
+  return out
+})
 
 function sortRoots(arr: ConnRoot[]): ConnRoot[] {
   return [...arr].sort((a, b) => {
@@ -249,15 +302,76 @@ const controller: TreeController = {
   },
   toggleMulti(node, connId) {
     if (!MULTI_KINDS.includes(node.kind)) return
+    // Cross-family lock: connection multi-set takes the slot whenever it's
+    // non-empty. Mixing connections and objects in one batch isn't meaningful
+    // (the bulk ops dispatch differently) so we just refuse the toggle.
+    if (multiSelConn.size > 0) return
     const k = nodeKey(node, connId)
     if (multiSel.has(k)) multiSel.delete(k)
     else multiSel.set(k, { node, connId })
+    lastClickedKey.value = k
+  },
+  toggleMultiConn(connId) {
+    if (multiSel.size > 0) return // same family-lock as toggleMulti
+    if (multiSelConn.has(connId)) multiSelConn.delete(connId)
+    else multiSelConn.add(connId)
+    lastClickedKey.value = `conn:${connId}`
   },
   isMultiSelected(node, connId) {
     return multiSel.has(nodeKey(node, connId))
   },
+  isMultiSelectedConn(connId) {
+    return multiSelConn.has(connId)
+  },
+  /**
+   * Shift+click 范围选择 — visibleFlat 列出当前可见的同家族节点(对象或连接),
+   * 从 lastClickedKey 到 (node, connId) 区间整段加进 multiSel(已选保持).
+   * 若 lastClickedKey 不存在/不同家族, 退化为单击 toggle.
+   */
+  rangeSelect(node, connId) {
+    const me = nodeKey(node, connId)
+    if (!lastClickedKey.value || lastClickedKey.value === me) {
+      // No anchor or same node → behave as a plain toggle for forgiving UX.
+      controller.toggleMulti(node, connId)
+      return
+    }
+    const flat = visibleObjectFlat.value
+    const a = flat.findIndex((it) => nodeKey(it.node, it.connId) === lastClickedKey.value)
+    const b = flat.findIndex((it) => nodeKey(it.node, it.connId) === me)
+    if (a < 0 || b < 0) {
+      controller.toggleMulti(node, connId)
+      return
+    }
+    const [lo, hi] = a <= b ? [a, b] : [b, a]
+    for (let i = lo; i <= hi; i++) {
+      const it = flat[i]
+      if (!MULTI_KINDS.includes(it.node.kind)) continue
+      multiSel.set(nodeKey(it.node, it.connId), { node: it.node, connId: it.connId })
+    }
+    lastClickedKey.value = me
+  },
+  rangeSelectConn(connId) {
+    if (!lastClickedKey.value) {
+      controller.toggleMultiConn(connId)
+      return
+    }
+    if (lastClickedKey.value.startsWith('conn:')) {
+      const anchor = lastClickedKey.value.slice('conn:'.length)
+      const a = roots.value.findIndex((r) => r.id === anchor)
+      const b = roots.value.findIndex((r) => r.id === connId)
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a <= b ? [a, b] : [b, a]
+        for (let i = lo; i <= hi; i++) multiSelConn.add(roots.value[i].id)
+        lastClickedKey.value = `conn:${connId}`
+        return
+      }
+    }
+    controller.toggleMultiConn(connId)
+  },
   clearMulti() {
     multiSel.clear()
+    multiSelConn.clear()
+    lastClickedKey.value = null
   },
   openNode(node, connId) {
     // 双击连接 = 打开连接；双击表/视图等其它节点仅展开/折叠（由 TreeItem toggle 处理），
@@ -619,13 +733,44 @@ async function revealObject(connId: string, schema: string, table: string): Prom
   return walkReveal(root, connId, schema, table, false)
 }
 
-// ── 批量操作 ──
+// ── 批量操作 (#25) ──
+/** 当前是否在连接级多选 (跟 object 多选互斥). */
+const isBulkConnMode = computed(() => multiSelConn.size > 0)
+/** 当前选中是否全部是 Table 类节点 (用来判断 TRUNCATE / SELECT 模板按钮是否亮). */
+const bulkAllTables = computed(() => {
+  if (isBulkConnMode.value) return false
+  if (!multiSel.size) return false
+  for (const v of multiSel.values()) if (v.node.kind !== MetaNodeKind.Table) return false
+  return true
+})
 function bulkDrop(): void {
   emit('bulkDrop', [...multiSel.values()])
+}
+function bulkTruncate(): void {
+  emit(
+    'bulkTruncate',
+    [...multiSel.values()].filter((v) => v.node.kind === MetaNodeKind.Table),
+  )
 }
 function bulkCopyNames(): void {
   const text = [...multiSel.values()].map((s) => s.node.sqlName ?? s.node.name).join('\n')
   void navigator.clipboard?.writeText(text)
+  toast.success(t('common.copied'))
+}
+function bulkCopySelect(): void {
+  emit('bulkCopySelect', [...multiSel.values()])
+}
+function bulkExportDdl(): void {
+  emit('bulkExportDdl', [...multiSel.values()])
+}
+function bulkDeleteConnections(): void {
+  emit('bulkDeleteConnections', [...multiSelConn])
+}
+function bulkMoveToGroup(): void {
+  emit('bulkMoveToGroup', [...multiSelConn])
+}
+function bulkTestConnections(): void {
+  emit('bulkTestConnections', [...multiSelConn])
 }
 
 /**
@@ -650,7 +795,11 @@ function collapseAll(): void {
 defineExpose({
   reload,
   refreshNode,
-  clearMulti: () => multiSel.clear(),
+  clearMulti: () => {
+    multiSel.clear()
+    multiSelConn.clear()
+    lastClickedKey.value = null
+  },
   revealObject,
   expandAll,
   collapseAll,
@@ -941,10 +1090,35 @@ function onGroupDrop(targetGroup: string): void {
       ></div>
     </div>
 
+    <!-- Object-level bulk bar (tables / views / functions / procedures / etc.).
+         Buttons appear conditionally on the selection kind family. #25 -->
     <div v-if="multiSel.size" class="bulk-bar">
       <span class="bcount">{{ t('bulk.selected', { n: multiSel.size }) }}</span>
       <button class="danger" :title="t('bulk.delete')" @click="bulkDrop">{{ t('bulk.delete') }}</button>
+      <button
+        v-if="bulkAllTables"
+        class="danger"
+        title="TRUNCATE 所选表 (PG 支持单语句; 其它方言顺序执行, 遇错即停)"
+        @click="bulkTruncate"
+      >TRUNCATE</button>
       <button :title="t('bulk.copyNames')" @click="bulkCopyNames">{{ t('bulk.copyNames') }}</button>
+      <button
+        v-if="bulkAllTables"
+        title="把所选表名生成 SELECT * FROM ...; 模板复制到剪贴板"
+        @click="bulkCopySelect"
+      >复制 SELECT</button>
+      <button
+        title="导出所选对象的 CREATE DDL 到一个 .sql 文件"
+        @click="bulkExportDdl"
+      >导出 DDL</button>
+      <button class="ghost" :title="t('common.cancel')" @click="controller.clearMulti()">✕</button>
+    </div>
+    <!-- Connection-level bulk bar (when Ctrl-clicked multiple connections). #25 -->
+    <div v-else-if="multiSelConn.size" class="bulk-bar">
+      <span class="bcount">{{ t('bulk.selected', { n: multiSelConn.size }) }} (连接)</span>
+      <button class="danger" title="批量删除所选连接" @click="bulkDeleteConnections">删除连接</button>
+      <button title="批量移动到分组" @click="bulkMoveToGroup">移动到分组</button>
+      <button title="并行测试所选连接" @click="bulkTestConnections">测试连接</button>
       <button class="ghost" :title="t('common.cancel')" @click="controller.clearMulti()">✕</button>
     </div>
 

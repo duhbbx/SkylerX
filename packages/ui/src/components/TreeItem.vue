@@ -59,10 +59,20 @@ async function toggle(): Promise<void> {
   if (node.expanded && node.children === null) await ctrl.loadChildren(node, props.connId)
 }
 
-// 单击：Ctrl/⌘ 切换批量选择；普通单击清空批量集并单选
+// 单击 (#25 增强):
+//   - Ctrl/⌘+click  → 切换批量选择(连接节点走 toggleMultiConn, 其它走 toggleMulti)
+//   - Shift+click   → 从最后一次单击锚点到当前节点的可见连续区间整段加入选择
+//   - 普通单击      → 清空批量集并单选
 function onSelect(e: MouseEvent): void {
+  const isConn = props.node.kind === MetaNodeKind.Connection
+  if (e.shiftKey) {
+    if (isConn) ctrl.rangeSelectConn(props.connId)
+    else ctrl.rangeSelect(props.node, props.connId)
+    return
+  }
   if (e.metaKey || e.ctrlKey) {
-    ctrl.toggleMulti(props.node, props.connId)
+    if (isConn) ctrl.toggleMultiConn(props.connId)
+    else ctrl.toggleMulti(props.node, props.connId)
     return
   }
   ctrl.clearMulti()
@@ -91,7 +101,9 @@ function onContext(e: MouseEvent): void {
       :class="{
         conn: node.kind === 'connection',
         selected: ctrl.isSelected(node, connId),
-        multi: ctrl.isMultiSelected(node, connId),
+        multi:
+          ctrl.isMultiSelected(node, connId) ||
+          (node.kind === 'connection' && ctrl.isMultiSelectedConn(connId)),
       }"
       :style="{ paddingLeft: depth * 14 + 8 + 'px' }"
       @click="onSelect"
