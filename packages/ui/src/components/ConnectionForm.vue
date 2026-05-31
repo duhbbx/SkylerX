@@ -92,6 +92,45 @@ const section = ref<'general' | 'ssl' | 'ssh'>('general')
 const groups = ref<string[]>([])
 const showRawError = ref(false) // 错误 banner 中「查看原始错误」折叠
 
+/**
+ * Names of all existing connections (cached on mount + after save). Used by
+ * the name-uniqueness validator. Editing a connection excludes its own
+ * previous name from the collision set.
+ */
+const existingNames = ref<Set<string>>(new Set())
+async function loadExistingNames(): Promise<void> {
+  try {
+    const all = await client.connections.list()
+    existingNames.value = new Set(
+      all
+        .filter((c) => !props.connId || c.id !== props.connId)
+        .map((c) => c.name.trim().toLowerCase())
+        .filter(Boolean),
+    )
+  } catch {
+    /* leaving the set empty just means we skip the uniqueness check */
+  }
+}
+
+/** Inline error under the name input — '' = no error. */
+const nameError = ref('')
+
+/** Returns '' if the name is valid, otherwise a short user-facing message. */
+function validateName(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return '' // empty triggers auto-fill on save; not an error here
+  if (existingNames.value.has(trimmed.toLowerCase())) return `名称 "${trimmed}" 已被另一个连接占用`
+  return ''
+}
+
+/** Re-validate whenever form.name or props.connId changes; auto-clears on edit. */
+watch(
+  () => form.name,
+  (v) => {
+    nameError.value = validateName(v || '')
+  },
+)
+
 /** 把 testResult.message 分类成带标题/排查步骤的结构（失败时使用）。 */
 const categorizedError = computed(() => {
   if (!testResult.value || testResult.value.ok) return null
@@ -167,6 +206,15 @@ function isDirty(): boolean {
 defineExpose({ isDirty })
 
 watch(() => props.connId, load, { immediate: true })
+// Refresh the uniqueness set whenever the form is opened against a new
+// connection (or new-create vs editing).
+watch(
+  () => props.connId,
+  () => {
+    void loadExistingNames()
+  },
+  { immediate: true },
+)
 
 function onDialectChange(): void {
   form.port = defaultPorts[form.dialect] ?? form.port
@@ -306,6 +354,17 @@ async function save(): Promise<void> {
   if (!form.name?.trim()) {
     form.name = deriveName()
   }
+  // Uniqueness check: refresh the set in case other windows added connections
+  // since this form opened, then re-validate.
+  await loadExistingNames()
+  const err = validateName(form.name)
+  if (err) {
+    nameError.value = err
+    // Make sure the user sees the error — switch to the general tab where
+    // the name field lives and put focus on it.
+    section.value = 'general'
+    return
+  }
   busy.value = true
   try {
     const saved = props.connId
@@ -381,7 +440,14 @@ async function remove(): Promise<void> {
     <div class="form-scroll">
     <div v-show="section === 'general'" class="form-grid">
       <label>{{ t('conn.name') }}</label>
-      <input v-model="form.name" :placeholder="t('conn.name.ph')" />
+      <div class="name-cell">
+        <input
+          v-model="form.name"
+          :class="{ 'input-err': nameError }"
+          :placeholder="t('conn.name.ph')"
+        />
+        <div v-if="nameError" class="name-err">{{ nameError }}</div>
+      </div>
 
       <label>{{ t('conn.dialect') }}</label>
       <!-- 自定义下拉：native <select> 无法内嵌 SVG，换成 DialectSelect 后每个方言都带品牌 logo -->
@@ -665,6 +731,20 @@ async function remove(): Promise<void> {
   color: var(--accent);
   margin-left: 4px;
   font-size: 10px;
+}
+/* Name uniqueness inline error: red border on the input + small red line below.
+   Cell wrapper lets the error sit under the input without breaking the grid. */
+.name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.name-cell .input-err {
+  border-color: var(--err, #e04050) !important;
+}
+.name-cell .name-err {
+  font-size: 11px;
+  color: var(--err, #e04050);
 }
 .form-grid textarea {
   width: 100%;

@@ -6,9 +6,9 @@ import {
   type ConnectionConfig,
   type DbDialect,
   type ExecuteOptions,
-  type MetadataNode,
   MetaNodeKind,
   type MetaScope,
+  type MetadataNode,
   type QueryColumn,
   type QueryResult,
   type TestResult,
@@ -58,9 +58,7 @@ class DmConnection implements DriverConnection {
     const conn = await this.pool.getConnection()
     try {
       if (options?.schema) {
-        await conn.execute(
-          `SET SCHEMA ${oracleFamilyHelpers.quoteIdentifier(options.schema)}`,
-        )
+        await conn.execute(`SET SCHEMA ${oracleFamilyHelpers.quoteIdentifier(options.schema)}`)
       }
       const res = await conn.execute(paginate(sql, options), params as unknown[])
       const executionTimeMs = Date.now() - start
@@ -118,22 +116,66 @@ class DmConnection implements DriverConnection {
     ])
     const p = [schema]
     return [
-      { kind: MetaNodeKind.Group, name: '表', path: p, group: 'tables', hasChildren: true, count: tables },
-      { kind: MetaNodeKind.Group, name: '视图', path: p, group: 'views', hasChildren: true, count: views },
+      {
+        kind: MetaNodeKind.Group,
+        name: '表',
+        path: p,
+        group: 'tables',
+        hasChildren: true,
+        count: tables,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '视图',
+        path: p,
+        group: 'views',
+        hasChildren: true,
+        count: views,
+      },
     ]
   }
 
   private async tableSubGroups(schema: string, table: string): Promise<MetadataNode[]> {
     const [cols, idx, keys] = await Promise.all([
-      this.scalar('SELECT COUNT(*) AS "c" FROM all_tab_columns WHERE owner = :1 AND table_name = :2', [schema, table]),
-      this.scalar('SELECT COUNT(*) AS "c" FROM all_indexes WHERE owner = :1 AND table_name = :2', [schema, table]),
-      this.scalar('SELECT COUNT(*) AS "c" FROM all_constraints WHERE owner = :1 AND table_name = :2', [schema, table]),
+      this.scalar(
+        'SELECT COUNT(*) AS "c" FROM all_tab_columns WHERE owner = :1 AND table_name = :2',
+        [schema, table],
+      ),
+      this.scalar('SELECT COUNT(*) AS "c" FROM all_indexes WHERE owner = :1 AND table_name = :2', [
+        schema,
+        table,
+      ]),
+      this.scalar(
+        'SELECT COUNT(*) AS "c" FROM all_constraints WHERE owner = :1 AND table_name = :2',
+        [schema, table],
+      ),
     ])
     const p = [schema, table]
     return [
-      { kind: MetaNodeKind.Group, name: '列', path: p, group: 'columns', hasChildren: true, count: cols },
-      { kind: MetaNodeKind.Group, name: '索引', path: p, group: 'indexes', hasChildren: true, count: idx },
-      { kind: MetaNodeKind.Group, name: '键', path: p, group: 'keys', hasChildren: true, count: keys },
+      {
+        kind: MetaNodeKind.Group,
+        name: '列',
+        path: p,
+        group: 'columns',
+        hasChildren: true,
+        count: cols,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '索引',
+        path: p,
+        group: 'indexes',
+        hasChildren: true,
+        count: idx,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '键',
+        path: p,
+        group: 'keys',
+        hasChildren: true,
+        count: keys,
+      },
     ]
   }
 
@@ -265,7 +307,22 @@ export function createDmDriver(dialect: DbDialect): DatabaseDriver {
         })
         try {
           await conn.execute('SELECT 1 AS "v" FROM dual')
-          return { ok: true, latencyMs: Date.now() - start }
+          // Dameng exposes its version via v$version like Oracle. Failure to
+          // resolve isn't fatal — connectivity already passed at this point.
+          let serverVersion: string | undefined
+          try {
+            const r: { rows?: Array<{ banner?: string; BANNER?: string }> } = await conn.execute(
+              'SELECT BANNER FROM v$version WHERE ROWNUM = 1',
+            )
+            const banner = r.rows?.[0]?.BANNER ?? r.rows?.[0]?.banner
+            if (banner) {
+              const m = String(banner).match(/(\d+(?:\.\d+)+)/)
+              serverVersion = m ? m[1] : String(banner).trim()
+            }
+          } catch {
+            /* version probe failed, leave serverVersion undefined */
+          }
+          return { ok: true, serverVersion, latencyMs: Date.now() - start }
         } finally {
           await conn.close()
         }
