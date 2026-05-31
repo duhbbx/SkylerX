@@ -1564,6 +1564,15 @@ void (async () => {
     /* 保持 'dev' */
   }
 })()
+
+/**
+ * `import.meta.env.DEV` is injected by Vite — true under `electron-vite dev`,
+ * false in any packaged build. Cast through the `ImportMeta` shape because
+ * `packages/ui`'s tsconfig doesn't reference `vite/client`; the runtime value
+ * is what matters and is correctly set by both the desktop renderer and the
+ * website build.
+ */
+const isDevBuild = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
 /**
  * 更新 UI 状态(完全由 main 进程的 updates:status 事件驱动)。
  * - dev 模式下 main 端 autoUpdater 不启用,IPC 会回 devMode=true,UI 退回 GitHub 链接
@@ -2359,6 +2368,10 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Dev-mode badge: fixed top-right, only when running under electron-vite dev.
+       Tells the user at a glance the running app is NOT a release build, so e.g.
+       any data they wreck is in the dev profile / dev sqlite, not the prod one. -->
+  <div v-if="isDevBuild" class="dev-badge" title="electron-vite dev / not a packaged build">DEV</div>
   <NavTree
     ref="navRef"
     @new-conn="onNew"
@@ -3404,6 +3417,24 @@ onMounted(async () => {
 }
 .fav-gcount {
   opacity: 0.7;
+}
+/* Dev-mode badge — top-right corner, only visible under `electron-vite dev`. */
+.dev-badge {
+  position: fixed;
+  top: 6px;
+  right: 8px;
+  z-index: 9999;
+  padding: 2px 7px;
+  background: rgba(255, 152, 0, 0.92); /* orange = warning, distinct from any UI accent */
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 1.5px;
+  border-radius: 3px;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 .about {
   min-width: 360px;

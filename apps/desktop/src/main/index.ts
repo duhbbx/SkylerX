@@ -24,7 +24,7 @@ function spawnExtraWindow(): void {
     minWidth: 940,
     minHeight: 600,
     show: false,
-    title: 'SkylerX',
+    title: isDev ? '[DEV] SkylerX' : 'SkylerX',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -46,7 +46,7 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     autoHideMenuBar: false,
-    title: 'SkylerX',
+    title: isDev ? '[DEV] SkylerX' : 'SkylerX',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
