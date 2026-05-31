@@ -338,3 +338,110 @@ export function extractSql(text: string): string {
 export function currentProvider(): AiProvider {
   return settings.aiProvider
 }
+
+// ── Connectivity test (#28) ──────────────────────────────────────────
+// Settings → AI → 「测试连通」按钮触发. 用最轻量的请求确认 API Key 有效 +
+// Base URL 可达 + 至少返回 200. 优先打 /v1/models (不烧 token, 只列模型);
+// 若 404 / 501 (某些代理不暴露 /v1/models), fallback 到一次最小聊天请求.
+
+export interface AiTestResult {
+  ok: boolean
+  /** 用户可见的简短消息(成功时含延迟 + 模型数; 失败时含 HTTP 状态/原因) */
+  message: string
+  latencyMs?: number
+  modelCount?: number
+}
+
+/** Test a provider config — does NOT touch settings.aiProvider, runs against the supplied cfg. */
+export async function testAiProvider(
+  provider: AiProvider,
+  cfg: { apiKey: string; baseUrl: string; model: string },
+): Promise<AiTestResult> {
+  const key = cfg.apiKey?.trim()
+  if (!key) return { ok: false, message: 'API Key 为空' }
+  const base = (cfg.baseUrl || '').trim().replace(/\/$/, '')
+  if (!base) return { ok: false, message: 'Base URL 为空' }
+
+  const headers: Record<string, string> =
+    provider === 'anthropic'
+      ? {
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        }
+      : { authorization: `Bearer ${key}` }
+
+  const t0 = Date.now()
+  // Step 1: try /v1/models (lightweight, no token cost)
+  try {
+    const r = await aiHttp(`${base}/v1/models`, {
+      method: 'GET',
+      headers,
+      body: '',
+      timeoutMs: 15_000,
+    })
+    const latencyMs = Date.now() - t0
+    if (r.ok) {
+      let modelCount: number | undefined
+      try {
+        const data = JSON.parse(r.body) as { data?: Array<{ id?: string }> }
+        modelCount = data.data?.length
+      } catch {
+        /* malformed JSON — still 200 means the auth worked */
+      }
+      return {
+        ok: true,
+        message:
+          modelCount !== undefined
+            ? `连通正常 (${latencyMs}ms · ${modelCount} 个模型可见)`
+            : `连通正常 (${latencyMs}ms)`,
+        latencyMs,
+        modelCount,
+      }
+    }
+    // 404 / 501 on /v1/models often means a proxy doesn't expose it — fall through to chat
+    if (r.status !== 404 && r.status !== 501) {
+      return {
+        ok: false,
+        message: `HTTP ${r.status}: ${(r.body || '').slice(0, 200) || '(empty body)'}`,
+        latencyMs,
+      }
+    }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) }
+  }
+
+  // Step 2: minimal chat call as fallback (uses ≤ a handful of tokens)
+  try {
+    const model =
+      cfg.model?.trim() || (provider === 'anthropic' ? 'claude-haiku-4-5' : 'gpt-4o-mini')
+    const url = provider === 'anthropic' ? `${base}/v1/messages` : `${base}/v1/chat/completions`
+    const body =
+      provider === 'anthropic'
+        ? JSON.stringify({
+            model,
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'ping' }],
+          })
+        : JSON.stringify({
+            model,
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'ping' }],
+          })
+    const r = await aiHttp(url, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body,
+      timeoutMs: 20_000,
+    })
+    const latencyMs = Date.now() - t0
+    if (r.ok) return { ok: true, message: `连通正常 (${latencyMs}ms · 模型 ${model})`, latencyMs }
+    return {
+      ok: false,
+      message: `HTTP ${r.status}: ${(r.body || '').slice(0, 200) || '(empty body)'}`,
+      latencyMs,
+    }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) }
+  }
+}

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { onMounted, ref } from 'vue'
+import { type AiTestResult, testAiProvider } from '../ai'
 import { confirm as appConfirm, toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
@@ -111,10 +112,26 @@ const active = ref<SectionId>(props.initialSection ?? 'general')
 const PAGE_SIZES = [50, 100, 200, 500, 1000]
 const LOCALES: Locale[] = ['zh', 'en']
 const aiTab = ref<AiProvider>(settings.aiProvider)
+
+// AI Provider 连通测试 (#28). Per-tab,
+// 切换 tab 时清掉旧结果, 避免显示对其他 provider 的过时结论.
+const aiTesting = ref(false)
+const aiTestResult = ref<AiTestResult | null>(null)
+async function onTestAi(): Promise<void> {
+  aiTestResult.value = null
+  aiTesting.value = true
+  try {
+    aiTestResult.value = await testAiProvider(aiTab.value, settings.aiProviders[aiTab.value])
+  } finally {
+    aiTesting.value = false
+  }
+}
 // 点 tab 同时设为「正在编辑」与「当前激活」—— 避免用户切了 tab 以为已激活
 function onPickProvider(p: AiProvider): void {
   aiTab.value = p
   settings.aiProvider = p
+  // 清掉旧 provider 的测试结果, 不让它误导新 tab 的判断
+  aiTestResult.value = null
 }
 
 // ── 记忆与画像 ──
@@ -384,6 +401,24 @@ function watermarkPreviewSvg(): string {
               <span class="lbl">Base URL</span>
               <input v-model="settings.aiProviders[aiTab].baseUrl" type="text" class="grow" />
             </label>
+            <!-- Connectivity test (#28): lightweight GET /v1/models (with chat fallback)
+                 against the provider's Base URL using the entered API Key. Doesn't
+                 touch settings.aiProvider — runs against the panel's edited values. -->
+            <div class="row ai-test-row">
+              <span class="lbl"></span>
+              <div class="ai-test-cell">
+                <button class="ai-test-btn" :disabled="aiTesting" @click="onTestAi">
+                  {{ aiTesting ? '测试中…' : '测试连通' }}
+                </button>
+                <span
+                  v-if="aiTestResult"
+                  :class="['ai-test-result', aiTestResult.ok ? 'ok' : 'err']"
+                  :title="aiTestResult.message"
+                >
+                  {{ aiTestResult.ok ? '✓' : '✗' }} {{ aiTestResult.message }}
+                </span>
+              </div>
+            </div>
           </div>
           <p class="note">{{ t('settings.aiNote') }}</p>
 
@@ -579,6 +614,45 @@ function watermarkPreviewSvg(): string {
   width: 130px;
   font-size: 13px;
   color: var(--muted);
+}
+/* #28 AI provider connectivity test row — button + inline status. */
+.ai-test-row {
+  align-items: flex-start;
+}
+.ai-test-cell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ai-test-btn {
+  padding: 6px 14px;
+  background: var(--panel, #2a2a2a);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ai-test-btn:hover:not(:disabled) {
+  border-color: var(--accent, #7c6cff);
+}
+.ai-test-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.ai-test-result {
+  font-size: 12px;
+  word-break: break-all;
+  min-width: 0;
+}
+.ai-test-result.ok {
+  color: var(--ok, #4caf50);
+}
+.ai-test-result.err {
+  color: var(--err, #e04050);
 }
 .hint {
   margin: 4px 0 8px 140px; /* 跟 .lbl 宽度对齐 */
