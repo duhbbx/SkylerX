@@ -6,7 +6,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { emitChatErrorAsk } from '../chat-bus'
 import { useDataClient } from '../data-client'
-import { dialogState, dismissToast, toast, toasts } from '../dialog'
+import { type ToastItem, dialogState, dismissToast, toast, toasts } from '../dialog'
 import { t } from '../i18n'
 import { saveFileState } from '../saveFile'
 import SaveFileDialog from './SaveFileDialog.vue'
@@ -88,13 +88,19 @@ async function showSavedInFolder(): Promise<void> {
   savedCard.value = null
 }
 
-/** 复制错误 toast 内容到剪贴板;只 toast 一个 "已复制" 反馈,不挡视线 */
-async function copyToastMsg(text: string): Promise<void> {
+/** 复制错误 toast 报告到剪贴板;优先写 report.markdown,回退到纯 message */
+async function copyToastReport(t: ToastItem): Promise<void> {
+  const text = t.report?.markdown ?? t.message
   try {
-    await navigator.clipboard?.writeText(text)
-    toast.success('已复制', 1500)
-  } catch {
-    /* 浏览器禁用 / 无 clipboard */
+    if (!navigator.clipboard?.writeText)
+      throw new Error('clipboard API unavailable in this context')
+    await navigator.clipboard.writeText(text)
+    toast.success(`已复制错误报告 (${text.length} 字符)`, 1500)
+  } catch (e) {
+    // Use toast.warn (not toast.error) so the failure feedback doesn't itself
+    // render with a copy button — avoids the recursive "copy the copy failure"
+    // UI confusion.
+    toast.warn(`复制失败: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
@@ -223,9 +229,14 @@ function onKey(e: KeyboardEvent): void {
           t.variant === 'warn' ? '!' :
           t.variant === 'success' ? '✓' : 'i'
         }}</span>
-        <span class="toast-msg">{{ t.message }}</span>
+        <div class="toast-body">
+          <span class="toast-msg">{{ t.message }}</span>
+          <div v-if="t.callsite" class="toast-callsite" :title="`${t.callsite.file}:${t.callsite.line ?? '?'}`">
+            📍 {{ t.callsite.file }}<template v-if="t.callsite.function"> · {{ t.callsite.function }}</template><template v-if="t.callsite.line !== undefined"> · {{ t.callsite.line }}</template>
+          </div>
+        </div>
         <div v-if="t.variant === 'danger'" class="toast-actions">
-          <button class="toast-act" title="复制错误信息" @click.stop="copyToastMsg(t.message)">
+          <button class="toast-act" title="复制错误信息" @click.stop="copyToastReport(t)">
             📋
           </button>
           <button
@@ -488,9 +499,13 @@ function onKey(e: KeyboardEvent): void {
 .toast.persistent {
   cursor: default; /* 错误 toast 不再点击关 */
 }
-.toast-msg {
+.toast-body {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
+}
+.toast-msg {
   word-break: break-word;
   white-space: pre-wrap; /* 多行错误保留换行 */
 }
@@ -552,10 +567,14 @@ function onKey(e: KeyboardEvent): void {
 .toast.v-danger .toast-ico { color: var(--err, #e04050); }
 .toast.v-success .toast-ico { color: #4caf50; }
 .toast.v-info .toast-ico { color: var(--accent, #7c6cff); }
-.toast-msg {
-  flex: 1;
-  white-space: pre-wrap;
-  word-break: break-word;
+.toast-callsite {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .toast-enter-from,
 .toast-leave-to {

@@ -112,6 +112,7 @@ import {
   buildDataDictMarkdown,
   buildTableDump,
 } from './dump'
+import { type EnvSummary, primeEnvCache } from './errorReporter'
 import {
   type Favorite,
   favorites,
@@ -2285,6 +2286,20 @@ onMounted(() => {
   unsubMenu = client.menu?.onCommand?.(onMenuCommand) ?? null
 })
 onUnmounted(() => unsubMenu?.())
+
+// 启动时预取环境摘要，让后续 reportError() 能在报告中带上 OS/Electron/app 元数据
+onMounted(async () => {
+  try {
+    const api = (
+      window as unknown as { api?: { system?: { getEnvSummary?: () => Promise<EnvSummary> } } }
+    ).api
+    const env = await api?.system?.getEnvSummary?.()
+    if (env) primeEnvCache(env)
+  } catch (e) {
+    // Boot-race fallback is built into reportError; just log so we know it failed.
+    console.error('[Workspace/envCache] prefetch failed:', e)
+  }
+})
 </script>
 
 <template>
