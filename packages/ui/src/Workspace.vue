@@ -3478,7 +3478,7 @@ onUnmounted(() => unsubMenu?.())
   flex-direction: column;
   gap: 4px;
   align-items: flex-end;
-  max-width: 380px;
+  /* max-width: 380px; */
 }
 .upd-log-toggle {
   background: transparent;

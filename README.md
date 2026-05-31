@@ -8,6 +8,12 @@
 
 Cross-platform desktop **database management tool** (Navicat / DBeaver alternative), built with Electron + Vue 3 + Vite + TypeScript.
 
+[![Stable](https://img.shields.io/github/v/release/duhbbx/SkylerX?label=stable&color=blue)](https://github.com/duhbbx/SkylerX/releases/latest)
+[![Pre-release](https://img.shields.io/github/v/release/duhbbx/SkylerX?include_prereleases&label=pre-release&color=orange)](https://github.com/duhbbx/SkylerX/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](./LICENSE)
+
+> The sidebar "Latest" tag on GitHub reflects the most recent **stable** release per semver. Active development happens on **pre-release (`-rc`) tags** — see the orange badge above for the live latest pre-release. Auto-update inside the desktop app and the [download page](https://skylerx.skyler.uno/download) always track the latest pre-release until v0.5.0 ships.
+
 > **License**: [Apache License 2.0](./LICENSE)
 
 ![SkylerX query workspace with AI assistant](./docs/screenshots/query-workspace.png)
