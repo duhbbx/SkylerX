@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildEnvSummary } from './system'
+// Import from env-summary directly (not via ./system) so the test stays
+// electron-free — ./system pulls in `electron` at top level, which fails to
+// load in headless CI where the electron binary isn't extracted on disk.
+import { buildEnvSummary } from './env-summary'
 
 describe('buildEnvSummary', () => {
   it('preserves a non-undefined channel without coercing', () => {

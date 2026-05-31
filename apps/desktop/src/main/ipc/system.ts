@@ -1,48 +1,17 @@
-import { promises as fs } from 'node:fs'
-import { release } from 'node:os'
-import { join } from 'node:path'
 /*
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
+import { promises as fs } from 'node:fs'
+import { release } from 'node:os'
+import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
+import { type EnvSummary, type EnvSummaryInput, buildEnvSummary } from './env-summary'
 
-export interface EnvSummaryInput {
-  appVersion: string
-  platform: NodeJS.Platform
-  arch: string
-  electronVer: string
-  nodeVer: string
-  chromeVer: string
-  locale: string
-  timezone: string
-  channel: 'github' | 'oss-cn' | undefined
-  osRelease: string
-}
-
-export interface EnvSummary {
-  appVersion: string
-  platform: NodeJS.Platform
-  arch: string
-  electronVer: string
-  nodeVer: string
-  chromeVer: string
-  locale: string
-  timezone: string
-  channel: 'github' | 'oss-cn'
-  osRelease: string
-}
-
-/**
- * Pure builder so the unit test can exercise normalization without booting
- * Electron. The IPC handler below calls this with the live values.
- */
-export function buildEnvSummary(input: EnvSummaryInput): EnvSummary {
-  return {
-    ...input,
-    channel: input.channel ?? 'github',
-  }
-}
+// Re-exported so existing renderer-side imports of system.ts types keep working
+// without changing every call site after the split.
+export { buildEnvSummary }
+export type { EnvSummary, EnvSummaryInput }
 
 /**
  * Read the persisted updater channel, applying the same timezone-based
