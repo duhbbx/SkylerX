@@ -154,17 +154,14 @@ export function slowQueryFor(
       windowKey: 'slowq.windowSinceStart',
       sourceLabel: 'pg_stat_statements',
       enableHint:
-        '-- PostgreSQL 启用 pg_stat_statements\n-- 1) postgresql.conf:\n--    shared_preload_libraries = \'pg_stat_statements\'\n-- 2) 重启 PG 后,目标库执行：\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;',
+        "-- PostgreSQL 启用 pg_stat_statements\n-- 1) postgresql.conf:\n--    shared_preload_libraries = 'pg_stat_statements'\n-- 2) 重启 PG 后,目标库执行：\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;",
     }
   }
   return null
 }
 
 /** 把方言族行转成统一形态。容错地处理列名大小写差异（PG/MySQL 返回大小写不一致时）。 */
-export function normalizeRows(
-  family: SlowFamily,
-  rows: Array<Record<string, unknown>>,
-): SlowRow[] {
+export function normalizeRows(family: SlowFamily, rows: Array<Record<string, unknown>>): SlowRow[] {
   const num = (v: unknown): number => {
     if (v == null || v === '') return 0
     const n = typeof v === 'number' ? v : Number(v)
@@ -210,10 +207,7 @@ export function explainSqlFor(family: SlowFamily, sql: string): string | null {
 }
 
 /** 判断 checkSql 返回的结果是否说明「已启用」（MySQL 看 Value 列；PG 看是否有行）。 */
-export function isEnabled(
-  family: SlowFamily,
-  rows: Array<Record<string, unknown>>,
-): boolean {
+export function isEnabled(family: SlowFamily, rows: Array<Record<string, unknown>>): boolean {
   if (family === 'pg') return rows.length > 0
   if (family === 'mysql') {
     // SHOW VARIABLES 返回 { Variable_name, Value }

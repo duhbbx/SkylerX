@@ -77,15 +77,11 @@ function onKeydown(e: KeyboardEvent): void {
   } else if (e.key === 'ArrowDown') {
     e.preventDefault()
     hover.value = Math.min(props.options.length - 1, hover.value + 1)
-    void nextTick(() =>
-      list.value?.children[hover.value]?.scrollIntoView({ block: 'nearest' }),
-    )
+    void nextTick(() => list.value?.children[hover.value]?.scrollIntoView({ block: 'nearest' }))
   } else if (e.key === 'ArrowUp') {
     e.preventDefault()
     hover.value = Math.max(0, hover.value - 1)
-    void nextTick(() =>
-      list.value?.children[hover.value]?.scrollIntoView({ block: 'nearest' }),
-    )
+    void nextTick(() => list.value?.children[hover.value]?.scrollIntoView({ block: 'nearest' }))
   } else if (e.key === 'Enter') {
     e.preventDefault()
     const o = props.options[hover.value]

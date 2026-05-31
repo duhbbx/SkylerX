@@ -22,6 +22,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { askAiChat, extractSql } from '../ai'
 import { pTranslate, pTranslateProcedure } from '../ai-prompts'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import { monaco } from '../monaco-setup'
@@ -137,7 +138,7 @@ async function copyTranslated(): Promise<void> {
       copied.value = false
     }, 1500)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

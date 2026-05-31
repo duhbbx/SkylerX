@@ -9,6 +9,7 @@ import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
 import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type ErdData, loadErd } from '../erd'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 
 const props = defineProps<{ connId: string; dialect: DbDialect; ctx: TableContext }>()
@@ -76,13 +77,19 @@ function isAlterCol(boxName: string, colName: string): boolean {
 
 /** D1:给现有表追加一列(进入 alterAddCols),等待 applyChanges。 */
 async function addAlterColumn(tableName: string): Promise<void> {
-  const name = await appPrompt({ message: `给表 "${tableName}" 加列,列名:`, defaultValue: 'new_col' })
+  const name = await appPrompt({
+    message: `给表 "${tableName}" 加列,列名:`,
+    defaultValue: 'new_col',
+  })
   if (!name) return
-  const type = await appPrompt({ message: '列类型(例 varchar(64) / int / timestamp):', defaultValue: 'varchar(64)' })
+  const type = await appPrompt({
+    message: '列类型(例 varchar(64) / int / timestamp):',
+    defaultValue: 'varchar(64)',
+  })
   if (!type) return
   const existing = alterAddCols.value[tableName] ?? []
   if (existing.find((c) => c.name === name)) {
-    toast.error('该列名已待加')
+    reportError(new Error('该列名已待加'))
     return
   }
   alterAddCols.value[tableName] = [...existing, { name, type, pk: false }]
@@ -91,7 +98,9 @@ async function addAlterColumn(tableName: string): Promise<void> {
 
 /** D1:撤销一列待 ALTER。 */
 function removeAlterColumn(tableName: string, colName: string): void {
-  alterAddCols.value[tableName] = (alterAddCols.value[tableName] ?? []).filter((c) => c.name !== colName)
+  alterAddCols.value[tableName] = (alterAddCols.value[tableName] ?? []).filter(
+    (c) => c.name !== colName,
+  )
   if (!alterAddCols.value[tableName].length) delete alterAddCols.value[tableName]
 }
 
@@ -356,7 +365,7 @@ async function generateDdl(): Promise<void> {
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    toast.error(t('erd.ddlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'erd.ddlFail' })
   }
 }
 

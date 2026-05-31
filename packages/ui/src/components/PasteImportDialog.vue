@@ -13,11 +13,12 @@
  *
  * 比 ImportDialog 快得多:不用选文件,粘进来就开始。
  */
-import { type ConnectionConfig, DbDialect, dialectKind, DbKind } from '@db-tool/shared-types'
+import { type ConnectionConfig, DbDialect, DbKind, dialectKind } from '@db-tool/shared-types'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -105,7 +106,7 @@ async function loadFromClipboard(): Promise<void> {
     }
     rows.value = parseClipboard(text)
   } catch (e) {
-    toast.error(`读剪贴板失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'paste-import-clipboard' })
   }
 }
 
@@ -154,7 +155,7 @@ async function loadTableColumns(): Promise<void> {
       mapping.value = headers.value.map((h) => guessColumn(h))
     }
   } catch (e) {
-    toast.error(`拉表结构失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'paste-import-schema' })
   } finally {
     loadingCols.value = false
   }
@@ -202,16 +203,17 @@ const insertPreview = computed<string>(() => {
   }
   if (!cols.length) return ''
   const tableQ = quoteId(conn.dialect, tableName.value)
-  const tableRef = database.value
-    ? `${quoteId(conn.dialect, database.value)}.${tableQ}`
-    : tableQ
+  const tableRef = database.value ? `${quoteId(conn.dialect, database.value)}.${tableQ}` : tableQ
   const head = `INSERT INTO ${tableRef} (${cols.join(', ')}) VALUES`
   const sampleRows = dataRows.value.slice(0, 5)
   const values = sampleRows.map((r) => {
     const vals = colIdx.map((i) => sqlLiteral(r[i] ?? ''))
     return `(${vals.join(', ')})`
   })
-  const more = dataRows.value.length > sampleRows.length ? `\n-- (... ${dataRows.value.length - sampleRows.length} more rows)` : ''
+  const more =
+    dataRows.value.length > sampleRows.length
+      ? `\n-- (... ${dataRows.value.length - sampleRows.length} more rows)`
+      : ''
   return `${head}\n${values.join(',\n')}${more};`
 })
 
@@ -261,9 +263,7 @@ async function execute(): Promise<void> {
   try {
     // 批量打散成 N 条 INSERT(简化;大量数据应该走 executeBatch)
     const tableQ = quoteId(conn.dialect, tableName.value)
-    const tableRef = database.value
-      ? `${quoteId(conn.dialect, database.value)}.${tableQ}`
-      : tableQ
+    const tableRef = database.value ? `${quoteId(conn.dialect, database.value)}.${tableQ}` : tableQ
     const head = `INSERT INTO ${tableRef} (${cols.join(', ')}) VALUES`
     // 1k 行一个 batch
     const BATCH = 500
@@ -282,7 +282,7 @@ async function execute(): Promise<void> {
     toast.success(`成功插入 ${ok} 行`)
     emit('close')
   } catch (e) {
-    toast.error(`插入失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'paste-import-insert' })
   } finally {
     submitting.value = false
   }

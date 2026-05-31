@@ -13,6 +13,7 @@ import type { CommandResult, ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 
 const props = defineProps<{
   conn: ConnectionConfig
@@ -269,7 +270,7 @@ async function batchSetTtl(): Promise<void> {
   if (input == null) return
   const sec = Number.parseInt(input, 10)
   if (!Number.isFinite(sec)) {
-    toast.error('请输入整数')
+    reportError(new Error('请输入整数'))
     return
   }
   batchBusy.value = true
@@ -316,7 +317,7 @@ async function batchDelete(): Promise<void> {
     multiSel.value = new Set()
     toast.success(`已删除 ${names.length} 个 key`)
   } catch (e) {
-    toast.error(`批量删除失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-bulk-delete' })
   } finally {
     batchBusy.value = false
   }
@@ -384,7 +385,7 @@ async function loadMore(): Promise<void> {
     cursor.value = nextCursor
     if (nextCursor === '0') finished.value = true
   } catch (e) {
-    toast.error(`加载失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-load' })
   } finally {
     loadingKeys.value = false
   }
@@ -767,7 +768,7 @@ async function saveEdit(): Promise<void> {
     // 重新拉 value
     await selectKey(k)
   } catch (e) {
-    toast.error(`保存失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-save' })
   } finally {
     editBusy.value = false
   }
@@ -844,7 +845,7 @@ async function copySelectedKey(): Promise<void> {
     await navigator.clipboard.writeText(k.name)
     toast.success(`已复制: ${k.name}`)
   } catch (e) {
-    toast.error(`复制失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-copy' })
   }
 }
 
@@ -856,7 +857,7 @@ async function copyStringValue(): Promise<void> {
   const text =
     stringView.value === 'json' && isJsonString.value ? formattedJson.value : stringValue.value
   if (!text) {
-    toast.error('当前 value 为空')
+    reportError(new Error('当前 value 为空'))
     return
   }
   try {
@@ -864,7 +865,7 @@ async function copyStringValue(): Promise<void> {
     const preview = text.length > 40 ? `${text.slice(0, 40)}…` : text
     toast.success(`已复制 (${text.length} 字符): ${preview}`)
   } catch (e) {
-    toast.error(`复制失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-copy' })
   }
 }
 
@@ -884,7 +885,7 @@ async function deleteSelectedKey(): Promise<void> {
     emit('keyDeleted', props.dbIndex, k.name)
     toast.success(`已删除: ${k.name}`)
   } catch (e) {
-    toast.error(`删除失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-delete' })
   } finally {
     keyOpBusy.value = false
   }
@@ -908,7 +909,7 @@ async function renameSelectedKey(): Promise<void> {
     selected.value = keys.value[idx] ?? null
     toast.success(`已重命名为: ${next}`)
   } catch (e) {
-    toast.error(`重命名失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-rename' })
   } finally {
     keyOpBusy.value = false
   }
@@ -927,7 +928,7 @@ async function changeTtl(): Promise<void> {
   if (input == null) return
   const sec = Number.parseInt(input, 10)
   if (!Number.isFinite(sec)) {
-    toast.error('请输入整数')
+    reportError(new Error('请输入整数'))
     return
   }
   keyOpBusy.value = true
@@ -942,7 +943,7 @@ async function changeTtl(): Promise<void> {
       toast.success(`TTL = ${sec}s`)
     }
   } catch (e) {
-    toast.error(`TTL 设置失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-ttl' })
   } finally {
     keyOpBusy.value = false
   }

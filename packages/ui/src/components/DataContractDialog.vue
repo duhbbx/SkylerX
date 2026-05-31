@@ -17,6 +17,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -123,7 +124,7 @@ function importJson(): void {
     saveAll()
     toast.success(t('contract.importedN', { n: arr.length }))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 </script>

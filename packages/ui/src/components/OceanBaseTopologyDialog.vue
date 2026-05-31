@@ -20,6 +20,7 @@ import type { ConnectionConfig } from '@db-tool/shared-types'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -166,7 +167,7 @@ async function copyAddr(svr: ServerRow): Promise<void> {
     await navigator.clipboard.writeText(addr)
     toast.success(t('obtopo.copied', { addr }))
   } catch {
-    toast.error(t('obtopo.copyFail'))
+    reportError(new Error(t('obtopo.copyFail')))
   }
 }
 </script>

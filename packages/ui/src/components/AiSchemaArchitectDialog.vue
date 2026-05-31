@@ -15,9 +15,10 @@
  */
 import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
-import { askAiChat, extractAllSql, type ChatMessage } from '../ai'
-import { confirm as appConfirm, toast } from '../dialog'
+import { type ChatMessage, askAiChat, extractAllSql } from '../ai'
 import { useDataClient } from '../data-client'
+import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { renderMarkdown } from '../markdown'
 import Modal from './Modal.vue'
 
@@ -124,7 +125,7 @@ async function executeAll(): Promise<void> {
     toast.success(`已执行 ${stmts.length} 段`)
     emit('close')
   } catch (e) {
-    toast.error(`执行失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'ai-architect-run' })
   } finally {
     executing.value = false
   }

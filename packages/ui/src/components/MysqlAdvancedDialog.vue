@@ -15,6 +15,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -104,8 +105,7 @@ async function loadVars(): Promise<void> {
   loading.value = true
   errMsg.value = null
   try {
-    const sql =
-      varKind.value === 'variables' ? 'SHOW GLOBAL VARIABLES' : 'SHOW GLOBAL STATUS'
+    const sql = varKind.value === 'variables' ? 'SHOW GLOBAL VARIABLES' : 'SHOW GLOBAL STATUS'
     const rows = await execSql(sql)
     vars.value = rows.map((r) => {
       // 列名通常 Variable_name / Value(MySQL/MariaDB)
@@ -135,7 +135,7 @@ async function setVar(entry: { k: string; v: string }): Promise<void> {
     entry.v = next
     toast.success('已更新')
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -149,12 +149,14 @@ const filteredVars = computed(() => {
 const replicaHealth = computed(() => {
   if (!replicaStatus.value) return null
   const lag = Number(
-    replicaStatus.value.Seconds_Behind_Source ??
-      replicaStatus.value.Seconds_Behind_Master ??
-      -1,
+    replicaStatus.value.Seconds_Behind_Source ?? replicaStatus.value.Seconds_Behind_Master ?? -1,
   )
-  const sqlRun = String(replicaStatus.value.Replica_SQL_Running ?? replicaStatus.value.Slave_SQL_Running ?? '')
-  const ioRun = String(replicaStatus.value.Replica_IO_Running ?? replicaStatus.value.Slave_IO_Running ?? '')
+  const sqlRun = String(
+    replicaStatus.value.Replica_SQL_Running ?? replicaStatus.value.Slave_SQL_Running ?? '',
+  )
+  const ioRun = String(
+    replicaStatus.value.Replica_IO_Running ?? replicaStatus.value.Slave_IO_Running ?? '',
+  )
   return { lag, sqlOk: sqlRun === 'Yes', ioOk: ioRun === 'Yes' }
 })
 

@@ -103,11 +103,7 @@ async function load(): Promise<void> {
       return
     }
     // 2) 取 Top N
-    const res = await client.connections.execute(
-      props.conn.id,
-      def.listSql,
-      def.params,
-    )
+    const res = await client.connections.execute(props.conn.id, def.listSql, def.params)
     rows.value = normalizeRows(def.family, res.rows)
     if (!rows.value.length) {
       // 列表空但启用了:可能是刚启动还没记录;不当 error,展示 empty 即可

@@ -39,6 +39,7 @@ import {
 import { computed, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { translateDdl } from '../oracleToDm'
 import Modal from './Modal.vue'
@@ -64,9 +65,7 @@ const srcConnId = ref<string>('')
 const dstConnId = ref<string>('')
 const loadingConns = ref(false)
 
-const oracleConns = computed(() =>
-  conns.value.filter((c) => c.dialect === DbDialect.Oracle),
-)
+const oracleConns = computed(() => conns.value.filter((c) => c.dialect === DbDialect.Oracle))
 const dmConns = computed(() => conns.value.filter((c) => c.dialect === DbDialect.DM))
 
 // ── Step 2:对象选择 ────────────────────────────────────────────
@@ -335,7 +334,7 @@ async function copyReport(): Promise<void> {
     await navigator.clipboard?.writeText(reportMarkdown.value)
     toast.success(t('o2dm.copied'))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 async function saveReport(): Promise<void> {
@@ -347,7 +346,7 @@ async function saveReport(): Promise<void> {
     })
     if (p) toast.success(t('o2dm.saved'))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -371,7 +370,7 @@ async function openWizard(): Promise<void> {
     if (!srcConnId.value && oracleConns.value[0]) srcConnId.value = oracleConns.value[0].id
     if (!dstConnId.value && dmConns.value[0]) dstConnId.value = dmConns.value[0].id
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     loadingConns.value = false
   }

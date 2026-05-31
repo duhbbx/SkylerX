@@ -16,7 +16,7 @@
 import type { CommandResult, ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
-import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 
 type EsOp = 'search' | 'count' | 'getMapping'
 
@@ -96,7 +96,7 @@ function parseBody(): unknown | null {
   try {
     return JSON.parse(text)
   } catch (e) {
-    toast.error(`Query DSL 不是合法 JSON: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'elastic-query-json' })
     return null
   }
 }
@@ -150,7 +150,7 @@ async function execute(): Promise<void> {
       totalHits.value = null
     }
   } catch (e) {
-    toast.error(`执行失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'elastic-execute' })
   } finally {
     running.value = false
   }

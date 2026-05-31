@@ -16,6 +16,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -100,9 +101,12 @@ async function submit(): Promise<void> {
   try {
     // 1. 预检:不允许覆盖已存在 key
     const exists = (await call('EXISTS', [key])) as { data: number } | unknown
-    const existsCount = typeof exists === 'object' && exists && 'data' in (exists as any) ? Number((exists as any).data) : 0
+    const existsCount =
+      typeof exists === 'object' && exists && 'data' in (exists as any)
+        ? Number((exists as any).data)
+        : 0
     if (existsCount > 0) {
-      toast.error(`key "${key}" 已存在,请改名或先删除`)
+      reportError(new Error(`key "${key}" 已存在,请改名或先删除`))
       return
     }
     // 2. 按类型写入
@@ -146,7 +150,7 @@ async function submit(): Promise<void> {
     emit('created', type.value, key)
     emit('close')
   } catch (e) {
-    toast.error(`创建失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-new-key' })
   } finally {
     submitting.value = false
   }

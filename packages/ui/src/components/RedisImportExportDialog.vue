@@ -22,6 +22,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -118,7 +119,13 @@ async function doExport(): Promise<void> {
   try {
     let cursor = '0'
     do {
-      const r = (await call('SCAN', [cursor, 'MATCH', pattern.value.trim() || '*', 'COUNT', '500'])) as [string, string[]]
+      const r = (await call('SCAN', [
+        cursor,
+        'MATCH',
+        pattern.value.trim() || '*',
+        'COUNT',
+        '500',
+      ])) as [string, string[]]
       cursor = String(r?.[0] ?? '0')
       const batch = (r?.[1] ?? []) as string[]
       progress.value.scanned += batch.length
@@ -146,7 +153,7 @@ async function doExport(): Promise<void> {
       emit('done')
     }
   } catch (e) {
-    toast.error(`导出失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-ie-export' })
   } finally {
     running.value = false
     progress.value = null
@@ -154,10 +161,18 @@ async function doExport(): Promise<void> {
 }
 
 async function doImport(): Promise<void> {
-  const desktopApi = (window as unknown as { api?: { files?: { openText?: (filters: unknown) => Promise<{ name: string; content: string } | null> } } })?.api
+  const desktopApi = (
+    window as unknown as {
+      api?: {
+        files?: {
+          openText?: (filters: unknown) => Promise<{ name: string; content: string } | null>
+        }
+      }
+    }
+  )?.api
   const openText = desktopApi?.files?.openText
   if (!openText) {
-    toast.error('文件 API 不可用')
+    reportError(new Error('文件 API 不可用'))
     return
   }
   const file = await openText([{ name: 'JSON', extensions: ['json'] }])
@@ -168,7 +183,7 @@ async function doImport(): Promise<void> {
     items = JSON.parse(file.content) as ExportItem[]
     if (!Array.isArray(items)) throw new Error('文件根必须是数组')
   } catch (e) {
-    toast.error(`JSON 解析失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-ie-json-parse' })
     return
   }
 

@@ -18,6 +18,7 @@ import { type ConnectionConfig, DbDialect } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 import SqlEditor from './SqlEditor.vue'
 
@@ -153,16 +154,9 @@ async function submit(): Promise<void> {
     emit('created', name.value.trim())
     emit('close')
   } catch (e) {
-    const errMsg = e instanceof Error ? e.message : String(e)
-    toast.error(`创建失败: ${errMsg}`, {
-      askAi: {
-        sql: sqlText.value,
-        error: errMsg,
-        connId: props.conn.id,
-        connName: props.conn.name,
-        dialect: props.conn.dialect,
-      },
-    })
+    // TODO(v2): restore askAi: { sql, error, connId, connName, dialect } context once reportError
+    // supports passing structured AI-debug payloads beyond the error object. Refs #13
+    reportError(e, { tag: 'new-schema' })
   } finally {
     submitting.value = false
   }

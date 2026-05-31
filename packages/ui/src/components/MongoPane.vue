@@ -15,6 +15,7 @@ import type { CommandResult, ConnectionConfig } from '@db-tool/shared-types'
 import { computed, nextTick, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 
 type Doc = Record<string, unknown>
 
@@ -224,7 +225,7 @@ async function runQuery(): Promise<void> {
     try {
       filter = JSON.parse(text)
     } catch (e) {
-      toast.error(`Filter 不是合法 JSON: ${e instanceof Error ? e.message : String(e)}`)
+      reportError(e, { tag: 'mongo-filter-json' })
       return
     }
   }
@@ -252,7 +253,7 @@ async function runQuery(): Promise<void> {
     editing.value = null
     meta.value = { executionTimeMs: res.executionTimeMs, truncated: !!res.truncated }
   } catch (e) {
-    toast.error(`执行失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'mongo-execute' })
   } finally {
     running.value = false
   }
@@ -286,7 +287,7 @@ function applyEdit(): void {
   try {
     parsed = JSON.parse(editBuf.value)
   } catch (err) {
-    toast.error(`不是合法 JSON: ${err instanceof Error ? err.message : String(err)}`)
+    reportError(err, { tag: 'mongo-json-parse' })
     return
   }
   const doc = rows.value.find((r) => docKey(r) === e.docId)
@@ -385,7 +386,7 @@ async function commitEdits(): Promise<void> {
       }
     }
     if (failures.length) {
-      toast.error(`部分更新失败 (${failures.length}): ${failures[0]}`)
+      reportError(new Error(`部分更新失败 (${failures.length}): ${failures[0]}`))
       // 失败保留 dirty，让用户重试
     } else {
       toast.success(`已提交 ${committed} 条修改`)

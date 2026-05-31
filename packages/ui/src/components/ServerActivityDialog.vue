@@ -12,11 +12,12 @@
  * 每个面板：列表 + 选行后右下 KILL（mysql `KILL <pid>` / pg `pg_terminate_backend(pid)` / mssql `KILL <spid>`），
  * 顶部有「刷新」按钮 + 可选自动刷新（2s/5s/10s）。
  */
-import { DbKind, dialectKind, type ConnectionConfig, type QueryResult } from '@db-tool/shared-types'
+import { type ConnectionConfig, DbKind, type QueryResult, dialectKind } from '@db-tool/shared-types'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -143,8 +144,7 @@ function sqlFor(tab: TabId): string | null {
 
 async function load(): Promise<void> {
   if (familyOfConn() === 'nosql') {
-    error.value =
-      'NoSQL 方言不适用本面板。Redis 请用「⚙ 服务器」→ 客户端/慢日志;MongoDB/ES 同。'
+    error.value = 'NoSQL 方言不适用本面板。Redis 请用「⚙ 服务器」→ 客户端/慢日志;MongoDB/ES 同。'
     result.value = null
     return
   }
@@ -169,12 +169,12 @@ async function load(): Promise<void> {
 async function killRow(row: Record<string, unknown>): Promise<void> {
   const id = row.id ?? row.session_id ?? row.thread_id
   if (id == null) {
-    toast.error(t('activity.noIdToKill'))
+    reportError(new Error(t('activity.noIdToKill')))
     return
   }
   const idNum = Number(id)
   if (!Number.isFinite(idNum)) {
-    toast.error(t('activity.noIdToKill'))
+    reportError(new Error(t('activity.noIdToKill')))
     return
   }
   if (
@@ -191,7 +191,7 @@ async function killRow(row: Record<string, unknown>): Promise<void> {
   else if (f === 'pg') killSql = `SELECT pg_terminate_backend(${idNum})`
   else if (f === 'mssql') killSql = `KILL ${idNum}`
   else {
-    toast.error(t('activity.unsupported'))
+    reportError(new Error(t('activity.unsupported')))
     return
   }
   try {
@@ -199,7 +199,7 @@ async function killRow(row: Record<string, unknown>): Promise<void> {
     toast.success(t('activity.killed', { id: String(idNum) }))
     await load()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

@@ -93,7 +93,9 @@ export function addSnippet(
 /** 返回适用于当前方言的 snippet(dialects 为空表示通用,任意方言都看得到)。 */
 export function snippetsForDialect(dialect: DbDialect | null | undefined): Snippet[] {
   if (!dialect) return [...snippets]
-  return snippets.filter((s) => !s.dialects || s.dialects.length === 0 || s.dialects.includes(dialect))
+  return snippets.filter(
+    (s) => !s.dialects || s.dialects.length === 0 || s.dialects.includes(dialect),
+  )
 }
 
 /** 所有片段用到的标签集合（去重排序）。 */

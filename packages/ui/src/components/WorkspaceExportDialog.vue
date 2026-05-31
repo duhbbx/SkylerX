@@ -21,6 +21,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { snippets } from '../snippets'
 import Modal from './Modal.vue'
 
@@ -92,17 +93,25 @@ async function doExport(): Promise<void> {
       emit('close')
     }
   } catch (e) {
-    toast.error(`导出失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'workspace-export' })
   } finally {
     exporting.value = false
   }
 }
 
 async function doImport(): Promise<void> {
-  const api = (window as unknown as { api?: { files?: { openText?: (filters: unknown) => Promise<{ name: string; content: string } | null> } } })?.api
+  const api = (
+    window as unknown as {
+      api?: {
+        files?: {
+          openText?: (filters: unknown) => Promise<{ name: string; content: string } | null>
+        }
+      }
+    }
+  )?.api
   const openText = api?.files?.openText
   if (!openText) {
-    toast.error('文件 API 不可用')
+    reportError(new Error('文件 API 不可用'))
     return
   }
   const file = await openText([{ name: 'SkylerX Workspace', extensions: ['skylerxws', 'json'] }])
@@ -112,11 +121,17 @@ async function doImport(): Promise<void> {
     ws = JSON.parse(file.content) as WorkspaceFile
     if (ws.version !== 1) throw new Error(`不支持的版本: ${ws.version}`)
   } catch (e) {
-    toast.error(`解析失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'workspace-import-parse' })
     return
   }
   const stat = `连接 ${ws.connections?.length ?? 0} · Snippets ${ws.snippets?.length ?? 0}`
-  if (!(await appConfirm({ message: `导入: ${stat}?\n冲突策略: ${conflictMode.value}`, variant: 'warn' }))) return
+  if (
+    !(await appConfirm({
+      message: `导入: ${stat}?\n冲突策略: ${conflictMode.value}`,
+      variant: 'warn',
+    }))
+  )
+    return
   importing.value = true
   try {
     let okC = 0
@@ -161,7 +176,7 @@ async function doImport(): Promise<void> {
     emit('imported')
     emit('close')
   } catch (e) {
-    toast.error(`导入失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'workspace-import' })
   } finally {
     importing.value = false
   }

@@ -31,9 +31,7 @@ interface Stage {
   json: string
   collapsed?: boolean
 }
-const stages = ref<Stage[]>([
-  { id: 's0', op: '$match', json: '{\n  "status": "active"\n}' },
-])
+const stages = ref<Stage[]>([{ id: 's0', op: '$match', json: '{\n  "status": "active"\n}' }])
 
 const limit = ref(50)
 const result = ref<unknown[] | null>(null)
@@ -43,12 +41,18 @@ const errMsg = ref<string | null>(null)
 const STAGE_TEMPLATES: { op: string; tmpl: string }[] = [
   { op: '$match', tmpl: '{\n  "field": "value"\n}' },
   { op: '$project', tmpl: '{\n  "field1": 1,\n  "field2": 1,\n  "_id": 0\n}' },
-  { op: '$group', tmpl: '{\n  "_id": "$category",\n  "count": { "$sum": 1 },\n  "total": { "$sum": "$amount" }\n}' },
+  {
+    op: '$group',
+    tmpl: '{\n  "_id": "$category",\n  "count": { "$sum": 1 },\n  "total": { "$sum": "$amount" }\n}',
+  },
   { op: '$sort', tmpl: '{\n  "createdAt": -1\n}' },
   { op: '$limit', tmpl: '10' },
   { op: '$skip', tmpl: '0' },
   { op: '$unwind', tmpl: '"$arrayField"' },
-  { op: '$lookup', tmpl: '{\n  "from": "other_coll",\n  "localField": "fk_id",\n  "foreignField": "_id",\n  "as": "joined"\n}' },
+  {
+    op: '$lookup',
+    tmpl: '{\n  "from": "other_coll",\n  "localField": "fk_id",\n  "foreignField": "_id",\n  "as": "joined"\n}',
+  },
   { op: '$addFields', tmpl: '{\n  "newField": { "$concat": ["$a", "-", "$b"] }\n}' },
   { op: '$count', tmpl: '"total"' },
 ]

@@ -22,7 +22,7 @@
 import { type ConnectionConfig } from '@db-tool/shared-types'
 import { onUnmounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
-import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -83,7 +83,7 @@ async function tick(): Promise<void> {
     ticks.value.push(t)
     if (ticks.value.length > 60) ticks.value.shift() // 保留最近 60 个点
   } catch (e) {
-    toast.error(`采样失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-monitor-sample' })
     stop()
   }
 }
