@@ -166,6 +166,16 @@ const api = {
       return () => ipcRenderer.removeListener('menu:command', listener)
     },
   },
+  // 应用设置持久化(替代 renderer localStorage)
+  // 整份 Settings JSON 在主进程经 safeStorage 加密后落 SQLite,强杀不丢、apiKey 不明文。
+  settings: {
+    /** 读整份 settings JSON;不存在(首次启动)返回 null */
+    get: (): Promise<string | null> => ipcRenderer.invoke('settings:get'),
+    /** 整份覆写 settings JSON */
+    set: (json: string): Promise<void> => ipcRenderer.invoke('settings:set', json),
+    /** 重置(测试 / 出问题用) */
+    clear: (): Promise<void> => ipcRenderer.invoke('settings:clear'),
+  },
   /**
    * 应用内自动更新(electron-updater 通道)。
    * dev 模式下 check/downloadAndInstall 返回 { devMode: true },renderer 据此降级到 GitHub 链接。

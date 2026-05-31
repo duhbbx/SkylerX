@@ -8,6 +8,7 @@ import { closeDb } from './db/sqlite.js'
 import { registerAiIpc } from './ipc/ai.js'
 import { registerConnectionIpc } from './ipc/connections.js'
 import { registerFileIpc } from './ipc/files.js'
+import { registerSettingsIpc } from './ipc/settings.js'
 import { setupSystemIpc } from './ipc/system.js'
 import { setupMenu } from './menu.js'
 import { disposeTransport } from './transport.js'
@@ -82,6 +83,7 @@ app.whenReady().then(() => {
   registerConnectionIpc()
   registerFileIpc()
   registerAiIpc()
+  registerSettingsIpc()
   setupSystemIpc()
   // #15 让渲染层能开新窗口；新窗口跟主窗口共享 sqlite 数据 + 各自独立的 Vue 状态
   ipcMain.handle('window:newSession', () => spawnExtraWindow())

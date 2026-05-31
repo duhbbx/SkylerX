@@ -231,18 +231,80 @@ function load(): Settings {
   return main ?? backup ?? structuredClone(DEFAULTS)
 }
 
-/** 全局设置单例（任意组件 import 即用，改动自动持久化）。 */
+/** 全局设置单例（任意组件 import 即用，改动自动持久化）。
+ *
+ * 持久化分两层(从快到慢):
+ *  1. renderer localStorage     —— 用作"启动 0ms 即时显示"的缓存,避免首屏闪默认值
+ *  2. main 进程 SQLite + safeStorage —— 真·持久层,强杀不丢、apiKey 加密
+ *
+ * 启动顺序:
+ *   load() 同步读 localStorage(可能是旧版本/默认) → 立即响应式
+ *   hydrate() 异步从 SQLite 拿真值 → 覆盖 reactive,组件自动更新
+ *
+ * 保存顺序(每次 watch 触发):
+ *   写 localStorage(立即,缓存)
+ *   debounce 400ms 后 push 到 SQLite(IPC 异步)
+ *
+ * 首次启动迁移:hydrate 拿到 null 但 localStorage 有有意义配置 → 立即推一份到 SQLite。
+ */
 export const settings = reactive<Settings>(load())
+
+/** SQLite settings 持久化客户端(Electron 桌面端 = window.api.settings;Web 端 = undefined) */
+interface SettingsBridge {
+  get(): Promise<string | null>
+  set(json: string): Promise<void>
+}
+function settingsBridge(): SettingsBridge | null {
+  if (typeof globalThis === 'undefined') return null
+  const api = (globalThis as { api?: { settings?: SettingsBridge } }).api
+  return api?.settings ?? null
+}
+
+/** 异步从 SQLite 拉真值覆盖 reactive(启动后立即跑一次)。 */
+async function hydrateFromSqlite(): Promise<void> {
+  const bridge = settingsBridge()
+  if (!bridge) return // Web 端 / 非 Electron 环境:跳过,只用 localStorage
+  try {
+    const raw = await bridge.get()
+    if (raw) {
+      // SQLite 有数据 → 解析覆盖到 reactive(deep merge 保护字段)
+      const remote = parseSettings(raw)
+      if (remote) {
+        // 替换式覆盖(保留 reactive 引用,组件不重渲染)
+        Object.assign(settings, remote)
+      }
+    } else if (hasMeaningfulConfig(settings)) {
+      // SQLite 空但 localStorage 有有意义配置 → 首次迁移,立即推一份过去
+      await bridge.set(JSON.stringify(settings))
+    }
+  } catch (e) {
+    console.warn('[settings] hydrate from SQLite failed:', e)
+  }
+}
+void hydrateFromSqlite()
+
+let pushTimer: ReturnType<typeof setTimeout> | null = null
+function pushToSqlite(json: string): void {
+  const bridge = settingsBridge()
+  if (!bridge) return
+  // debounce 400ms:用户快速改一组字段(如调 5 个 slider)只触发一次 IPC + SQLite 写
+  if (pushTimer) clearTimeout(pushTimer)
+  pushTimer = setTimeout(() => {
+    void bridge.set(json).catch((e) => console.warn('[settings] SQLite push failed:', e))
+    pushTimer = null
+  }, 400)
+}
 
 watch(
   settings,
   () => {
     try {
       const json = JSON.stringify(settings)
+      // 1. localStorage:0 延迟缓存,首屏永远拿得到
       localStorage.setItem(KEY, json)
-      // 只有当确实有"有意义的 AI 配置"才更新 backup;
-      // 防止用户某次误把所有 key 删空导致 backup 被破坏。
       if (hasMeaningfulConfig(settings)) localStorage.setItem(BACKUP_KEY, json)
+      // 2. SQLite:debounced,真·持久层(强杀不丢、apiKey 加密)
+      pushToSqlite(json)
     } catch {
       /* 忽略持久化失败 */
     }

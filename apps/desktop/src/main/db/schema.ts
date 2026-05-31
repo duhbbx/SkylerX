@@ -32,4 +32,15 @@ CREATE TABLE IF NOT EXISTS query_history (
   success       INTEGER NOT NULL DEFAULT 1,
   FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
 );
+
+-- 应用级 KV 持久化(替代 renderer localStorage,避免 force-kill 丢配置 + apiKey 明文)。
+-- value 形态:
+--   enc:base64  → safeStorage 加密(含 apiKey 等敏感字段)
+--   plain:base64→ safeStorage 不可用时的明文 base64(带警告)
+-- 目前只放一行 key='settings'(整份 Settings JSON,主进程 enc/dec)。
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `
