@@ -167,17 +167,34 @@ export function formatMarkdown(r: ErrorReport): string {
   }
 
   // --- Environment ---
-  sections.push('\n## Environment\n')
-  const platformName = PLATFORM_NAMES[r.env.platform] ?? r.env.platform
-  sections.push(`- SkylerX: **v${r.env.appVersion}** (channel: \`${r.env.channel}\`)`)
-  sections.push(`- OS: ${platformName} ${r.env.osRelease} (${r.env.arch})`)
-  sections.push(
-    `- Electron: ${r.env.electronVer} · Node: ${r.env.nodeVer} · Chrome: ${r.env.chromeVer}`,
-  )
-  sections.push(`- Locale: ${r.env.locale} · Timezone: ${r.env.timezone}`)
-  sections.push(`- Captured at: ${r.timestamp}`)
+  sections.push(formatEnvBlock(r.env, r.timestamp))
 
   return sections.join('\n')
+}
+
+/**
+ * Render just the Environment block — same shape formatMarkdown emits, but
+ * standalone so other UI paths (e.g. "submit issue with context" link in
+ * the about modal) can pre-populate a fresh issue without faking an error.
+ */
+export function formatEnvBlock(env: EnvSummary, timestamp?: string): string {
+  const platformName = PLATFORM_NAMES[env.platform] ?? env.platform
+  const lines: string[] = ['\n## Environment\n']
+  lines.push(`- SkylerX: **v${env.appVersion}** (channel: \`${env.channel}\`)`)
+  lines.push(`- OS: ${platformName} ${env.osRelease} (${env.arch})`)
+  lines.push(`- Electron: ${env.electronVer} · Node: ${env.nodeVer} · Chrome: ${env.chromeVer}`)
+  lines.push(`- Locale: ${env.locale} · Timezone: ${env.timezone}`)
+  lines.push(`- Captured at: ${timestamp ?? new Date().toISOString()}`)
+  return lines.join('\n')
+}
+
+/**
+ * Read the currently cached EnvSummary (null if boot prefetch hasn't
+ * finished yet). The "Submit Issue" link uses this to populate the
+ * clipboard without needing another IPC round-trip.
+ */
+export function getEnvCache(): EnvSummary | null {
+  return envCache
 }
 
 // ── reportError public API + env cache ──────────────────────────────

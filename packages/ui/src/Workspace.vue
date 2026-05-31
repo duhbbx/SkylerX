@@ -112,7 +112,13 @@ import {
   buildDataDictMarkdown,
   buildTableDump,
 } from './dump'
-import { type EnvSummary, primeEnvCache, reportError } from './errorReporter'
+import {
+  type EnvSummary,
+  formatEnvBlock,
+  getEnvCache,
+  primeEnvCache,
+  reportError,
+} from './errorReporter'
 import {
   type Favorite,
   favorites,
@@ -1714,6 +1720,46 @@ async function copyUpdateLogs(): Promise<void> {
   }
 }
 
+/**
+ * 「提交 Issue」入口 (#13 用户期望流程):
+ *   1. 先把环境信息 (SkylerX 版本 / 通道 / OS+arch / Electron-Node-Chrome / locale / tz)
+ *      渲染成 markdown 写到剪贴板;
+ *   2. toast 提示"已复制环境信息";
+ *   3. 不论 1+2 成功与否, 都打开 issues 页面 — 复制失败不能阻断用户提交.
+ *
+ * 环境快照来源:
+ *   - 优先 envCache(启动时 prefetch 过, 0 IPC 开销);
+ *   - cache miss(早期点击 / web build)时, 直接走一次 system:getEnvSummary IPC,
+ *     拿到再走 markdown 渲染. 仍失败就 fallback 到空文本 + 直接跳转.
+ */
+async function openIssuesWithEnv(e: MouseEvent): Promise<void> {
+  e.preventDefault()
+  const issuesUrl = 'https://github.com/duhbbx/SkylerX/issues'
+  try {
+    let env: EnvSummary | null = getEnvCache()
+    if (!env) {
+      const api = (
+        window as unknown as { api?: { system?: { getEnvSummary?: () => Promise<EnvSummary> } } }
+      ).api
+      env = (await api?.system?.getEnvSummary?.()) ?? null
+    }
+    if (env) {
+      const md = formatEnvBlock(env).replace(/^\n/, '') // 去掉前导空行,贴 issue 直接渲染
+      await navigator.clipboard?.writeText(md)
+      toast.success('已复制提交 issue 所需的环境信息', 2500)
+    } else {
+      toast.warn('环境信息暂不可用,跳过复制直接跳转 issue 页', 2500)
+    }
+  } catch (err) {
+    toast.warn(
+      `环境信息复制失败 (${err instanceof Error ? err.message : String(err)}),仍跳转 issue 页`,
+      3000,
+    )
+  }
+  // 任何情况都打开 issues — clipboard 失败不能拦住用户提 issue
+  window.open(issuesUrl, '_blank', 'noopener')
+}
+
 const updateBtnLabel = computed(() => {
   switch (updateStatus.value.kind) {
     case 'checking':
@@ -3040,7 +3086,7 @@ onMounted(async () => {
         </div>
         <div class="about-row">
           <span>{{ t('about.issues') }}</span>
-          <a href="https://github.com/duhbbx/SkylerX/issues" target="_blank" rel="noopener">{{ t('about.fileIssue') }}</a>
+          <a href="https://github.com/duhbbx/SkylerX/issues" target="_blank" rel="noopener" @click="openIssuesWithEnv">{{ t('about.fileIssue') }}</a>
         </div>
         <div class="about-row">
           <span>{{ t('about.update') }}</span>
