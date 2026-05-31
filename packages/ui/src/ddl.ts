@@ -233,8 +233,15 @@ export function objectDdlQuery(
     return null
   }
   if (fam === 'oracle') {
-    // dbms_metadata.get_ddl 返回 CLOB; oracle.ts 设了 fetchAsString=[CLOB] 后能直接读 string
-    // 名字需要大写: Oracle 内部 schema/object 名都以大写存,带引号时区分大小写
+    // dbms_metadata.get_ddl 返回 CLOB; oracle.ts 设了 fetchAsString=[CLOB] 后能直接读 string.
+    //
+    // 名字大小写处理 (#12, #26):
+    //   Oracle 默认把未加引号的标识符 fold 成大写 (CREATE VIEW emp_view → 存 EMP_VIEW).
+    //   带双引号的保持原样 (CREATE VIEW "emp_view" → 存 emp_view).
+    //   all_views.view_name / all_objects.object_name 返回的就是 Oracle 内部的存储形式,
+    //   也就是 node.path 里我们存的形式. 直接 pass-through 给 get_ddl 即可 —
+    //   之前 .toUpperCase() 把 "emp_view" 强制变 EMP_VIEW, 反而找不到对应的
+    //   quoted-identifier 对象 (报 ORA-31603 NEW_VIEW not found of type VIEW).
     const oraType =
       kind === 'view'
         ? 'VIEW'
@@ -258,7 +265,8 @@ export function objectDdlQuery(
       schema = m?.[1] ?? ''
       name = m?.[2] ?? ref
     }
-    const esc = (s: string) => s.replace(/'/g, "''").toUpperCase()
+    // 只 escape 单引号 (不动大小写). 名字按 Oracle 实际存储形式查.
+    const esc = (s: string) => s.replace(/'/g, "''")
     return {
       sql: `SELECT dbms_metadata.get_ddl('${oraType}', '${esc(name)}', '${esc(schema)}') AS "ddl" FROM dual`,
       mode: 'oracle-ddl',
