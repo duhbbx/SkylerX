@@ -222,6 +222,14 @@ Packaging notes:
 
 > Oracle / 达梦 are native modules with lazy loading; including them in a build requires installing the driver on the target platform and running `electron-rebuild`.
 
+## Contributing
+
+Bug reports, feature requests, and PRs all welcome.
+
+- **Contributors** → [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, testing, code style, and PR rules
+- **Where things are headed** → [ROADMAP.md](./ROADMAP.md) for upcoming databases and features
+- **Discussions** → [GitHub Discussions](https://github.com/duhbbx/SkylerX/discussions) for architectural questions or feature brainstorming
+
 ## License
 
 [Apache License 2.0](./LICENSE) — desktop app is open source.
