@@ -1,0 +1,72 @@
+name: deploy-website
+
+# Tag 触发 (跟 build-desktop 同步) — 每次发版自动重 build + 推 skyler 服务器,
+# 文档站版本号 / 下载链接保持跟最新 release 同步.
+# workflow_dispatch 兜底, 让 docs-only 改动也能手动触发部署.
+#
+# 跟 build-desktop.yml 互相独立, 失败不影响 release artifacts.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & rsync to skyler.uno
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build website (VitePress)
+        run: pnpm -F @db-tool/website build
+
+      # ── SSH 准备 ─────────────────────────────────────────────
+      # DEPLOY_SSH_KEY: ed25519 私钥 (内容直接写入 secret, 一次性使用)
+      # 公钥已在服务器 root@101.132.20.134:~/.ssh/authorized_keys, 单独一对,
+      # 不复用 owner 个人私钥,泄漏只影响这台机器的 deploy 通道,可独立 rotate.
+      - name: Setup SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # ssh-keyscan 拿服务器 host fingerprint, 避免 StrictHostKeyChecking 卡 prompt
+          ssh-keyscan -H 101.132.20.134 >> ~/.ssh/known_hosts 2>/dev/null
+
+      # rsync --delete 保证服务器侧文件跟新 build 完全一致 (旧 hash JS 不留)
+      # SkylerX 文档站独占 /var/www/skylerx.skyler.uno, 不会影响其他项目
+      - name: Rsync to server
+        run: |
+          rsync -avz --delete \
+            apps/website/.vitepress/dist/ \
+            root@101.132.20.134:/var/www/skylerx.skyler.uno/
+
+      # 服务器侧 chown + chmod (rsync 默认 600/700, nginx 用 www-data 跑会 403),
+      # 然后 nginx -t 校验配置,reload (-s reload, 不重启避免影响其他站点)
+      - name: Fix perms & reload nginx
+        run: |
+          ssh root@101.132.20.134 '
+            chown -R www-data:www-data /var/www/skylerx.skyler.uno
+            find /var/www/skylerx.skyler.uno -type d -exec chmod 755 {} +
+            find /var/www/skylerx.skyler.uno -type f -exec chmod 644 {} +
+            nginx -t && nginx -s reload
+          '
+
+      - name: Confirm
+        run: |
+          echo "✅ Deployed ${GITHUB_REF_NAME} to https://skylerx.skyler.uno"
