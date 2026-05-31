@@ -8,7 +8,7 @@ import { defineConfig } from 'vitest/config'
 // 工作区包通过 exports 指向 TS 源码，vitest(esbuild) 直接编译，无需预先构建。
 export default defineConfig({
   test: {
-    include: ['packages/**/src/**/*.test.ts'],
+    include: ['packages/**/src/**/*.test.ts', 'apps/**/src/**/*.test.ts'],
     environment: 'node',
   },
 })
