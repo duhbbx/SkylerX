@@ -16,6 +16,7 @@ import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -69,7 +70,7 @@ async function loadHistory(): Promise<void> {
     const sql = `SELECT * FROM ${quoteId(props.conn.dialect, shadowTable.value)} ${where} ORDER BY ${orderCol} DESC LIMIT 200`
     history.value = await client.connections.execute(props.conn.id, sql)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     loading.value = false
   }

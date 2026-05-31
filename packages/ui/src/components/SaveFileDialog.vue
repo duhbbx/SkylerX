@@ -18,6 +18,7 @@
 import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 type Filter = { name: string; extensions: string[] }
@@ -229,7 +230,7 @@ async function newFolder(): Promise<void> {
     await fapi.mkdir?.(joinPath(currentDir.value, name.trim()))
     await loadDir(currentDir.value)
   } catch (e) {
-    toast.error(`新建失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'save-file-mkdir' })
   }
 }
 

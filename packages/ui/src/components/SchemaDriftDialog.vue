@@ -23,6 +23,7 @@ import { DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -519,7 +520,7 @@ async function execScript(): Promise<void> {
     await client.connections.executeBatch(tgtId.value, stmts)
     toast.success(t('drift.execDone'))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     executing.value = false
   }

@@ -22,7 +22,7 @@ import {
   pTestData,
 } from '../ai-prompts'
 import { useDataClient } from '../data-client'
-import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -155,31 +155,31 @@ async function fetchColumnsCsv(): Promise<string> {
 
 async function submit(): Promise<void> {
   if (!connId.value) {
-    toast.error(t('aitool.noConn'))
+    reportError(new Error(t('aitool.noConn')))
     return
   }
   let prompt = ''
   if (task.value === 'migration') {
     if (!table.value || !userIntent.value.trim()) {
-      toast.error(t('aitool.missingFields'))
+      reportError(new Error(t('aitool.missingFields')))
       return
     }
     prompt = pMigration({ tableRef: table.value, dialect: dialect.value }, userIntent.value)
   } else if (task.value === 'optimize') {
     if (!sql.value.trim()) {
-      toast.error(t('aitool.missingFields'))
+      reportError(new Error(t('aitool.missingFields')))
       return
     }
     prompt = pOptimizeSql({ dialect: dialect.value }, sql.value, explain.value || undefined)
   } else if (task.value === 'explain-analysis') {
     if (!sql.value.trim() || !explain.value.trim()) {
-      toast.error(t('aitool.missingFields'))
+      reportError(new Error(t('aitool.missingFields')))
       return
     }
     prompt = pExplainAnalysis({ dialect: dialect.value }, sql.value, explain.value)
   } else if (task.value === 'test-data') {
     if (!table.value) {
-      toast.error(t('aitool.missingFields'))
+      reportError(new Error(t('aitool.missingFields')))
       return
     }
     prompt = pTestData(
@@ -189,20 +189,20 @@ async function submit(): Promise<void> {
     )
   } else if (task.value === 'nl2sql') {
     if (!userIntent.value.trim()) {
-      toast.error(t('aitool.missingFields'))
+      reportError(new Error(t('aitool.missingFields')))
       return
     }
     prompt = pNl2Sql({ dialect: dialect.value }, userIntent.value)
   } else if (task.value === 'doc') {
     if (!table.value) {
-      toast.error(t('aitool.missingFields'))
+      reportError(new Error(t('aitool.missingFields')))
       return
     }
     const cols = await fetchColumnsCsv()
     prompt = pDataDictDoc({ tableRef: table.value, dialect: dialect.value }, cols)
   } else if (task.value === 'explain-table') {
     if (!table.value) {
-      toast.error(t('aitool.missingFields'))
+      reportError(new Error(t('aitool.missingFields')))
       return
     }
     const cols = await fetchColumnsCsv()

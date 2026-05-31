@@ -65,15 +65,17 @@ function hasFsCapability(): boolean {
 /** Web 端 fallback:优先 File System Access API → 兜底 anchor download。 */
 async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string | null> {
   // 1) 新浏览器(Chrome 86+/Edge):File System Access API,体验最接近原生
-  const showSaveFilePicker = (window as unknown as {
-    showSaveFilePicker?: (opts: unknown) => Promise<{
-      createWritable: () => Promise<{
-        write: (d: string | Uint8Array) => Promise<void>
-        close: () => Promise<void>
+  const showSaveFilePicker = (
+    window as unknown as {
+      showSaveFilePicker?: (opts: unknown) => Promise<{
+        createWritable: () => Promise<{
+          write: (d: string | Uint8Array) => Promise<void>
+          close: () => Promise<void>
+        }>
+        name: string
       }>
-      name: string
-    }>
-  }).showSaveFilePicker
+    }
+  ).showSaveFilePicker
   if (showSaveFilePicker) {
     try {
       const types = (req.filters ?? []).map((f) => ({
@@ -98,7 +100,9 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
   try {
     const isBin = req.content instanceof Uint8Array
     const blob = isBin
-      ? new Blob([(req.content as Uint8Array).buffer as ArrayBuffer], { type: 'application/octet-stream' })
+      ? new Blob([(req.content as Uint8Array).buffer as ArrayBuffer], {
+          type: 'application/octet-stream',
+        })
       : new Blob([req.content as string], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -124,7 +128,9 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
  */
 export function saveFileWithDialog(req: SaveFileRequest): Promise<string | null> {
   if (!hasFsCapability()) {
-    return saveFileWithBrowserFallback({ ...req, mode: 'save' } as SaveFileRequest & { content: string | Uint8Array })
+    return saveFileWithBrowserFallback({ ...req, mode: 'save' } as SaveFileRequest & {
+      content: string | Uint8Array
+    })
   }
   return new Promise((resolve) => {
     saveFileState.req = { ...req, mode: req.mode ?? 'save' }

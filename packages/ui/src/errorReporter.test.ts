@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toasts } from './dialog'
 import {
+  type ErrorReport,
   __resetEnvCacheForTests,
   captureCallsite,
   formatMarkdown,
   primeEnvCache,
   redact,
   reportError,
-  type ErrorReport,
 } from './errorReporter'
 
 describe('redact', () => {
@@ -92,7 +92,11 @@ describe('captureCallsite', () => {
   })
 
   it('parses an anonymous frame (no function name)', () => {
-    const fakeStack = ['Error', '    at reportError (errorReporter.ts:42:13)', '    at NavTree.vue:730:5'].join('\n')
+    const fakeStack = [
+      'Error',
+      '    at reportError (errorReporter.ts:42:13)',
+      '    at NavTree.vue:730:5',
+    ].join('\n')
     expect(captureCallsite(fakeStack)).toEqual({
       function: undefined,
       file: 'NavTree.vue',

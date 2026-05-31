@@ -6,7 +6,8 @@
 import type { QueryHistoryEntry } from '@db-tool/shared-types'
 import { computed, ref } from 'vue'
 import { useDataClient } from '../data-client'
-import { prompt as appPrompt, toast } from '../dialog'
+import { prompt as appPrompt } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 
 const props = defineProps<{ entries: QueryHistoryEntry[] }>()
@@ -74,7 +75,7 @@ async function togglePin(e: QueryHistoryEntry): Promise<void> {
     e.pinned = next
     emit('refresh')
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : String(err))
+    reportError(err)
   }
 }
 
@@ -89,16 +90,13 @@ async function editTags(e: QueryHistoryEntry): Promise<void> {
   try {
     await (
       client.connections as unknown as {
-        historyMeta: (
-          id: number,
-          patch: { tags?: string | null },
-        ) => Promise<void>
+        historyMeta: (id: number, patch: { tags?: string | null }) => Promise<void>
       }
     ).historyMeta(e.id, { tags: next })
     e.tags = next
     emit('refresh')
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : String(err))
+    reportError(err)
   }
 }
 
@@ -110,16 +108,13 @@ async function editNote(e: QueryHistoryEntry): Promise<void> {
   try {
     await (
       client.connections as unknown as {
-        historyMeta: (
-          id: number,
-          patch: { note?: string | null },
-        ) => Promise<void>
+        historyMeta: (id: number, patch: { note?: string | null }) => Promise<void>
       }
     ).historyMeta(e.id, { note: next })
     e.note = next
     emit('refresh')
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : String(err))
+    reportError(err)
   }
 }
 </script>

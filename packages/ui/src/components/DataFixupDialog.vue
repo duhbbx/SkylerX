@@ -14,6 +14,7 @@ import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -61,7 +62,7 @@ async function findDuplicates(): Promise<void> {
     const r = await client.connections.execute(props.conn.id, sql)
     dupResult.value = r.rows
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     dupBusy.value = false
   }

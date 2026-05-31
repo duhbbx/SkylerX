@@ -14,6 +14,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { askAiChat, extractSql } from '../ai'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { renderMarkdown } from '../markdown'
 import Modal from './Modal.vue'
 
@@ -60,11 +61,15 @@ ${sampleText.value}
 CREATE TABLE ...
 \`\`\`
 
-${includeInsert.value ? `### INSERT(数据)
+${
+  includeInsert.value
+    ? `### INSERT(数据)
 \`\`\`sql
 INSERT INTO ...
 \`\`\`
-` : ''}### 索引建议
+`
+    : ''
+}### 索引建议
 - ...
 `
 }
@@ -80,7 +85,8 @@ async function run(): Promise<void> {
     const text = await askAiChat({
       messages: [{ role: 'user', content: buildPrompt() }],
       dialect: props.conn.dialect,
-      extraSystem: 'You are a data engineer. Infer the most reasonable schema from sample data. Be concise but specific about type choices.',
+      extraSystem:
+        'You are a data engineer. Infer the most reasonable schema from sample data. Be concise but specific about type choices.',
     })
     result.value = text
     sqlEdit.value = extractSql(text)
@@ -121,7 +127,7 @@ async function execute(): Promise<void> {
     toast.success('已执行')
     emit('close')
   } catch (e) {
-    toast.error(`执行失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'ai-reverse-run' })
   } finally {
     executing.value = false
   }

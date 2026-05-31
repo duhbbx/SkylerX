@@ -112,7 +112,7 @@ import {
   buildDataDictMarkdown,
   buildTableDump,
 } from './dump'
-import { type EnvSummary, primeEnvCache } from './errorReporter'
+import { type EnvSummary, primeEnvCache, reportError } from './errorReporter'
 import {
   type Favorite,
   favorites,
@@ -259,7 +259,7 @@ async function onDeleteRedisKey(
     await navRef.value?.refreshNode(parent, connId)
     toast.success(`已删除: ${key}`)
   } catch (e) {
-    toast.error(`删除失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-delete-key' })
   }
 }
 
@@ -295,7 +295,7 @@ async function onFlushRedisDb(connId: string, dbIndex: number, dbNode: TreeNode)
     await navRef.value?.refreshNode(dbNode, connId)
     toast.success(`db${dbIndex} 已清空`)
   } catch (e) {
-    toast.error(`清空失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-flushdb' })
   }
 }
 
@@ -319,7 +319,7 @@ async function onFlushRedisAll(connId: string, connNode: TreeNode): Promise<void
     await navRef.value?.refreshNode(connNode, connId)
     toast.success('整个实例已清空')
   } catch (e) {
-    toast.error(`清空失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-flushall' })
   }
 }
 
@@ -397,7 +397,7 @@ async function onDuplicateConn(id: string): Promise<void> {
     await navRef.value?.reload()
     toast.success(`已复制: ${dup.name}`)
   } catch (e) {
-    toast.error(`复制失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'duplicate-connection' })
   }
 }
 
@@ -717,7 +717,7 @@ async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
     await navigator.clipboard?.writeText(ddl)
     toast.success(t('ws.ddlCopied'))
   } catch (e) {
-    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.genSqlFail' })
   }
 }
 
@@ -779,7 +779,7 @@ async function genDataDict(connId: string, node: TreeNode, format: 'md' | 'html'
       filters: [{ name: isHtml ? 'HTML' : 'Markdown', extensions: [format] }],
     })
   } catch (e) {
-    toast.error(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.exportFail' })
   }
 }
 const onDataDict = (connId: string, node: TreeNode) => genDataDict(connId, node, 'md')
@@ -832,7 +832,7 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
     await navigator.clipboard?.writeText(ddl)
     toast.success(t('ws.ddlCopied'))
   } catch (e) {
-    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.genSqlFail' })
   }
 }
 
@@ -859,7 +859,7 @@ async function onEmptyTable(connId: string, node: TreeNode): Promise<void> {
     toast.success(t('ws.emptyTableDone', { ref }))
     if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
   } catch (e) {
-    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.emptyTableFail' })
   }
 }
 
@@ -884,7 +884,7 @@ async function onTruncateTable(connId: string, node: TreeNode): Promise<void> {
     toast.success(t('ws.truncateTableDone', { ref }))
     if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
   } catch (e) {
-    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.truncateTableFail' })
   }
 }
 
@@ -909,7 +909,7 @@ async function onRenameTable(connId: string, node: TreeNode): Promise<void> {
     })
     if (node.parent) await navRef.value?.refreshNode(node.parent, connId)
   } catch (e) {
-    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.renameTableFail' })
   }
 }
 
@@ -1034,7 +1034,7 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
       t('ws.tabDef', { name: node.name }),
     )
   } catch (e) {
-    toast.error(t('ws.viewDefFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.viewDefFail' })
   }
 }
 
@@ -1051,7 +1051,7 @@ async function onGenerateSql(kind: SqlTemplateKind, connId: string, node: TreeNo
     const sql = buildSqlTemplate(conn.dialect, kind, node.sqlName ?? node.name, colInfo)
     tabsRef.value?.openDraft(conn, sql, `${node.name} · ${kind.toUpperCase()}`)
   } catch (e) {
-    toast.error(t('ws.genSqlFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.genSqlTemplateFail' })
   }
 }
 
@@ -1106,7 +1106,7 @@ async function doTableExport(connId: string, node: TreeNode, withData: boolean):
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    toast.error(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.exportTableFail' })
   }
 }
 
@@ -1149,7 +1149,7 @@ async function doSchemaExport(connId: string, node: TreeNode, withData: boolean)
       filters: [{ name: 'SQL', extensions: ['sql'] }],
     })
   } catch (e) {
-    toast.error(t('ws.exportFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.exportSchemaFail' })
   }
 }
 
@@ -2061,7 +2061,7 @@ async function importConns(): Promise<void> {
     await navRef.value?.reload()
     toast.success(t('ws.importConnsResult', { n }))
   } catch (e) {
-    toast.error(t('ws.importConnsFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'ws.importConnsFail' })
   }
 }
 

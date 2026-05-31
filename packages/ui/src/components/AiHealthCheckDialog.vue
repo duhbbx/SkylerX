@@ -23,6 +23,7 @@ import { askAiChat } from '../ai'
 import { pHealthCheck } from '../ai-prompts'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import { settings } from '../settings'
@@ -330,7 +331,7 @@ async function copyReport(): Promise<void> {
       copied.value = false
     }, 1500)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

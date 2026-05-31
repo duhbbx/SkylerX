@@ -14,6 +14,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -85,7 +86,7 @@ async function start(): Promise<void> {
     items.value = all.slice(0, topN.value)
     toast.success(`扫描完成,共 ${all.length} 个 key,展示 top ${items.value.length}`)
   } catch (e) {
-    toast.error(`失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-bigkeys' })
   } finally {
     running.value = false
     cancel.value = false

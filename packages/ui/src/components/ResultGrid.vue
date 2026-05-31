@@ -9,6 +9,7 @@ import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, SQL_DEFAULT, isSqlSentinel } from '../editable'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type ExportFormat,
@@ -419,7 +420,7 @@ async function doExportXlsx(): Promise<void> {
     ])
     toast.success('xlsx 已导出')
   } catch (e) {
-    toast.error(`xlsx 导出失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'result-export-xlsx' })
   }
 }
 
@@ -449,7 +450,7 @@ async function doExportCsvGz(): Promise<void> {
     )
     toast.success('csv.gz 已导出')
   } catch (e) {
-    toast.error(`csv.gz 导出失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'result-export-csv' })
   }
 }
 

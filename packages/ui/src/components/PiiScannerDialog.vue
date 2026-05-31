@@ -15,8 +15,9 @@
 import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
-import { toast } from '../dialog'
 import { familyOf } from '../ddl'
+import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { DEFAULT_MASK_RULES, type MaskKind } from '../masking'
 import Modal from './Modal.vue'
 
@@ -123,7 +124,7 @@ async function run(): Promise<void> {
       const dataType = String(r.data_type ?? r.DATA_TYPE ?? '')
       progress.value.current = `${tableSchema}.${tableName}.${colName}`
       // 列名启发式匹配
-      let matchedRule: typeof DEFAULT_MASK_RULES[number] | null = null
+      let matchedRule: (typeof DEFAULT_MASK_RULES)[number] | null = null
       for (const rule of DEFAULT_MASK_RULES) {
         try {
           if (new RegExp(rule.columnPattern, 'i').test(colName)) {
@@ -162,7 +163,7 @@ async function run(): Promise<void> {
     }
     toast.success(`扫描完成,${hits.value.length} 处命中`)
   } catch (e) {
-    toast.error(`扫描失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'pii-scan' })
   } finally {
     running.value = false
     cancel.value = false
@@ -180,9 +181,7 @@ const exportText = computed(() => {
   const lines = [headers.join(',')]
   for (const h of hits.value) {
     const sample =
-      h.sampleTotal != null && h.sampleMatches != null
-        ? `${h.sampleMatches}/${h.sampleTotal}`
-        : ''
+      h.sampleTotal != null && h.sampleMatches != null ? `${h.sampleMatches}/${h.sampleTotal}` : ''
     lines.push(
       [h.schemaName, h.table, h.column, h.dataType, h.ruleName, h.kind, sample]
         .map((v) => (v.includes(',') ? `"${v}"` : v))

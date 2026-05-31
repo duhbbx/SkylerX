@@ -16,6 +16,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf } from '../ddl'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -50,7 +51,7 @@ function saveAll(arr: Snapshot[]): void {
   try {
     localStorage.setItem(SNAP_KEY, JSON.stringify(arr))
   } catch {
-    toast.error(t('snap.storageFull'))
+    reportError(new Error(t('snap.storageFull')))
   }
 }
 
@@ -73,7 +74,7 @@ async function takeSnapshot(): Promise<void> {
       path: [],
     })
     if (!top.length) {
-      toast.error(t('snap.noDbs'))
+      reportError(new Error(t('snap.noDbs')))
       return
     }
     // 简化：只对第一个 database/schema 拍照（覆盖单库场景；多库可后续扩）

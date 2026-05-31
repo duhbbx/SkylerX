@@ -19,6 +19,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { askAiChat } from '../ai'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type MockColumn,
@@ -112,7 +113,7 @@ function save(): void {
     localStorage.setItem(STORAGE_KEY.value, JSON.stringify(payload))
     toast.success(t('mock.saved'))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -264,7 +265,7 @@ Respond with ONLY a JSON object mapping column name to kind, nothing else. Examp
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     if (msg === 'NO_API_KEY') toast.warn(t('mock.aiNoKey'))
-    else toast.error(t('mock.aiFail', { err: msg.slice(0, 80) }))
+    else reportError(new Error(msg), { tag: 'mock.aiFail' })
   } finally {
     aiBusy.value = false
   }
@@ -350,17 +351,9 @@ async function execute(): Promise<void> {
         state: 'error',
         error: errMsg,
       }
-      // 出错的 INSERT 通常是某个 chunk 触发了约束 / 类型不兼容,把 SQL+连接信息
-      // 一起丢给 AI 最快能定位(NOT NULL 列没值 / FK 不存在 / 类型不匹配等)
-      toast.error(`执行失败: ${errMsg.slice(0, 100)}`, {
-        askAi: {
-          sql: stmts[i],
-          error: errMsg,
-          connId: props.conn.id,
-          connName: props.conn.name,
-          dialect: props.conn.dialect,
-        },
-      })
+      // TODO(v2): restore askAi: { sql, error, connId, connName, dialect } context once reportError
+      // supports passing structured AI-debug payloads beyond the error object. Refs #13
+      reportError(e, { tag: 'mock-data-execute' })
       return
     }
   }

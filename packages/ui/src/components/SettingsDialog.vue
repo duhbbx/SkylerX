@@ -5,6 +5,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
 import { addFact, clearFacts, clearVectorMemory, removeFact } from '../memory'
 import { clearUsage as clearNavUsage } from '../nav-usage'
@@ -79,7 +80,7 @@ async function onChangeChannel(c: UpdateChannel): Promise<void> {
       c === 'oss-cn' ? t('settings.updates.switchedOss') : t('settings.updates.switchedGithub'),
     )
   } else {
-    toast.error(r.error ?? 'unknown error')
+    reportError(new Error(r.error ?? 'unknown error'))
   }
 }
 

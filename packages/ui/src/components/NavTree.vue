@@ -15,6 +15,7 @@ import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
 import type { ObjectKind, SqlTemplateKind } from '../ddl'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { settings } from '../settings'
 import ContextMenu from './ContextMenu.vue'
@@ -231,14 +232,10 @@ const controller: TreeController = {
         emit('connError', connId, msg)
       } else {
         // 非连接级错误(权限/SQL/驱动 bug 等):用户之前报告"不报错只是节点收起",
-        // 看不到任何提示以为软件无响应. 至少 toast 一条带"问 AI"的错误,让用户能定位.
-        toast.error(msg, {
-          askAi: {
-            error: msg,
-            connId,
-            errorCode: undefined,
-          },
-        })
+        // 看不到任何提示以为软件无响应. Surface via reportError() → toast 显示调用位置 + 一键复制 markdown 报告.
+        // TODO(v2): restore askAi: { error, connId, errorCode } context once reportError supports
+        // passing structured AI-debug payloads beyond the error object. Refs #13
+        reportError(new Error(msg), { tag: 'nav-tree-expand' })
       }
     } finally {
       node.loading = false
@@ -463,7 +460,7 @@ async function onRenameGroup(oldName: string): Promise<void> {
     await reload()
     toast.success(`${oldName} → ${next}`)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -489,7 +486,7 @@ async function onDeleteGroup(name: string): Promise<void> {
     await reload()
     toast.success(`已删除分组 "${name}"`)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -760,7 +757,7 @@ async function onConnDrop(targetRoot: ConnRoot, targetGroup: string | undefined)
     await reorderGroup(desired, src.id, targetGroup)
     await reload()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -777,7 +774,7 @@ async function onConnDropToGroup(targetGroup: string | undefined): Promise<void>
     await reorderGroup(desired, src.id, targetGroup)
     await reload()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

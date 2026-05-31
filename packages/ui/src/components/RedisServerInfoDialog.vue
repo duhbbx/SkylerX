@@ -16,6 +16,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -198,7 +199,7 @@ async function resetSlowlog(): Promise<void> {
     slowlogEntries.value = []
     toast.success('已清空')
   } catch (e) {
-    toast.error(`SLOWLOG RESET 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-slowlog-reset' })
   }
 }
 
@@ -215,7 +216,7 @@ async function setSlowThreshold(): Promise<void> {
     slowThreshold.value = us
     toast.success(`阈值已更新为 ${us}μs`)
   } catch (e) {
-    toast.error(`CONFIG SET 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-slowlog-threshold' })
   }
 }
 
@@ -271,7 +272,7 @@ async function killClient(row: ClientRow): Promise<void> {
     clientRows.value = clientRows.value.filter((r) => r.id !== row.id)
     toast.success(`已杀 id=${row.id}`)
   } catch (e) {
-    toast.error(`CLIENT KILL 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-client-kill' })
   }
 }
 
@@ -281,7 +282,8 @@ async function loadConfig(): Promise<void> {
     const raw = (await call('CONFIG', ['GET', '*'])) as unknown[] | Record<string, string>
     const out: { k: string; v: string }[] = []
     if (Array.isArray(raw)) {
-      for (let i = 0; i + 1 < raw.length; i += 2) out.push({ k: String(raw[i]), v: String(raw[i + 1] ?? '') })
+      for (let i = 0; i + 1 < raw.length; i += 2)
+        out.push({ k: String(raw[i]), v: String(raw[i + 1] ?? '') })
     } else if (raw && typeof raw === 'object') {
       for (const [k, v] of Object.entries(raw)) out.push({ k, v: String(v ?? '') })
     }
@@ -299,7 +301,7 @@ async function setConfigEntry(entry: { k: string; v: string }): Promise<void> {
     entry.v = next
     toast.success(`已更新 ${entry.k}`)
   } catch (e) {
-    toast.error(`CONFIG SET 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-config-set' })
   }
 }
 
@@ -355,7 +357,9 @@ async function loadCluster(): Promise<void> {
     clusterNodes.value = nodes
   } catch (e) {
     clusterErr.value =
-      e instanceof Error ? e.message : '该 Redis 实例可能未启用 cluster 模式(单机/Sentinel/Standalone)'
+      e instanceof Error
+        ? e.message
+        : '该 Redis 实例可能未启用 cluster 模式(单机/Sentinel/Standalone)'
   } finally {
     loading.value = false
   }
@@ -460,7 +464,13 @@ function fmtTime(unixSec: number): string {
   const d = new Date(unixSec * 1000)
   return d.toLocaleString()
 }
-const MEMORY_HUMAN_KEYS = new Set(['used_memory', 'used_memory_peak', 'used_memory_rss', 'total_system_memory', 'maxmemory'])
+const MEMORY_HUMAN_KEYS = new Set([
+  'used_memory',
+  'used_memory_peak',
+  'used_memory_rss',
+  'total_system_memory',
+  'maxmemory',
+])
 function smartValue(k: string, v: string): string {
   if (MEMORY_HUMAN_KEYS.has(k) || /memory_human$/.test(k)) {
     if (/_human$/.test(k)) return v

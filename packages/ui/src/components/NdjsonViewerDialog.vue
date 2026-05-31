@@ -15,6 +15,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -95,7 +96,7 @@ async function copyAll(): Promise<void> {
     await navigator.clipboard.writeText(props.file.content)
     toast.success(t('ndjson.copied'))
   } catch {
-    toast.error(t('ndjson.copyFail'))
+    reportError(new Error(t('ndjson.copyFail')))
   }
 }
 

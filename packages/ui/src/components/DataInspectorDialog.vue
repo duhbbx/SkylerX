@@ -14,6 +14,7 @@ import { computed, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf, quoteId } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -58,7 +59,7 @@ async function loadColumns(): Promise<void> {
     }
     if (!sampleCol.value && columns.value.length) sampleCol.value = columns.value[0].name
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -84,7 +85,7 @@ async function runSample(): Promise<void> {
       )
     ).rows
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     sampleLoading.value = false
   }
@@ -127,7 +128,7 @@ async function runProfile(): Promise<void> {
       }
     })
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     profileLoading.value = false
   }
@@ -172,7 +173,7 @@ async function runConstraints(): Promise<void> {
       violations.value.push({ kind: 'ok', col: '', count: 0, sample: t('inspect.noViolations') })
     }
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     constraintsLoading.value = false
   }
@@ -253,7 +254,7 @@ async function runTypeOpt(): Promise<void> {
       })
     }
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     typeOptLoading.value = false
   }
@@ -282,7 +283,7 @@ async function runMaintain(op: string): Promise<void> {
     await client.connections.execute(props.conn.id, sql)
     toast.success(t('inspect.maintainOk', { op }))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

@@ -16,6 +16,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -49,8 +50,10 @@ async function execSql(sql: string): Promise<Record<string, unknown>[]> {
 
 function dbWhere(): string {
   const conds: string[] = []
-  if (dbFilter.value.trim()) conds.push(`database = '${dbFilter.value.trim().replace(/'/g, "\\'")}'`)
-  if (tblFilter.value.trim()) conds.push(`table LIKE '${tblFilter.value.trim().replace(/'/g, "\\'")}'`)
+  if (dbFilter.value.trim())
+    conds.push(`database = '${dbFilter.value.trim().replace(/'/g, "\\'")}'`)
+  if (tblFilter.value.trim())
+    conds.push(`table LIKE '${tblFilter.value.trim().replace(/'/g, "\\'")}'`)
   return conds.length ? `WHERE ${conds.join(' AND ')}` : ''
 }
 
@@ -155,7 +158,7 @@ async function dropPartition(p: Record<string, unknown>): Promise<void> {
     toast.success('已删除')
     await loadParts()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -174,7 +177,7 @@ async function detachPartition(p: Record<string, unknown>): Promise<void> {
     toast.success('已 detach')
     await loadParts()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -191,7 +194,7 @@ async function attachPartition(p: Record<string, unknown>): Promise<void> {
     toast.success('已 attach')
     await loadParts()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -208,7 +211,7 @@ async function killMutation(m: Record<string, unknown>): Promise<void> {
     toast.success('已发出 KILL')
     await loadMutations()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

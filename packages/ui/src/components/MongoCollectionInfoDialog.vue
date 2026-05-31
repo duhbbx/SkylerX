@@ -12,6 +12,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -82,7 +83,7 @@ async function loadStats(): Promise<void> {
       indexSizes: (r.indexSizes as Record<string, number>) ?? {},
     }
   } catch (e) {
-    toast.error(`collStats 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'mongo-collstats' })
   } finally {
     loading.value = false
   }
@@ -102,7 +103,7 @@ async function loadIndexes(): Promise<void> {
       size: sizes[String(x.name)] ?? undefined,
     }))
   } catch (e) {
-    toast.error(`listIndexes 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'mongo-list-indexes' })
   } finally {
     loading.value = false
   }
@@ -120,7 +121,7 @@ async function dropIndex(name: string): Promise<void> {
     await loadIndexes()
     await loadStats()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -150,7 +151,7 @@ async function createIndex(): Promise<void> {
     await loadIndexes()
     await loadStats()
   } catch (e) {
-    toast.error(`createIndex 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'mongo-create-index' })
   }
 }
 

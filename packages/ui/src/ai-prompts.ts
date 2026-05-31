@@ -217,11 +217,7 @@ ${sql}
  * 存储过程 / 函数翻译 prompt。语义比单条 SQL 复杂得多:OUT/INOUT 参数 / 错误处理 / 游标 / DELIMITER / BEGIN-END 块 / 异常块结构都得改写。
  * 输出三段:译后 SP 代码 / 警告 / 建议(同 pTranslate 的输出形态)。
  */
-export function pTranslateProcedure(
-  from: string,
-  to: string,
-  code: string,
-): string {
+export function pTranslateProcedure(from: string, to: string, code: string): string {
   return `请把下面这段 **存储过程 / 函数** 从 **${from}** 翻译成 **${to}** 方言。需要处理:
 - CREATE PROCEDURE / FUNCTION 头部语法差异
 - 参数模式(IN / OUT / INOUT)在不同方言的写法

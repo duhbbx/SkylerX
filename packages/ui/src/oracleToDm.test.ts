@@ -55,9 +55,7 @@ describe('translateDdl', () => {
   })
 
   it('DECODE 不替换但发 warning', () => {
-    const { sql, warnings } = translateDdl(
-      'SELECT DECODE(status, 1, "on", 0, "off") FROM t',
-    )
+    const { sql, warnings } = translateDdl('SELECT DECODE(status, 1, "on", 0, "off") FROM t')
     expect(sql).toContain('DECODE(')
     expect(warnings.some((w) => w.includes('DECODE'))).toBe(true)
   })

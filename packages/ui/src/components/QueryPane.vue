@@ -28,6 +28,7 @@ import {
 } from '../ddl'
 import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, buildEditDml, parseEditableTable } from '../editable'
+import { reportError } from '../errorReporter'
 import { addQueryFavorite } from '../favorites'
 import { t } from '../i18n'
 import { type Suggestion, monaco } from '../monaco-setup'
@@ -390,7 +391,7 @@ async function toggleCommitMode(): Promise<void> {
         if (doCommit) await client.connections.commitSession(sessionId.value)
         else await client.connections.rollbackSession(sessionId.value)
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : String(e))
+        reportError(e)
         return // 切换中止
       }
     }
@@ -436,7 +437,7 @@ async function commit(): Promise<void> {
     dirty.value = false
     toast.success(t('commit.committed'))
   } catch (e) {
-    toast.error(t('commit.commitFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'commit.commitFail' })
   }
 }
 async function rollback(): Promise<void> {
@@ -453,7 +454,7 @@ async function rollback(): Promise<void> {
     dirty.value = false
     toast.info(t('commit.rolledBack'))
   } catch (e) {
-    toast.error(t('commit.rollbackFail', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'commit.rollbackFail' })
   }
 }
 async function endSessionIfAny(): Promise<void> {
@@ -1072,7 +1073,7 @@ async function explain(withAnalyze = false): Promise<void> {
     activeTab.value = 0
     showPlan.value = false
   } catch (e) {
-    toast.error(t('query.explainFailed', { msg: e instanceof Error ? e.message : String(e) }))
+    reportError(e, { tag: 'query.explainFailed' })
   } finally {
     running.value = false
   }

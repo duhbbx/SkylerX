@@ -14,6 +14,7 @@
  */
 import { computed, ref } from 'vue'
 import { confirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type NotifChannel,
@@ -135,7 +136,7 @@ async function sendTest(): Promise<void> {
     toast.success(t('notif.sent'))
   } catch (e) {
     // 兜底（notify 不抛，但 listNotifs 解析失败之类极端情况）
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     testing.value = false
   }

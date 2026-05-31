@@ -14,11 +14,12 @@
  * 真要用 mysqldump 的高级特性（trigger / view 完整 DDL / FK 自动顺序），
  * 后续在主进程加 IPC 调用 child_process.spawn 即可，这里 UI 不动。
  */
-import { MetaNodeKind, type ConnectionConfig } from '@db-tool/shared-types'
+import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
 import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
-import { confirm as appConfirm, toast } from '../dialog'
 import { quoteId } from '../ddl'
+import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { splitStatements } from '../sqlSplit'
 import Modal from './Modal.vue'
@@ -50,7 +51,7 @@ const stopRequested = ref(false)
 
 async function pickFileAndRestore(): Promise<void> {
   if (!client.files) {
-    toast.error('files API not available')
+    reportError(new Error('files API not available'))
     return
   }
   const file = await client.files.openText([{ name: 'SQL', extensions: ['sql', 'txt'] }])
@@ -96,7 +97,7 @@ async function pickFileAndRestore(): Promise<void> {
 const backingUp = ref(false)
 async function doBackup(): Promise<void> {
   if (!client.files) {
-    toast.error('files API not available')
+    reportError(new Error('files API not available'))
     return
   }
   if (format.value === 'ndjson') {
@@ -174,7 +175,11 @@ async function doBackupNdjson(): Promise<void> {
     })
     if (path) {
       toast.success(
-        t('backup.ndjsonSaved', { n: lines.length, t: tables.length, path: path.split('/').pop() ?? path }),
+        t('backup.ndjsonSaved', {
+          n: lines.length,
+          t: tables.length,
+          path: path.split('/').pop() ?? path,
+        }),
       )
     }
   } finally {
@@ -204,7 +209,11 @@ async function pickFileAndRestoreNdjson(): Promise<void> {
   let skipped = 0
   for (const ln of lines) {
     try {
-      const obj = JSON.parse(ln) as { __table?: string; data?: Record<string, unknown>; __error?: string }
+      const obj = JSON.parse(ln) as {
+        __table?: string
+        data?: Record<string, unknown>
+        __error?: string
+      }
       if (obj.__error || !obj.__table || !obj.data) {
         skipped++
         continue

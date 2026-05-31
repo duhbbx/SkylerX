@@ -21,6 +21,7 @@ import { type ConnectionConfig, DbDialect } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -231,7 +232,7 @@ async function submit(): Promise<void> {
     emit('created', name.value.trim())
     emit('close')
   } catch (e) {
-    toast.error(`创建失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'new-database' })
   } finally {
     submitting.value = false
   }

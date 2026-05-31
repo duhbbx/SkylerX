@@ -9,10 +9,10 @@
  *  - 错误根因: 粘错误信息 + 上下文 → AI 分析根因 + 修复
  */
 import { type ConnectionConfig } from '@db-tool/shared-types'
+import { marked } from 'marked'
 import { computed, ref, watch } from 'vue'
 import { askAiChat } from '../ai'
 import { toast } from '../dialog'
-import { marked } from 'marked'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -68,7 +68,8 @@ ${statsInput.value.trim() ? `\n表统计/行数:\n\`\`\`\n${statsInput.value}\n\
     const result = await askAiChat({
       messages: [{ role: 'user', content: userMsg }],
       dialect: props.conn.dialect,
-      extraSystem: 'You are a database performance expert. Be specific and reference actual cost trade-offs.',
+      extraSystem:
+        'You are a database performance expert. Be specific and reference actual cost trade-offs.',
     })
     slowResult.value = result
   } catch (e) {

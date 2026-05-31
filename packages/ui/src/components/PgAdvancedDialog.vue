@@ -17,6 +17,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -124,7 +125,7 @@ async function createExtension(ext: ExtRow): Promise<void> {
     toast.success(`扩展 ${ext.name} 安装成功`)
     await loadExtensions()
   } catch (e) {
-    toast.error(`CREATE EXTENSION 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'pg-create-extension' })
   }
 }
 
@@ -146,7 +147,7 @@ async function dropExtension(ext: ExtRow): Promise<void> {
     toast.success(`扩展 ${ext.name} 已卸载`)
     await loadExtensions()
   } catch (e) {
-    toast.error(`DROP EXTENSION 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'pg-drop-extension' })
   }
 }
 
@@ -213,7 +214,7 @@ async function createPublication(): Promise<void> {
     toast.success(`发布 ${name} 已创建`)
     await loadReplication()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -229,7 +230,7 @@ async function dropPublication(name: string): Promise<void> {
     toast.success('已删除')
     await loadReplication()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -279,7 +280,7 @@ async function dropSlot(name: string): Promise<void> {
     toast.success(`已删除 ${name}`)
     await loadSlots()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

@@ -17,11 +17,11 @@
  * v2 可扩展：拖拽画布 + SVG 连线 + 列别名 + GROUP BY UI / 函数聚合 /
  *           手工添加 JOIN（非 FK）/ 多 schema 支持
  */
-import { MetaNodeKind, type ConnectionConfig } from '@db-tool/shared-types'
+import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
-import { toast } from '../dialog'
 import { quoteId } from '../ddl'
+import { toast } from '../dialog'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -225,9 +225,7 @@ const generatedSql = computed<string>(() => {
       const cand = remaining[i] as string
       // 找一条 cand 与 joined 之间的边
       const edge = autoJoinEdges.value.find(
-        (e) =>
-          (e.from === cand && joined.has(e.to)) ||
-          (e.to === cand && joined.has(e.from)),
+        (e) => (e.from === cand && joined.has(e.to)) || (e.to === cand && joined.has(e.from)),
       )
       if (!edge) continue
       const [left, leftCol, right, rightCol] = joined.has(edge.to)

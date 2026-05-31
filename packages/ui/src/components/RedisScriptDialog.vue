@@ -21,6 +21,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -111,7 +112,7 @@ async function loadLua(): Promise<void> {
     luaSha.value = String(sha)
     toast.success(`SCRIPT LOAD → ${luaSha.value}`)
   } catch (e) {
-    toast.error(`SCRIPT LOAD 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-script-load' })
   }
 }
 
@@ -142,7 +143,7 @@ async function flushScripts(): Promise<void> {
     luaSha.value = null
     toast.success('SCRIPT FLUSH 完成')
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -221,7 +222,7 @@ async function loadFnList(): Promise<void> {
     }
     fnLibs.value = out
   } catch (e) {
-    toast.error(`FUNCTION LIST 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-function-list' })
   } finally {
     fnLoading.value = false
   }
@@ -234,7 +235,7 @@ async function loadFn(): Promise<void> {
     toast.success(`FUNCTION LOAD → ${String(r)}`)
     await loadFnList()
   } catch (e) {
-    toast.error(`FUNCTION LOAD 失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-function-load' })
   }
 }
 
@@ -245,7 +246,7 @@ async function deleteFnLib(name: string): Promise<void> {
     await loadFnList()
     toast.success(`已删除 ${name}`)
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

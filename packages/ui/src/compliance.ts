@@ -87,9 +87,11 @@ const MYSQL_CHECKS: ComplianceCheck[] = [
           message: 'validate_password 插件未安装，密码强度不受 DB 层约束',
         }
       }
-      const policy = (pickVar(rows, 'validate_password.policy') ??
+      const policy = (
+        pickVar(rows, 'validate_password.policy') ??
         pickVar(rows, 'validate_password_policy') ??
-        '').toUpperCase()
+        ''
+      ).toUpperCase()
       const length = Number(
         pickVar(rows, 'validate_password.length') ?? pickVar(rows, 'validate_password_length') ?? 0,
       )
@@ -127,7 +129,11 @@ const MYSQL_CHECKS: ComplianceCheck[] = [
         }
         const logging = pickVar(mar, 'server_audit_logging')
         return logging?.toUpperCase() === 'ON'
-          ? { severity: 'pass', message: 'MariaDB server_audit 已开启', evidence: `logging=${logging}` }
+          ? {
+              severity: 'pass',
+              message: 'MariaDB server_audit 已开启',
+              evidence: `logging=${logging}`,
+            }
           : { severity: 'warn', message: 'MariaDB server_audit 已安装但未启用' }
       }
       const policy = pickVar(rows, 'audit_log_policy')
@@ -182,7 +188,7 @@ const MYSQL_CHECKS: ComplianceCheck[] = [
     description: 'require_secure_transport=ON 时客户端必须经 SSL 连接。',
     run: async (_c, exec) => {
       const rows = await exec("SHOW VARIABLES LIKE 'require_secure_transport'")
-      const v = pickVar(rows, 'require_secure_transport');
+      const v = pickVar(rows, 'require_secure_transport')
       if (v?.toUpperCase() === 'ON') return { severity: 'pass', message: '已强制 SSL' }
       return {
         severity: 'warn',
@@ -201,7 +207,11 @@ const MYSQL_CHECKS: ComplianceCheck[] = [
       const v = pickVar(rows, 'slow_query_log')
       return v?.toUpperCase() === 'ON'
         ? { severity: 'pass', message: '慢查询日志已启用' }
-        : { severity: 'warn', message: 'slow_query_log=OFF（建议开启用于审计辅助）', evidence: `value=${v}` }
+        : {
+            severity: 'warn',
+            message: 'slow_query_log=OFF（建议开启用于审计辅助）',
+            evidence: `value=${v}`,
+          }
     },
   },
   {
@@ -214,7 +224,11 @@ const MYSQL_CHECKS: ComplianceCheck[] = [
       const v = pickVar(rows, 'log_bin')
       return v?.toUpperCase() === 'ON'
         ? { severity: 'pass', message: 'binlog 已启用' }
-        : { severity: 'warn', message: 'log_bin=OFF（无法做时间点恢复 / 主从复制）', evidence: `value=${v}` }
+        : {
+            severity: 'warn',
+            message: 'log_bin=OFF（无法做时间点恢复 / 主从复制）',
+            evidence: `value=${v}`,
+          }
     },
   },
 ]
@@ -307,11 +321,17 @@ const PG_CHECKS: ComplianceCheck[] = [
       const rows = await exec(
         'SELECT rolname FROM pg_authid WHERE rolpassword IS NULL AND rolcanlogin',
       ).catch((e) => {
-        throw new Error(`无法访问 pg_authid（需超级用户权限）：${e instanceof Error ? e.message : String(e)}`)
+        throw new Error(
+          `无法访问 pg_authid（需超级用户权限）：${e instanceof Error ? e.message : String(e)}`,
+        )
       })
       if (rows.length === 0) return { severity: 'pass', message: '无空密码登录用户' }
       const names = rows.map((r) => String(r.rolname ?? r.ROLNAME ?? '')).join(', ')
-      return { severity: 'fail', message: `存在 ${rows.length} 个空密码用户：${names}`, evidence: names }
+      return {
+        severity: 'fail',
+        message: `存在 ${rows.length} 个空密码用户：${names}`,
+        evidence: names,
+      }
     },
   },
 ]
@@ -328,7 +348,12 @@ const UNSUPPORTED: ComplianceCheck = {
 
 /** 把方言归到 MySQL 系 / PG 系 / 其它三类。 */
 function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
-  if (d === DbDialect.MySQL || d === DbDialect.MariaDB || d === DbDialect.OceanBase || d === DbDialect.TiDB)
+  if (
+    d === DbDialect.MySQL ||
+    d === DbDialect.MariaDB ||
+    d === DbDialect.OceanBase ||
+    d === DbDialect.TiDB
+  )
     return 'mysql'
   if (
     d === DbDialect.PostgreSQL ||

@@ -15,6 +15,7 @@ import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { DEFAULT_MASK_RULES } from '../masking'
 import Modal from './Modal.vue'
 
@@ -145,25 +146,23 @@ function exprFor(col: ColumnDef): string {
     case 'md5':
       // MySQL MD5(); PG md5(); MSSQL HASHBYTES('MD5', ..)
       if (fam === 'mysql' || fam === 'pg') return `md5(CAST(${c} AS char(4000))) AS ${c}`
-      if (fam === 'sqlserver') return `LOWER(CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(${c} AS varchar(4000))), 2)) AS ${c}`
+      if (fam === 'sqlserver')
+        return `LOWER(CONVERT(VARCHAR(32), HASHBYTES('MD5', CAST(${c} AS varchar(4000))), 2)) AS ${c}`
       return `md5(${c}) AS ${c}`
     case 'partial': {
       // CONCAT(LEFT(c, prefix), '***', RIGHT(c, suffix))
       const pre = col.prefixLen
       const suf = col.suffixLen
-      if (fam === 'mysql')
-        return `CONCAT(LEFT(${c}, ${pre}), '***', RIGHT(${c}, ${suf})) AS ${c}`
+      if (fam === 'mysql') return `CONCAT(LEFT(${c}, ${pre}), '***', RIGHT(${c}, ${suf})) AS ${c}`
       if (fam === 'pg')
         return `LEFT(${c}::text, ${pre}) || '***' || RIGHT(${c}::text, ${suf}) AS ${c}`
-      if (fam === 'sqlserver')
-        return `LEFT(${c}, ${pre}) + '***' + RIGHT(${c}, ${suf}) AS ${c}`
+      if (fam === 'sqlserver') return `LEFT(${c}, ${pre}) + '***' + RIGHT(${c}, ${suf}) AS ${c}`
       return `LEFT(${c}, ${pre}) || '***' || RIGHT(${c}, ${suf}) AS ${c}`
     }
     case 'fixed':
       return `${quoteStr(col.fixedValue)} AS ${c}`
     case 'truncate':
-      if (fam === 'mysql' || fam === 'sqlserver')
-        return `LEFT(${c}, ${col.maxLen}) AS ${c}`
+      if (fam === 'mysql' || fam === 'sqlserver') return `LEFT(${c}, ${col.maxLen}) AS ${c}`
       return `LEFT(${c}::text, ${col.maxLen}) AS ${c}`
     case 'null':
       return `NULL AS ${c}`
@@ -206,7 +205,7 @@ async function execute(): Promise<void> {
     toast.success(`视图 ${viewName.value} 已创建`)
     emit('close')
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   } finally {
     submitting.value = false
   }

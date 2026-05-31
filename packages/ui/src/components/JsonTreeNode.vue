@@ -13,7 +13,7 @@
  *
  * 每行右侧显示对应的 JSON Path(`$.a.b[0].c`),hover 显示,点击复制 SQL extract。
  */
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps<{
   /** 当前节点值 */

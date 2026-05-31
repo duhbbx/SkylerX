@@ -19,6 +19,7 @@
 import type { QueryResult } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -232,7 +233,12 @@ const areaPath = computed(() => {
 })
 
 // E1 ── 散点(scatter):同 line 的 (x, y) 计算,只画圆点 ──
-interface ScatterPt { x: number; y: number; label: string; value: number }
+interface ScatterPt {
+  x: number
+  y: number
+  label: string
+  value: number
+}
 const scatterPts = computed<ScatterPt[]>(() => {
   const n = points.value.length
   if (!n) return []
@@ -249,7 +255,14 @@ const scatterPts = computed<ScatterPt[]>(() => {
 })
 
 // E1 ── 雷达(radar):每点作为一个轴,半径 = 归一化值,绘多边形 ──
-interface RadarPoint { x: number; y: number; label: string; value: number; ax: number; ay: number }
+interface RadarPoint {
+  x: number
+  y: number
+  label: string
+  value: number
+  ax: number
+  ay: number
+}
 const radarPoints = computed<RadarPoint[]>(() => {
   const n = points.value.length
   if (n < 3) return [] // 雷达需要 >=3 个点
@@ -361,7 +374,7 @@ async function exportPng(): Promise<void> {
     })
     toast.success(t('chart.exported'))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 </script>

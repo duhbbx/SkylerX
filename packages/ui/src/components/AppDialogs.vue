@@ -7,6 +7,7 @@ import { nextTick, ref, watch } from 'vue'
 import { emitChatErrorAsk } from '../chat-bus'
 import { useDataClient } from '../data-client'
 import { type ToastItem, dialogState, dismissToast, toast, toasts } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { saveFileState } from '../saveFile'
 import SaveFileDialog from './SaveFileDialog.vue'
@@ -32,14 +33,14 @@ async function onSaveFileSubmit(path: string): Promise<void> {
       writeBinary?: (p: string, b: Uint8Array | ArrayBuffer) => Promise<string>
     }
     if (req.content == null) {
-      toast.error('save 模式必须提供 content')
+      reportError(new Error('save 模式必须提供 content'))
       saveFileState.resolve?.(null)
       saveFileState.open = false
       return
     }
     if (req.content instanceof Uint8Array) {
       if (!fapi.writeBinary) {
-        toast.error('writeBinary IPC 不可用')
+        reportError(new Error('writeBinary IPC 不可用'))
         saveFileState.resolve?.(null)
         saveFileState.open = false
         return
@@ -47,7 +48,7 @@ async function onSaveFileSubmit(path: string): Promise<void> {
       await fapi.writeBinary(path, req.content)
     } else {
       if (!fapi.writeText) {
-        toast.error('writeText IPC 不可用')
+        reportError(new Error('writeText IPC 不可用'))
         saveFileState.resolve?.(null)
         saveFileState.open = false
         return
@@ -62,7 +63,7 @@ async function onSaveFileSubmit(path: string): Promise<void> {
       if (savedCard.value?.path === path) savedCard.value = null
     }, 8000)
   } catch (e) {
-    toast.error(`保存失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'app-save-file' })
     saveFileState.resolve?.(null)
     saveFileState.open = false
   }
@@ -77,7 +78,7 @@ async function openSavedFile(): Promise<void> {
   if (!savedCard.value) return
   const fapi = client.files as unknown as { openPath?: (p: string) => Promise<string> }
   const err = await fapi.openPath?.(savedCard.value.path)
-  if (err) toast.error(`打开失败: ${err}`)
+  if (err) reportError(new Error(`打开失败: ${err}`))
   savedCard.value = null
 }
 

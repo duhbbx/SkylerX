@@ -18,6 +18,7 @@ import { type ConnectionConfig, DbDialect, type QueryHistoryEntry } from '@db-to
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type IndexHint,
@@ -171,7 +172,7 @@ async function copyAll(): Promise<void> {
     await navigator.clipboard?.writeText(txt)
     toast.success(t('idxrec.copied'))
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 

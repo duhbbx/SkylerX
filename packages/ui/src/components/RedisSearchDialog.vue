@@ -13,6 +13,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -89,7 +90,11 @@ async function run(): Promise<void> {
       let matched = 0
       do {
         if (cancel.value) break
-        const r = (await call('SCAN', [cursor, 'MATCH', pattern.value.trim(), 'COUNT', '500'], db)) as [string, string[]]
+        const r = (await call(
+          'SCAN',
+          [cursor, 'MATCH', pattern.value.trim(), 'COUNT', '500'],
+          db,
+        )) as [string, string[]]
         cursor = String(r?.[0] ?? '0')
         const batch = (r?.[1] ?? []) as string[]
         scanned += batch.length
@@ -120,7 +125,7 @@ async function run(): Promise<void> {
       } while (cursor !== '0')
     }
   } catch (e) {
-    toast.error(`搜索失败: ${e instanceof Error ? e.message : String(e)}`)
+    reportError(e, { tag: 'redis-search' })
   } finally {
     running.value = false
     cancel.value = false

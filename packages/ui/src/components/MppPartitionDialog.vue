@@ -13,6 +13,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
+import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -104,7 +105,7 @@ async function dropPartition(p: Record<string, unknown>): Promise<void> {
     toast.success('已删除')
     await loadPartitions()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
@@ -115,14 +116,11 @@ async function addPartition(): Promise<void> {
   })
   if (!sql) return
   try {
-    await execSql(
-      `ALTER TABLE \`${dbName.value}\`.\`${tblName.value}\` ${sql}`,
-      dbName.value,
-    )
+    await execSql(`ALTER TABLE \`${dbName.value}\`.\`${tblName.value}\` ${sql}`, dbName.value)
     toast.success('已创建分区')
     await loadPartitions()
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    reportError(e)
   }
 }
 
