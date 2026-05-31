@@ -60,6 +60,14 @@ mac:
         # 用户报告: arm64 Mac 装 arm64.dmg → better_sqlite3.node 是 x86_64 → 启动直接挂.
         # Intel Mac 用户走 Rosetta 跑 arm64.dmg(性能稍损但能用).
         - arm64
+    # zip 给 electron-updater 用作 mac 增量更新源.
+    # 不加这一项时, latest-mac.yml 只有 dmg, updater 调 update path 报
+    #   "ZIP file not provided: [{ url: ...dmg ... }]"
+    # → mac 自动更新永远走不通. 用户安装下载完 dmg 后无法替换 .app.
+    # zip 体积 ≈ dmg 的 ~95%, 额外打包 5-10s, 收益是 mac 自动更新正常 work.
+    - target: zip
+      arch:
+        - arm64
   category: public.app-category.developer-tools
   hardenedRuntime: true
   gatekeeperAssess: false

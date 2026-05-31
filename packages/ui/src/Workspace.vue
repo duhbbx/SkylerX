@@ -3388,8 +3388,11 @@ onUnmounted(() => unsubMenu?.())
   /* 错误文本可能很长(Windows 没签的多行 stacktrace),让 cell 允许换行 */
   flex-wrap: wrap;
   justify-content: flex-end;
-  /* 防撑爆 about Modal: 限定最大宽度, 多出的折行 */
-  max-width: 360px;
+  /* 不限 max-width, 跟 about-row 右列宽度走, 让长文本(release notes
+     摘要 / 错误堆栈)有更多横向空间;
+     about-row 的 grid 已经把右列宽度兜住, 不会撑破 Modal. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .upd-cell button {
   padding: 3px 10px;
