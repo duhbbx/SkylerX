@@ -199,7 +199,9 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-table',
     label: 'ctx.new-table',
     section: 'create',
-    kinds: [MetaNodeKind.Group, MetaNodeKind.Table, MetaNodeKind.View],
+    // View kept out: right-clicking an existing view should not offer "new table"
+    // (caused #23 — Oracle view node spuriously offered table creation).
+    kinds: [MetaNodeKind.Group, MetaNodeKind.Table],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'tables',
     run: ({ node, connId, ctrl }) => ctrl.createObject('table', node, connId),
   },

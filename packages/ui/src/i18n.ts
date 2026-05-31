@@ -941,7 +941,7 @@ const DICT: Record<string, [string, string]> = {
   'conn.tab.general': ['常规', 'General'],
   'conn.tab.ssh': ['SSH 隧道', 'SSH tunnel'],
   'conn.name': ['名称', 'Name'],
-  'conn.name.ph': ['本地 MySQL', 'Local MySQL'],
+  'conn.name.ph': ['留空自动取 user@host', 'leave blank → user@host'],
   'conn.dialect': ['数据库类型', 'Database type'],
   'conn.host': ['主机', 'Host'],
   'conn.port': ['端口', 'Port'],

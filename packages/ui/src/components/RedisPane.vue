@@ -831,7 +831,24 @@ async function setExtraView(v: ExtraView): Promise<void> {
       valueState.value.geo = list
     }
   } catch (e) {
-    valueState.value.error = e instanceof Error ? e.message : String(e)
+    // Friendlier message for WRONGTYPE (#18): the "HyperLogLog / Bitmap / Geo"
+    // view options are visible whenever the key TYPE matches string / zset,
+    // but only HLL-encoded strings, bitmap-shaped strings, and Geo-zsets
+    // actually answer their respective commands. A plain string can't
+    // distinguish itself from a HLL until PFCOUNT runs and Redis rejects it
+    // with WRONGTYPE — translate that into something the user can act on.
+    const raw = e instanceof Error ? e.message : String(e)
+    if (/WRONGTYPE/i.test(raw)) {
+      const explain =
+        v === 'hll'
+          ? '当前 key 是普通 string,不是 HyperLogLog 编码;PFCOUNT 只能在 HLL 上跑'
+          : v === 'bitmap'
+            ? '当前 key 是普通 string,BITCOUNT 跑过但收到 WRONGTYPE — 可能 key 已被改写'
+            : '当前 key 是普通 zset,不是 GEO 索引;GEOPOS 需要先 GEOADD 写入的坐标'
+      valueState.value.error = `${explain}。原始错误: ${raw}`
+    } else {
+      valueState.value.error = raw
+    }
   } finally {
     valueState.value.loading = false
   }

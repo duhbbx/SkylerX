@@ -199,15 +199,25 @@ async function onSelectConn(id: string): Promise<void> {
   tabsRef.value?.openConnection(conn)
 }
 
+/**
+ * Parse the Redis db index out of a `MetaNodeKind.Database` tree node.
+ *
+ * Redis driver builds nodes with name='db0', name='db5' (string prefix); the
+ * numeric index lives in node.path[0] = '0', '5'. A naive `Number(node.name)`
+ * yields NaN and the caller silently falls back to db0 — that's #3 / #27.
+ * Always go through this helper to keep the three Redis routing paths in sync.
+ */
+function parseRedisDbIndex(node: TreeNode): number {
+  const n = Number(node.path?.[0] ?? node.name.replace(/^db/, ''))
+  return Number.isFinite(n) ? n : 0
+}
+
 async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
   const conn = await client.connections.get(id)
   // NoSQL：没有「SQL 查询页」概念，按方言路由到 Mongo/Redis/ES 浏览器
   if (dialectKind(conn.dialect) === DbKind.NoSql) {
     if (conn.dialect === DbDialect.Redis && node?.kind === MetaNodeKind.Database) {
-      // Redis driver 里 node.name = 'db0'/'db1',Number 解析为 NaN → 全打开 db0(用户报告"没反应").
-      // node.path[0] 才是数字字符串 '0'/'1'/'2'.
-      const dbIndex = Number(node.path[0] ?? node.name.replace(/^db/, '')) || 0
-      tabsRef.value?.openRedisDb(conn, dbIndex)
+      tabsRef.value?.openRedisDb(conn, parseRedisDbIndex(node))
       return
     }
     if (
@@ -435,7 +445,7 @@ async function onViewStructure(connId: string, node: TreeNode): Promise<void> {
       return
     }
     if (conn.dialect === DbDialect.Redis && node.kind === MetaNodeKind.Database) {
-      tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
+      tabsRef.value?.openRedisDb(conn, parseRedisDbIndex(node))
       return
     }
     if (conn.dialect === DbDialect.Elasticsearch && node.kind === MetaNodeKind.Table) {
@@ -462,7 +472,7 @@ async function onPreviewTable(connId: string, node: TreeNode): Promise<void> {
       return
     }
     if (conn.dialect === DbDialect.Redis && node.kind === MetaNodeKind.Database) {
-      tabsRef.value?.openRedisDb(conn, Number(node.name) || 0)
+      tabsRef.value?.openRedisDb(conn, parseRedisDbIndex(node))
       return
     }
     if (conn.dialect === DbDialect.Elasticsearch && node.kind === MetaNodeKind.Table) {

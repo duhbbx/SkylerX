@@ -286,7 +286,26 @@ function buildConfig(): ConnectionConfig {
   return cfg
 }
 
+/**
+ * Auto-fill the connection name when blank — `username@host` is the convention
+ * users asked for (#22). Falls back to `dialect@host` if no username, and
+ * raw dialect if no host either (e.g. SQLite file connection).
+ */
+function deriveName(): string {
+  const u = form.user?.trim()
+  const h = form.host?.trim()
+  if (u && h) return `${u}@${h}`
+  if (h) return `${form.dialect}@${h}`
+  return form.dialect
+}
+
 async function save(): Promise<void> {
+  // Hard requirement (#22): connection name cannot be empty. If the user left
+  // it blank, derive a reasonable default rather than reject — most users
+  // expect "just save" to work and only set a custom name when they care.
+  if (!form.name?.trim()) {
+    form.name = deriveName()
+  }
   busy.value = true
   try {
     const saved = props.connId
