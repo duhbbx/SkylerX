@@ -860,6 +860,55 @@ function clearDrag(): void {
 }
 
 /**
+ * Group-row dragover with Y-split for connection drags:
+ *   - upper half (and prevGroup exists) → drop will land in prevGroup
+ *   - lower half (or no prevGroup)      → drop will land in thisGroup
+ *
+ * Replaces the per-group `drop-rail-tail` element that used to absorb drops
+ * in the visible gap between groups — that rail occupied 10-15px of resting
+ * vertical space which read as unexplained whitespace under each group.
+ * Group-reorder drags (kind === 'group') don't Y-split — they always target
+ * thisGroup as before.
+ */
+function onGroupRowDragOver(e: DragEvent, thisGroup: string, prevGroup: string | undefined): void {
+  if (!dragState.value) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  if (dragState.value.kind === 'conn' && prevGroup !== undefined) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const isUpper = e.clientY < rect.top + rect.height / 2
+    dragOverKey.value = isUpper ? `tail:g:${prevGroup}` : `g:${thisGroup}`
+  } else {
+    dragOverKey.value = `g:${thisGroup}`
+  }
+}
+
+function onGroupRowDragLeave(thisGroup: string, prevGroup: string | undefined): void {
+  if (
+    dragOverKey.value === `g:${thisGroup}` ||
+    (prevGroup !== undefined && dragOverKey.value === `tail:g:${prevGroup}`)
+  ) {
+    dragOverKey.value = null
+  }
+}
+
+function onGroupRowDrop(thisGroup: string, prevGroup: string | undefined): void {
+  const src = dragState.value
+  if (!src) return
+  if (src.kind === 'conn') {
+    // Re-read dragOverKey rather than recomputing Y — the last hover position
+    // is authoritative (matches what the user just saw highlighted).
+    if (prevGroup !== undefined && dragOverKey.value === `tail:g:${prevGroup}`) {
+      void onConnDropToGroup(prevGroup)
+    } else {
+      void onConnDropToGroup(thisGroup)
+    }
+  } else {
+    onGroupDrop(thisGroup)
+  }
+}
+
+/**
  * Batch reorder helper —— 给目标组里的全体 peers 按 desiredOrderIds 重新分配
  * sort_index = 1, 2, 3, ..., src 同步 group 字段（跨组拖时）。
  *
@@ -1015,18 +1064,29 @@ function onGroupDrop(targetGroup: string): void {
         @drop="onConnDropToGroupTop(undefined)"
       ></div>
 
-      <template v-for="g in groupList" :key="'g:' + g.name">
-        <!-- 分组行:整组拖拽 + 接收连接 drop(让用户把连接拖进这个组的标题) -->
+      <template v-for="(g, gi) in groupList" :key="'g:' + g.name">
+        <!-- 分组行:整组拖拽 + 接收连接 drop.
+             连接拖拽时按光标 Y 坐标分流(替代过去的 drop-rail-tail,消除分组下方
+             空白): 上半行 → 落到上一个分组(prev); 下半行 → 落到本组. 首组无 prev,
+             整行都归本组. 分组拖拽时不分流, 整行还是 group-reorder 语义. -->
         <div
           class="group-row"
-          :class="{ 'drag-over': dragOverKey === 'g:' + g.name, dragging: dragState?.kind === 'group' && dragState.id === g.name }"
+          :class="{
+            'drag-over': dragState?.kind === 'group' && dragOverKey === 'g:' + g.name,
+            'drag-over-top':
+              dragState?.kind === 'conn' &&
+              gi > 0 &&
+              dragOverKey === 'tail:g:' + groupList[gi - 1].name,
+            'drag-over-bottom': dragState?.kind === 'conn' && dragOverKey === 'g:' + g.name,
+            dragging: dragState?.kind === 'group' && dragState.id === g.name,
+          }"
           draggable="true"
           @click="toggleGroup(g.name)"
           @contextmenu="onGroupContextmenu($event, g.name)"
           @dragstart="onGroupDragStart($event, g.name)"
-          @dragover="onDragOver($event, 'g:' + g.name)"
-          @dragleave="onDragLeave('g:' + g.name)"
-          @drop="dragState?.kind === 'conn' ? onConnDropToGroup(g.name) : onGroupDrop(g.name)"
+          @dragover="onGroupRowDragOver($event, g.name, gi > 0 ? groupList[gi - 1].name : undefined)"
+          @dragleave="onGroupRowDragLeave(g.name, gi > 0 ? groupList[gi - 1].name : undefined)"
+          @drop="onGroupRowDrop(g.name, gi > 0 ? groupList[gi - 1].name : undefined)"
           @dragend="clearDrag"
         >
           <span class="caret">{{ expandedGroups.has(g.name) ? '▾' : '▸' }}</span>
@@ -1050,18 +1110,6 @@ function onGroupDrop(targetGroup: string): void {
             <TreeItem :node="r.node" :conn-id="r.id" :depth="1" :env="r.env" :dialect="r.dialect" />
           </div>
         </div>
-        <!-- Group tail rail: drop in the gap between this group and the next →
-             append to THIS group (the upper one). Fixes "dropping between two
-             groups always lands in the lower group" — the next group-row's
-             drop zone was the only catcher of the gap. Same always-rendered
-             14px transparent pattern as the global rails. -->
-        <div
-          class="drop-rail drop-rail-tail"
-          :class="{ 'drag-active': dragState?.kind === 'conn', 'drag-over': dragOverKey === 'tail:g:' + g.name }"
-          @dragover="onDragOver($event, 'tail:g:' + g.name)"
-          @dragleave="onDragLeave('tail:g:' + g.name)"
-          @drop="onConnDropToGroup(g.name)"
-        ></div>
       </template>
 
       <div
@@ -1245,12 +1293,9 @@ function onGroupDrop(targetGroup: string): void {
 .drop-rail-bottom {
   margin-top: 6px;
 }
-/* Per-group tail rail — same shape, slightly smaller margin since groups
-   already have their own spacing rhythm. */
-.drop-rail-tail {
-  height: 10px;
-  margin: 1px 4px 4px;
-}
+/* Per-group tail rail was removed — its drop-catch responsibility moved
+   into group-row's @dragover via Y-split (see onGroupRowDragOver). Frees
+   ~15px of visible whitespace that used to sit under each group. */
 .conn-drag-wrap:active,
 .group-row:active {
   cursor: grabbing;
@@ -1262,9 +1307,16 @@ function onGroupDrop(targetGroup: string): void {
   transition: transform 0.1s ease-out;
 }
 .conn-drag-wrap.drag-over,
-.group-row.drag-over {
-  /* 顶部一道粗紫色边 + 背景高亮表示"会插到这里之前", 用户清楚 drop target */
+.group-row.drag-over,
+.group-row.drag-over-top {
+  /* 顶部一道粗紫色边 + 背景高亮表示"会插到这里之前", 用户清楚 drop target.
+     drag-over-top: 连接 Y-split 命中上半 → 落到上一个分组 (=在本分组之前). */
   box-shadow: inset 0 3px 0 0 var(--accent, #7c6cff);
+  background: rgba(124, 108, 255, 0.08);
+}
+.group-row.drag-over-bottom {
+  /* 底部一道紫色边 + 背景 — 连接 Y-split 命中下半: 落到本分组(作为本组的连接). */
+  box-shadow: inset 0 -3px 0 0 var(--accent, #7c6cff);
   background: rgba(124, 108, 255, 0.08);
 }
 .bulk-bar {
