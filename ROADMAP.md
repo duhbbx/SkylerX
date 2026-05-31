@@ -37,6 +37,7 @@
 
 | 数据库 | 类型 | 接入策略 | 备注 |
 |---|---|---|---|
+| **IBM DB2 (LUW / z/OS)** | 商业关系型 | `ibm_db` npm(惰性原生 binding,同 Oracle/DM 模式),新 family `'db2'` | 用户需装 DB2 CLI driver;桌面端 packaged build 需 electron-rebuild;macOS arm64 可能要源码编译。系统目录走 `SYSCAT.*` / `SYSIBMADM.ENV_INST_INFO`(version),分页 `OFFSET … FETCH NEXT … ROWS ONLY` |
 | **Apache Cassandra / ScyllaDB** | NoSQL 列族 | CQL,新建 `core-driver/cassandra` 包(`cassandra-driver` npm) | 走 SQL channel(CQL ≈ SQL) |
 | **InfluxDB 3.x** | 时序 | FlightSQL(gRPC + Arrow),沿用 SQL channel | 1.x InfluxQL + 2.x Flux 用 NoSQL channel 兼容 |
 | **TimescaleDB 专属 metadata** | 时序(PG 扩展, 已可连) | 在已支持的 PG 入口上加 hypertable / 连续聚合视图节点 | 不算新方言, 算 UX 增强 |
