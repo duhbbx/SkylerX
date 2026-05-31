@@ -58,6 +58,9 @@ export function slowFamilyOf(dialect: DbDialect): SlowFamily {
     case DbDialect.OceanBase:
     case DbDialect.Doris:
     case DbDialect.StarRocks:
+    case DbDialect.PolarDBX:
+    case DbDialect.GreatSQL:
+    case DbDialect.TDSQLC:
       return 'mysql'
     case DbDialect.PostgreSQL:
     case DbDialect.CockroachDB:
@@ -65,6 +68,13 @@ export function slowFamilyOf(dialect: DbDialect): SlowFamily {
     case DbDialect.OpenGauss:
     case DbDialect.KingbaseES:
     case DbDialect.Redshift:
+    case DbDialect.PolarDBPG:
+    case DbDialect.GaussDB:
+    case DbDialect.TimescaleDB:
+    case DbDialect.QuestDB:
+    case DbDialect.Materialize:
+    case DbDialect.RisingWave:
+    case DbDialect.Hologres:
       return 'pg'
     default:
       return 'other'

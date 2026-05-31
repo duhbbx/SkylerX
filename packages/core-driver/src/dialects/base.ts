@@ -94,4 +94,15 @@ export const DRIVER_PACKAGES: Record<DbDialect, string> = {
   [DbDialect.MongoDB]: 'mongodb',
   [DbDialect.Redis]: 'ioredis',
   [DbDialect.Elasticsearch]: '@elastic/elasticsearch',
+  // Wire-compat aliases — same driver package as their base family.
+  [DbDialect.PolarDBPG]: 'pg',
+  [DbDialect.PolarDBX]: 'mysql2',
+  [DbDialect.GaussDB]: 'pg',
+  [DbDialect.TimescaleDB]: 'pg',
+  [DbDialect.QuestDB]: 'pg',
+  [DbDialect.Materialize]: 'pg',
+  [DbDialect.RisingWave]: 'pg',
+  [DbDialect.Hologres]: 'pg',
+  [DbDialect.GreatSQL]: 'mysql2',
+  [DbDialect.TDSQLC]: 'mysql2',
 }

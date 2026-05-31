@@ -29,14 +29,21 @@ import { createTDengineDriver } from './tdengine.js'
  */
 export function registerBuiltinDrivers(): void {
   // MySQL 系（mysql2）— 含协议兼容的 MariaDB / OceanBase / TiDB / Doris / StarRocks
+  // + Alibaba PolarDB-X / 万里 GreatSQL / 腾讯 TDSQL-C(全部 MySQL-wire,真用同一份驱动).
   registerDriver(createMysqlFamilyDriver(DbDialect.MySQL))
   registerDriver(createMysqlFamilyDriver(DbDialect.MariaDB))
   registerDriver(createMysqlFamilyDriver(DbDialect.OceanBase))
   registerDriver(createMysqlFamilyDriver(DbDialect.TiDB))
   registerDriver(createMysqlFamilyDriver(DbDialect.Doris))
   registerDriver(createMysqlFamilyDriver(DbDialect.StarRocks))
+  registerDriver(createMysqlFamilyDriver(DbDialect.PolarDBX))
+  registerDriver(createMysqlFamilyDriver(DbDialect.GreatSQL))
+  registerDriver(createMysqlFamilyDriver(DbDialect.TDSQLC))
 
   // PostgreSQL 系（pg）— 含金仓 / CockroachDB / Greenplum / openGauss / H2(PG 兼容) / Redshift
+  // + 阿里 PolarDB-PG / 华为 GaussDB / TimescaleDB(PG 扩展) / QuestDB(PG-wire) /
+  // Materialize / RisingWave / Hologres. 都是 PG-wire, pg 驱动直接 work, 元数据/语法
+  // 也跟 PG 同构.
   registerDriver(createPostgresDriver(DbDialect.PostgreSQL))
   registerDriver(createPostgresDriver(DbDialect.KingbaseES))
   registerDriver(createPostgresDriver(DbDialect.CockroachDB))
@@ -44,6 +51,13 @@ export function registerBuiltinDrivers(): void {
   registerDriver(createPostgresDriver(DbDialect.OpenGauss))
   registerDriver(createPostgresDriver(DbDialect.H2))
   registerDriver(createPostgresDriver(DbDialect.Redshift))
+  registerDriver(createPostgresDriver(DbDialect.PolarDBPG))
+  registerDriver(createPostgresDriver(DbDialect.GaussDB))
+  registerDriver(createPostgresDriver(DbDialect.TimescaleDB))
+  registerDriver(createPostgresDriver(DbDialect.QuestDB))
+  registerDriver(createPostgresDriver(DbDialect.Materialize))
+  registerDriver(createPostgresDriver(DbDialect.RisingWave))
+  registerDriver(createPostgresDriver(DbDialect.Hologres))
 
   // SQL Server（mssql，纯 JS）
   registerDriver(createSqlServerDriver(DbDialect.SqlServer))

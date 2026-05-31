@@ -11,8 +11,38 @@ import { DbDialect } from '@db-tool/shared-types'
 export const COMMON_PRIVS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'ALL PRIVILEGES']
 
 function fam(d: DbDialect): 'mysql' | 'pg' | 'oracle' | 'mssql' | 'other' {
-  if ([DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
-  if ([DbDialect.PostgreSQL, DbDialect.KingbaseES].includes(d)) return 'pg'
+  if (
+    [
+      DbDialect.MySQL,
+      DbDialect.MariaDB,
+      DbDialect.OceanBase,
+      DbDialect.TiDB,
+      DbDialect.Doris,
+      DbDialect.StarRocks,
+      DbDialect.PolarDBX,
+      DbDialect.GreatSQL,
+      DbDialect.TDSQLC,
+    ].includes(d)
+  )
+    return 'mysql'
+  if (
+    [
+      DbDialect.PostgreSQL,
+      DbDialect.KingbaseES,
+      DbDialect.CockroachDB,
+      DbDialect.Greenplum,
+      DbDialect.OpenGauss,
+      DbDialect.Redshift,
+      DbDialect.PolarDBPG,
+      DbDialect.GaussDB,
+      DbDialect.TimescaleDB,
+      DbDialect.QuestDB,
+      DbDialect.Materialize,
+      DbDialect.RisingWave,
+      DbDialect.Hologres,
+    ].includes(d)
+  )
+    return 'pg'
   if ([DbDialect.Oracle, DbDialect.DM].includes(d)) return 'oracle'
   if (d === DbDialect.SqlServer) return 'mssql'
   return 'other'

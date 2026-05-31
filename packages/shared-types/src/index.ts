@@ -55,6 +55,28 @@ export enum DbDialect {
   Redis = 'redis',
   /** Elasticsearch（搜索引擎/文档型，走 executeCommand 通道，REST/HTTP 协议） */
   Elasticsearch = 'elasticsearch',
+
+  // ── Wire-compatible variants — sit on PG / MySQL driver, no new code ──
+  /** Alibaba PolarDB-PG (PostgreSQL-wire) */
+  PolarDBPG = 'polardb_pg',
+  /** Alibaba PolarDB-X (MySQL-wire, distributed) */
+  PolarDBX = 'polardb_x',
+  /** Huawei GaussDB (PostgreSQL-compat mode) */
+  GaussDB = 'gaussdb',
+  /** TimescaleDB (PostgreSQL extension; treated as PG dialect) */
+  TimescaleDB = 'timescaledb',
+  /** QuestDB (PG-wire time-series) */
+  QuestDB = 'questdb',
+  /** Materialize (PG-compat streaming SQL) */
+  Materialize = 'materialize',
+  /** RisingWave (PG-compat streaming SQL) */
+  RisingWave = 'risingwave',
+  /** Alibaba Hologres (PG-compat OLAP) */
+  Hologres = 'hologres',
+  /** GreatSQL (万里, MySQL-fork) */
+  GreatSQL = 'greatsql',
+  /** Tencent TDSQL-C (MySQL-compat) */
+  TDSQLC = 'tdsqlc',
 }
 
 /**

@@ -154,6 +154,12 @@ export function familyOf(dialect: DbDialect): Family {
     case DbDialect.MySQL:
     case DbDialect.MariaDB:
     case DbDialect.OceanBase:
+    case DbDialect.TiDB:
+    case DbDialect.Doris:
+    case DbDialect.StarRocks:
+    case DbDialect.PolarDBX:
+    case DbDialect.GreatSQL:
+    case DbDialect.TDSQLC:
       return 'mysql'
     case DbDialect.PostgreSQL:
     case DbDialect.KingbaseES:
@@ -161,6 +167,14 @@ export function familyOf(dialect: DbDialect): Family {
     case DbDialect.Greenplum:
     case DbDialect.OpenGauss:
     case DbDialect.H2:
+    case DbDialect.Redshift:
+    case DbDialect.PolarDBPG:
+    case DbDialect.GaussDB:
+    case DbDialect.TimescaleDB:
+    case DbDialect.QuestDB:
+    case DbDialect.Materialize:
+    case DbDialect.RisingWave:
+    case DbDialect.Hologres:
       return 'pg'
     case DbDialect.SqlServer:
       return 'sqlserver'

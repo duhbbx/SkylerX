@@ -98,7 +98,20 @@ export function diffSchemas(source: TableSnapshot[], target: TableSnapshot[]): T
 
 type Family = 'mysql' | 'pg' | 'other'
 function familyOf(d: DbDialect): Family {
-  if ([DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
+  if (
+    [
+      DbDialect.MySQL,
+      DbDialect.MariaDB,
+      DbDialect.OceanBase,
+      DbDialect.TiDB,
+      DbDialect.Doris,
+      DbDialect.StarRocks,
+      DbDialect.PolarDBX,
+      DbDialect.GreatSQL,
+      DbDialect.TDSQLC,
+    ].includes(d)
+  )
+    return 'mysql'
   if (
     [
       DbDialect.PostgreSQL,
@@ -107,6 +120,14 @@ function familyOf(d: DbDialect): Family {
       DbDialect.Greenplum,
       DbDialect.OpenGauss,
       DbDialect.H2,
+      DbDialect.Redshift,
+      DbDialect.PolarDBPG,
+      DbDialect.GaussDB,
+      DbDialect.TimescaleDB,
+      DbDialect.QuestDB,
+      DbDialect.Materialize,
+      DbDialect.RisingWave,
+      DbDialect.Hologres,
     ].includes(d)
   )
     return 'pg'
