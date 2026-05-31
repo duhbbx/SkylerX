@@ -13,7 +13,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -50,7 +50,7 @@ async function loadDatabases(): Promise<void> {
       .map((r) => Object.values(r)[0] as string)
       .filter((n) => !['information_schema', 'mysql', '__internal_schema'].includes(n))
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   }
 }
 
@@ -64,7 +64,7 @@ async function loadTables(): Promise<void> {
     tblList.value = rows.map((r) => Object.values(r)[0] as string)
   } catch (e) {
     tblList.value = []
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   }
 }
 
@@ -80,7 +80,7 @@ async function loadPartitions(): Promise<void> {
       `SHOW PARTITIONS FROM \`${dbName.value}\`.\`${tblName.value}\``,
     )
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
     partitions.value = []
   } finally {
     loading.value = false

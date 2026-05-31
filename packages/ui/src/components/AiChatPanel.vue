@@ -9,6 +9,7 @@ import { type ChatMessage, askAiChat, extractAllSql } from '../ai'
 import { onChatSqlExecuted } from '../chat-bus'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
@@ -386,7 +387,7 @@ async function loadSchema(): Promise<void> {
     schemaText.value = byTable.size ? lines.join('\n') : ''
     if (!byTable.size) error.value = t('aichat.schemaEmpty', { name: target })
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     schemaLoading.value = false
   }

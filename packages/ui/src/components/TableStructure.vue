@@ -8,6 +8,7 @@ import { onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { deriveContext } from '../ddl'
 import { buildCreateFromColumns } from '../dump'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import SqlEditor from './SqlEditor.vue'
 import type { TreeNode } from './treeNode'
@@ -47,7 +48,7 @@ async function load(): Promise<void> {
     keys.value = k
     ddl.value = await loadDdl(c)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     loading.value = false
   }

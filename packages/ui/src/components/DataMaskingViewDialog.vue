@@ -15,7 +15,7 @@ import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import { DEFAULT_MASK_RULES } from '../masking'
 import Modal from './Modal.vue'
 
@@ -130,7 +130,7 @@ async function loadColumns(): Promise<void> {
     })
     if (!viewName.value) viewName.value = `${tableName.value}_masked`
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }

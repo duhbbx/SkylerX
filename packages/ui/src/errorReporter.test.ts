@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 import { toasts } from './dialog'
 import {
   type ErrorReport,
@@ -8,6 +9,7 @@ import {
   primeEnvCache,
   redact,
   reportError,
+  reportInlineError,
 } from './errorReporter'
 
 describe('redact', () => {
@@ -226,5 +228,55 @@ describe('reportError', () => {
     __resetEnvCacheForTests()
     reportError(new Error('boom'))
     expect(toasts.value[0].report?.markdown).toContain('environment metadata not available yet')
+  })
+})
+
+describe('reportInlineError', () => {
+  beforeEach(() => {
+    toasts.value = []
+    __resetEnvCacheForTests()
+    primeEnvCache({
+      appVersion: '0.5.0-rc19',
+      platform: 'darwin',
+      arch: 'arm64',
+      electronVer: '34.2.0',
+      nodeVer: '22.10.0',
+      chromeVer: '132.0.6834.83',
+      locale: 'zh-CN',
+      timezone: 'Asia/Shanghai',
+      channel: 'oss-cn',
+      osRelease: '24.5.0',
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    toasts.value = []
+    vi.restoreAllMocks()
+  })
+
+  it('writes message to inline ref AND pushes a danger toast with report', () => {
+    const errRef = ref<string | null>(null)
+    reportInlineError(errRef, new Error('boom'))
+    expect(errRef.value).toBe('boom')
+    expect(toasts.value).toHaveLength(1)
+    expect(toasts.value[0].variant).toBe('danger')
+    expect(toasts.value[0].report?.markdown).toContain('boom')
+  })
+
+  it('handles non-Error values by coercing to String(e)', () => {
+    const errRef = ref<string | null>(null)
+    reportInlineError(errRef, 'plain string')
+    expect(errRef.value).toBe('plain string')
+    expect(toasts.value[0].message).toBe('plain string')
+  })
+
+  it('passes opts through to reportError (tag/args appear in report)', () => {
+    const errRef = ref<string | null>(null)
+    reportInlineError(errRef, new Error('connect fail'), {
+      tag: 'connect',
+      args: { host: 'localhost', password: 'hunter2' },
+    })
+    expect(toasts.value[0].report?.markdown).toContain('**Tag**: `connect`')
+    expect(toasts.value[0].report?.markdown).toContain('"password": "***"')
   })
 })

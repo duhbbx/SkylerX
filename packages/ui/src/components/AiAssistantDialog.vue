@@ -7,6 +7,7 @@ import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/sha
 import { onMounted, onUnmounted, ref } from 'vue'
 import { type AiMode, askAi, extractSql } from '../ai'
 import { useDataClient } from '../data-client'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { settings } from '../settings'
 import Modal from './Modal.vue'
@@ -90,7 +91,7 @@ async function loadSchema(): Promise<void> {
     schemaText.value = lines.join('\n')
     if (!schemaText.value) error.value = t('ai.schemaEmpty')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     schemaLoading.value = false
   }

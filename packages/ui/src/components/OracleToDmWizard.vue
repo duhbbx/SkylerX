@@ -39,7 +39,7 @@ import {
 import { computed, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { translateDdl } from '../oracleToDm'
 import Modal from './Modal.vue'
@@ -112,7 +112,7 @@ async function loadObjects(): Promise<void> {
     }
     objects.value = all
   } catch (e) {
-    objectsError.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(objectsError, e)
   } finally {
     loadingObjects.value = false
   }

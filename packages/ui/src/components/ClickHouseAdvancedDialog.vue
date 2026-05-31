@@ -16,7 +16,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -69,7 +69,7 @@ async function loadParts(): Promise<void> {
       ${dbWhere()}
       ORDER BY database, table, partition_id`)
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -87,7 +87,7 @@ async function loadMutations(): Promise<void> {
       ORDER BY create_time DESC
       LIMIT 200`)
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -106,7 +106,7 @@ async function loadReplicas(): Promise<void> {
       ${dbWhere()}
       ORDER BY database, table`)
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -135,7 +135,7 @@ async function loadTables(): Promise<void> {
         WHERE database NOT IN ('system','INFORMATION_SCHEMA','information_schema')
         ORDER BY database, name`)
     } catch (e2) {
-      errMsg.value = e2 instanceof Error ? e2.message : String(e2)
+      reportInlineError(errMsg, e2)
     }
   } finally {
     loading.value = false

@@ -12,6 +12,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
+import { reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -112,7 +113,7 @@ async function run(): Promise<void> {
     result.value = Array.isArray(arr) ? arr.slice(0, limit.value) : []
     toast.success(`返回 ${Array.isArray(arr) ? arr.length : 0} 条`)
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     running.value = false
   }

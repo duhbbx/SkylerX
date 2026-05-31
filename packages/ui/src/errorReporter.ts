@@ -12,6 +12,7 @@
  * Spec: docs/superpowers/specs/2026-05-31-error-reporter-design.md
  */
 
+import type { Ref } from 'vue'
 import { pushReportToast } from './dialog'
 
 export interface EnvSummary {
@@ -249,4 +250,32 @@ export function reportError(e: unknown, opts: ReportOpts = {}): void {
 
   // Mirror to console for dev-tools log copy.
   console.error('[reportError]', err, { callsite, tag: opts.tag, args })
+}
+
+/**
+ * Convenience wrapper for the very common "catch (e) and surface in two places"
+ * pattern: assigns a human-readable message into an inline error Ref (so the
+ * component's existing error banner / inline display keeps working) AND fires
+ * a full `reportError` toast (so the user gets callsite + copy-as-markdown).
+ *
+ * Behaviour:
+ *   reportInlineError(errorRef, e, opts?)
+ *     errorRef.value = (e instanceof Error ? e.message : String(e))
+ *     reportError(e, opts)
+ *
+ * Use at every `try/catch` site where the component shows an inline error
+ * banner. The toast is incremental on top — the inline banner remains the
+ * primary in-context feedback, the toast adds the issue-report metadata.
+ *
+ * Do NOT use for validation feedback (e.g. "please fill required field" —
+ * not an exception). Those should keep using `errorRef.value = 't(...)'`
+ * directly with no toast.
+ */
+export function reportInlineError(
+  errorRef: Ref<string | null | undefined>,
+  e: unknown,
+  opts?: ReportOpts,
+): void {
+  errorRef.value = e instanceof Error ? e.message : String(e)
+  reportError(e, opts)
 }

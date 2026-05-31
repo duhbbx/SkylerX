@@ -18,7 +18,7 @@ import { type ConnectionConfig, DbDialect, type QueryHistoryEntry } from '@db-to
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type IndexHint,
@@ -150,7 +150,7 @@ async function run(): Promise<void> {
     hints.value = recommendIndexes(usages, known, f)
     phase.value = 'done'
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
     phase.value = 'error'
   }
 }

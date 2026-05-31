@@ -20,7 +20,7 @@ import type { ConnectionConfig } from '@db-tool/shared-types'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -109,7 +109,7 @@ async function refresh(): Promise<void> {
     units.value = (u.rows ?? []) as unknown as UnitRow[]
     error.value = null
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     loading.value = false
   }

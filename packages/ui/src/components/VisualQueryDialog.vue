@@ -22,6 +22,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { toast } from '../dialog'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -82,7 +83,7 @@ async function loadTables(): Promise<void> {
       sqlName: n.sqlName ?? quoteId(props.conn.dialect, n.name),
     }))
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     loading.value = false
   }

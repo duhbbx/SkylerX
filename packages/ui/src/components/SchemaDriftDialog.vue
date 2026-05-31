@@ -23,7 +23,7 @@ import { DbDialect, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -125,7 +125,7 @@ onMounted(async () => {
   try {
     conns.value = await client.connections.list()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   }
 })
 
@@ -435,7 +435,7 @@ async function runScan(): Promise<void> {
     }
     if (!drifts.value.length) toast.success(t('drift.noDrift'))
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     scanning.value = false
   }

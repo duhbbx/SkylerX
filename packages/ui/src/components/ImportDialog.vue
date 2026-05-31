@@ -7,6 +7,7 @@ import { type DbDialect, MetaNodeKind, type MetadataNode } from '@db-tool/shared
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
+import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { buildInsertStatements, parseCSV, parseJSON } from '../io'
 import Modal from './Modal.vue'
@@ -64,7 +65,7 @@ onMounted(async () => {
     })
     tableCols.value = cols.map((c) => c.name)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   }
 })
 
@@ -90,7 +91,9 @@ async function pickFile(): Promise<void> {
     csvRows.value = isJson ? parseJSON(f.content) : parseCSV(f.content)
     if (isJson) hasHeader.value = true // JSON 首行即键名
   } catch (e) {
+    // Localized inline banner + full report toast (callsite + copy markdown).
     error.value = t('import.parseFail', { msg: e instanceof Error ? e.message : String(e) })
+    reportError(e, { tag: 'import-parse' })
     csvRows.value = []
     return
   }
@@ -114,6 +117,7 @@ async function onXlsxPicked(e: Event): Promise<void> {
     autoMap()
   } catch (err) {
     error.value = t('import.excelFail', { msg: err instanceof Error ? err.message : String(err) })
+    reportError(err, { tag: 'import-excel' })
     csvRows.value = []
   } finally {
     if (xlsxInput.value) xlsxInput.value.value = '' // 允许重选同一文件
@@ -196,7 +200,7 @@ async function runImport(): Promise<void> {
     })
     emit('done', dataRows.value.length)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     busy.value = false
   }
