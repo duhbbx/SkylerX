@@ -709,21 +709,55 @@ function clearDrag(): void {
 }
 
 /**
- * 把连接 drop 到目标连接位置:把源 sortIndex 设为 (prev + target) / 2,
- * 同时如果跨组需要同步 group 字段。落库后 reload 拉回最新顺序。
+ * Batch reorder helper —— 给目标组里的全体 peers 按 desiredOrderIds 重新分配
+ * sort_index = 1, 2, 3, ..., src 同步 group 字段（跨组拖时）。
+ *
+ * 为什么不是只改 src 一个 (target.sortIndex - 0.5)：
+ *   之前的实现把 src.sortIndex 设成 target.sortIndex - 0.5, 但旧版后端
+ *   listConnections 按 updated_at DESC 排,根本没用 sort_index → 每次拖完
+ *   src 都跑到第 1 位. 现在后端改用 sort_index ASC + tie-break created_at,
+ *   只改 src 一个仍会出 null 域 vs. 1.5 域混排的问题 (target sort_index 为
+ *   null 时 src=null-0.5=NaN). 干脆把整组 normalize 成 1..N, 永远干净.
+ *
+ * N 个 IPC 并行 (Promise.all), 50 个连接也只 ~250ms.
+ */
+async function reorderGroup(
+  desiredOrderIds: string[],
+  srcId: string,
+  newGroup: string | undefined,
+): Promise<void> {
+  await Promise.all(
+    desiredOrderIds.map(async (id, i) => {
+      const full = await client.connections.get(id)
+      full.sortIndex = i + 1
+      if (id === srcId) full.group = newGroup
+      await client.connections.update(full)
+    }),
+  )
+}
+
+/**
+ * 把连接 drop 到目标连接位置: src 插入 target 之前 (src 占据 target 当前的视觉
+ * 位置, target 往下推一格)，整组重排 sort_index。落库后 reload。
  */
 async function onConnDrop(targetRoot: ConnRoot, targetGroup: string | undefined): Promise<void> {
   const src = dragState.value
   clearDrag()
   if (!src || src.kind !== 'conn' || src.id === targetRoot.id) return
   try {
-    const full = await client.connections.get(src.id)
-    full.group = targetGroup
-    // 用 target.sortIndex - 0.5 让源插到目标之前;reload 后会按 0.5/1.5/2.5 排好
-    const targetIdx = targetRoot.sortIndex ?? targetRoot.createdAt ?? Date.now()
-    full.sortIndex = targetIdx - 0.5
-    full.updatedAt = Date.now()
-    await client.connections.update(full)
+    // target 组的 peers（按当前视觉顺序），剔除 src（跨组拖时 src 不在 target 组也无碍）
+    const groupPeers = roots.value.filter(
+      (r) => (r.group ?? '') === (targetGroup ?? '') && r.id !== src.id,
+    )
+    const targetIdx = groupPeers.findIndex((p) => p.id === targetRoot.id)
+    if (targetIdx < 0) return
+    // 把 src.id 插入到 targetIdx 位置（顶替 target，target 后移）
+    const desired: string[] = [
+      ...groupPeers.slice(0, targetIdx).map((p) => p.id),
+      src.id,
+      ...groupPeers.slice(targetIdx).map((p) => p.id),
+    ]
+    await reorderGroup(desired, src.id, targetGroup)
     await reload()
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e))
@@ -736,14 +770,11 @@ async function onConnDropToGroup(targetGroup: string | undefined): Promise<void>
   clearDrag()
   if (!src || src.kind !== 'conn') return
   try {
-    const full = await client.connections.get(src.id)
-    full.group = targetGroup
-    // 末尾:max sortIndex + 1;空组就给 0
-    const peers = roots.value.filter((r) => r.group === targetGroup && r.id !== src.id)
-    const max = peers.reduce((m, r) => Math.max(m, r.sortIndex ?? 0), 0)
-    full.sortIndex = max + 1
-    full.updatedAt = Date.now()
-    await client.connections.update(full)
+    const groupPeers = roots.value.filter(
+      (r) => (r.group ?? '') === (targetGroup ?? '') && r.id !== src.id,
+    )
+    const desired: string[] = [...groupPeers.map((p) => p.id), src.id]
+    await reorderGroup(desired, src.id, targetGroup)
     await reload()
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e))
