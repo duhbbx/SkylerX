@@ -2,7 +2,7 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { type BrowserWindow, app, ipcMain } from 'electron'
+import { type BrowserWindow, app, ipcMain, shell } from 'electron'
 // electron-updater 是 CJS,ESM 下需取默认导出再解构。
 import electronUpdater from 'electron-updater'
 
@@ -103,6 +103,17 @@ async function saveChannel(c: UpdateChannel): Promise<void> {
 
 // 记一份当前 channel, error 提示用 — applyChannel 是唯一写点
 let currentChannel: UpdateChannel = 'github'
+
+/**
+ * mac 平台没 Apple Developer ID 签名,自动安装走不通.
+ * 这里给一份"前往下载页"用的 URL,channel=oss-cn 走 OSS latest 目录,
+ * 其余走 GitHub Releases latest 页(用户在国内可能慢但 mac 用户少数在墙内).
+ */
+async function downloadPageFor(c: UpdateChannel): Promise<string> {
+  return c === 'oss-cn'
+    ? 'https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/'
+    : 'https://github.com/duhbbx/SkylerX/releases/latest'
+}
 
 function applyChannel(c: UpdateChannel): void {
   currentChannel = c
@@ -222,6 +233,20 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
   })
   ipcMain.handle('updates:downloadAndInstall', async () => {
     if (!app.isPackaged) return { devMode: true }
+    // macOS 自动安装走 Squirrel.Mac,它在 swap-in 前调系统 codesign 强制校验:
+    //   "Code signature at URL ... did not pass validation:
+    //    代码不含资源,但签名指示这些资源必须存在"
+    // 我们 mac.identity=null (ad-hoc 签名),过不了这步.electron-updater 自带的
+    // verifyUpdateCodeSignature 我们 stub 掉只能跳过 updater 自己的校验,跳不过
+    // Squirrel.Mac 内嵌的 OS 校验. 等 Apple Developer ID 真签名到位前,mac 平台
+    // 把"立即下载并安装"降级为"前往下载页",让用户手动下 dmg 装.
+    if (process.platform === 'darwin') {
+      const url = await downloadPageFor(await loadChannel())
+      pushLog(`macOS unsigned build → open download page in browser: ${url}`, 'warn')
+      pushLog('（mac auto-install needs Apple Developer ID signature, WIP）', 'warn')
+      await shell.openExternal(url)
+      return { ok: true, manualDownload: true }
+    }
     try {
       if (lastStatus.kind === 'downloaded') {
         // 已下完 → 直接装
@@ -237,8 +262,15 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
       return { ok: false, error: msg }
     }
   })
-  ipcMain.handle('updates:install', () => {
+  ipcMain.handle('updates:install', async () => {
     if (!app.isPackaged) return { devMode: true }
+    // 同上: mac 没真签名 → quitAndInstall 失败,改打开下载页.
+    if (process.platform === 'darwin') {
+      const url = await downloadPageFor(await loadChannel())
+      pushLog(`macOS unsigned build → open download page in browser: ${url}`, 'warn')
+      await shell.openExternal(url)
+      return { ok: true, manualDownload: true }
+    }
     autoUpdater.quitAndInstall()
     return { ok: true }
   })
