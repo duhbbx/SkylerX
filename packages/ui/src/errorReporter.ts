@@ -1,0 +1,178 @@
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Error reporter — captures and formats errors for one-click issue reports.
+ *
+ * Public surface (Task 3 adds reportError; this file currently exports helpers
+ * that reportError will compose).
+ *
+ * Spec: docs/superpowers/specs/2026-05-31-error-reporter-design.md
+ */
+
+export interface EnvSummary {
+  appVersion: string
+  platform: NodeJS.Platform
+  arch: string
+  electronVer: string
+  nodeVer: string
+  chromeVer: string
+  locale: string
+  timezone: string
+  channel: 'github' | 'oss-cn'
+  osRelease: string
+}
+
+export interface Callsite {
+  file: string
+  function: string | undefined
+  line: number | undefined
+}
+
+export interface ErrorReport {
+  message: string
+  stack: string | undefined
+  callsite: Callsite
+  tag: string | undefined
+  args: Record<string, unknown> | undefined
+  env: EnvSummary
+  /** ISO 8601 capture moment. */
+  timestamp: string
+}
+
+// ── redact ────────────────────────────────────────────────────────────
+const SENSITIVE_KEYS = new Set([
+  'password',
+  'passwd',
+  'secret',
+  'token',
+  'apikey',
+  'apisecret',
+  'privatekey',
+  'passphrase',
+  'authorization',
+  'sessionid',
+  'cookie',
+])
+
+/**
+ * Deep-walk a value and replace values whose keys match SENSITIVE_KEYS with '***'.
+ * Depth-capped at 8 to defuse cyclic refs without needing a WeakSet.
+ */
+export function redact(value: unknown): unknown {
+  return redactImpl(value, 0)
+}
+
+function redactImpl(value: unknown, depth: number): unknown {
+  if (depth > 8) return '[deep object]'
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map((v) => redactImpl(v, depth + 1))
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = SENSITIVE_KEYS.has(k.toLowerCase()) ? '***' : redactImpl(v, depth + 1)
+  }
+  return out
+}
+
+// ── captureCallsite ───────────────────────────────────────────────────
+/**
+ * Parse the top business frame out of a V8 stack string.
+ * Assumes the caller has already removed the errorReporter's own frames
+ * (or that this function is called with `new Error().stack` from inside
+ * reportError, in which case lines[2] is the first business frame).
+ *
+ * V8 format:
+ *   Error
+ *       at functionName (file:line:col)
+ *       at file:line:col       (anonymous)
+ */
+export function captureCallsite(stack: string | undefined): Callsite {
+  if (!stack) return { file: 'unknown', function: undefined, line: undefined }
+  const lines = stack.split('\n')
+  // Skip 'Error' (lines[0]) and reportError itself (lines[1]); pick [2].
+  const frame = lines[2] ?? ''
+  // Try named-function form: 'at FUNC (FILE:LINE:COL)'.
+  // The function token tolerates spaces inside class-method forms like
+  // 'new Connection' or 'Object.<anonymous>' so V8 constructor frames don't
+  // fall through to the anonymous regex (which would treat "new Connection (pg.ts"
+  // as the file).
+  const named = frame.match(/at\s+(.+?)\s+\((.+?):(\d+):\d+\)/)
+  if (named) {
+    return { function: named[1], file: shortenPath(named[2]), line: Number(named[3]) }
+  }
+  // Fall back to anonymous form: 'at FILE:LINE:COL'
+  const anon = frame.match(/at\s+(.+?):(\d+):\d+/)
+  if (anon) {
+    return { function: undefined, file: shortenPath(anon[1]), line: Number(anon[2]) }
+  }
+  return { file: 'unknown', function: undefined, line: undefined }
+}
+
+function shortenPath(p: string): string {
+  // Vite serves dev modules under URLs like 'http://localhost:5174/src/foo.vue'.
+  // Strip the path prefix; we only want the leaf for display.
+  const last = p.split(/[/\\]/).pop() ?? p
+  // Strip query string Vite appends in dev (?t=12345)
+  return last.replace(/\?.*$/, '')
+}
+
+// ── formatMarkdown ────────────────────────────────────────────────────
+const PLATFORM_NAMES: Record<string, string> = {
+  darwin: 'macOS',
+  win32: 'Windows',
+  linux: 'Linux',
+}
+
+/**
+ * Render an ErrorReport as GitHub-friendly Markdown.
+ * Empty sections (no tag, no args, no stack) are omitted so the output stays clean.
+ *
+ * Known limitation: if r.message or r.stack contains a literal triple-backtick,
+ * the fenced code block breaks (rare in practice — most DB driver output
+ * doesn't echo markdown). Out of scope for v1.
+ */
+export function formatMarkdown(r: ErrorReport): string {
+  const sections: string[] = []
+
+  // --- Error ---
+  sections.push('## Error\n')
+  sections.push('```')
+  sections.push(r.message)
+  sections.push('```\n')
+
+  const callsiteParts = [`\`${r.callsite.file}\``]
+  if (r.callsite.function) callsiteParts.push(`\`${r.callsite.function}\``)
+  if (r.callsite.line !== undefined) callsiteParts.push(`\`${r.callsite.line}\``)
+  sections.push(`**Callsite**: ${callsiteParts.join(' · ')}`)
+
+  if (r.tag) sections.push(`**Tag**: \`${r.tag}\``)
+
+  if (r.args && Object.keys(r.args).length > 0) {
+    sections.push('\n**Args** (sensitive fields redacted):\n')
+    sections.push('```json')
+    sections.push(JSON.stringify(r.args, null, 2))
+    sections.push('```')
+  }
+
+  if (r.stack) {
+    sections.push('\n**Stack**:\n')
+    sections.push('```')
+    sections.push(r.stack)
+    sections.push('```')
+  }
+
+  // --- Environment ---
+  sections.push('\n## Environment\n')
+  const platformName = PLATFORM_NAMES[r.env.platform] ?? r.env.platform
+  sections.push(`- SkylerX: **v${r.env.appVersion}** (channel: \`${r.env.channel}\`)`)
+  sections.push(`- OS: ${platformName} ${r.env.osRelease} (${r.env.arch})`)
+  sections.push(
+    `- Electron: ${r.env.electronVer} · Node: ${r.env.nodeVer} · Chrome: ${r.env.chromeVer}`,
+  )
+  sections.push(`- Locale: ${r.env.locale} · Timezone: ${r.env.timezone}`)
+  sections.push(`- Captured at: ${r.timestamp}`)
+
+  return sections.join('\n')
+}
