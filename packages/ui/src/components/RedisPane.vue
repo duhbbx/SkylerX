@@ -213,8 +213,10 @@ const displayedKeys = computed<KeyItem[]>(() => {
       return (ta.localeCompare(tb) || a.name.localeCompare(b.name)) * dir
     }
     // ttl: -1 视为 Infinity(永不过期排最后),null 视为 NaN
-    const va = a.ttl == null ? Number.POSITIVE_INFINITY : a.ttl < 0 ? Number.POSITIVE_INFINITY : a.ttl
-    const vb = b.ttl == null ? Number.POSITIVE_INFINITY : b.ttl < 0 ? Number.POSITIVE_INFINITY : b.ttl
+    const va =
+      a.ttl == null ? Number.POSITIVE_INFINITY : a.ttl < 0 ? Number.POSITIVE_INFINITY : a.ttl
+    const vb =
+      b.ttl == null ? Number.POSITIVE_INFINITY : b.ttl < 0 ? Number.POSITIVE_INFINITY : b.ttl
     return (va - vb) * dir
   })
   return arr
@@ -681,7 +683,8 @@ function addHashEditRow(): void {
 function delHashEditRow(i: number): void {
   if (!editDraft.value.hash) return
   const r = editDraft.value.hash[i]
-  if (r.original) r.markDeleted = !r.markDeleted // 删原有:标 mark;再点取消
+  if (r.original)
+    r.markDeleted = !r.markDeleted // 删原有:标 mark;再点取消
   else editDraft.value.hash.splice(i, 1) // 新加未提交直接抹掉
 }
 function addSetMember(): void {
@@ -897,7 +900,9 @@ async function changeTtl(): Promise<void> {
   if (!k) return
   const cur = ttlSec.value
   const hint =
-    cur != null && cur >= 0 ? `当前剩余 ${cur}s,输入新秒数(-1 = 取消过期):` : '输入过期秒数(-1 = 取消过期):'
+    cur != null && cur >= 0
+      ? `当前剩余 ${cur}s,输入新秒数(-1 = 取消过期):`
+      : '输入过期秒数(-1 = 取消过期):'
   const input = await appPrompt({ message: hint, defaultValue: cur != null ? String(cur) : '60' })
   if (input == null) return
   const sec = Number.parseInt(input, 10)
@@ -1203,14 +1208,13 @@ watch(
       <div class="value">
         <div v-if="!selected" class="empty">选择左侧的 key 查看 value</div>
         <template v-else-if="valueState">
+          <!-- 第 1 行: meta + 操作按钮 + 视图切换 (key 长 wrap 不撕乱这一行) -->
           <div class="value-head">
-            <span class="vh-name">{{ selected.name }}</span>
             <span class="vh-type" :style="{ color: typeTagColor(selectedType) }">{{ selectedType }}</span>
             <span class="vh-ttl" :title="ttlSec == null ? '未取 TTL' : ttlSec === -1 ? '永不过期' : ttlSec === -2 ? 'key 已不存在' : `剩余 ${ttlSec}s`">
               ttl: <b>{{ ttlSec == null ? '—' : ttlSec === -1 ? '∞' : ttlSec === -2 ? 'n/a' : `${ttlSec}s` }}</b>
             </span>
             <span class="vh-ops">
-              <button class="ev-btn" :disabled="keyOpBusy" title="复制 key 名" @click="copySelectedKey">⧉</button>
               <button class="ev-btn" :disabled="keyOpBusy" title="设置 TTL" @click="changeTtl">⏱</button>
               <button class="ev-btn" :disabled="keyOpBusy" title="重命名" @click="renameSelectedKey">✎</button>
               <!-- A1 编辑入口:仅基础类型支持 -->
@@ -1241,6 +1245,11 @@ watch(
                 @click="setExtraView(opt.key)"
               >{{ opt.label }}</button>
             </span>
+          </div>
+          <!-- 第 2 行: key 名独占 + 显式复制按钮 (key 再长 wrap 也只影响这一行) -->
+          <div class="vh-key-row">
+            <span class="vh-name" :title="selected.name">{{ selected.name }}</span>
+            <button class="ev-btn vh-copy" :disabled="keyOpBusy" title="复制 key 名" @click="copySelectedKey">📋 复制</button>
           </div>
           <div v-if="valueState.loading" class="empty">加载中…</div>
           <div v-else-if="valueState.error" class="err-banner">✗ {{ valueState.error }}</div>
@@ -1643,15 +1652,29 @@ watch(
   display: flex;
   align-items: baseline;
   gap: 8px;
+  flex-wrap: wrap;
+  /* key 行接管底部分隔线, 这里只留行内间距 */
+  margin-bottom: 6px;
+}
+.vh-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
 }
 .vh-name {
+  flex: 1;
+  /* 给 word-break 留空间, 没 min-width: 0 时 flex item 不会缩 */
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text);
   word-break: break-all;
+}
+.vh-copy {
+  flex-shrink: 0;
 }
 .vh-type {
   font-size: 11px;
