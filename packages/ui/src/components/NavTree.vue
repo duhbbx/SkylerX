@@ -851,12 +851,16 @@ function onGroupDrop(targetGroup: string): void {
 
       <!-- Top drop rail: dragging here drops src to ungrouped, position 0.
            Lets a connection escape its current group + land at the very top
-           of the visible list (#27 follow-up). Invisible until something is
-           being dragged over it; rendered above the first group/ungrouped. -->
+           of the visible list (#27 follow-up). Always rendered (no v-if /
+           v-show) so the DOM doesn't shift at dragstart — an earlier
+           v-if version had Chromium cancelling the drag because the rail
+           appearing right after dragstart pushed the source element down
+           by 18px mid-event.
+           Invisible by default; pointer-events ignored unless actively
+           in a connection drag so it never eats clicks. -->
       <div
-        v-if="dragState?.kind === 'conn'"
         class="drop-rail"
-        :class="{ 'drag-over': dragOverKey === 'rail:top' }"
+        :class="{ 'drag-active': dragState?.kind === 'conn', 'drag-over': dragOverKey === 'rail:top' }"
         @dragover="onDragOver($event, 'rail:top')"
         @dragleave="onDragLeave('rail:top')"
         @drop="onConnDropToGroupTop(undefined)"
@@ -915,13 +919,10 @@ function onGroupDrop(targetGroup: string): void {
       </div>
 
       <!-- Bottom drop rail: dragging here drops src to ungrouped, last position.
-           Without this there's no way to put a connection AT the end of the
-           ungrouped section (only "before another item" via item drops),
-           which surfaced as "the node can't go to the last position". -->
+           Same always-rendered shape as the top rail — see comment there. -->
       <div
-        v-if="dragState?.kind === 'conn'"
         class="drop-rail drop-rail-bottom"
-        :class="{ 'drag-over': dragOverKey === 'rail:bottom' }"
+        :class="{ 'drag-active': dragState?.kind === 'conn', 'drag-over': dragOverKey === 'rail:bottom' }"
         @dragover="onDragOver($event, 'rail:bottom')"
         @dragleave="onDragLeave('rail:bottom')"
         @drop="onConnDropToGroup(undefined)"
@@ -1029,17 +1030,24 @@ function onGroupDrop(targetGroup: string): void {
   position: relative;
   cursor: grab;
 }
-/* Top / bottom drop rails — only rendered while a connection is being dragged.
-   Effectively invisible (12px thin strip with no background) until something
-   is dragged over them, then become a tinted hint. Lets the user drop into
-   "first ungrouped" or "last ungrouped" positions that the per-item drop
-   targets couldn't reach. */
+/* Top / bottom drop rails — always present and always 14px tall so the
+   DOM/layout never shifts at dragstart (an earlier v-if version was
+   silently cancelling Chromium's drag operation because the rail appeared
+   between dragstart and the first dragover, pushing the source element
+   down by 18px mid-drag).
+   pointer-events: none keeps them from ever swallowing a click.
+   They're transparent at rest so the 14px slot is visually invisible;
+   they tint purple via .drag-over only when something is being dragged
+   over them (and only then do pointer-events kick in so the drop fires). */
 .drop-rail {
   height: 14px;
   margin: 2px 4px;
   border-radius: 3px;
-  transition: background 80ms ease-out, outline-color 80ms ease-out;
   outline: 1px dashed transparent;
+  pointer-events: none;
+}
+.drop-rail.drag-active {
+  pointer-events: auto;
 }
 .drop-rail.drag-over {
   background: rgba(124, 108, 255, 0.18);
