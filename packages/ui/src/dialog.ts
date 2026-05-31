@@ -187,6 +187,41 @@ export function pushReportToast(
 ): void {
   pushToast('danger', message, durationMs, undefined, extras)
 }
+
+// ── Error modal (always-blocking error report dialog) ──────────────────
+// Per user direction: every reportError() now opens a modal instead of a
+// toast — the modal shows message + callsite + stack + args + env, with
+// dedicated "copy stack" / "copy env" / "copy all (markdown)" buttons,
+// so issue triage gets the full report without the toast disappearing.
+// Toasts (info/success/warn) still exist for non-error notifications.
+export interface ErrorModalData {
+  message: string
+  callsite?: { file: string; function?: string; line?: number }
+  stack?: string
+  tag?: string
+  args?: Record<string, unknown>
+  /** Pre-rendered '## Environment' markdown block. */
+  envBlock: string
+  /** Full markdown report (everything; what the old toast 📋 wrote). */
+  fullMarkdown: string
+  timestamp: string
+}
+interface ErrorModalState {
+  open: boolean
+  data: ErrorModalData | null
+}
+export const errorModal = reactive<ErrorModalState>({ open: false, data: null })
+
+/** Replace any in-flight error with this one (newest wins; queueing risks
+ *  trapping the user in a stream of modals). */
+export function pushErrorModal(data: ErrorModalData): void {
+  errorModal.data = data
+  errorModal.open = true
+}
+export function dismissErrorModal(): void {
+  errorModal.open = false
+  // Keep .data around briefly so transition animations don't see null. */
+}
 export function dismissToast(id: number): void {
   const i = toasts.value.findIndex((t) => t.id === id)
   if (i >= 0) toasts.value.splice(i, 1)

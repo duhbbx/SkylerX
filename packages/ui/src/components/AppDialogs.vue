@@ -10,6 +10,7 @@ import { type ToastItem, dialogState, dismissToast, toast, toasts } from '../dia
 import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { saveFileState } from '../saveFile'
+import ErrorReportModal from './ErrorReportModal.vue'
 import SaveFileDialog from './SaveFileDialog.vue'
 
 const client = useDataClient()
@@ -175,6 +176,9 @@ function onKey(e: KeyboardEvent): void {
 </script>
 
 <template>
+  <!-- ── 错误报告 Modal — reportError() 触发, 替代之前的右下角 toast ── -->
+  <ErrorReportModal />
+
   <!-- ── 确认 / 警告 / 输入对话框 ── -->
   <div v-if="dialogState.open" class="dlg-backdrop" @keydown="onKey">
     <div class="dlg" :class="'v-' + dialogState.variant">

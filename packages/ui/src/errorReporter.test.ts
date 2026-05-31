@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { toasts } from './dialog'
+import { errorModal, toasts } from './dialog'
 import {
   type ErrorReport,
   __resetEnvCacheForTests,
@@ -181,6 +181,8 @@ describe('reportError', () => {
   let consoleErrSpy: ReturnType<typeof vi.spyOn>
   beforeEach(() => {
     toasts.value = []
+    errorModal.open = false
+    errorModal.data = null
     __resetEnvCacheForTests()
     consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     primeEnvCache({
@@ -198,10 +200,12 @@ describe('reportError', () => {
   })
   afterEach(() => {
     toasts.value = []
+    errorModal.open = false
+    errorModal.data = null
     consoleErrSpy.mockRestore()
   })
 
-  it('pushes a danger toast carrying the redacted report on its callsite + report fields', () => {
+  it('opens the error modal with redacted args + callsite + full markdown', () => {
     function trigger(): void {
       reportError(new Error('connect ECONNREFUSED 127.0.0.1:5432'), {
         tag: 'connect',
@@ -209,31 +213,36 @@ describe('reportError', () => {
       })
     }
     trigger()
-    expect(toasts.value).toHaveLength(1)
-    const t = toasts.value[0]
-    expect(t.variant).toBe('danger')
-    expect(t.message).toContain('connect ECONNREFUSED 127.0.0.1:5432')
-    expect(t.callsite?.function).toBe('trigger')
-    expect(t.report?.markdown).toContain('"password": "***"')
-    expect(t.report?.markdown).toContain('SkylerX: **v0.5.0-rc19**')
+    expect(errorModal.open).toBe(true)
+    const d = errorModal.data
+    expect(d).not.toBeNull()
+    expect(d?.message).toContain('connect ECONNREFUSED 127.0.0.1:5432')
+    expect(d?.callsite?.function).toBe('trigger')
+    expect(d?.tag).toBe('connect')
+    expect(d?.args).toEqual({ host: 'localhost', password: '***' })
+    expect(d?.envBlock).toContain('SkylerX: **v0.5.0-rc19**')
+    expect(d?.fullMarkdown).toContain('"password": "***"')
+    expect(d?.fullMarkdown).toContain('SkylerX: **v0.5.0-rc19**')
   })
 
   it('accepts a string error and wraps it in an Error', () => {
     reportError('plain string error')
-    expect(toasts.value[0].message).toBe('plain string error')
-    expect(toasts.value[0].report?.markdown).toContain('plain string error')
+    expect(errorModal.data?.message).toBe('plain string error')
+    expect(errorModal.data?.fullMarkdown).toContain('plain string error')
   })
 
   it('falls back to "environment unavailable" before envCache is primed', () => {
     __resetEnvCacheForTests()
     reportError(new Error('boom'))
-    expect(toasts.value[0].report?.markdown).toContain('environment metadata not available yet')
+    expect(errorModal.data?.fullMarkdown).toContain('environment metadata not available yet')
   })
 })
 
 describe('reportInlineError', () => {
   beforeEach(() => {
     toasts.value = []
+    errorModal.open = false
+    errorModal.data = null
     __resetEnvCacheForTests()
     primeEnvCache({
       appVersion: '0.5.0-rc19',
@@ -251,23 +260,25 @@ describe('reportInlineError', () => {
   })
   afterEach(() => {
     toasts.value = []
+    errorModal.open = false
+    errorModal.data = null
     vi.restoreAllMocks()
   })
 
-  it('writes message to inline ref AND pushes a danger toast with report', () => {
+  it('writes message to inline ref AND opens the error modal', () => {
     const errRef = ref<string | null>(null)
     reportInlineError(errRef, new Error('boom'))
     expect(errRef.value).toBe('boom')
-    expect(toasts.value).toHaveLength(1)
-    expect(toasts.value[0].variant).toBe('danger')
-    expect(toasts.value[0].report?.markdown).toContain('boom')
+    expect(errorModal.open).toBe(true)
+    expect(errorModal.data?.message).toBe('boom')
+    expect(errorModal.data?.fullMarkdown).toContain('boom')
   })
 
   it('handles non-Error values by coercing to String(e)', () => {
     const errRef = ref<string | null>(null)
     reportInlineError(errRef, 'plain string')
     expect(errRef.value).toBe('plain string')
-    expect(toasts.value[0].message).toBe('plain string')
+    expect(errorModal.data?.message).toBe('plain string')
   })
 
   it('passes opts through to reportError (tag/args appear in report)', () => {
@@ -276,7 +287,7 @@ describe('reportInlineError', () => {
       tag: 'connect',
       args: { host: 'localhost', password: 'hunter2' },
     })
-    expect(toasts.value[0].report?.markdown).toContain('**Tag**: `connect`')
-    expect(toasts.value[0].report?.markdown).toContain('"password": "***"')
+    expect(errorModal.data?.fullMarkdown).toContain('**Tag**: `connect`')
+    expect(errorModal.data?.fullMarkdown).toContain('"password": "***"')
   })
 })

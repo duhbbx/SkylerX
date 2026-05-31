@@ -13,7 +13,7 @@
  */
 
 import type { Ref } from 'vue'
-import { pushReportToast } from './dialog'
+import { pushErrorModal } from './dialog'
 
 export interface EnvSummary {
   appVersion: string
@@ -233,21 +233,23 @@ const ENV_UNAVAILABLE: EnvSummary = {
 /**
  * Replace toast.error() at every call site.
  *
- * Behaviour:
+ * Behaviour (per user direction — always-modal):
  * - e: Error → carry message + stack as-is.
  * - e: string | other → wrap into new Error(String(e)); stack will be the wrap site.
  * - Captures the immediate business caller via new Error().stack frame [2].
  * - Redacts opts.args before formatting.
- * - Pushes a danger toast with callsite + report.markdown attached.
- * - If env cache is not yet primed, the markdown still renders but with a
- *   one-line "environment metadata not available yet" placeholder so the
- *   report is never blocked on boot races.
+ * - Opens a blocking modal showing message + callsite + stack + args + env
+ *   with per-section copy buttons + a "copy all (markdown)" button.
+ *   (Used to push a 10s danger toast — that was easy to miss on noisy screens.)
+ * - If env cache is not yet primed, the modal still renders but the env block
+ *   notes "environment metadata not available yet" so triage isn't blocked.
  */
 export function reportError(e: unknown, opts: ReportOpts = {}): void {
   const err = e instanceof Error ? e : new Error(String(e))
   const callsite = opts.callsite ?? captureCallsite(new Error().stack)
   const env = envCache
   const args = opts.args ? (redact(opts.args) as Record<string, unknown>) : undefined
+  const timestamp = new Date().toISOString()
 
   const report: ErrorReport = {
     message: err.message,
@@ -256,14 +258,24 @@ export function reportError(e: unknown, opts: ReportOpts = {}): void {
     tag: opts.tag,
     args,
     env: env ?? ENV_UNAVAILABLE,
-    timestamp: new Date().toISOString(),
+    timestamp,
   }
   let markdown = formatMarkdown(report)
   if (!env) {
     markdown += '\n\n> _Note: environment metadata not available yet (boot race)._'
   }
+  const envBlock = formatEnvBlock(env ?? ENV_UNAVAILABLE, timestamp)
 
-  pushReportToast(err.message, 10_000, { callsite, report: { markdown } })
+  pushErrorModal({
+    message: err.message,
+    callsite,
+    stack: err.stack,
+    tag: opts.tag,
+    args,
+    envBlock,
+    fullMarkdown: markdown,
+    timestamp,
+  })
 
   // Mirror to console for dev-tools log copy.
   console.error('[reportError]', err, { callsite, tag: opts.tag, args })

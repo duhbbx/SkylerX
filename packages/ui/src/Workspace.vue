@@ -222,8 +222,10 @@ async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
   const conn = await client.connections.get(id)
   // NoSQL：没有「SQL 查询页」概念，按方言路由到 Mongo/Redis/ES 浏览器
   if (dialectKind(conn.dialect) === DbKind.NoSql) {
-    if (conn.dialect === DbDialect.Redis && node?.kind === MetaNodeKind.Database) {
-      tabsRef.value?.openRedisDb(conn, parseRedisDbIndex(node))
+    if (conn.dialect === DbDialect.Redis) {
+      // 右键 db 节点 → 用 db 索引;右键连接根 / 无 node → 默认 db0 (#27).
+      const dbIndex = node?.kind === MetaNodeKind.Database ? parseRedisDbIndex(node) : 0
+      tabsRef.value?.openRedisDb(conn, dbIndex)
       return
     }
     if (
