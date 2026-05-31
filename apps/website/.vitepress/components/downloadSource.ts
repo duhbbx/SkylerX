@@ -87,12 +87,19 @@ export async function fetchFromOss(): Promise<ReleaseInfo> {
 }
 
 export async function fetchFromGithub(): Promise<ReleaseInfo> {
-  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/releases/latest`)
+  // 不能用 /releases/latest — 它默认排除 prerelease, 在 v0.5.0 stable 出来前
+  // 我们所有 release 都是 -rc 后缀 (prerelease). 该端点会返回 404, 或者命中一个
+  // 没标 prerelease 的旧 rc(rc15 之前 CI 用 softprops 默认创建为 stable). 走
+  // /releases?per_page=1 拿"最近一个 release"(含 prerelease), 跟 OSS index.json
+  // 行为一致. 等 v0.5.0 stable 出来后再考虑分层显示 stable / 最新 prerelease.
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/releases?per_page=1`)
   if (!r.ok) throw new Error(`GitHub API ${r.status}`)
-  const data = (await r.json()) as {
+  const list = (await r.json()) as Array<{
     tag_name: string
     assets: { name: string; browser_download_url: string; size: number }[]
-  }
+  }>
+  const data = list[0]
+  if (!data) throw new Error('GitHub returned empty release list')
   return {
     tag_name: data.tag_name,
     assets: (data.assets ?? []).map((a) => ({
