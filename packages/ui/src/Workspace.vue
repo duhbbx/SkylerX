@@ -3082,14 +3082,16 @@ onUnmounted(() => unsubMenu?.())
         <div v-if="updateLogs.length" class="about-row upd-log-row">
           <span>调试日志</span>
           <span class="upd-log-cell">
-            <button class="upd-log-toggle" @click="showUpdateLogs = !showUpdateLogs">
-              {{ showUpdateLogs ? '收起' : `展开 (${updateLogs.length} 条)` }}
-            </button>
-            <button v-if="showUpdateLogs" class="upd-log-toggle" @click="copyUpdateLogs">📋 复制</button>
-            <pre v-if="showUpdateLogs" class="upd-log-body">
-              <template v-for="l in updateLogs" :key="l.ts + ':' + l.msg">{{ fmtLogTime(l.ts) }} [{{ l.level }}] {{ l.msg }}
-</template>
-            </pre>
+            <!-- 工具栏: 收起 + 复制 同一行右对齐, pre 单独下一行占满 -->
+            <div class="upd-log-toolbar">
+              <button class="upd-log-toggle" @click="showUpdateLogs = !showUpdateLogs">
+                {{ showUpdateLogs ? '收起' : `展开 (${updateLogs.length} 条)` }}
+              </button>
+              <button v-if="showUpdateLogs" class="upd-log-toggle" @click="copyUpdateLogs">📋 复制</button>
+            </div>
+            <!-- pre 内部不能换行/缩进, 否则首行会渲染出 leading 空格/换行 -->
+            <pre v-if="showUpdateLogs" class="upd-log-body"><template v-for="l in updateLogs" :key="l.ts + ':' + l.msg">{{ fmtLogTime(l.ts) }} [{{ l.level }}] {{ l.msg }}
+</template></pre>
           </span>
         </div>
       </div>
@@ -3477,8 +3479,16 @@ onUnmounted(() => unsubMenu?.())
   display: flex;
   flex-direction: column;
   gap: 4px;
-  align-items: flex-end;
-  /* max-width: 380px; */
+  align-items: stretch;
+  /* 让子元素自己控对齐 — toolbar 内部 justify-content: flex-end, pre 占满 */
+  width: 100%;
+  min-width: 0;
+}
+.upd-log-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
 }
 .upd-log-toggle {
   background: transparent;
@@ -3489,7 +3499,6 @@ onUnmounted(() => unsubMenu?.())
   border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
-  align-self: flex-end;
 }
 .upd-log-toggle:hover {
   color: var(--text);
