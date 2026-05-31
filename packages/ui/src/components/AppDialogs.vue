@@ -122,6 +122,15 @@ watch(
 function onConfirm(): void {
   const resolve = dialogState.resolve
   if (dialogState.kind === 'prompt') {
+    // Run validator first; if it returns a non-empty string the prompt stays
+    // open and shows the message inline (#20). null / undefined / empty = pass.
+    if (dialogState.promptValidator) {
+      const err = dialogState.promptValidator(dialogState.promptValue) ?? null
+      if (err) {
+        dialogState.promptError = err
+        return
+      }
+    }
     dialogState.open = false
     resolve(dialogState.promptValue)
   } else if (dialogState.kind === 'confirm') {
@@ -183,10 +192,15 @@ function onKey(e: KeyboardEvent): void {
         ref="inputRef"
         v-model="dialogState.promptValue"
         class="dlg-input"
+        :class="{ 'dlg-input-err': dialogState.promptError }"
         :placeholder="dialogState.promptPlaceholder"
+        @input="dialogState.promptError = null"
         @keydown.enter.prevent="onConfirm"
         @keydown.escape.prevent="onCancel"
       />
+      <div v-if="dialogState.kind === 'prompt' && dialogState.promptError" class="dlg-input-err-msg">
+        {{ dialogState.promptError }}
+      </div>
       <div class="dlg-actions">
         <button
           v-if="dialogState.kind === 'alert' && dialogState.askAi"
@@ -408,6 +422,14 @@ function onKey(e: KeyboardEvent): void {
 }
 .dlg-input:focus {
   border-color: var(--accent, #7c6cff);
+}
+.dlg-input-err {
+  border-color: var(--err, #e04050);
+}
+.dlg-input-err-msg {
+  margin-top: -4px;
+  font-size: 11px;
+  color: var(--err, #e04050);
 }
 .dlg-actions {
   display: flex;

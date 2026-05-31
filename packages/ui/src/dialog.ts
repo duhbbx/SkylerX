@@ -28,6 +28,15 @@ interface DialogState {
   promptValue: string
   promptPlaceholder: string
   /**
+   * prompt 用:可选验证器。点 OK 时执行,返回非空字符串则不关闭弹框、
+   * 在输入框下方渲染该字符串(红字)。返回 null/undefined 视为通过。
+   * 让"分组已存在""名称非法"这类错误能在 prompt 内联反馈,
+   * 而不是关掉再弹 toast。
+   */
+  promptValidator: ((value: string) => string | null | undefined) | null
+  /** prompt 用:当前 inline 错误文本 (由 validator 写入) */
+  promptError: string | null
+  /**
    * alert 专用:若提供则在 OK 按钮左侧渲染「✨ 问 AI」按钮,
    * 点击后 emit ChatErrorAskEvent + 关闭弹框。null/undefined = 不显示。
    */
@@ -45,6 +54,8 @@ export const dialogState = reactive<DialogState>({
   cancelText: '',
   promptValue: '',
   promptPlaceholder: '',
+  promptValidator: null,
+  promptError: null,
   askAi: null,
   resolve: () => {},
 })
@@ -59,6 +70,8 @@ function open(opts: Partial<DialogState>, kind: DialogState['kind']): Promise<un
       cancelText: '',
       promptValue: '',
       promptPlaceholder: '',
+      promptValidator: null,
+      promptError: null,
       askAi: null,
       ...opts,
       open: true,
@@ -96,7 +109,15 @@ export function alert(opts: {
   return open({ ...opts, variant: opts.variant ?? 'info' }, 'alert') as Promise<void>
 }
 
-/** 替代 window.prompt：取消返回 null。 */
+/**
+ * 替代 window.prompt：取消返回 null。
+ *
+ * `validator` 可选：点 OK 时同步执行,返回非空字符串视为"未通过",
+ * 弹框不关闭、错误以红字显示在输入框下方;返回 null/undefined 视为通过、
+ * 弹框关闭、Promise resolve(当前 value)。
+ *
+ * 不传 `validator` 时行为跟原来一样,所有现有调用点零侵入。
+ */
 export function prompt(opts: {
   title?: string
   message: string
@@ -104,12 +125,14 @@ export function prompt(opts: {
   placeholder?: string
   confirmText?: string
   cancelText?: string
+  validator?: (value: string) => string | null | undefined
 }): Promise<string | null> {
   return open(
     {
       ...opts,
       promptValue: opts.defaultValue ?? '',
       promptPlaceholder: opts.placeholder ?? '',
+      promptValidator: opts.validator ?? null,
     },
     'prompt',
   ) as Promise<string | null>

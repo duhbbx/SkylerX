@@ -426,15 +426,20 @@ function onGroupContextmenu(e: MouseEvent, groupName: string): void {
 }
 
 async function onNewGroup(): Promise<void> {
-  const name = await appPrompt({ message: t('ctx.new-group'), defaultValue: '新分组' })
+  // Validate inline so "duplicate name" feedback appears under the input
+  // instead of closing the prompt and surfacing a bottom-right toast (#20).
+  const name = await appPrompt({
+    message: t('ctx.new-group'),
+    defaultValue: '新分组',
+    validator: (v) => {
+      const t2 = v.trim()
+      if (!t2) return '名称不能为空'
+      if (settings.groupOrder.includes(t2)) return `分组 "${t2}" 已存在`
+      return null
+    },
+  })
   const trimmed = name?.trim()
   if (!trimmed) return
-  // 持久化空分组到 settings.groupOrder,即使下面还没连接也立刻出现在树里
-  // (旧实现 = 立刻弹"新建连接"对话框,用户报告体验割裂)。
-  if (settings.groupOrder.includes(trimmed)) {
-    toast.warn(`分组 "${trimmed}" 已存在`)
-    return
-  }
   settings.groupOrder = [...settings.groupOrder, trimmed]
   expandedGroups.value = new Set([...expandedGroups.value, trimmed])
   toast.success(`已新建分组: ${trimmed}`)
