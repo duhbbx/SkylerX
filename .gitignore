@@ -32,3 +32,6 @@ CLAUDE.local.md
 
 # Local deploy target (host / webroot, never commit)
 apps/website/.env.deploy
+
+# Local deploy script (private; uses gitignored .env.deploy for target)
+apps/website/deploy.sh
