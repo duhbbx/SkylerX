@@ -38,3 +38,6 @@ apps/website/deploy.sh
 
 # Local design specs (brainstorm output, kept local-only)
 docs/superpowers/
+
+# Private deploy workflow (sensitive routing, kept local-only)
+.github/workflows/deploy-website.yml
