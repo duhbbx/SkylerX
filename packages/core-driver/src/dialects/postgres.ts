@@ -17,6 +17,29 @@ import { Pool, type PoolClient, type PoolConfig } from 'pg'
 import { type DatabaseDriver, type DriverConnection, driverExtra } from '../driver.js'
 import { pgFamilyHelpers } from './base.js'
 
+/**
+ * 把 ES2021 AggregateError 拆成可读单条消息.
+ *
+ * Node `dns.lookup({ all: true })` 会同时解析 IPv4 + IPv6 (e.g. localhost →
+ * 127.0.0.1 + ::1), pg ≥8 在连这两条都失败时把多个 underlying errors
+ * 打包成 AggregateError. AggregateError 的默认 .message = "AggregateError",
+ * .toString() 也只显示这串, inner errors 全在 .errors 数组里. 直接抛给上层
+ * → UI 只看到 "AggregateError" 完全不知道为啥连不上 (用户报: 双击 PG 连接报
+ * 'Error invoking remote method connections:metadata: AggregateError').
+ *
+ * 拆开 .errors 拼成 "msg1; msg2" 形式, 让 ECONNREFUSED / EHOSTUNREACH /
+ * authentication failed 这些有用信息真正传到用户眼前.
+ */
+function unwrapAggregate(e: unknown): Error {
+  if (e && typeof e === 'object' && Array.isArray((e as { errors?: unknown[] }).errors)) {
+    const inners = (e as { errors: unknown[] }).errors
+      .map((x) => (x instanceof Error ? x.message : String(x)))
+      .filter((s) => s && s !== 'undefined')
+    if (inners.length) return new Error(inners.join('; '))
+  }
+  return e instanceof Error ? e : new Error(String(e))
+}
+
 /** 常见 PostgreSQL 类型 OID → 类型名（结果列展示用）。 */
 const PG_TYPES: Record<number, string> = {
   16: 'bool',
@@ -548,7 +571,7 @@ export function createPostgresDriver(dialect: DbDialect): DatabaseDriver {
         await pool.end().catch(() => {
           /* 关闭失败不影响抛原始错误 */
         })
-        throw e
+        throw unwrapAggregate(e)
       }
       return new PgConnection(pool, config.database || 'postgres')
     },
@@ -566,7 +589,8 @@ export function createPostgresDriver(dialect: DbDialect): DatabaseDriver {
           latencyMs: Date.now() - start,
         }
       } catch (e) {
-        return { ok: false, message: e instanceof Error ? e.message : String(e) }
+        const err = unwrapAggregate(e)
+        return { ok: false, message: err.message }
       } finally {
         await pool.end()
       }
