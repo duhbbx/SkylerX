@@ -1010,8 +1010,11 @@ function onGroupDrop(targetGroup: string): void {
 }
 .group-row .caret {
   width: 12px;
+  flex: none;
   color: var(--muted);
-  font-size: 10px;
+  /* Inherit .group-row's 13px font-size so this matches the tree-node caret
+     inside connections (TreeItem also lets its caret inherit). Was 10px
+     and looked visibly smaller than the connection-level expand arrows. */
 }
 .group-row .gname {
   flex: 1;
