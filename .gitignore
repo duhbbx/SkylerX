@@ -35,3 +35,6 @@ apps/website/.env.deploy
 
 # Local deploy script (private; uses gitignored .env.deploy for target)
 apps/website/deploy.sh
+
+# Local design specs (brainstorm output, kept local-only)
+docs/superpowers/
