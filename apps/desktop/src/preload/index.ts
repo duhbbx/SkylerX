@@ -141,6 +141,18 @@ const api = {
   system: {
     /** 主进程读取 package.json 的真实版本(替代 renderer 硬编码) */
     getVersion: (): Promise<string> => ipcRenderer.invoke('system:getVersion'),
+    getEnvSummary: (): Promise<{
+      appVersion: string
+      platform: NodeJS.Platform
+      arch: string
+      electronVer: string
+      nodeVer: string
+      chromeVer: string
+      locale: string
+      timezone: string
+      channel: 'github' | 'oss-cn'
+      osRelease: string
+    }> => ipcRenderer.invoke('system:getEnvSummary'),
   },
   menu: {
     /**
