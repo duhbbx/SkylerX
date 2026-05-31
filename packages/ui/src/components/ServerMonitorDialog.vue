@@ -6,6 +6,7 @@
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -115,7 +116,7 @@ async function poll(): Promise<void> {
     if (f === 'mysql') await pollMysql(c)
     else await pollPg(c)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   }
 }
 

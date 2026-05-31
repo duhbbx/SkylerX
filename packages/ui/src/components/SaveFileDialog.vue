@@ -18,7 +18,7 @@
 import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 type Filter = { name: string; extensions: string[] }
@@ -179,7 +179,7 @@ async function loadDir(p: string): Promise<void> {
     currentDir.value = p
     selectedIdx.value = -1
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(loadError, e)
     items.value = []
   } finally {
     loadingDir.value = false

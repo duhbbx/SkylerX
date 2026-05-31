@@ -15,7 +15,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { prompt as appPrompt, toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -61,7 +61,7 @@ async function loadBinlog(): Promise<void> {
     const ms = await execSql('SHOW MASTER STATUS')
     masterStatus.value = ms[0] ?? null
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -76,7 +76,7 @@ async function loadBinEvents(): Promise<void> {
       `SHOW BINLOG EVENTS IN '${selectedLog.value.replace(/'/g, "\\'")}' LIMIT ${eventLimit.value}`,
     )
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -95,7 +95,7 @@ async function loadReplication(): Promise<void> {
     }
     replicaStatus.value = rows[0] ?? null
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -115,7 +115,7 @@ async function loadVars(): Promise<void> {
       return { k: String(r[kCol] ?? ''), v: String(r[vCol] ?? '') }
     })
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }

@@ -6,6 +6,7 @@
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { type TableSnapshot, diffSchemas, generateMigration } from '../schema-diff'
 import Modal from './Modal.vue'
@@ -109,7 +110,7 @@ async function runDiff(): Promise<void> {
     diffs.value = diffSchemas(srcSnap, tgtSnap)
     migration.value = generateMigration(diffs.value, t.dialect, srcSnap)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     busy.value = false
   }

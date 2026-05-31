@@ -9,7 +9,7 @@ import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
 import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type ErdData, loadErd } from '../erd'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 
 const props = defineProps<{ connId: string; dialect: DbDialect; ctx: TableContext }>()
@@ -121,7 +121,7 @@ async function load(): Promise<void> {
     alterAddCols.value = {}
     layout(d)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     loading.value = false
   }

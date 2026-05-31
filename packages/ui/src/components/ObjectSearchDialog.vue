@@ -7,6 +7,7 @@ import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/sha
 import { onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -102,7 +103,7 @@ async function search(): Promise<void> {
     }
     hits.value = out
   } catch (e) {
-    if (mine === seq) error.value = e instanceof Error ? e.message : String(e)
+    if (mine === seq) reportInlineError(error, e)
   } finally {
     if (mine === seq) busy.value = false
   }

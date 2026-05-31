@@ -14,6 +14,7 @@ import {
   objectRef,
   objectTemplate,
 } from '../ddl'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { settings } from '../settings'
 import SqlEditor from './SqlEditor.vue'
@@ -84,7 +85,7 @@ async function loadDefinition(): Promise<void> {
       code.value = String(row.ddl ?? '').trim()
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     loading.value = false
   }
@@ -136,7 +137,7 @@ async function create(): Promise<void> {
     resetDirtyBaseline() // 保存成功 → 基线对齐
     emit('created')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     busy.value = false
   }

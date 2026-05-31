@@ -21,6 +21,7 @@
 import { type ConnectionConfig, DbDialect } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
+import { reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -69,7 +70,7 @@ async function loadNodes(): Promise<void> {
       errMsg.value = '该方言不支持集群拓扑视图'
     }
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -102,7 +103,7 @@ async function loadRegions(): Promise<void> {
       errMsg.value = '该方言不支持 Region 视图'
     }
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }

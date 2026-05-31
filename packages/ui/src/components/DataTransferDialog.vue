@@ -7,6 +7,7 @@ import { type ConnectionConfig, type DbDialect, MetaNodeKind } from '@db-tool/sh
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type TableContext, quoteId } from '../ddl'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { rowInserts } from '../io'
 import Modal from './Modal.vue'
@@ -47,7 +48,7 @@ onMounted(async () => {
     })
     cols.value = meta.map((c) => c.name)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   }
 })
 
@@ -94,7 +95,7 @@ async function run(): Promise<void> {
     }
     emit('done', done.value)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     busy.value = false
   }

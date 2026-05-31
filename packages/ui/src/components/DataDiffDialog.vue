@@ -8,6 +8,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type DataDiff, diffRows, generateDataSync } from '../data-diff'
 import { quoteId } from '../ddl'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -126,7 +127,7 @@ async function runDiff(): Promise<void> {
     const tgtRef = `${quoteId(tc.dialect, tgtSchema.value.trim())}.${quoteId(tc.dialect, tgtTable.value.trim())}`
     sql.value = generateDataSync(d, tc.dialect, tgtRef, pk, cols) || t('ddiff.consistent')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     busy.value = false
   }

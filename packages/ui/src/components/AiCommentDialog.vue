@@ -26,6 +26,7 @@ import { pComment } from '../ai-prompts'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { toast } from '../dialog'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { settings } from '../settings'
 import Modal from './Modal.vue'
@@ -162,7 +163,7 @@ async function loadColumns(): Promise<void> {
       }))
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     loadingCols.value = false
   }
@@ -234,7 +235,7 @@ async function askAi(): Promise<void> {
     sugByCol.value = m
   } catch (e) {
     if ((e as Error).name === 'AbortError') return
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     asking.value = false
     controller = null
@@ -273,7 +274,7 @@ ${columnsCsv()}`
     tableSug.value = { comment: line, adopt: true }
   } catch (e) {
     if ((e as Error).name === 'AbortError') return
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     asking.value = false
     controller = null

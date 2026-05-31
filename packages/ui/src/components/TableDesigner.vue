@@ -21,6 +21,7 @@ import {
   typeOptions,
 } from '../ddl'
 import { prompt as appPrompt } from '../dialog'
+import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { splitStatements } from '../sqlSplit'
 import SqlEditor from './SqlEditor.vue'
@@ -220,7 +221,7 @@ async function loadExisting(): Promise<void> {
     selected.value = 0
     resetDirtyBaseline() // 改表模式：以载入的现有结构作为脏检测基线
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
   } finally {
     loading.value = false
   }
@@ -346,7 +347,7 @@ async function run(stmts: string[]): Promise<void> {
       emit('created')
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(error, e)
     inner.value = 'sql'
   } finally {
     busy.value = false

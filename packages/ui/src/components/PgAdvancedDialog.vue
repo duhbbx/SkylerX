@@ -17,7 +17,7 @@ import { type ConnectionConfig } from '@db-tool/shared-types'
 import { ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
-import { reportError } from '../errorReporter'
+import { reportError, reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -100,7 +100,7 @@ async function loadExtensions(): Promise<void> {
       comment: String(r.comment ?? ''),
     }))
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -184,7 +184,7 @@ async function loadReplication(): Promise<void> {
       subs.value = []
     }
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
@@ -256,7 +256,7 @@ async function loadSlots(): Promise<void> {
       safe_wal_size: r.safe_wal_size == null ? null : String(r.safe_wal_size),
     }))
   } catch (e) {
-    errMsg.value = e instanceof Error ? e.message : String(e)
+    reportInlineError(errMsg, e)
   } finally {
     loading.value = false
   }
