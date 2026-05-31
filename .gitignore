@@ -25,3 +25,7 @@ release/
 apps/web-server/
 apps/web-frontend/
 packages/enterprise/
+
+# Claude Code 项目级约束 — 本地保留, 不公开 (含服务器 IP / 个人偏好)
+CLAUDE.md
+CLAUDE.local.md
