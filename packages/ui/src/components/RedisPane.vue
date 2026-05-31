@@ -1215,6 +1215,7 @@ watch(
               ttl: <b>{{ ttlSec == null ? '—' : ttlSec === -1 ? '∞' : ttlSec === -2 ? 'n/a' : `${ttlSec}s` }}</b>
             </span>
             <span class="vh-ops">
+              <button class="ev-btn" :disabled="keyOpBusy" title="复制 key 名" @click="copySelectedKey">📋 复制</button>
               <button class="ev-btn" :disabled="keyOpBusy" title="设置 TTL" @click="changeTtl">⏱</button>
               <button class="ev-btn" :disabled="keyOpBusy" title="重命名" @click="renameSelectedKey">✎</button>
               <!-- A1 编辑入口:仅基础类型支持 -->
@@ -1246,10 +1247,9 @@ watch(
               >{{ opt.label }}</button>
             </span>
           </div>
-          <!-- 第 2 行: key 名独占 + 显式复制按钮 (key 再长 wrap 也只影响这一行) -->
+          <!-- 第 2 行: key 名独占 (再长 wrap 也只影响这一行); 复制按钮在 ops 区 -->
           <div class="vh-key-row">
             <span class="vh-name" :title="selected.name">{{ selected.name }}</span>
-            <button class="ev-btn vh-copy" :disabled="keyOpBusy" title="复制 key 名" @click="copySelectedKey">📋 复制</button>
           </div>
           <div v-if="valueState.loading" class="empty">加载中…</div>
           <div v-else-if="valueState.error" class="err-banner">✗ {{ valueState.error }}</div>
@@ -1672,9 +1672,6 @@ watch(
   font-size: 13px;
   color: var(--text);
   word-break: break-all;
-}
-.vh-copy {
-  flex-shrink: 0;
 }
 .vh-type {
   font-size: 11px;
