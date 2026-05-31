@@ -8,6 +8,12 @@
 
 跨平台桌面**数据库管理工具**（类 Navicat / DBeaver），Electron + Vue 3 + Vite + TypeScript。
 
+[![Stable](https://img.shields.io/github/v/release/duhbbx/SkylerX?label=stable&color=blue)](https://github.com/duhbbx/SkylerX/releases/latest)
+[![Pre-release](https://img.shields.io/github/v/release/duhbbx/SkylerX?include_prereleases&label=pre-release&color=orange)](https://github.com/duhbbx/SkylerX/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](./LICENSE)
+
+> GitHub 主页右侧 "Latest" 徽标按 semver 语义指向最新 **stable**；当前正在 **预发布（`-rc`）** 阶段，看上方橙色徽章拿动态最新 rc 版本。桌面端自动更新和[下载页](https://skylerx.skyler.uno/download)始终跟最新 pre-release，等 v0.5.0 stable 发出再换。
+
 > **许可**：[Apache License 2.0](./LICENSE)
 
 ![SkylerX 查询工作区与 AI 助手](./docs/screenshots/query-workspace.png)
