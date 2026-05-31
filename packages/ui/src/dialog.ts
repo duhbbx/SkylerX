@@ -12,6 +12,7 @@
  */
 import { reactive, ref } from 'vue'
 import type { ChatErrorAskEvent } from './chat-bus'
+import type { Callsite } from './errorReporter'
 
 export type DialogVariant = 'info' | 'success' | 'warn' | 'danger'
 
@@ -127,6 +128,12 @@ export interface ToastItem {
    * 仅 danger toast 显示按钮(其他变体没意义)。
    */
   askAi?: ChatErrorAskEvent
+  /** Error toasts only: the call site that triggered reportError(). */
+  callsite?: Callsite
+  /** Error toasts only: the full report — copy button writes report.markdown. */
+  report?: {
+    markdown: string
+  }
 }
 export const toasts = ref<ToastItem[]>([])
 let toastSeq = 0
@@ -136,12 +143,26 @@ function pushToast(
   message: string,
   durationMs = 3000,
   askAi?: ChatErrorAskEvent,
+  extras?: { callsite?: ToastItem['callsite']; report?: ToastItem['report'] },
 ): void {
   const id = ++toastSeq
-  toasts.value.push({ id, variant, message, durationMs, askAi })
+  toasts.value.push({ id, variant, message, durationMs, askAi, ...extras })
   if (durationMs > 0) {
     setTimeout(() => dismissToast(id), durationMs)
   }
+}
+
+/**
+ * Public push for reportError(): exposes the shared toast ID counter + the
+ * setTimeout-based auto-dismiss to callers outside this module, so error
+ * reports honour their durationMs AND don't collide IDs with regular toasts.
+ */
+export function pushReportToast(
+  message: string,
+  durationMs: number,
+  extras: { callsite?: ToastItem['callsite']; report?: ToastItem['report'] },
+): void {
+  pushToast('danger', message, durationMs, undefined, extras)
 }
 export function dismissToast(id: number): void {
   const i = toasts.value.findIndex((t) => t.id === id)

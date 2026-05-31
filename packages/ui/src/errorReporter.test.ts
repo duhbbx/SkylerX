@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { captureCallsite, formatMarkdown, redact, type ErrorReport } from './errorReporter'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toasts } from './dialog'
+import {
+  __resetEnvCacheForTests,
+  captureCallsite,
+  formatMarkdown,
+  primeEnvCache,
+  redact,
+  reportError,
+  type ErrorReport,
+} from './errorReporter'
 
 describe('redact', () => {
   it('replaces top-level sensitive fields', () => {
@@ -159,5 +168,59 @@ describe('formatMarkdown', () => {
     expect(md).not.toContain('**Tag**:')
     expect(md).not.toContain('**Args**')
     expect(md).toContain('OS: Linux 6.5.0 (x64)')
+  })
+})
+
+describe('reportError', () => {
+  let consoleErrSpy: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    toasts.value = []
+    __resetEnvCacheForTests()
+    consoleErrSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    primeEnvCache({
+      appVersion: '0.5.0-rc19',
+      platform: 'darwin',
+      arch: 'arm64',
+      electronVer: '34.2.0',
+      nodeVer: '22.10.0',
+      chromeVer: '132.0.6834.83',
+      locale: 'zh-CN',
+      timezone: 'Asia/Shanghai',
+      channel: 'oss-cn',
+      osRelease: '24.5.0',
+    })
+  })
+  afterEach(() => {
+    toasts.value = []
+    consoleErrSpy.mockRestore()
+  })
+
+  it('pushes a danger toast carrying the redacted report on its callsite + report fields', () => {
+    function trigger(): void {
+      reportError(new Error('connect ECONNREFUSED 127.0.0.1:5432'), {
+        tag: 'connect',
+        args: { host: 'localhost', password: 'hunter2' },
+      })
+    }
+    trigger()
+    expect(toasts.value).toHaveLength(1)
+    const t = toasts.value[0]
+    expect(t.variant).toBe('danger')
+    expect(t.message).toContain('connect ECONNREFUSED 127.0.0.1:5432')
+    expect(t.callsite?.function).toBe('trigger')
+    expect(t.report?.markdown).toContain('"password": "***"')
+    expect(t.report?.markdown).toContain('SkylerX: **v0.5.0-rc19**')
+  })
+
+  it('accepts a string error and wraps it in an Error', () => {
+    reportError('plain string error')
+    expect(toasts.value[0].message).toBe('plain string error')
+    expect(toasts.value[0].report?.markdown).toContain('plain string error')
+  })
+
+  it('falls back to "environment unavailable" before envCache is primed', () => {
+    __resetEnvCacheForTests()
+    reportError(new Error('boom'))
+    expect(toasts.value[0].report?.markdown).toContain('environment metadata not available yet')
   })
 })
