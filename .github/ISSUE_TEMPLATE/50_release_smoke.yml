@@ -1,0 +1,130 @@
+name: 🚦 Release Smoke
+description: Pre-release manual regression checklist — open one per RC / release candidate
+title: "[Smoke] vX.Y.Z-rcNN"
+labels:
+  - "type: smoke"
+  - "status: in-progress"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this issue to track manual smoke testing for one release / RC.
+
+        - Replace **vX.Y.Z-rcNN** in the title with the actual version.
+        - Tick items as you verify them.
+        - For each ❌, file (or link) a bug issue and reference it inline.
+        - Close this issue only when every item is ✅ or the failure has been documented + accepted.
+
+        The canonical checklist lives in [`docs/qa/RELEASE_SMOKE.md`](https://github.com/duhbbx/SkylerX/blob/main/docs/qa/RELEASE_SMOKE.md) — if you add / change tests there, the template body below is the rendered copy.
+
+  - type: input
+    id: version
+    attributes:
+      label: Tag / version under test
+      description: Exact tag or candidate identifier
+      placeholder: "v0.5.0-rc22"
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit hash
+      description: Output of `git rev-parse HEAD` on the build under test
+      placeholder: "0b1fe67"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Platforms covered in this run
+      description: Check the ones you'll cover; multiple OK
+      options:
+        - label: macOS (Apple Silicon)
+        - label: macOS (Intel via Rosetta)
+        - label: Windows x64
+        - label: Windows ARM64
+        - label: Linux x64
+        - label: Linux ARM64
+
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Smoke checklist
+      description: Tick as you go. Add notes inline for partial passes.
+      value: |
+        ### Pre-flight
+        - [ ] On `main`, target commit is the one to tag
+        - [ ] `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint` green locally
+        - [ ] CI on `main` is green for the same commit
+        - [ ] `apps/desktop/package.json` version matches the planned tag
+
+        ### Boot & UI
+        - [ ] Cold boot < 2s
+        - [ ] Theme persists across restart
+        - [ ] All 7 locales switch without crash; selection persists
+        - [ ] About dialog shows correct version + commit
+        - [ ] DevTools opens/closes
+
+        ### Connection management
+        - [ ] Save MySQL / PG / SQLite connections; all fields preserved after reopen
+        - [ ] Test connection green toast shows server version
+        - [ ] Wrong password → specific error code (not "Unknown")
+        - [ ] Duplicate name → inline validation
+        - [ ] **Force-kill (`pkill -9 Electron`) → restart → all connections present**
+        - [ ] **AI settings (provider + apiKey) survive force-kill**
+
+        ### SQL editor
+        - [ ] ⌘+Enter / Ctrl+Enter runs query
+        - [ ] Multi-tab content + cursor preserved
+        - [ ] AI inline completion (Tab/Esc)
+        - [ ] History: filter, pin, edit note, delete
+        - [ ] Linter flags `SELECT *` and unbounded UPDATE
+        - [ ] Cancel stops long-running query within ~1s
+
+        ### Result grid
+        - [ ] 1M+ row virtual scroll smooth
+        - [ ] JSON cell viewer with tree
+        - [ ] BLOB cell hex viewer + decode-as-text
+        - [ ] Numeric sparkline in header
+        - [ ] Inline edit → commit → DB updated
+        - [ ] Manual-commit BEGIN/COMMIT/ROLLBACK
+        - [ ] "Ask AI" on error row brings SQL + error into chat
+
+        ### DDL / Schema
+        - [ ] Generate CREATE TABLE DDL
+        - [ ] Schema diff produces aligned migration SQL
+        - [ ] Mock data v1 fills NOT NULL + type constraints
+
+        ### Multi-window
+        - [ ] Second window (⌘⇧N) opens, state independent
+        - [ ] OS-native shortcuts work
+        - [ ] Tray / dock icon visible
+
+        ### Auto-update
+        - [ ] Check shows latest expected version
+        - [ ] Channel switch (GitHub ↔ OSS-CN) persists
+        - [ ] Unreachable update gives specific error (host + status code)
+
+        ### Per-driver (run against the matrix you ship)
+        - [ ] Each driver: test connection / tree expand / SELECT 1 / INSERT+SELECT round-trip / disconnect+reconnect
+        - [ ] See [`docs/qa/driver-matrix.md`](https://github.com/duhbbx/SkylerX/blob/main/docs/qa/driver-matrix.md) for full per-driver list
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Failures / linked bug issues
+      description: For each ❌, list "Item N → #123 (short description)". Empty means all green.
+      placeholder: |
+        - Result grid → BLOB cell → #142 (hex viewer doesn't render on Windows ARM64)
+        - Auto-update → channel switch → #143 (switching back to GitHub keeps OSS until full restart)
+
+  - type: checkboxes
+    id: ready
+    attributes:
+      label: Ready to ship?
+      options:
+        - label: All items above ✅, OR failures are documented and accepted; safe to tag.

@@ -41,6 +41,9 @@
 - name: "type: security"
   color: "b60205"
   description: "Security vulnerability or hardening"
+- name: "type: smoke"
+  color: "fbca04"
+  description: "Pre-release manual regression checklist tracking"
 
 # ── 优先级(priority:) ──
 - name: "priority: critical"
