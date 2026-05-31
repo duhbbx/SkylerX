@@ -82,10 +82,21 @@ function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfi
   }
 }
 
-/** 列出全部连接（脱敏，不含密码）。 */
+/**
+ * 列出全部连接（脱敏，不含密码）。
+ *
+ * 排序：优先用户拖拽分配过 sort_index 的连接 (ASC)，没拖过的 (sort_index NULL)
+ * 排在它们后面，按 created_at ASC 兜底（早创建在前，跟 DBeaver/Navicat 一致）。
+ *
+ * 之前用 `ORDER BY updated_at DESC` + NavTree 拖动时同步 `updatedAt = Date.now()`，
+ * 结果拖动的连接 updated_at 总是当下最大值 → 永远跑到第 1 位
+ * (用户报告: 把第 3 个拖到第 2 个, 结果落到第 1)。
+ */
 export function listConnections(): ConnectionConfig[] {
   const rows = getDb()
-    .prepare('SELECT * FROM connections ORDER BY updated_at DESC')
+    .prepare(
+      'SELECT * FROM connections ORDER BY (sort_index IS NULL), sort_index ASC, created_at ASC',
+    )
     .all() as ConnectionRow[]
   return rows.map((r) => rowToConfig(r, false))
 }
