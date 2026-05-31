@@ -133,6 +133,22 @@ export default defineConfig({
         },
       ])
     }
+    // 搜索引擎站长验证(env 注入,不存在就跳过 — 各搜索引擎要求验证页存在)
+    if (process.env.GOOGLE_SITE_VERIFICATION) {
+      base.push(['meta', { name: 'google-site-verification', content: process.env.GOOGLE_SITE_VERIFICATION }])
+    }
+    if (process.env.BING_SITE_VERIFICATION) {
+      base.push(['meta', { name: 'msvalidate.01', content: process.env.BING_SITE_VERIFICATION }])
+    }
+    if (process.env.BAIDU_SITE_VERIFICATION) {
+      base.push(['meta', { name: 'baidu-site-verification', content: process.env.BAIDU_SITE_VERIFICATION }])
+    }
+    if (process.env.YANDEX_SITE_VERIFICATION) {
+      base.push(['meta', { name: 'yandex-verification', content: process.env.YANDEX_SITE_VERIFICATION }])
+    }
+    if (process.env.QIHOO_360_VERIFICATION) {
+      base.push(['meta', { name: '360-site-verification', content: process.env.QIHOO_360_VERIFICATION }])
+    }
     return base
   })(),
 

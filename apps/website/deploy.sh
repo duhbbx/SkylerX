@@ -71,6 +71,10 @@ $SSH "$USER@$HOST" "
 "
 
 echo ""
+echo "▶ IndexNow 推 sitemap URL 给 Bing/Yandex/Naver/Seznam ..."
+node "$SCRIPT_DIR/scripts/indexnow.mjs" 2>&1 | sed 's/^/  /' || echo "  (失败不阻塞;手动重跑: node $SCRIPT_DIR/scripts/indexnow.mjs)"
+
+echo ""
 echo "✅ 部署完成"
 echo "   https://$DOMAIN  (DNS 已生效 + 已签 SSL 时)"
 echo "   http://$DOMAIN   (HTTP 兜底)"
