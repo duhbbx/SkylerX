@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useData } from 'vitepress'
 /**
  * 完整下载矩阵:平台 × 架构 × 安装包格式.
  *
@@ -15,7 +16,7 @@
  *       让 .exe (安装版) / .exe (绿色版) 也能本地化。
  */
 import { computed, onMounted, ref } from 'vue'
-import { useData } from 'vitepress'
+import { type MatrixRowKey, getComponentLabels } from '../i18n'
 import {
   type DownloadSource,
   type ReleaseInfo,
@@ -23,7 +24,6 @@ import {
   fetchLatest,
   saveSource,
 } from './downloadSource'
-import { getComponentLabels, type MatrixRowKey } from '../i18n'
 
 const { lang } = useData()
 const L = computed(() => getComponentLabels(lang.value))
@@ -145,13 +145,72 @@ const releasesPage = computed(() =>
 )
 const latestPage = computed(() =>
   source.value === 'oss'
-    ? 'https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/'
+    ? 'https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/'
     : 'https://github.com/duhbbx/SkylerX/releases/latest',
 )
 
 function findAsset(row: Row) {
   return info.value?.assets.find((a) => row.match(a.name))
 }
+
+/**
+ * Best-effort detect the user's OS + arch from navigator.userAgent and pick
+ * the matching `Row` from the matrix. Returns null when detection fails or
+ * the matrix has no row for that combination.
+ *
+ * Notes:
+ *  - macOS: we only ship arm64 dmg. Intel-Mac users still get pointed at the
+ *    arm64 dmg (works under Rosetta — same advice as the disclaimer text).
+ *  - Windows: navigator.userAgent has 'WOW64' / 'Win64' / 'ARM64' clues.
+ *  - Linux: default to x64 AppImage; ARM64 Linux is rare on desktop.
+ */
+function detectInstaller(): Row | null {
+  if (typeof navigator === 'undefined') return null
+  const ua = navigator.userAgent
+  const isMac = /Macintosh|Mac OS X/.test(ua) && !/iP(hone|ad|od)/.test(ua)
+  const isWin = /Windows NT/.test(ua)
+  const isLinux = /Linux/.test(ua) && !/Android/.test(ua) && !isMac && !isWin
+  const isArm = /ARM64|aarch64/i.test(ua)
+  if (isMac) {
+    return rows.find((r) => r.platform === 'macos') ?? null
+  }
+  if (isWin) {
+    return (
+      rows.find(
+        (r) =>
+          r.platform === 'windows' &&
+          r.arch === (isArm ? 'arm64' : 'x64') &&
+          r.formatKind === 'exeSetup',
+      ) ?? null
+    )
+  }
+  if (isLinux) {
+    return (
+      rows.find(
+        (r) =>
+          r.platform === 'linux' &&
+          r.arch === (isArm ? 'arm64' : 'x64') &&
+          r.format === '.AppImage',
+      ) ?? null
+    )
+  }
+  return null
+}
+
+/**
+ * Smart URL for the version label: prefers a direct asset download for the
+ * user's OS+arch, falls back to the source's listing page (OSS bucket root
+ * for OSS — directory listing happens to work — or GitHub Releases for
+ * GitHub). This avoids the OSS `releases/latest/` 404 the previous link hit.
+ */
+const versionDownloadUrl = computed<string>(() => {
+  const row = detectInstaller()
+  if (row) {
+    const asset = findAsset(row)
+    if (asset) return asset.url
+  }
+  return latestPage.value
+})
 
 function bytes(n: number): string {
   if (n < 1e6) return `${(n / 1e3).toFixed(0)} KB`
@@ -203,7 +262,9 @@ function isFirstOfPlatform(i: number): boolean {
 
 /** 给 Umami 上报下载点击,看哪个平台/源/版本最受欢迎。失败静默(没装 Umami 也不影响下载)。 */
 function trackDownload(row: Row): void {
-  const w = window as unknown as { umami?: { track: (n: string, p?: Record<string, unknown>) => void } }
+  const w = window as unknown as {
+    umami?: { track: (n: string, p?: Record<string, unknown>) => void }
+  }
   try {
     w.umami?.track('download', {
       platform: row.platform,
@@ -232,7 +293,7 @@ const errorText = computed(() => {
         <span v-if="loading">{{ L.matrix.loading }}</span>
         <span v-else-if="info?.tag_name">
           {{ L.matrix.latestVersion }}
-          <a :href="latestPage" target="_blank" rel="noopener">{{ info.tag_name }}</a>
+          <a :href="versionDownloadUrl" target="_blank" rel="noopener" title="点击直接下载与当前系统匹配的安装包">{{ info.tag_name }}</a>
         </span>
         <span v-else>
           {{ L.matrix.fallbackPrefix }}<a :href="latestPage" target="_blank" rel="noopener">{{ source === 'oss' ? L.matrix.ossLabel : L.matrix.githubLabel }}</a>{{ L.matrix.fallbackSuffix }}
