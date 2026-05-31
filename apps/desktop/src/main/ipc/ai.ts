@@ -18,7 +18,7 @@ export const AI_IPC = {
 
 export interface AiFetchRequest {
   url: string
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'DELETE'
   headers?: Record<string, string>
   /** 字符串 body；调用方负责 JSON.stringify */
   body?: string
@@ -52,12 +52,16 @@ export function registerAiIpc(): void {
         `[ai:fetch] → ${req.method ?? 'POST'} ${req.url} (id=${id}, timeout=${timeoutMs}ms)`,
       )
       try {
-        const res = await fetch(req.url, {
-          method: req.method ?? 'POST',
-          headers: req.headers,
-          body: req.body,
-          signal: controller.signal,
-        })
+        const method = req.method ?? 'POST'
+        // Node's fetch throws TypeError('Request with GET/HEAD method cannot have body')
+        // if any body field is present — even an empty string — so drop it on
+        // those verbs. Renderer's aiHttp passes body: '' uniformly for shape
+        // simplicity (#28 test 'GET /v1/models' was tripping this).
+        const init: RequestInit =
+          method === 'GET' || method === 'HEAD'
+            ? { method, headers: req.headers, signal: controller.signal }
+            : { method, headers: req.headers, body: req.body, signal: controller.signal }
+        const res = await fetch(req.url, init)
         const body = await res.text()
         console.log(
           `[ai:fetch] ← ${res.status} ${Date.now() - started}ms (id=${id}, ${body.length}B)`,
