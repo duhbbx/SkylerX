@@ -848,6 +848,26 @@ async function copySelectedKey(): Promise<void> {
   }
 }
 
+/**
+ * 复制 string value 到剪贴板 — 复制当前 view 看到的内容:
+ * JSON 视图复制 formattedJson(缩进格式化好的), Raw 视图复制 stringValue(原文).
+ */
+async function copyStringValue(): Promise<void> {
+  const text =
+    stringView.value === 'json' && isJsonString.value ? formattedJson.value : stringValue.value
+  if (!text) {
+    toast.error('当前 value 为空')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(text)
+    const preview = text.length > 40 ? `${text.slice(0, 40)}…` : text
+    toast.success(`已复制 (${text.length} 字符): ${preview}`)
+  } catch (e) {
+    toast.error(`复制失败: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 /** 删除选中 key(DEL),成功后从左侧列表移除并清空右侧。 */
 async function deleteSelectedKey(): Promise<void> {
   const k = selected.value
@@ -1318,9 +1338,13 @@ watch(
               <!-- string:只读 raw/JSON 切换 + 编辑 textarea -->
               <template v-if="selectedType === 'string'">
                 <template v-if="!editing">
-                  <div v-if="isJsonString" class="json-tabs">
-                    <button class="ev-btn" :class="{ on: stringView === 'raw' }" @click="stringView = 'raw'">Raw</button>
-                    <button class="ev-btn" :class="{ on: stringView === 'json' }" @click="stringView = 'json'">JSON</button>
+                  <!-- toolbar: 始终显示 (即使不是 JSON 也有复制按钮); 复制按 view 取当前展示文本 -->
+                  <div class="json-tabs">
+                    <template v-if="isJsonString">
+                      <button class="ev-btn" :class="{ on: stringView === 'raw' }" @click="stringView = 'raw'">Raw</button>
+                      <button class="ev-btn" :class="{ on: stringView === 'json' }" @click="stringView = 'json'">JSON</button>
+                    </template>
+                    <button class="ev-btn" :title="stringView === 'json' && isJsonString ? '复制格式化 JSON' : '复制原文'" @click="copyStringValue">📋 复制</button>
                   </div>
                   <pre v-if="stringView === 'raw' || !isJsonString" class="val-text">{{ stringValue }}</pre>
                   <pre v-else class="val-text json">{{ formattedJson }}</pre>
