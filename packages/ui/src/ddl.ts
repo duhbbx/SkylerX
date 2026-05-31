@@ -926,7 +926,23 @@ export function buildAlterTable(
         if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
         if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
         stmts.push(s)
+      } else if (fam === 'oracle') {
+        // Oracle / DM: ALTER TABLE t ADD (col DEF) — parens required, no
+        // 'COLUMN' keyword (#21: 'COLUMN' is reserved in Oracle, so the
+        // generic 'ADD COLUMN' shape failed with ORA-3050).
+        let s = `ALTER TABLE ${tableRef} ADD (${q(c.name)} ${t}${c.nullable ? '' : ' NOT NULL'}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
+        s += ')'
+        stmts.push(s)
+        if (c.comment.trim())
+          stmts.push(`COMMENT ON COLUMN ${tableRef}.${q(c.name)} IS '${esc(c.comment.trim())}'`)
+      } else if (fam === 'sqlserver') {
+        // SQL Server: ALTER TABLE t ADD col DEF — no 'COLUMN' keyword either.
+        let s = `ALTER TABLE ${tableRef} ADD ${q(c.name)} ${t}${c.nullable ? '' : ' NOT NULL'}`
+        if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
+        stmts.push(s)
       } else {
+        // PG family (postgresql, kingbase, cockroachdb, greenplum, opengauss, h2)
         let s = `ALTER TABLE ${tableRef} ADD COLUMN ${q(c.name)} ${t}${c.nullable ? '' : ' NOT NULL'}`
         if (c.defaultValue.trim()) s += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
         stmts.push(s)
@@ -966,7 +982,42 @@ export function buildAlterTable(
         if (c.comment.trim()) s += ` COMMENT '${esc(c.comment.trim())}'`
         stmts.push(s)
       }
+    } else if (fam === 'oracle') {
+      // Oracle / DM:
+      //   RENAME → ALTER TABLE t RENAME COLUMN c1 TO c2
+      //   MODIFY → ALTER TABLE t MODIFY (col DEF)   (parens, not ALTER COLUMN)
+      //   COMMENT → COMMENT ON COLUMN t.col IS '...'
+      if (renamed)
+        stmts.push(`ALTER TABLE ${tableRef} RENAME COLUMN ${q(c.originalName)} TO ${q(c.name)}`)
+      const col = q(c.name)
+      if (typeChanged || nullChanged || defChanged) {
+        let modify = `ALTER TABLE ${tableRef} MODIFY (${col} ${t}`
+        // Oracle MODIFY needs NOT NULL re-stated if it was already NOT NULL and we're changing other things;
+        // safest is to always reflect the desired nullability.
+        modify += c.nullable ? '' : ' NOT NULL'
+        if (c.defaultValue.trim()) modify += ` DEFAULT ${quoteDefaultValue(c.defaultValue)}`
+        modify += ')'
+        stmts.push(modify)
+      }
+      if (commentChanged)
+        stmts.push(`COMMENT ON COLUMN ${tableRef}.${col} IS '${esc(c.comment.trim())}'`)
+    } else if (fam === 'sqlserver') {
+      // SQL Server:
+      //   RENAME → EXEC sp_rename 'schema.t.c1', 'c2', 'COLUMN'
+      //   MODIFY → ALTER TABLE t ALTER COLUMN col DEF (no TYPE keyword; SQL Server fuses type+null)
+      if (renamed)
+        stmts.push(`EXEC sp_rename '${tableRef}.${c.originalName}', '${c.name}', 'COLUMN'`)
+      const col = q(c.name)
+      if (typeChanged || nullChanged)
+        stmts.push(
+          `ALTER TABLE ${tableRef} ALTER COLUMN ${col} ${t}${c.nullable ? ' NULL' : ' NOT NULL'}`,
+        )
+      if (defChanged && c.defaultValue.trim())
+        stmts.push(
+          `ALTER TABLE ${tableRef} ADD DEFAULT ${quoteDefaultValue(c.defaultValue)} FOR ${col}`,
+        )
     } else {
+      // PG family
       if (renamed)
         stmts.push(`ALTER TABLE ${tableRef} RENAME COLUMN ${q(c.originalName)} TO ${q(c.name)}`)
       const col = q(c.name)
