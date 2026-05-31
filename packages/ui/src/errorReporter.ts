@@ -12,6 +12,8 @@
  * Spec: docs/superpowers/specs/2026-05-31-error-reporter-design.md
  */
 
+import { pushReportToast } from './dialog'
+
 export interface EnvSummary {
   appVersion: string
   platform: NodeJS.Platform
@@ -175,4 +177,76 @@ export function formatMarkdown(r: ErrorReport): string {
   sections.push(`- Captured at: ${r.timestamp}`)
 
   return sections.join('\n')
+}
+
+// ── reportError public API + env cache ──────────────────────────────
+
+export interface ReportOpts {
+  args?: Record<string, unknown>
+  tag?: string
+  callsite?: Callsite
+}
+
+let envCache: EnvSummary | null = null
+
+/** Renderer calls this once on boot with the IPC result. */
+export function primeEnvCache(env: EnvSummary): void {
+  envCache = env
+}
+
+/** Test-only escape hatch. Do not call from production code. */
+export function __resetEnvCacheForTests(): void {
+  envCache = null
+}
+
+const ENV_UNAVAILABLE: EnvSummary = {
+  appVersion: 'unknown',
+  platform: 'linux',
+  arch: 'unknown',
+  electronVer: 'unknown',
+  nodeVer: 'unknown',
+  chromeVer: 'unknown',
+  locale: 'unknown',
+  timezone: 'unknown',
+  channel: 'github',
+  osRelease: 'unknown',
+}
+
+/**
+ * Replace toast.error() at every call site.
+ *
+ * Behaviour:
+ * - e: Error → carry message + stack as-is.
+ * - e: string | other → wrap into new Error(String(e)); stack will be the wrap site.
+ * - Captures the immediate business caller via new Error().stack frame [2].
+ * - Redacts opts.args before formatting.
+ * - Pushes a danger toast with callsite + report.markdown attached.
+ * - If env cache is not yet primed, the markdown still renders but with a
+ *   one-line "environment metadata not available yet" placeholder so the
+ *   report is never blocked on boot races.
+ */
+export function reportError(e: unknown, opts: ReportOpts = {}): void {
+  const err = e instanceof Error ? e : new Error(String(e))
+  const callsite = opts.callsite ?? captureCallsite(new Error().stack)
+  const env = envCache
+  const args = opts.args ? (redact(opts.args) as Record<string, unknown>) : undefined
+
+  const report: ErrorReport = {
+    message: err.message,
+    stack: err.stack,
+    callsite,
+    tag: opts.tag,
+    args,
+    env: env ?? ENV_UNAVAILABLE,
+    timestamp: new Date().toISOString(),
+  }
+  let markdown = formatMarkdown(report)
+  if (!env) {
+    markdown += '\n\n> _Note: environment metadata not available yet (boot race)._'
+  }
+
+  pushReportToast(err.message, 10_000, { callsite, report: { markdown } })
+
+  // Mirror to console for dev-tools log copy.
+  console.error('[reportError]', err, { callsite, tag: opts.tag, args })
 }
