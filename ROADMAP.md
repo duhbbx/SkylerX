@@ -21,54 +21,52 @@
 |---|---|
 | **关系型(开源)** | MySQL · MariaDB · PostgreSQL · SQLite · H2 |
 | **关系型(商业)** | Oracle · SQL Server |
-| **国产 / 信创** | 达梦 DM · 人大金仓 KingbaseES · OceanBase · TiDB · GBase |
+| **国产 / 信创** | 达梦 DM · 人大金仓 KingbaseES · OceanBase · TiDB · GBase · **GaussDB(华为)** · **GreatSQL(万里)** · **Hologres(阿里)** · openGauss |
+| **云原生 / PG-MySQL 兼容** | **PolarDB-PG / -X (阿里)** · **TDSQL-C (腾讯)** · CockroachDB · Greenplum |
 | **分析型(MPP/OLAP)** | ClickHouse · Snowflake · Amazon Redshift · Apache Doris · StarRocks · DuckDB |
-| **时序** | TDengine |
+| **时序** | TDengine · **TimescaleDB(PG 扩展)** · **QuestDB(PG-wire)** |
+| **流式 SQL** | **Materialize** · **RisingWave** |
+| **向量** | **pgvector**(走标准 PostgreSQL 连接 + 服务端装扩展;`vector` 列在 metadata 树正常出现,SELECT/INSERT/UPDATE 都 work。专属向量 viewer / KNN 搜索 UI 仍在路线图) |
 | **NoSQL** | MongoDB · Redis · Elasticsearch |
 
 ### 1.2 接入路线图
+
+> 已搬到「1.1 已支持」的 wire-compatible 方言(PolarDB-PG/-X · GaussDB · TimescaleDB · QuestDB · Materialize · RisingWave · Hologres · GreatSQL · TDSQL-C · pgvector)不再列在这里。它们沿用现有 PG / MySQL driver,5e195bc 起在方言下拉里可选。
 
 #### 🟢 2026 Q3(7-9 月)
 
 | 数据库 | 类型 | 接入策略 | 备注 |
 |---|---|---|---|
-| **PolarDB-PG / -X** | 关系型 / 云原生 | PG / MySQL wire,沿用现有 driver | 加云上连接预设(RAM/AKSK)即可 |
-| **GaussDB (华为)** | 信创 / 关系型 | PG 兼容模式,沿用 PG driver | 信创客户高频请求 |
-| **TimescaleDB** | 时序(PG 扩展) | 沿用 PG driver,加 hypertable / 连续聚合视图 | 走 PG 入口,改 metadata 树即可 |
-| **Apache Cassandra / ScyllaDB** | NoSQL 列族 | CQL,新建 `core-driver/cassandra` 包 | 走 SQL channel(CQL ≈ SQL) |
-| **InfluxDB 3.x** | 时序 | FlightSQL,沿用 SQL channel | 1.x InfluxQL + 2.x Flux 用 NoSQL channel 兼容 |
+| **Apache Cassandra / ScyllaDB** | NoSQL 列族 | CQL,新建 `core-driver/cassandra` 包(`cassandra-driver` npm) | 走 SQL channel(CQL ≈ SQL) |
+| **InfluxDB 3.x** | 时序 | FlightSQL(gRPC + Arrow),沿用 SQL channel | 1.x InfluxQL + 2.x Flux 用 NoSQL channel 兼容 |
+| **TimescaleDB 专属 metadata** | 时序(PG 扩展, 已可连) | 在已支持的 PG 入口上加 hypertable / 连续聚合视图节点 | 不算新方言, 算 UX 增强 |
+| **pgvector 向量 viewer** | 向量(已可 SQL 操作) | dim 列内嵌预览, KNN(`<->`/`<#>`/`<=>`)搜索面板, HNSW/IVFFlat 索引识别 | PG driver 不动, 加结果列渲染 + 一个搜索 dialog |
 
 #### 🔵 2026 Q4(10-12 月)
 
 | 数据库 | 类型 | 接入策略 |
 |---|---|---|
 | **Trino / Presto** | 联邦查询引擎 | HTTP API,SQL channel,catalog 树映射底层多源 |
-| **Apache Hive(HS2)** | 大数据 SQL | JDBC over Kerberos / LDAP |
-| **Neo4j** | 图 | Bolt 协议,Cypher,新 channel(`executeCypher`) |
-| **Couchbase** | 多模 NoSQL | N1QL 走 SQL channel |
-| **DynamoDB(AWS)** | KV/文档 | AWS SDK,PartiQL,NoSQL channel |
-| **pgvector / Milvus / Qdrant** | 向量 | pgvector 沿用 PG;Milvus/Qdrant 新建 driver,向量字段专属 viewer |
+| **Apache Hive(HS2)** | 大数据 SQL | HiveServer2 thrift(纯 JS 实现, 不走 Java sidecar) |
+| **Neo4j** | 图 | Bolt 协议(`neo4j-driver` npm),Cypher,新 channel(`executeCypher`) |
+| **Couchbase** | 多模 NoSQL | N1QL 走 SQL channel(`couchbase` npm) |
+| **DynamoDB(AWS)** | KV/文档 | AWS SDK(`@aws-sdk/client-dynamodb`),PartiQL,NoSQL channel |
+| **Milvus / Qdrant** | 专用向量库 | Milvus 用 `@zilliz/milvus2-sdk-node`,Qdrant 用 `@qdrant/js-client-rest`,各自 collection viewer + KNN UI |
 
 #### ⚪ 2027 H1 候选
 
 | 数据库 | 类型 | 备注 |
 |---|---|---|
-| **Apache IoTDB** | 信创时序 | 与 TDengine 互补 |
+| **Apache IoTDB** | 信创时序 | 与 TDengine 互补;thrift,需 Node-side 实现 |
 | **Nebula Graph** | 国产图 | nGQL,与 Neo4j 同一图通道复用 |
 | **SequoiaDB(巨杉)** | 国产分布式 NoSQL | 信创金融客户 |
-| **GreatSQL(万里)** | MySQL 派生 | 沿用 MySQL driver |
-| **Hologres(阿里)** | PG 兼容 OLAP | 沿用 PG driver,加云上认证 |
-| **Lindorm(阿里)** | HBase 兼容 | 多模:宽表 / 时序 / 搜索 |
-| **TDSQL-C(腾讯)** | MySQL 派生 | 走 MySQL driver |
-| **QuestDB** | 时序 | PG-wire 协议,沿用 PG |
+| **Lindorm(阿里)** | HBase 兼容 | 多模:宽表 / 时序 / 搜索;thrift 同上 |
 | **Apache Druid** | 实时 OLAP | Druid SQL HTTP API |
 | **Apache Pinot** | 实时 OLAP | PQL / SQL HTTP |
 | **Apache Flink SQL Gateway** | 流式 SQL | SQL channel |
-| **Materialize** | 流式 SQL(PG 兼容) | 沿用 PG driver |
-| **RisingWave(国产)** | 流式 SQL(PG 兼容) | 沿用 PG driver |
-| **Vertica** | 列存 MPP | JDBC |
-| **Google BigQuery** | 云 DW | REST API + 标准 SQL |
-| **AWS Athena** | Serverless SQL | AWS SDK |
+| **Vertica** | 列存 MPP | `vertica-nodejs` |
+| **Google BigQuery** | 云 DW | `@google-cloud/bigquery` SDK + 标准 SQL |
+| **AWS Athena** | Serverless SQL | AWS SDK(`@aws-sdk/client-athena`) |
 
 #### 🟣 远期 / 视生态而定
 
@@ -77,7 +75,7 @@
 - AWS DynamoDB Streams(实时观察)
 - Apache Cassandra 的 CDC 流
 - LMDB / RocksDB 嵌入式 KV viewer
-- Weaviate / Chroma / pgvector 的语义搜索 UI
+- Weaviate / Chroma 的语义搜索 UI
 - ArangoDB(多模:文档 + 图 + KV)
 
 ---
