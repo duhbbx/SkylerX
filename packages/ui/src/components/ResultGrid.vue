@@ -9,7 +9,7 @@ import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { prompt as appPrompt, toast } from '../dialog'
 import { type EditChanges, SQL_DEFAULT, isSqlSentinel } from '../editable'
-import { reportError } from '../errorReporter'
+import { type EnvSummary, formatEnvBlock, getEnvCache, reportError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type ExportFormat,
@@ -740,7 +740,7 @@ function copyText(text: string): void {
   void navigator.clipboard?.writeText(text)
 }
 
-// 错误卡片操作：复制错误 + 问 AI
+// 错误卡片操作：复制错误 + 问 AI + 复制去报 bug (#13/#27 续)
 function copyErrorMsg(): void {
   if (!props.error) return
   void navigator.clipboard?.writeText(props.error)
@@ -754,6 +754,95 @@ function askAiAboutError(): void {
     sql: props.sql,
     error: props.error,
   })
+}
+
+/**
+ * 「复制去报 bug」: 把错误 + SQL + 连接方言(+ 尽力探测 serverVersion) + 环境
+ *  打包成 markdown 写剪贴板, 然后跳 Simple Bug Report issue 模板. 复制失败
+ *  也不能拦跳转, 让用户至少能开 issue.
+ *
+ *  serverVersion 用 connections.test() 探测; 该调用会跑 `SELECT version()` /
+ *  类似, 失败/超时都吃掉, 不影响主流程 (#13 中用户特别要求 try-catch 包).
+ */
+async function copyAndReportBug(): Promise<void> {
+  const reportUrl = 'https://github.com/duhbbx/SkylerX/issues/new?template=00_simple_bug.yml'
+
+  // Build the markdown best-effort. Each lookup is independent + try/caught
+  // so a single failure (no clipboard / no env cache / DB version probe times
+  // out) never aborts the whole flow.
+  let dialect: string | undefined
+  let serverVersion: string | undefined
+  try {
+    if (props.connId) {
+      const conn = await client.connections.get(props.connId)
+      dialect = String(conn.dialect)
+      // serverVersion is best-effort. test() reconnects and runs SELECT version().
+      try {
+        const r = await client.connections.test(conn)
+        if (r.ok && r.serverVersion) serverVersion = r.serverVersion
+      } catch {
+        /* dbInfo just won't include serverVersion */
+      }
+    }
+  } catch {
+    /* no conn — markdown will skip the dialect line entirely */
+  }
+
+  let env: EnvSummary | null = getEnvCache()
+  if (!env) {
+    try {
+      const api = (
+        window as unknown as {
+          api?: { system?: { getEnvSummary?: () => Promise<EnvSummary> } }
+        }
+      ).api
+      env = (await api?.system?.getEnvSummary?.()) ?? null
+    } catch {
+      /* envBlock will note env unavailable */
+    }
+  }
+
+  const ENV_FALLBACK: EnvSummary = {
+    appVersion: 'unknown',
+    platform: 'linux',
+    arch: 'unknown',
+    electronVer: 'unknown',
+    nodeVer: 'unknown',
+    chromeVer: 'unknown',
+    locale: 'unknown',
+    timezone: 'unknown',
+    channel: 'github',
+    osRelease: 'unknown',
+  }
+  const envBlock = formatEnvBlock(env ?? ENV_FALLBACK, undefined, { dialect, serverVersion })
+
+  const md = [
+    '## Error',
+    '',
+    '```',
+    props.error || '(no error message)',
+    '```',
+    '',
+    props.sql ? `## SQL\n\n\`\`\`sql\n${props.sql}\n\`\`\`\n` : '',
+    props.connName ? `**Connection**: \`${props.connName}\`\n` : '',
+    envBlock.replace(/^\n/, ''),
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  // Copy (best-effort) then navigate. Both wrapped so neither blocks the other.
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(md)
+      toast.success(`已复制 bug 报告 (${md.length} 字符),即将跳转 issue 页`, 2500)
+    } else {
+      toast.warn('剪贴板不可用,直接跳 issue 页')
+    }
+  } catch (e) {
+    toast.warn(`复制失败 (${e instanceof Error ? e.message : String(e)}),仍跳 issue 页`, 3000)
+  }
+  // 700ms gives the toast a beat before the OS browser steals focus.
+  setTimeout(() => window.open(reportUrl, '_blank', 'noopener'), 700)
 }
 
 // ── 列筛选（dbgate 式多值面板，纯前端）──
@@ -1159,6 +1248,11 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
         <span class="grid-err-title">{{ t('grid.errorTitle') }}</span>
         <span class="grid-err-spacer" />
         <button class="grid-err-btn" :title="t('aichat.copyError')" @click="copyErrorMsg">{{ t('aichat.copyError') }}</button>
+        <button
+          class="grid-err-btn"
+          title="把错误 + SQL + 连接方言 + 版本 + 环境一起复制,然后跳 Simple Bug Report 提交页"
+          @click="copyAndReportBug"
+        >📋 复制去报 bug</button>
         <button class="grid-err-btn primary" :disabled="!connId || !sql" :title="t('aichat.askAi')" @click="askAiAboutError">✨ {{ t('aichat.askAi') }}</button>
       </div>
       <pre class="grid-err-msg">{{ error }}</pre>

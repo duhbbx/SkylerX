@@ -41,6 +41,8 @@ export interface ErrorReport {
   tag: string | undefined
   args: Record<string, unknown> | undefined
   env: EnvSummary
+  /** Optional DB info (rendered into the env block when present). */
+  dbInfo?: DbContext
   /** ISO 8601 capture moment. */
   timestamp: string
 }
@@ -167,23 +169,41 @@ export function formatMarkdown(r: ErrorReport): string {
   }
 
   // --- Environment ---
-  sections.push(formatEnvBlock(r.env, r.timestamp))
+  sections.push(formatEnvBlock(r.env, r.timestamp, r.dbInfo))
 
   return sections.join('\n')
+}
+
+/** Optional database context attached to an error / issue report. */
+export interface DbContext {
+  /** Dialect string ('postgresql', 'mysql', …); always known from the connection config. */
+  dialect?: string
+  /** Server version when available; best-effort, wrap the source lookup in try/catch. */
+  serverVersion?: string
 }
 
 /**
  * Render just the Environment block — same shape formatMarkdown emits, but
  * standalone so other UI paths (e.g. "submit issue with context" link in
- * the about modal) can pre-populate a fresh issue without faking an error.
+ * the about modal, or the result-panel "copy & report bug" button) can
+ * pre-populate a fresh issue without faking an error.
+ *
+ * `dbInfo` is optional: when provided, an extra `- Database: ...` line is
+ * appended so issue triage knows which dialect + version the user hit the
+ * problem on. Callers are expected to wrap the dbInfo lookup itself in
+ * try/catch — failing to resolve it should not break the copy flow.
  */
-export function formatEnvBlock(env: EnvSummary, timestamp?: string): string {
+export function formatEnvBlock(env: EnvSummary, timestamp?: string, dbInfo?: DbContext): string {
   const platformName = PLATFORM_NAMES[env.platform] ?? env.platform
   const lines: string[] = ['\n## Environment\n']
   lines.push(`- SkylerX: **v${env.appVersion}** (channel: \`${env.channel}\`)`)
   lines.push(`- OS: ${platformName} ${env.osRelease} (${env.arch})`)
   lines.push(`- Electron: ${env.electronVer} · Node: ${env.nodeVer} · Chrome: ${env.chromeVer}`)
   lines.push(`- Locale: ${env.locale} · Timezone: ${env.timezone}`)
+  if (dbInfo?.dialect) {
+    const v = dbInfo.serverVersion ? ` ${dbInfo.serverVersion}` : ''
+    lines.push(`- Database: ${dbInfo.dialect}${v}`)
+  }
   lines.push(`- Captured at: ${timestamp ?? new Date().toISOString()}`)
   return lines.join('\n')
 }
@@ -203,6 +223,10 @@ export interface ReportOpts {
   args?: Record<string, unknown>
   tag?: string
   callsite?: Callsite
+  /** Optional DB context (dialect + serverVersion). Caller must wrap any
+   *  lookup of these in try/catch so resolution failures don't break the
+   *  copy / report flow. Appears as `- Database:` in the env block. */
+  dbInfo?: DbContext
 }
 
 let envCache: EnvSummary | null = null
@@ -258,13 +282,14 @@ export function reportError(e: unknown, opts: ReportOpts = {}): void {
     tag: opts.tag,
     args,
     env: env ?? ENV_UNAVAILABLE,
+    dbInfo: opts.dbInfo,
     timestamp,
   }
   let markdown = formatMarkdown(report)
   if (!env) {
     markdown += '\n\n> _Note: environment metadata not available yet (boot race)._'
   }
-  const envBlock = formatEnvBlock(env ?? ENV_UNAVAILABLE, timestamp)
+  const envBlock = formatEnvBlock(env ?? ENV_UNAVAILABLE, timestamp, opts.dbInfo)
 
   pushErrorModal({
     message: err.message,

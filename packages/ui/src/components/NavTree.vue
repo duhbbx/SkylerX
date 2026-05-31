@@ -901,6 +901,18 @@ function onGroupDrop(targetGroup: string): void {
             <TreeItem :node="r.node" :conn-id="r.id" :depth="1" :env="r.env" :dialect="r.dialect" />
           </div>
         </div>
+        <!-- Group tail rail: drop in the gap between this group and the next →
+             append to THIS group (the upper one). Fixes "dropping between two
+             groups always lands in the lower group" — the next group-row's
+             drop zone was the only catcher of the gap. Same always-rendered
+             14px transparent pattern as the global rails. -->
+        <div
+          class="drop-rail drop-rail-tail"
+          :class="{ 'drag-active': dragState?.kind === 'conn', 'drag-over': dragOverKey === 'tail:g:' + g.name }"
+          @dragover="onDragOver($event, 'tail:g:' + g.name)"
+          @dragleave="onDragLeave('tail:g:' + g.name)"
+          @drop="onConnDropToGroup(g.name)"
+        ></div>
       </template>
 
       <div
@@ -1058,6 +1070,12 @@ function onGroupDrop(targetGroup: string): void {
 }
 .drop-rail-bottom {
   margin-top: 6px;
+}
+/* Per-group tail rail — same shape, slightly smaller margin since groups
+   already have their own spacing rhythm. */
+.drop-rail-tail {
+  height: 10px;
+  margin: 1px 4px 4px;
 }
 .conn-drag-wrap:active,
 .group-row:active {
