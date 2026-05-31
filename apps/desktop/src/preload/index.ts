@@ -153,6 +153,16 @@ const api = {
       channel: 'github' | 'oss-cn'
       osRelease: string
     }> => ipcRenderer.invoke('system:getEnvSummary'),
+    /**
+     * Main-process proxy for "what's the latest published version?". Replaces
+     * the renderer-side fetch to api.github.com that was 403'ing on
+     * rate-limit / corporate proxies (#13).
+     */
+    peekLatestVersion: (): Promise<{
+      tag: string
+      source: 'oss' | 'github' | 'none'
+      error?: string
+    }> => ipcRenderer.invoke('system:peekLatestVersion'),
   },
   menu: {
     /**

@@ -1647,26 +1647,62 @@ async function downloadAndInstallUpdate(): Promise<void> {
   if (r.error) updateStatus.value = { kind: 'error', message: r.error }
 }
 
-/** dev 模式或非桌面端:跑老的 GitHub API fetch,只为显示"有无新版"。 */
+/**
+ * dev / web fallback for "has a new version shipped?".
+ *
+ * Was hitting api.github.com directly from the renderer (#13): on rate-limit
+ * (60/hour unauth) or corporate proxies the call returned 403 and the dev
+ * "update available?" UI broke. Now goes through a main-process IPC that
+ * tries OSS first (no auth, no rate limit) then GitHub. Renderer-side fetch
+ * to api.github.com is removed entirely.
+ *
+ * Web build (no `window.api`): fallback to a single OSS index.json fetch
+ * locally; OSS doesn't rate-limit and has CORS open to `skyler.uno`.
+ */
 async function checkForUpdateBrowserFallback(): Promise<void> {
+  const api = (
+    window as unknown as {
+      api?: {
+        system?: {
+          peekLatestVersion?: () => Promise<{
+            tag: string
+            source: 'oss' | 'github' | 'none'
+            error?: string
+          }>
+        }
+      }
+    }
+  ).api
+  // Desktop dev path — main-process IPC.
+  if (api?.system?.peekLatestVersion) {
+    try {
+      const r = await api.system.peekLatestVersion()
+      if (r.tag) {
+        updateDevLatest.value = r.tag
+        updateDevError.value = null
+      } else {
+        updateDevError.value = r.error || '未拿到最新版本'
+      }
+    } catch (e) {
+      updateDevError.value = e instanceof Error ? e.message : String(e)
+    }
+    return
+  }
+  // Web build path — OSS index.json directly (no auth, no rate limit).
   const ac = new AbortController()
-  const timer = setTimeout(() => ac.abort(), 10_000)
+  const timer = setTimeout(() => ac.abort(), 8_000)
   try {
-    const res = await fetch('https://api.github.com/repos/duhbbx/SkylerX/releases/latest', {
-      headers: {
-        accept: 'application/vnd.github+json',
-        'user-agent': `SkylerX/${APP_VERSION.value}`,
-      },
-      signal: ac.signal,
-    })
-    if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`)
-    const data = (await res.json()) as { tag_name?: string; name?: string }
-    updateDevLatest.value = (data.tag_name ?? data.name ?? '').replace(/^v/, '')
+    const res = await fetch(
+      'https://skylerx-build.oss-cn-shanghai.aliyuncs.com/releases/latest/index.json',
+      { signal: ac.signal },
+    )
+    if (!res.ok) throw new Error(`OSS HTTP ${res.status}`)
+    const data = (await res.json()) as { tag_name?: string }
+    updateDevLatest.value = (data.tag_name ?? '').replace(/^v/, '')
     updateDevError.value = null
   } catch (e) {
-    const raw = e instanceof Error ? e.message : String(e)
     const isAbort = e instanceof Error && e.name === 'AbortError'
-    updateDevError.value = isAbort ? '请求超时(>10s)' : raw
+    updateDevError.value = isAbort ? '请求超时(>8s)' : e instanceof Error ? e.message : String(e)
   } finally {
     clearTimeout(timer)
   }
