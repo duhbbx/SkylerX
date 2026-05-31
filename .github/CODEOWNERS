@@ -1,0 +1,43 @@
+# CODEOWNERS — automatic reviewer assignment for critical paths.
+#
+# Syntax: <pattern>  @owner1 @owner2 ...
+# GitHub matches patterns in order; the LAST match wins.
+# Combine with branch protection "Require review from Code Owners" so
+# nobody can merge changes to these files without owner review.
+#
+# Reference: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-security/customizing-your-repository/about-code-owners
+
+# ── Catch-all: maintainer reviews anything not specifically claimed ──
+*                                       @duhbbx
+
+# ── Desktop main process: IPC surface + persistence + native modules ──
+# Bugs here can leak secrets, lose data, or break the security boundary.
+apps/desktop/src/main/                  @duhbbx
+apps/desktop/electron-builder.yml       @duhbbx
+apps/desktop/package.json               @duhbbx
+
+# ── Renderer preload: contextBridge / IPC contracts ──
+# Surface area between sandboxed UI and Node main; mistakes here = sandbox escape.
+apps/desktop/src/preload/               @duhbbx
+
+# ── Driver layer: per-dialect SQL / NoSQL clients ──
+# A wrong escape / unparameterized query here ships as SQL injection to every user.
+packages/core-driver/                   @duhbbx
+packages/shared-types/                  @duhbbx
+
+# ── Security / settings persistence: safeStorage + SQLite ──
+# Touches OS keychain and user credentials.
+apps/desktop/src/main/db/               @duhbbx
+apps/desktop/src/main/ipc/settings.ts   @duhbbx
+packages/ui/src/settings.ts             @duhbbx
+
+# ── CI / release / GitHub config ──
+# Mis-tagged release or leaky workflow can ship malware to all users.
+.github/                                @duhbbx
+scripts/                                @duhbbx
+
+# ── Project conventions (the source of truth for "how we work") ──
+CLAUDE.md                               @duhbbx
+CONTRIBUTING.md                         @duhbbx
+ROADMAP.md                              @duhbbx
+LICENSE                                 @duhbbx
