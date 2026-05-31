@@ -766,6 +766,30 @@ async function onConnDrop(targetRoot: ConnRoot, targetGroup: string | undefined)
   }
 }
 
+/**
+ * 把连接 drop 到一个分组 / 未分组区的**最前**位置(position 0)。
+ *
+ * 用户报告 (#27 续):
+ *   - 分组里的节点拖到所有分组之外 / 第一个位置时, 没脱离分组成为未分组首位.
+ * 修法: 树顶部加一条 drop-rail, 触发这里 — src.group = undefined,
+ *      并被插到 ungrouped 区第 0 位.
+ */
+async function onConnDropToGroupTop(targetGroup: string | undefined): Promise<void> {
+  const src = dragState.value
+  clearDrag()
+  if (!src || src.kind !== 'conn') return
+  try {
+    const groupPeers = roots.value.filter(
+      (r) => (r.group ?? '') === (targetGroup ?? '') && r.id !== src.id,
+    )
+    const desired: string[] = [src.id, ...groupPeers.map((p) => p.id)]
+    await reorderGroup(desired, src.id, targetGroup)
+    await reload()
+  } catch (e) {
+    reportError(e)
+  }
+}
+
 /** 把连接 drop 到一个分组(整组容器 / 未分组区)末尾。 */
 async function onConnDropToGroup(targetGroup: string | undefined): Promise<void> {
   const src = dragState.value
@@ -825,6 +849,19 @@ function onGroupDrop(targetGroup: string): void {
     <div ref="treeBodyEl" class="tree-body" @contextmenu="onTreeBodyContextmenu">
       <div v-if="!roots.length" class="tree-status">{{ t('nav.empty') }}</div>
 
+      <!-- Top drop rail: dragging here drops src to ungrouped, position 0.
+           Lets a connection escape its current group + land at the very top
+           of the visible list (#27 follow-up). Invisible until something is
+           being dragged over it; rendered above the first group/ungrouped. -->
+      <div
+        v-if="dragState?.kind === 'conn'"
+        class="drop-rail"
+        :class="{ 'drag-over': dragOverKey === 'rail:top' }"
+        @dragover="onDragOver($event, 'rail:top')"
+        @dragleave="onDragLeave('rail:top')"
+        @drop="onConnDropToGroupTop(undefined)"
+      ></div>
+
       <template v-for="g in groupList" :key="'g:' + g.name">
         <!-- 分组行:整组拖拽 + 接收连接 drop(让用户把连接拖进这个组的标题) -->
         <div
@@ -876,6 +913,19 @@ function onGroupDrop(targetGroup: string): void {
       >
         <TreeItem :node="r.node" :conn-id="r.id" :depth="0" :env="r.env" :dialect="r.dialect" />
       </div>
+
+      <!-- Bottom drop rail: dragging here drops src to ungrouped, last position.
+           Without this there's no way to put a connection AT the end of the
+           ungrouped section (only "before another item" via item drops),
+           which surfaced as "the node can't go to the last position". -->
+      <div
+        v-if="dragState?.kind === 'conn'"
+        class="drop-rail drop-rail-bottom"
+        :class="{ 'drag-over': dragOverKey === 'rail:bottom' }"
+        @dragover="onDragOver($event, 'rail:bottom')"
+        @dragleave="onDragLeave('rail:bottom')"
+        @drop="onConnDropToGroup(undefined)"
+      ></div>
     </div>
 
     <div v-if="multiSel.size" class="bulk-bar">
@@ -978,6 +1028,25 @@ function onGroupDrop(targetGroup: string): void {
 .group-row {
   position: relative;
   cursor: grab;
+}
+/* Top / bottom drop rails — only rendered while a connection is being dragged.
+   Effectively invisible (12px thin strip with no background) until something
+   is dragged over them, then become a tinted hint. Lets the user drop into
+   "first ungrouped" or "last ungrouped" positions that the per-item drop
+   targets couldn't reach. */
+.drop-rail {
+  height: 14px;
+  margin: 2px 4px;
+  border-radius: 3px;
+  transition: background 80ms ease-out, outline-color 80ms ease-out;
+  outline: 1px dashed transparent;
+}
+.drop-rail.drag-over {
+  background: rgba(124, 108, 255, 0.18);
+  outline-color: var(--accent, #7c6cff);
+}
+.drop-rail-bottom {
+  margin-top: 6px;
 }
 .conn-drag-wrap:active,
 .group-row:active {
