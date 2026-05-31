@@ -230,6 +230,19 @@ Bug reports, feature requests, and PRs all welcome.
 - **Where things are headed** → [ROADMAP.md](./ROADMAP.md) for upcoming databases and features
 - **Discussions** → [GitHub Discussions](https://github.com/duhbbx/SkylerX/discussions) for architectural questions or feature brainstorming
 
+## Quality / testing
+
+Two layers:
+
+- **Unit tests** (Vitest) live alongside the code at `packages/**/src/**/*.test.ts` — CI runs `pnpm test` on every push. See [CONTRIBUTING.md → Testing](./CONTRIBUTING.md#testing) for the pattern.
+- **Manual QA checklists** live at [`docs/qa/`](./docs/qa/) — 30+ files covering:
+  - [`RELEASE_SMOKE.md`](./docs/qa/RELEASE_SMOKE.md) — pre-release smoke (~15 min)
+  - [`driver-matrix.md`](./docs/qa/driver-matrix.md) — connectivity + CRUD per dialect
+  - [`features/`](./docs/qa/features/) — 13 per-feature checklists (editor / grid / transactions / AI / safety / …)
+  - [`databases/`](./docs/qa/databases/) — 16 per-dialect deep checklists (object DDL / users / roles / queries) covering all 22 supported dialects
+
+For a release, open a [🚦 Release Smoke issue](https://github.com/duhbbx/SkylerX/issues/new/choose) — the template auto-populates the checklist. For a PR, copy the matching section into the PR body's "Manual test" block (the [PR template](./.github/PULL_REQUEST_TEMPLATE.md) prompts you).
+
 ## License
 
 [Apache License 2.0](./LICENSE) — desktop app is open source.

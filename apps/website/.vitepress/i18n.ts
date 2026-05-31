@@ -44,6 +44,7 @@ export interface LocaleLabels {
   productivity: string
   advancedFeatures: string
   troubleshooting: string
+  testingQuality: string
 
   // UI labels
   outlineLabel: string
@@ -98,6 +99,7 @@ export const ZH: LocaleLabels = {
   productivity: '生产力(命令面板/快捷键/Dashboard/Webhook)',
   advancedFeatures: '高级特性(EXPLAIN/索引/迁移向导)',
   troubleshooting: '排错与兼容性',
+  testingQuality: '测试与质量保障',
   outlineLabel: '本页目录',
   prevPage: '上一篇',
   nextPage: '下一篇',
@@ -148,6 +150,7 @@ export const EN: LocaleLabels = {
   productivity: 'Productivity (Palette / Shortcuts / Dashboard / Webhook)',
   advancedFeatures: 'Advanced Features (EXPLAIN / Index / Migration Wizard)',
   troubleshooting: 'Troubleshooting',
+  testingQuality: 'Testing & Quality',
   outlineLabel: 'On this page',
   prevPage: 'Previous',
   nextPage: 'Next',
@@ -198,6 +201,7 @@ export const ES: LocaleLabels = {
   productivity: 'Productividad (Paleta / Atajos / Dashboard / Webhook)',
   advancedFeatures: 'Características avanzadas (EXPLAIN / Índice / Migración)',
   troubleshooting: 'Solución de problemas',
+  testingQuality: 'Pruebas y calidad',
   outlineLabel: 'En esta página',
   prevPage: 'Anterior',
   nextPage: 'Siguiente',
@@ -248,6 +252,7 @@ export const FR: LocaleLabels = {
   productivity: 'Productivité (Palette / Raccourcis / Dashboard / Webhook)',
   advancedFeatures: 'Fonctionnalités avancées (EXPLAIN / Index / Migration)',
   troubleshooting: 'Dépannage',
+  testingQuality: 'Tests et qualité',
   outlineLabel: 'Sur cette page',
   prevPage: 'Précédent',
   nextPage: 'Suivant',
@@ -298,6 +303,7 @@ export const JA: LocaleLabels = {
   productivity: '生産性(パレット/ショートカット/ダッシュボード/Webhook)',
   advancedFeatures: '高度な機能(EXPLAIN/インデックス/移行ウィザード)',
   troubleshooting: 'トラブルシューティング',
+  testingQuality: 'テストと品質保証',
   outlineLabel: 'このページの目次',
   prevPage: '前へ',
   nextPage: '次へ',
@@ -348,6 +354,7 @@ export const KO: LocaleLabels = {
   productivity: '생산성(팔레트/단축키/대시보드/Webhook)',
   advancedFeatures: '고급 기능(EXPLAIN/인덱스/마이그레이션)',
   troubleshooting: '문제 해결',
+  testingQuality: '테스트 및 품질',
   outlineLabel: '이 페이지 목차',
   prevPage: '이전',
   nextPage: '다음',
@@ -398,6 +405,7 @@ export const PT: LocaleLabels = {
   productivity: 'Produtividade (Paleta / Atalhos / Dashboard / Webhook)',
   advancedFeatures: 'Recursos avançados (EXPLAIN / Índice / Migração)',
   troubleshooting: 'Solução de problemas',
+  testingQuality: 'Testes e qualidade',
   outlineLabel: 'Nesta página',
   prevPage: 'Anterior',
   nextPage: 'Próximo',
@@ -1614,6 +1622,7 @@ export function makeThemeConfig(L: LocaleLabels, prefix: string): DefaultTheme.C
           items: [
             { text: L.advancedFeatures, link: `${prefix}/docs/advanced` },
             { text: L.troubleshooting, link: `${prefix}/docs/troubleshooting` },
+            { text: L.testingQuality, link: `${prefix}/docs/testing` },
           ],
         },
       ],

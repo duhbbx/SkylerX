@@ -19,9 +19,9 @@ Hand-runnable test cases for SkylerX. These cover what unit tests can't reach: r
 
 ### Top-level
 - [`RELEASE_SMOKE.md`](./RELEASE_SMOKE.md) — pre-release smoke, ~15 min, all features touched briefly
-- [`driver-matrix.md`](./driver-matrix.md) — per-dialect connectivity + CRUD + metadata battery
+- [`driver-matrix.md`](./driver-matrix.md) — per-dialect connectivity + CRUD + metadata battery (breadth check)
 
-### Per-feature (`features/`)
+### Per-feature (`features/`) — depth check, one file per major feature area
 - [`connections.md`](./features/connections.md) — new / edit / test / delete / duplicate / prod-flag / encryption
 - [`sql-editor.md`](./features/sql-editor.md) — Monaco, run, format, AI inline completion, params, snippets, multi-tab
 - [`result-grid.md`](./features/result-grid.md) — virtual scroll, edit, JSON/BLOB viewer, sparkline, filter, sort, ask-AI on error
@@ -35,6 +35,23 @@ Hand-runnable test cases for SkylerX. These cover what unit tests can't reach: r
 - [`multi-window-i18n.md`](./features/multi-window-i18n.md) — multi-window, 7-locale switch, RTL safety
 - [`auto-update.md`](./features/auto-update.md) — check, download, install, GitHub / OSS-CN channel switch
 - [`safety.md`](./features/safety.md) — prod-flag confirm, dangerous-SQL guard, settings encryption, audit log
+
+### Per-database (`databases/`) — depth check, one file per dialect family
+
+Object DDL, users / roles / grants, dialect-specific query semantics, regression bait.
+See [`databases/README.md`](./databases/README.md) for the full index.
+
+**Relational families** (shared driver = one file per family):
+- [`databases/mysql-family.md`](./databases/mysql-family.md) — MySQL · MariaDB · OceanBase (MySQL mode) · TiDB
+- [`databases/doris-starrocks.md`](./databases/doris-starrocks.md) — Apache Doris · StarRocks
+- [`databases/postgres-family.md`](./databases/postgres-family.md) — PostgreSQL · KingbaseES · CockroachDB · Greenplum · openGauss · H2 (PG-server)
+- [`databases/redshift.md`](./databases/redshift.md) — Amazon Redshift (PG-wire + cloud DW quirks)
+
+**Standalone SQL** (one file per dialect):
+- [`databases/sqlserver.md`](./databases/sqlserver.md) · [`oracle.md`](./databases/oracle.md) · [`dm.md`](./databases/dm.md) · [`sqlite.md`](./databases/sqlite.md) · [`duckdb.md`](./databases/duckdb.md) · [`clickhouse.md`](./databases/clickhouse.md) · [`snowflake.md`](./databases/snowflake.md) · [`tdengine.md`](./databases/tdengine.md)
+
+**NoSQL** (one file per dialect, all use `executeCommand` channel):
+- [`databases/mongodb.md`](./databases/mongodb.md) · [`redis.md`](./databases/redis.md) · [`elasticsearch.md`](./databases/elasticsearch.md)
 
 ## How to use a checklist in a PR
 
@@ -53,5 +70,15 @@ Hand-runnable test cases for SkylerX. These cover what unit tests can't reach: r
 ## Adding a new checklist
 
 - For a new feature → new file under `features/`, follow the template at the top of any existing file
-- For a new driver → add a row to `driver-matrix.md`
-- Always update this `README.md` index when adding a file
+- For a new driver → add a row to `driver-matrix.md` (breadth) AND a deep file under `databases/` (depth, follow the section structure in `databases/README.md`)
+- For a new dialect inside an existing family → append a column / row to the family file under `databases/`
+- Always update this `README.md` index AND `databases/README.md` index when adding a file
+
+## Stats
+
+As of writing:
+
+- 1 top-level smoke + 1 driver matrix
+- 13 per-feature checklists
+- 16 per-database checklists (covering 22 dialects across 13 driver implementations + 3 NoSQL channels)
+- Combined: ~6000 lines, ~1000 ticked checkboxes — read what you need, not all of it at once
