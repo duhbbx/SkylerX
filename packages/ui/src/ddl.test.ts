@@ -13,6 +13,7 @@ import {
   emptyColumn,
   emptyTableSpec,
   formatBytes,
+  objectDdlQuery,
   previewSql,
   quoteId,
 } from './ddl'
@@ -312,5 +313,40 @@ describe('buildDrop', () => {
       node(MetaNodeKind.Trigger, 'trg', undefined, ['public', 'orders', 'trg']),
     )
     expect(pg?.sql).toBe('DROP TRIGGER "trg" ON "orders"')
+  })
+})
+
+describe('objectDdlQuery — oracle family (Oracle/DM)', () => {
+  const n = (kind: MetaNodeKind, name: string) =>
+    node(kind, name, `"HR"."${name}"`, ['HR', name])
+
+  it('sequence → get_ddl SEQUENCE', () => {
+    const q = objectDdlQuery(DbDialect.Oracle, 'sequence', '"HR"."S1"', n(MetaNodeKind.Sequence, 'S1'))
+    expect(q?.mode).toBe('oracle-ddl')
+    expect(q?.sql).toContain("get_ddl('SEQUENCE', 'S1', 'HR')")
+    expect(q?.bodySql).toBeUndefined()
+  })
+
+  it('synonym → get_ddl SYNONYM', () => {
+    const q = objectDdlQuery(DbDialect.DM, 'synonym', '"HR"."V1"', n(MetaNodeKind.Synonym, 'V1'))
+    expect(q?.sql).toContain("get_ddl('SYNONYM', 'V1', 'HR')")
+    expect(q?.bodySql).toBeUndefined()
+  })
+
+  it('package → spec sql + body bodySql', () => {
+    const q = objectDdlQuery(DbDialect.DM, 'package', '"HR"."PKG"', n(MetaNodeKind.Package, 'PKG'))
+    expect(q?.sql).toContain("get_ddl('PACKAGE', 'PKG', 'HR')")
+    expect(q?.bodySql).toContain("get_ddl('PACKAGE_BODY', 'PKG', 'HR')")
+  })
+
+  it('type → spec sql + body bodySql', () => {
+    const q = objectDdlQuery(DbDialect.Oracle, 'type', '"HR"."T1"', n(MetaNodeKind.Type, 'T1'))
+    expect(q?.sql).toContain("get_ddl('TYPE', 'T1', 'HR')")
+    expect(q?.bodySql).toContain("get_ddl('TYPE_BODY', 'T1', 'HR')")
+  })
+
+  it('escapes single quotes in names', () => {
+    const q = objectDdlQuery(DbDialect.Oracle, 'sequence', `"HR"."O'X"`, node(MetaNodeKind.Sequence, "O'X", `"HR"."O'X"`, ['HR', "O'X"]))
+    expect(q?.sql).toContain("get_ddl('SEQUENCE', 'O''X', 'HR')")
   })
 })

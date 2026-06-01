@@ -209,6 +209,13 @@ export interface ObjectDdlFetch {
   mode: 'showCreate' | 'viewdef' | 'funcdef' | 'oracle-ddl'
   /** viewdef 模式：拼到 pg_get_viewdef 结果前的前缀 */
   prefix?: string
+  /**
+   * oracle-ddl 模式专用：包/类型有 spec + body 两段。
+   * 主 sql 取 spec；bodySql 取 body（PACKAGE_BODY / TYPE_BODY）。
+   * body 可能不存在（spec-only 包、无 body 的简单类型）——消费方执行 bodySql 时
+   * 必须 try/catch，缺 body 时静默忽略，只用 spec。
+   */
+  bodySql?: string
 }
 
 /**
@@ -265,7 +272,15 @@ export function objectDdlQuery(
             ? 'PROCEDURE'
             : kind === 'trigger'
               ? 'TRIGGER'
-              : null
+              : kind === 'sequence'
+                ? 'SEQUENCE'
+                : kind === 'synonym'
+                  ? 'SYNONYM'
+                  : kind === 'package'
+                    ? 'PACKAGE'
+                    : kind === 'type'
+                      ? 'TYPE'
+                      : null
     if (!oraType) return null
     // 优先从 node.path 拿 schema/name(精确大小写);没有 node 时反解析 ref
     let schema: string
@@ -281,9 +296,15 @@ export function objectDdlQuery(
     }
     // 只 escape 单引号 (不动大小写). 名字按 Oracle 实际存储形式查.
     const esc = (s: string) => s.replace(/'/g, "''")
+    const getDdl = (t: string) =>
+      `SELECT dbms_metadata.get_ddl('${t}', '${esc(name)}', '${esc(schema)}') AS "ddl" FROM dual`
+    // 包 / 对象类型有 spec + body 两段；body 由消费方单独执行（可能不存在）。
+    const bodyType =
+      kind === 'package' ? 'PACKAGE_BODY' : kind === 'type' ? 'TYPE_BODY' : null
     return {
-      sql: `SELECT dbms_metadata.get_ddl('${oraType}', '${esc(name)}', '${esc(schema)}') AS "ddl" FROM dual`,
+      sql: getDdl(oraType),
       mode: 'oracle-ddl',
+      ...(bodyType ? { bodySql: getDdl(bodyType) } : {}),
     }
   }
   return null
@@ -605,7 +626,16 @@ export function erdContext(dialect: DbDialect, node: TreeNode): TableContext {
 }
 
 /** 可在 Tab 中新建的对象类型。 */
-export type ObjectKind = 'table' | 'view' | 'function' | 'procedure' | 'trigger'
+export type ObjectKind =
+  | 'table'
+  | 'view'
+  | 'function'
+  | 'procedure'
+  | 'trigger'
+  | 'sequence'
+  | 'package'
+  | 'type'
+  | 'synonym'
 
 export const OBJECT_LABEL: Record<ObjectKind, string> = {
   table: '新建表',
