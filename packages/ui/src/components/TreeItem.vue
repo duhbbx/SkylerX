@@ -49,6 +49,17 @@ const displayChildren = computed<TreeNode[]>(() => {
       )
     }
   }
+  // #24 v2: Database 节点下 Schema 子节点的二级过滤
+  if (props.node.kind === MetaNodeKind.Database) {
+    const schemaAllow = ctrl.connVisibleSchemas(props.connId, props.node.name)
+    if (schemaAllow) {
+      kids = kids.filter((k) => k.kind !== MetaNodeKind.Schema || schemaAllow.has(k.name))
+    }
+  }
+  // #A 搜索过滤: 留下命中或有命中后代的子节点; 在 #24 白名单之后跑.
+  if (ctrl.searchActive()) {
+    kids = kids.filter((k) => ctrl.nodeMatchesSearch(k))
+  }
   if (!settings.navSortByUsage || kids.length < 2) return kids
   const sortable = kids.every(
     (k) => k.kind === MetaNodeKind.Database || k.kind === MetaNodeKind.Schema,
@@ -60,6 +71,15 @@ const displayChildren = computed<TreeNode[]>(() => {
     if (ub !== ua) return ub - ua
     return a.name.localeCompare(b.name)
   })
+})
+
+/** #A: 搜索激活时, 已加载且至少一个子节点命中 → 强制展开, 让命中项立即可见.
+ *  自身名字命中但子节点不命中的情况不强展 (那只需要本节点显示, 子层无需揭开). */
+const forceExpand = computed(() => {
+  if (!ctrl.searchActive()) return false
+  const kids = props.node.children
+  if (kids == null) return false
+  return kids.some((k) => ctrl.nodeMatchesSearch(k))
 })
 
 /** #24: 连接节点旁的过滤指示器 — 启用时画一个小漏斗图标提示 */
@@ -209,7 +229,7 @@ function onContext(e: MouseEvent): void {
       </button>
     </div>
 
-    <template v-if="node.expanded">
+    <template v-if="node.expanded || forceExpand">
       <!-- 之前这里有 v-if="node.loading" 的 "加载中..." 行,会引起兄弟节点重排闪烁;
            现在改为 caret 上显示 ⟳ spinner,这里只渲染真实 children。 -->
       <TreeItem

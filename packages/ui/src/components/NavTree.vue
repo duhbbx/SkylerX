@@ -131,6 +131,8 @@ const emit = defineEmits<{
   openWorkspaceExport: []
   /** #24: 打开 "配置可见库/Schema" 对话框 */
   configureNavFilter: [connId: string]
+  /** #D: 打开 "进程/会话列表" 对话框 */
+  openProcessList: [connId: string]
 }>()
 
 // 批量可选的对象类型(与可删除类型一致). Connection 单独走另一套(connection multi-set)
@@ -180,10 +182,55 @@ interface ConnRoot {
   /** #24: 配置过滤时 snapshot 的总数 (top-level database/schema 数量).
    *  用于 N/M chip 在连接未展开时也能立即显示分母. 跟 visibleDatabases 一起进/出. */
   visibleDatabasesTotal?: number
+  /** #24 v2: 每个库下的可见 schema 白名单. key=database name, value=schema names.
+   *  unset/缺 key = 该库下全显; 空数组 = 该库下全隐 (罕见但允许). 仅对支持库→schema
+   *  两层结构的方言有效 (PG 系 / MSSQL / ClickHouse), Oracle/DM 这种 conn 直挂 schema
+   *  的方言走顶层 visibleDatabases 已经覆盖. */
+  visibleSchemas?: Record<string, string[]>
 }
 
 const roots = ref<ConnRoot[]>([])
 const expandedGroups = ref<Set<string>>(new Set())
+
+/**
+ * NavTree 内 search box (#A): 实时按名字过滤可见节点 — 仅匹配已加载的节点子树
+ * (children===null 的懒加载分支不强制 fetch). 过滤算法在 TreeItem 里读
+ * controller.search()/nodeMatchesSearch() 后跑, 连接根级在下面 groupList/ungrouped
+ * computed 里也过滤. 匹配节点的祖先链整链显示, 即使祖先名字不匹配 — 否则用户找不到
+ * 路径. 清空 = 恢复全树. */
+const searchQuery = ref('')
+const searchVisible = ref(false)
+const searchInputEl = ref<HTMLInputElement>()
+const searchLower = computed(() => searchQuery.value.trim().toLowerCase())
+
+function toggleSearch(): void {
+  if (searchQuery.value) {
+    // 有内容时 🔍 按钮 = 清空 + 关闭
+    searchQuery.value = ''
+    searchVisible.value = false
+    return
+  }
+  searchVisible.value = !searchVisible.value
+  if (searchVisible.value) {
+    void nextTick(() => searchInputEl.value?.focus())
+  }
+}
+function closeSearch(): void {
+  searchQuery.value = ''
+  searchVisible.value = false
+}
+
+/** 递归判断: 该节点自身名字命中, 或任何已加载的后代命中.
+ *  懒加载未触发 (children===null) 时无法判断, 严格隐藏 — 用户搜不出来时
+ *  清空搜索框手动展开就行, 没有跨连接强制网络请求的成本. */
+function nodeMatchesSearch(node: TreeNode): boolean {
+  const q = searchLower.value
+  if (!q) return true
+  if (node.name.toLowerCase().includes(q)) return true
+  const kids = node.children
+  if (kids == null) return false
+  return kids.some(nodeMatchesSearch)
+}
 
 /**
  * 按 group 聚合,并按 settings.groupOrder 排序:
@@ -191,6 +238,13 @@ const expandedGroups = ref<Set<string>>(new Set())
  *  - 空分组(只在 groupOrder 里出现但没有任何连接)也显示 —— 支持"先建组再分进去"流程
  *  - 同分组内连接按 sortIndex 升序(缺省走 createdAt)
  */
+/** 应用搜索过滤到一个连接根列表 — 跟内部 nodeMatchesSearch 同语义:
+ *  连接名命中 / 已展开的子树有命中 → 保留; 严格匹配, 不渲染懒加载未触发的连接. */
+function applyConnSearch(list: ConnRoot[]): ConnRoot[] {
+  if (!searchLower.value) return list
+  return list.filter((r) => nodeMatchesSearch(r.node))
+}
+
 const groupList = computed(() => {
   const m = new Map<string, ConnRoot[]>()
   for (const r of roots.value) {
@@ -213,9 +267,9 @@ const groupList = computed(() => {
     if (ib != null) return 1
     return a.localeCompare(b)
   })
-  return ordered.map(([name, conns]) => ({ name, conns: sortRoots(conns) }))
+  return ordered.map(([name, conns]) => ({ name, conns: applyConnSearch(sortRoots(conns)) }))
 })
-const ungrouped = computed(() => sortRoots(roots.value.filter((r) => !r.group)))
+const ungrouped = computed(() => applyConnSearch(sortRoots(roots.value.filter((r) => !r.group))))
 
 /**
  * Visible flat list of expandable / selectable object-nodes inside connections,
@@ -493,7 +547,18 @@ const controller: TreeController = {
   connVisibleTotal(connId) {
     return roots.value.find((r) => r.id === connId)?.visibleDatabasesTotal ?? null
   },
+  connVisibleSchemas(connId, database) {
+    const root = roots.value.find((r) => r.id === connId)
+    const map = root?.visibleSchemas
+    if (!map) return null
+    const list = map[database]
+    if (!Array.isArray(list)) return null
+    return new Set(list)
+  },
   configureNavFilter: (connId) => emit('configureNavFilter', connId),
+  searchActive: () => searchLower.value.length > 0,
+  nodeMatchesSearch,
+  openProcessList: (connId) => emit('openProcessList', connId),
 }
 
 provide(TreeControllerKey, controller)
@@ -656,7 +721,11 @@ async function reload(): Promise<void> {
     const node = reused ?? rootNode(c.name || t('common.untitled'))
     if (reused) reused.name = c.name || t('common.untitled')
     const extra = c.extra as
-      | { visibleDatabases?: unknown; visibleDatabasesTotal?: unknown }
+      | {
+          visibleDatabases?: unknown
+          visibleDatabasesTotal?: unknown
+          visibleSchemas?: unknown
+        }
       | undefined
     const allow = extra?.visibleDatabases
     const visibleDatabases =
@@ -666,6 +735,16 @@ async function reload(): Promise<void> {
     const totalRaw = extra?.visibleDatabasesTotal
     const visibleDatabasesTotal =
       typeof totalRaw === 'number' && Number.isFinite(totalRaw) ? totalRaw : undefined
+    // visibleSchemas: 防御性 — 期望是 Record<string, string[]>, 防错码塞了别的类型
+    let visibleSchemas: Record<string, string[]> | undefined
+    const vs = extra?.visibleSchemas
+    if (vs && typeof vs === 'object' && !Array.isArray(vs)) {
+      const cleaned: Record<string, string[]> = {}
+      for (const [k, v] of Object.entries(vs)) {
+        if (Array.isArray(v)) cleaned[k] = v.filter((x): x is string => typeof x === 'string')
+      }
+      if (Object.keys(cleaned).length > 0) visibleSchemas = cleaned
+    }
     return {
       id: c.id,
       node,
@@ -676,6 +755,7 @@ async function reload(): Promise<void> {
       createdAt: c.createdAt,
       visibleDatabases,
       visibleDatabasesTotal,
+      visibleSchemas,
     }
   })
   // 新出现的分组默认展开（保留用户已折叠的）
@@ -844,7 +924,21 @@ defineExpose({
   expandAll,
   collapseAll,
 })
-onMounted(reload)
+onMounted(() => {
+  void reload()
+  // #A: 全局 Ctrl/Cmd+F 仅在焦点不在 Monaco 编辑器内时拦截 (Monaco 自己的 find 优先).
+  // 检测方式: e.target 不在 .monaco-editor 容器里就吃这个事件; 否则放行.
+  function onKey(e: KeyboardEvent): void {
+    if (!(e.key === 'f' || e.key === 'F')) return
+    if (!(e.ctrlKey || e.metaKey)) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest('.monaco-editor')) return // 让 Monaco 接管
+    e.preventDefault()
+    searchVisible.value = true
+    void nextTick(() => searchInputEl.value?.focus())
+  }
+  window.addEventListener('keydown', onKey)
+})
 
 // ─── 拖拽排序 ──────────────────────────────────────────────────────
 // 两个独立的拖拽通道:
@@ -1068,6 +1162,12 @@ function onGroupDrop(targetGroup: string): void {
     <div class="tree-head">
       <span>{{ t('nav.title') }}</span>
       <span class="head-actions">
+        <button
+          class="icon"
+          :class="{ on: searchQuery }"
+          :title="searchQuery ? '清空搜索' : '搜索 (Ctrl/⌘+F)'"
+          @click="toggleSearch"
+        >🔍</button>
         <button class="icon" :title="t('nav.newConn')" @click="controller.newConnection()">+</button>
         <button class="icon" :title="t('nav.refresh')" @click="reload">⟳</button>
         <button class="icon" :title="t('nav.expandAll')" @click="expandAll">⊞</button>
@@ -1083,6 +1183,24 @@ function onGroupDrop(targetGroup: string): void {
         <!-- Workspace 导出/导入(换电脑 / 团队共享) -->
         <button class="icon" title="导出/导入 workspace(连接 + Snippets)" @click="emit('openWorkspaceExport')">💾</button>
       </span>
+    </div>
+    <!-- #A: 搜索栏 — 平时隐藏, 点 🔍 / 按 Ctrl+F 展开. v-show 保留 DOM 让 input
+         ref 始终拿得到, focus() 立即响应. -->
+    <div v-show="searchVisible" class="tree-search-wrap">
+      <input
+        ref="searchInputEl"
+        v-model="searchQuery"
+        class="tree-search"
+        type="text"
+        placeholder="搜索 库 / 表 / 列..."
+        @keydown.escape="closeSearch"
+      />
+      <button
+        v-if="searchQuery"
+        class="tree-search-clear"
+        title="清空"
+        @click="searchQuery = ''"
+      >×</button>
     </div>
     <div ref="treeBodyEl" class="tree-body" @contextmenu="onTreeBodyContextmenu">
       <div v-if="!roots.length" class="tree-status">{{ t('nav.empty') }}</div>
@@ -1232,6 +1350,44 @@ function onGroupDrop(targetGroup: string): void {
   flex-direction: column;
   background: var(--panel);
 }
+/* #A 搜索栏 — 平时隐藏 (v-show), 显示时贴在 tree-head 和 tree-body 之间 */
+.tree-search-wrap {
+  position: relative;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.tree-search {
+  width: 100%;
+  padding: 5px 26px 5px 10px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  box-sizing: border-box;
+}
+.tree-search:focus {
+  border-color: var(--accent, #7c6cff);
+}
+.tree-search-clear {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.tree-search-clear:hover {
+  color: var(--text);
+}
+
 .tree-head {
   padding: 10px 12px;
   font-size: 13px;

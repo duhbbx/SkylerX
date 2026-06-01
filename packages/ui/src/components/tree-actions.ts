@@ -752,6 +752,18 @@ export const TREE_ACTIONS: TreeAction[] = [
     kinds: [MetaNodeKind.Connection],
     run: ({ connId, ctrl }) => ctrl.configureNavFilter(connId),
   },
+  // #D: 进程/会话列表 + Kill. 排除 NoSQL — Mongo/Redis/ES 没 SQL 进程概念
+  // (Mongo 有 currentOp / Redis 有 CLIENT LIST 但走不同 UI), SQLite/DuckDB
+  // 是文件型同样无意义.
+  {
+    id: 'process-list',
+    label: 'ctx.process-list',
+    section: 'conn',
+    kinds: [MetaNodeKind.Connection],
+    excludeKind: DbKind.NoSql,
+    excludeDialects: [DbDialect.SQLite, DbDialect.DuckDB],
+    run: ({ connId, ctrl }) => ctrl.openProcessList(connId),
+  },
 
   // ── 刷新 ──
   {

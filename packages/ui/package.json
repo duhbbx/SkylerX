@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@db-tool/shared-types": "workspace:*",
+    "echarts": "^6.1.0",
     "marked": "^18.0.4",
     "monaco-editor": "^0.52.2",
     "sql-formatter": "^15.4.0",

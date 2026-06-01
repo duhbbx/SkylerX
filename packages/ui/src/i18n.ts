@@ -1409,6 +1409,7 @@ const DICT: Record<string, [string, string]> = {
     '配置可见库 / Schema...',
     'Configure visible databases / schemas...',
   ],
+  'ctx.process-list': ['进程 / 会话列表 + Kill...', 'Process / session list + Kill...'],
   'ctx.refresh': ['刷新', 'Refresh'],
   'ctx.drop-object': ['删除', 'Drop'],
   'ctx.del-conn': ['删除连接', 'Delete connection'],

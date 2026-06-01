@@ -23,6 +23,7 @@ import AiSchemaReverseDialog from './components/AiSchemaReverseDialog.vue'
 import AiToolboxDialog from './components/AiToolboxDialog.vue'
 import AppDialogs from './components/AppDialogs.vue'
 import BackupRestoreDialog from './components/BackupRestoreDialog.vue'
+import ChartViewerDialog from './components/ChartViewerDialog.vue'
 import ClickHouseAdvancedDialog from './components/ClickHouseAdvancedDialog.vue'
 import ClusterTopologyDialog from './components/ClusterTopologyDialog.vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
@@ -60,6 +61,7 @@ import PasteImportDialog from './components/PasteImportDialog.vue'
 import PgAdvancedDialog from './components/PgAdvancedDialog.vue'
 import PiiScannerDialog from './components/PiiScannerDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
+import ProcessListDialog from './components/ProcessListDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
 import RedisBigKeysDialog from './components/RedisBigKeysDialog.vue'
 import RedisImportExportDialog from './components/RedisImportExportDialog.vue'
@@ -1854,6 +1856,18 @@ const navFilterOpen = ref<ConnectionConfig | null>(null)
 async function onConfigureNavFilter(connId: string): Promise<void> {
   navFilterOpen.value = await client.connections.get(connId)
 }
+
+/** #D: 进程/会话列表 */
+const processListOpen = ref<ConnectionConfig | null>(null)
+async function onOpenProcessList(connId: string): Promise<void> {
+  processListOpen.value = await client.connections.get(connId)
+}
+
+/** #B: 结果集图表 viewer — 只在打开时持有 result snapshot, 关掉就丢. */
+const chartOpen = ref<import('@db-tool/shared-types').QueryResult | null>(null)
+function onOpenChart(r: import('@db-tool/shared-types').QueryResult): void {
+  chartOpen.value = r
+}
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -2961,6 +2975,7 @@ onMounted(async () => {
     @open-ai-schema-architect="(cid, db) => client.connections.get(cid).then(c => { aiArchOpen = { conn: c, database: db } })"
     @open-workspace-export="wsExportOpen = true"
     @configure-nav-filter="onConfigureNavFilter"
+    @open-process-list="onOpenProcessList"
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
@@ -2986,6 +3001,7 @@ onMounted(async () => {
       @ai="onAiFromPane"
       @ask-ai-about-error="onAskAiAboutError"
       @search-value="(p) => { searchValueOpen = { connId: p.connId, value: p.value } }"
+      @open-chart="onOpenChart"
       @redis-open-search="(c) => { redisSearchOpen = { conn: c } }"
       @redis-open-import="(c, db) => { redisIeOpen = { conn: c, dbIndex: db, mode: 'import' } }"
       @redis-open-export="(c, db) => { redisIeOpen = { conn: c, dbIndex: db, mode: 'export' } }"
@@ -3556,6 +3572,16 @@ onMounted(async () => {
     @close="navFilterOpen = null"
     @saved="navRef?.reload()"
   />
+
+  <!-- #D 进程/会话列表 + Kill -->
+  <ProcessListDialog
+    v-if="processListOpen"
+    :conn="processListOpen"
+    @close="processListOpen = null"
+  />
+
+  <!-- #B 结果集图表 viewer (ECharts) -->
+  <ChartViewerDialog v-if="chartOpen" :result="chartOpen" @close="chartOpen = null" />
 
   <!-- 新建数据库 -->
   <NewDatabaseDialog

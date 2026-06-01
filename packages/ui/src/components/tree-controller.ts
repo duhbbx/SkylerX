@@ -160,8 +160,18 @@ export interface TreeController {
   /** #24: 配置过滤时 snapshot 的顶层总数 — 用于 chip 的分母. 即便连接未展开
    *  也能立即显示 "N/M", 而不是只有 N. 没配过过滤时返回 null. */
   connVisibleTotal(connId: string): number | null
+  /** #24 v2: 某连接下某库的可见 schema 白名单. null = 该库无过滤(全显);
+   *  Set = 仅这些 schema 可见; 空 Set = 该库下全隐. */
+  connVisibleSchemas(connId: string, database: string): Set<string> | null
   /** #24: 打开 "配置可见库/Schema" 对话框. */
   configureNavFilter(connId: string): void
+  /** #A: 当前搜索是否激活 (非空 query). TreeItem 据此决定是否套搜索过滤,
+   *  以及搜索时是否强制展开已加载分支让命中可见. */
+  searchActive(): boolean
+  /** #A: 节点是否通过搜索 — 自身名字命中或任一已加载后代命中. */
+  nodeMatchesSearch(node: TreeNode): boolean
+  /** #D: 打开 "进程 / 会话列表" 对话框 (process list + kill). */
+  openProcessList(connId: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

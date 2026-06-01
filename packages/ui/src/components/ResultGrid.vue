@@ -78,6 +78,8 @@ const emit = defineEmits<{
    * 含 LEFT JOIN 的新 SQL（带 ref_table.label 列），openDraft 新建查询 tab。
    */
   expandFk: [payload: { fkCol: string; refTable: string; refColumn: string }]
+  /** #B 打开结果集图表 viewer (按当前 result 渲染). */
+  openChart: []
 }>()
 
 const PAGE_SIZES = [100, 200, 500, 1000]
@@ -1559,6 +1561,13 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
           · {{ result.executionTimeMs }} ms
           <span v-if="result.truncated" class="trunc">{{ t('grid.truncated') }}</span>
         </span>
+
+        <button
+          v-if="result.columns.length && (result.rows?.length ?? 0) > 0"
+          class="exp-btn"
+          title="图表 viewer — 把当前结果集渲染为折线/柱状/饼/散点"
+          @click="emit('openChart')"
+        >📊 图表</button>
 
         <div v-if="result.columns.length" class="export-box">
           <button class="exp-btn" :title="t('grid.exportTitle')" @click.stop="toggleExport">{{ t('grid.export') }}</button>

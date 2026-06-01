@@ -86,6 +86,8 @@ const emit = defineEmits<{
   askAiAboutError: [payload: { connId: string; connName?: string; sql: string; error: string }]
   /** A8 反向查找单元格值 */
   searchValue: [payload: { connId: string; value: string }]
+  /** #B 打开结果集图表 viewer (按当前 result 渲染) */
+  openChart: [result: QueryResult]
 }>()
 
 const sql = ref('SELECT 1;')
@@ -1547,6 +1549,7 @@ defineExpose({
         @expand-fk="onExpandFk"
         @ask-ai="(p) => emit('askAiAboutError', p)"
         @search-value="(v) => emit('searchValue', { connId: conn.id, value: v })"
+        @open-chart="() => cur?.result && emit('openChart', cur.result)"
       />
     </div>
 

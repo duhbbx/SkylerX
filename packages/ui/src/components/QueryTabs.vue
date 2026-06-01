@@ -3,7 +3,13 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { type ConnectionConfig, DbDialect, DbKind, dialectKind } from '@db-tool/shared-types'
+import {
+  type ConnectionConfig,
+  DbDialect,
+  DbKind,
+  type QueryResult,
+  dialectKind,
+} from '@db-tool/shared-types'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
@@ -46,6 +52,8 @@ const emit = defineEmits<{
   ai: [string, string, string]
   askAiAboutError: [payload: { connId: string; connName?: string; sql: string; error: string }]
   searchValue: [payload: { connId: string; value: string }]
+  /** #B 打开结果集图表 viewer */
+  openChart: [result: QueryResult]
   // Redis 顶栏入口转发给 Workspace
   redisOpenSearch: [conn: ConnectionConfig]
   redisOpenImport: [conn: ConnectionConfig, dbIndex: number]
@@ -525,6 +533,7 @@ watch(tabs, saveLayout, { deep: true })
             @new-draft="(sql, title) => openDraft(t.conn, sql, title)"
             @ask-ai-about-error="(p) => emit('askAiAboutError', p)"
             @search-value="(p) => emit('searchValue', p)"
+            @open-chart="(r) => emit('openChart', r)"
           />
           <MongoPane
             v-else-if="t.kind === 'mongoCollection' && t.mongo"

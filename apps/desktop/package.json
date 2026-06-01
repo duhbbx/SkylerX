@@ -30,6 +30,7 @@
     "@elastic/elasticsearch": "^8.15.0",
     "@tdengine/websocket": "^3.1.0",
     "better-sqlite3": "^11.8.1",
+    "dmdb": "^1.0.49630",
     "electron-updater": "^6.3.9",
     "ioredis": "^5.4.1",
     "mongodb": "^6.10.0",
