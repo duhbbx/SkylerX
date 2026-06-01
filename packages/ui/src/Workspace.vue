@@ -1083,7 +1083,7 @@ BEGIN
   -- your statements;
 END;`
     title = t('ws.tabNewEvent')
-  } else if (fam === 'other') {
+  } else if (familyOf(conn.dialect) === 'oracle') {
     // Oracle/DM 家族：包/序列/触发器/类型/同义词的可编辑 SQL 模板。
     const schema = ctx.schema ?? ctx.database ?? 'SCHEMA'
     const s = (n: string) => `${q(schema)}.${q(n)}`
@@ -1651,8 +1651,8 @@ async function fetchObjectDdl(conn: ConnectionConfig, node: TreeNode): Promise<s
       const key = Object.keys(row).find((k) => /^create/i.test(k))
       return key ? String(row[key]) : null
     }
-    const spec = String(row.ddl ?? '')
-    if (q.bodySql) {
+    const spec = String(row.ddl ?? '').trim()
+    if (q.mode === 'oracle-ddl' && q.bodySql) {
       try {
         const rb = await client.connections.execute(conn.id, q.bodySql)
         const body = String((rb.rows[0] as Record<string, unknown>)?.ddl ?? '').trim()
