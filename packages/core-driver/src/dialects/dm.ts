@@ -21,6 +21,17 @@ import { oracleFamilyHelpers } from './base.js'
  * 惰性加载，仅连接时按需 import；部署需自行安装 dmdb + 达梦客户端，桌面端再 electron-rebuild。
  * 达梦 SQL/数据字典与 Oracle 高度兼容（ALL_USERS / ALL_TABLES / ALL_TAB_COLUMNS / DUAL）。
  */
+
+/**
+ * dmdb 强制要求 connectString 为完整 URL（`dm://user:pass@host:port`）;
+ * 早期版本接受 `host:port` 但 1.0.4xxxx 起会抛 "URL must start with 'dm://'".
+ * 用户名/密码里若含 `@/:` 等保留字符需要 percent-encode, 这里统一走 encodeURIComponent.
+ */
+function buildDmUrl(config: ConnectionConfig): string {
+  const user = encodeURIComponent(config.user ?? '')
+  const password = encodeURIComponent(config.password ?? '')
+  return `dm://${user}:${password}@${config.host}:${config.port}`
+}
 async function loadDmdb(): Promise<any> {
   const spec: string = 'dmdb'
   try {
@@ -288,9 +299,7 @@ export function createDmDriver(dialect: DbDialect): DatabaseDriver {
     async connect(config: ConnectionConfig): Promise<DriverConnection> {
       const dmdb = await loadDmdb()
       const pool = await dmdb.createPool({
-        connectString: `${config.host}:${config.port}`,
-        user: config.user,
-        password: config.password,
+        connectString: buildDmUrl(config),
         poolMax: 5,
       })
       return new DmConnection(pool)
@@ -301,9 +310,7 @@ export function createDmDriver(dialect: DbDialect): DatabaseDriver {
       try {
         const dmdb = await loadDmdb()
         const conn = await dmdb.getConnection({
-          connectString: `${config.host}:${config.port}`,
-          user: config.user,
-          password: config.password,
+          connectString: buildDmUrl(config),
         })
         try {
           await conn.execute('SELECT 1 AS "v" FROM dual')
