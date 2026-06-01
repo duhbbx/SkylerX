@@ -68,6 +68,30 @@ const hasNavFilter = computed(
     props.node.kind === MetaNodeKind.Connection && ctrl.connVisibleFilter(props.connId) !== null,
 )
 
+/**
+ * #24: DataGrip-style filter chip: shows "N/M" when filter is active
+ *   N = filter set size (configured visible count)
+ *   M = total top-level children on the server (only known after connection
+ *       has been expanded once — children !== null). Before expansion we
+ *       just show "N" since the server total isn't known yet.
+ *
+ * children may contain non-database/schema nodes for some dialects (Redis
+ * exposes db0..db15 as kind=Database, Mongo exposes kind=Schema for dbs),
+ * but the count semantic stays right: "what the filter applies to" === those
+ * direct children whose kind is Database or Schema.
+ */
+const filterChipText = computed<string>(() => {
+  if (!hasNavFilter.value) return ''
+  const allow = ctrl.connVisibleFilter(props.connId)
+  const n = allow?.size ?? 0
+  const kids = props.node.children
+  if (kids == null) return String(n) // not yet expanded → server total unknown
+  const m = kids.filter(
+    (k) => k.kind === MetaNodeKind.Database || k.kind === MetaNodeKind.Schema,
+  ).length
+  return `${n}/${m}`
+})
+
 async function toggle(): Promise<void> {
   const node = props.node
   if (!node.hasChildren) return
@@ -153,16 +177,19 @@ function onContext(e: MouseEvent): void {
       <span class="label">{{ node.name }}</span>
       <span v-if="node.count != null" class="count">({{ node.count }})</span>
       <span v-if="node.detail?.dataType" class="col-type">{{ node.detail.dataType }}</span>
-      <!-- #24: 过滤配置按钮 — 既是指示器(filter 启用时常驻紫色),又是入口(点击即可配置).
-           替代之前的 .filter-dot 静态 ▼ + 右键菜单两道操作. -->
+      <!-- #24: 过滤入口 — DataGrip 风格.
+           启用时常驻显示 "N/M" chip (细紫框), 否则 hover 才浮一个 ▾ 入口.
+           点击都是开同一个配置对话框. -->
       <button
         v-if="node.kind === 'connection'"
         class="filter-btn"
         :class="{ active: hasNavFilter }"
-        :title="hasNavFilter ? '已过滤 · 点击修改可见库/Schema' : '配置可见库/Schema'"
+        :title="
+          hasNavFilter ? '已配置过滤 · 点击修改可见库/Schema' : '配置可见库/Schema'
+        "
         @click.stop="ctrl.configureNavFilter(connId)"
       >
-        ▼
+        {{ hasNavFilter ? filterChipText : '▾' }}
       </button>
       <button
         v-if="node.kind === 'connection'"
@@ -247,19 +274,22 @@ function onContext(e: MouseEvent): void {
   height: 7px;
   border-radius: 50%;
 }
-/* #24 过滤按钮 — 跟 .edit-btn 的 hover-only 模式一致, 但当过滤已启用时
-   常驻可见(紫色), 用 .active class 切换. margin-left: auto 接管"右对齐",
-   原本是 .edit-btn 的任务, 现在 filter-btn 在前面所以由它承担. */
+/* #24 过滤入口 — 两个状态:
+   静态 = 不启用过滤: 透明 ▾ 入口, hover 才可见 (跟 .edit-btn 一致).
+   启用过滤  : 常驻 "N/M" chip — DataGrip 风格细紫框 + 紧凑字体. */
 .tree-node .filter-btn {
   margin-left: auto;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
   color: var(--muted);
   cursor: pointer;
   opacity: 0;
   padding: 0 4px;
   font-size: 10px;
-  line-height: 1;
+  line-height: 1.4;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  white-space: nowrap;
 }
 .tree-node.conn:hover .filter-btn,
 .tree-node .filter-btn.active {
@@ -267,6 +297,11 @@ function onContext(e: MouseEvent): void {
 }
 .tree-node .filter-btn.active {
   color: var(--accent, #7c6cff);
+  border-color: var(--accent, #7c6cff);
+  background: rgba(124, 108, 255, 0.08);
+}
+.tree-node .filter-btn.active:hover {
+  background: rgba(124, 108, 255, 0.18);
 }
 .label {
   overflow: hidden;
