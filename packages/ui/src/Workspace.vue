@@ -317,6 +317,15 @@ async function onOpenRedisKey(connId: string, dbIndex: number, key: string): Pro
   tabsRef.value?.openRedisDb(conn, dbIndex, key)
 }
 
+/**
+ * #19: 单击 Redis key 联动 — 仅当已经有匹配 db 的 RedisPane tab 时才激活,
+ * 不主动开新 tab. focusRedisDb 同步返回是否命中, 这里不做额外提示
+ * (单击主路径就是浏览, 没命中就当普通 select 处理).
+ */
+function onFocusRedisKey(connId: string, dbIndex: number, key: string): void {
+  tabsRef.value?.focusRedisDb(connId, dbIndex, key)
+}
+
 /** Redis 专属:右键 → 删除 key(DEL),成功后刷新对应类型组节点。 */
 async function onDeleteRedisKey(
   connId: string,
@@ -2927,6 +2936,7 @@ onMounted(async () => {
     @bulk-move-to-group="onBulkMoveToGroup"
     @bulk-test-connections="onBulkTestConnections"
     @open-redis-key="onOpenRedisKey"
+    @focus-redis-key="onFocusRedisKey"
     @delete-redis-key="onDeleteRedisKey"
     @flush-redis-db="onFlushRedisDb"
     @flush-redis-all="onFlushRedisAll"

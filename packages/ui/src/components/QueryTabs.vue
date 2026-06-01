@@ -270,6 +270,24 @@ function openRedisDb(conn: ConnectionConfig, dbIndex: number, pendingKey?: strin
   })
 }
 
+/**
+ * #19: link-only focus — if a redisDb tab for (connId, dbIndex) already exists,
+ * activate it and push pendingKey to select that key in the pane.
+ * Returns true if focused, false if no matching tab is open. Does NOT create
+ * a new tab (that's openRedisDb's job, called from the double-click path).
+ * Used by NavTree's single-click handler so users can scan keys in the tree
+ * and the open Redis tab follows along, without spawning tabs on every click.
+ */
+function focusRedisDb(connId: string, dbIndex: number, pendingKey: string): boolean {
+  const existing = tabs.value.find(
+    (t) => t.kind === 'redisDb' && t.conn.id === connId && t.redis?.dbIndex === dbIndex,
+  )
+  if (!existing) return false
+  activeId.value = existing.id
+  if (existing.redis) existing.redis = { dbIndex, pendingKey }
+  return true
+}
+
 /** 打开「编辑视图/函数/过程」页（DDL 编辑器 edit 模式）。 */
 function editObject(
   conn: ConnectionConfig,
@@ -406,6 +424,7 @@ defineExpose({
   openDraft,
   openMongoCollection,
   openRedisDb,
+  focusRedisDb,
   openEsIndex,
   closeConnTabs,
   closeActive,

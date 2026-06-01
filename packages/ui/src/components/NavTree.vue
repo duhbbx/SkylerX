@@ -85,6 +85,9 @@ const emit = defineEmits<{
   bulkTestConnections: [string[]]
   /** Redis 专属:双击 key 节点 → 打开对应 db 的 RedisPane 并定位 key */
   openRedisKey: [connId: string, dbIndex: number, key: string]
+  /** Redis 专属(#19):单击 key 节点 → 若已有匹配 RedisPane,激活并选中该 key;
+   *  无匹配 tab 则什么都不做(不要单击就自动开 tab). */
+  focusRedisKey: [connId: string, dbIndex: number, key: string]
   /** Redis 专属:右键删除 key */
   deleteRedisKey: [connId: string, dbIndex: number, key: string, parent: TreeNode]
   /** Redis 专属:清空指定逻辑库 dbN */
@@ -296,6 +299,13 @@ const controller: TreeController = {
   },
   select(node, connId) {
     selectedKey.value = nodeKey(node, connId)
+    // #19: 单击 Redis key 节点 → 若已有匹配的 RedisPane tab,联动激活并选中该 key.
+    // node.group === 'redis-key' 是 redis 驱动写入的标记(同 openNode 路径用的判别).
+    // 不主动开新 tab — 那是双击 (openNode → openRedisKey) 的语义.
+    if (node.kind === MetaNodeKind.Column && node.group === 'redis-key' && node.path.length >= 3) {
+      const dbIndex = Number(node.path[0]) || 0
+      emit('focusRedisKey', connId, dbIndex, node.name)
+    }
   },
   isSelected(node, connId) {
     return selectedKey.value === nodeKey(node, connId)
