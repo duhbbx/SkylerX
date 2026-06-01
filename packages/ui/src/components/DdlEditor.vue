@@ -84,6 +84,18 @@ async function loadDefinition(): Promise<void> {
     } else {
       // 'funcdef' (PG) 或 'oracle-ddl' — 都直接读 row.ddl
       code.value = String(row.ddl ?? '').trim()
+      if (q.mode === 'oracle-ddl' && q.bodySql) {
+        try {
+          const rb = await client.connections.execute(props.connId, q.bodySql, [], {
+            database: props.ctx.database,
+            schema: props.ctx.schema,
+          })
+          const body = String((rb.rows[0] as Record<string, unknown>)?.ddl ?? '').trim()
+          if (body) code.value = `${code.value}\n/\n\n${body}`
+        } catch {
+          // 缺 body → 只用 spec。
+        }
+      }
     }
   } catch (e) {
     reportInlineError(error, e)

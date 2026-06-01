@@ -912,6 +912,18 @@ async function onCopyObjectDdl(connId: string, node: TreeNode): Promise<void> {
     } else {
       // 'funcdef' (PG) 或 'oracle-ddl'
       ddl = String(row.ddl ?? '').trim()
+      if (q.mode === 'oracle-ddl' && q.bodySql) {
+        try {
+          const rb = await client.connections.execute(connId, q.bodySql, [], {
+            database: ctx.database,
+            schema: ctx.schema,
+          })
+          const body = String((rb.rows[0] as Record<string, unknown>)?.ddl ?? '').trim()
+          if (body) ddl = `${ddl}\n/\n\n${body}`
+        } catch {
+          // 缺 body（spec-only 包 / 简单类型）→ 忽略。
+        }
+      }
     }
     if (!ddl) {
       await appAlert({ message: t('ws.noDef'), variant: 'warn' })
@@ -1071,6 +1083,29 @@ BEGIN
   -- your statements;
 END;`
     title = t('ws.tabNewEvent')
+  } else if (fam === 'other') {
+    // Oracle/DM 家族：包/序列/触发器/类型/同义词的可编辑 SQL 模板。
+    const schema = ctx.schema ?? ctx.database ?? 'SCHEMA'
+    const s = (n: string) => `${q(schema)}.${q(n)}`
+    if (kind === 'sequence') {
+      sql = `CREATE SEQUENCE ${s('NEW_SEQUENCE')}\n  START WITH 1\n  INCREMENT BY 1\n  MINVALUE 1\n  NOCACHE;`
+      title = t('ws.tabNewSequence')
+    } else if (kind === 'trigger') {
+      sql = `CREATE OR REPLACE TRIGGER ${s('NEW_TRIGGER')}\n  BEFORE INSERT ON ${q(schema)}.${q('TARGET_TABLE')}\n  FOR EACH ROW\nBEGIN\n  NULL;\nEND;`
+      title = t('ws.tabNewTrigger')
+    } else if (kind === 'package') {
+      sql = `CREATE OR REPLACE PACKAGE ${s('NEW_PACKAGE')} AS\n  PROCEDURE hello;\nEND;\n/\n\nCREATE OR REPLACE PACKAGE BODY ${s('NEW_PACKAGE')} AS\n  PROCEDURE hello IS\n  BEGIN\n    NULL;\n  END;\nEND;\n/`
+      title = t('ws.tabNewPackage')
+    } else if (kind === 'type') {
+      sql = `CREATE OR REPLACE TYPE ${s('NEW_TYPE')} AS OBJECT (\n  id NUMBER\n);`
+      title = t('ws.tabNewType')
+    } else if (kind === 'synonym') {
+      sql = `CREATE OR REPLACE SYNONYM ${s('NEW_SYNONYM')} FOR ${q('TARGET_SCHEMA')}.${q('TARGET_OBJECT')};`
+      title = t('ws.tabNewSynonym')
+    } else {
+      await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
+      return
+    }
   } else {
     await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
     return
@@ -1102,6 +1137,11 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const f = definitionQuery(conn.dialect, node)
   if (!f) {
+    // Oracle/DM: definitionQuery 不覆盖 → 走 dbms_metadata.get_ddl（含 spec+body）。
+    if (familyOf(conn.dialect) === 'oracle') {
+      await onCopyToDraftViaDdl(connId, node, conn)
+      return
+    }
     await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
     return
   }
@@ -1124,6 +1164,56 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
   } catch (e) {
     reportError(e, { tag: 'ws.viewDefFail' })
   }
+}
+
+// Oracle/DM「查看定义」回退：用 objectDdlQuery 拉 DDL（含包/类型的 body），开草稿页。
+async function onCopyToDraftViaDdl(
+  connId: string,
+  node: TreeNode,
+  conn: ConnectionConfig,
+): Promise<void> {
+  const ctx = deriveContext(conn.dialect, node)
+  const q = objectDdlQuery(conn.dialect, node.kind as ObjectKind, objectRef(conn.dialect, node), node)
+  if (!q) {
+    await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
+    return
+  }
+  try {
+    const ddl = await runOracleDdl(connId, q, ctx)
+    if (!ddl) {
+      await appAlert({ message: t('ws.noDef'), variant: 'warn' })
+      return
+    }
+    tabsRef.value?.openDraft(conn, ddl, t('ws.tabDef', { name: node.name }))
+  } catch (e) {
+    reportError(e, { tag: 'ws.viewDefFail' })
+  }
+}
+
+// 执行 oracle-ddl 取定义：主 sql 取 spec，bodySql 取 body（可能不存在 → 静默忽略）。
+async function runOracleDdl(
+  connId: string,
+  q: { sql: string; bodySql?: string },
+  ctx: { database?: string; schema?: string },
+): Promise<string> {
+  const exec = async (sql: string): Promise<string> => {
+    const r = await client.connections.execute(connId, sql, [], {
+      database: ctx.database,
+      schema: ctx.schema,
+    })
+    const row = (r.rows[0] as Record<string, unknown> | undefined) ?? {}
+    return String(row.ddl ?? '').trim()
+  }
+  let ddl = await exec(q.sql)
+  if (q.bodySql) {
+    try {
+      const body = await exec(q.bodySql)
+      if (body) ddl = `${ddl}\n/\n\n${body}`
+    } catch {
+      // spec-only 包 / 无 body 的类型 → ORA-31603，忽略。
+    }
+  }
+  return ddl
 }
 
 // 生成 SQL 模板（SELECT/INSERT/UPDATE/DELETE）→ 取列后填入查询页草稿
@@ -1549,14 +1639,9 @@ async function fetchObjectDdl(conn: ConnectionConfig, node: TreeNode): Promise<s
     }
     return null
   }
-  // Views / functions / procedures / triggers — use the existing query
+  // Views / functions / procedures / triggers / sequences / packages / types / synonyms
   const ref = node.sqlName ?? node.name
-  const q = objectDdlQuery(
-    conn.dialect,
-    node.kind as 'view' | 'function' | 'procedure' | 'trigger',
-    ref,
-    node,
-  )
+  const q = objectDdlQuery(conn.dialect, node.kind as ObjectKind, ref, node)
   if (!q) return null
   try {
     const r = await client.connections.execute(conn.id, q.sql)
@@ -1566,7 +1651,17 @@ async function fetchObjectDdl(conn: ConnectionConfig, node: TreeNode): Promise<s
       const key = Object.keys(row).find((k) => /^create/i.test(k))
       return key ? String(row[key]) : null
     }
-    return String(row.ddl ?? '')
+    const spec = String(row.ddl ?? '')
+    if (q.bodySql) {
+      try {
+        const rb = await client.connections.execute(conn.id, q.bodySql)
+        const body = String((rb.rows[0] as Record<string, unknown>)?.ddl ?? '').trim()
+        if (body) return `${spec}\n/\n\n${body}`
+      } catch {
+        // 缺 body → 只用 spec。
+      }
+    }
+    return spec
   } catch {
     return null
   }
