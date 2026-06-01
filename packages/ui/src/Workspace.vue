@@ -504,9 +504,10 @@ async function onNewObject(kind: ObjectKind, connId: string, node: TreeNode): Pr
   tabsRef.value?.newObject(conn, kind, ctx, refreshTarget)
 }
 
-// 设计器创建成功 → 刷新对应目录树节点
+// 设计器创建成功 → 刷新对应目录树节点（reveal：折叠的空分组也强制重载并展开，
+// 让新建的首个对象，如第一个类型/包/同义词，立即浮现）
 function onTreeRefresh(node: TreeNode, connId: string): void {
-  navRef.value?.refreshNode(node, connId)
+  navRef.value?.refreshNode(node, connId, true)
 }
 
 // 查看表/视图结构 → 开结构页签
@@ -1173,7 +1174,12 @@ async function onCopyToDraftViaDdl(
   conn: ConnectionConfig,
 ): Promise<void> {
   const ctx = deriveContext(conn.dialect, node)
-  const q = objectDdlQuery(conn.dialect, node.kind as ObjectKind, objectRef(conn.dialect, node), node)
+  const q = objectDdlQuery(
+    conn.dialect,
+    node.kind as ObjectKind,
+    objectRef(conn.dialect, node),
+    node,
+  )
   if (!q) {
     await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
     return

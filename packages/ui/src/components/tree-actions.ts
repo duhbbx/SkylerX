@@ -852,7 +852,8 @@ export const TREE_ACTIONS: TreeAction[] = [
       MetaNodeKind.Schema,
       MetaNodeKind.Group,
     ],
-    run: ({ node, connId, ctrl }) => ctrl.refreshNode(node, connId),
+    // reveal=true：手动刷新折叠的空分组（如新建首个类型后的「类型」组）也强制重载并展开
+    run: ({ node, connId, ctrl }) => ctrl.refreshNode(node, connId, true),
   },
 
   // ── Redis 专属:db 节点 / 连接节点 / key 节点 ──

@@ -107,7 +107,8 @@ export interface TreeController {
   /** 复制连接:基于现有 connId 克隆一份新 ID 的配置,名字追加"(副本)",落库后刷新树 */
   duplicateConnection(connId: string): void
   runSql(connId: string, sql: string): void
-  refreshNode(node: TreeNode, connId: string): void
+  /** reveal=true：即使节点折叠也强制重载并展开（手动刷新 / 新建对象后让首个对象浮现） */
+  refreshNode(node: TreeNode, connId: string, reveal?: boolean): void
   copyText(text: string): void
   /** A3+B5+B6+B9+B10 数据检查器：列采样 / 整表剖析 / 约束扫描 / 类型优化 / 维护 */
   inspectTable(node: TreeNode, connId: string): void

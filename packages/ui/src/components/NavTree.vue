@@ -742,9 +742,11 @@ const controller: TreeController = {
   deleteConnection: (connId) => emit('deleteConn', connId),
   duplicateConnection: (connId) => emit('duplicateConn', connId),
   runSql: (connId, sql) => emit('runSql', connId, sql),
-  async refreshNode(node, connId) {
-    // 折叠 / 叶子节点：清掉缓存让下次展开重新拉取，当前无需立即加载。
-    if (!node.expanded) {
+  async refreshNode(node, connId, reveal = false) {
+    // 折叠 / 叶子节点：默认只清缓存让下次展开重新拉取（深刷新整连接时别急着把每个
+    // 折叠分组都加载一遍）。reveal=true（手动刷新 / 新建对象）时即使折叠也强制重载，
+    // 这样某类对象的「第一个」(分组原本 count=0、不可展开) 也能更新计数并直接浮现。
+    if (!node.expanded && !reveal) {
       node.children = null
       return
     }
@@ -753,16 +755,20 @@ const controller: TreeController = {
     // 新建对象不浮现」。这也让手动刷新 schema 时其已展开分组里的新对象直接显示。
     const wasExpanded = new Set((node.children ?? []).filter((c) => c.expanded).map(subtreeKey))
     await this.loadChildren(node, connId)
-    // count（"表 (15)" 这种数字）是父库元数据拉取时存好的；增删后用实际 children.length 同步
     // 注：TS 看不到 loadChildren 的副作用，children 类型仍被收窄为 null，所以这里走 unknown 中转
     const reloaded = node.children as unknown as TreeNode[] | null
-    if (node.kind === MetaNodeKind.Group && reloaded) {
-      node.count = reloaded.length
+    if (reloaded) {
+      // 从实际子节点同步 count（"表 (15)"）与 hasChildren —— count=0 的空分组新建首个对象后
+      // 由此变为可展开；reveal 时顺手展开，让新对象立即可见。
+      node.hasChildren = reloaded.length > 0
+      if (node.kind === MetaNodeKind.Group) node.count = reloaded.length
+      if (reveal && reloaded.length > 0) node.expanded = true
     }
     if (!reloaded) return
     for (const child of reloaded) {
       if (wasExpanded.has(subtreeKey(child))) {
         child.expanded = true
+        // 子层只保留原展开状态，不强制 reveal（避免深刷新把整棵树都摊开）
         await this.refreshNode(child, connId)
       }
     }
@@ -1023,8 +1029,8 @@ async function reload(): Promise<void> {
 let seenGroups = new Set<string>()
 
 /** 刷新某节点（如新建表后刷新所属"表"目录）。 */
-function refreshNode(node: TreeNode, connId: string): void {
-  void controller.refreshNode(node, connId)
+function refreshNode(node: TreeNode, connId: string, reveal = false): void {
+  void controller.refreshNode(node, connId, reveal)
 }
 
 // ── 全局对象搜索：在树中逐层展开并选中目标对象 ──
