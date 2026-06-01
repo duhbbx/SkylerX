@@ -132,7 +132,15 @@ import {
 } from './favorites'
 import { t } from './i18n'
 import { chordFromEvent, getBindings } from './keybindings'
-import { settings, zoomIn, zoomOut, zoomReset } from './settings'
+import {
+  NAV_WIDTH_MAX,
+  NAV_WIDTH_MIN,
+  clampNavWidth,
+  settings,
+  zoomIn,
+  zoomOut,
+  zoomReset,
+} from './settings'
 
 const navRef = useTemplateRef('navRef')
 const tabsRef = useTemplateRef('tabsRef')
@@ -1971,6 +1979,53 @@ void (async () => {
  * website build.
  */
 const isDevBuild = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
+
+// ── #17 NavTree drag-to-resize ───────────────────────────────────────────
+/**
+ * 拖动期间不写 settings.navWidth(那会每帧触发持久化 watch),只直接改
+ * :root 的 --nav-width 变量;mouseup 才把最终值落到 settings.navWidth.
+ * dblclick 重置到默认 300px.
+ */
+const navResizing = ref(false)
+
+function onNavResizerDown(e: MouseEvent): void {
+  // 起始光标 X + 起始宽度(从 settings 读,跟当前 CSS var 同步)
+  const startX = e.clientX
+  const startW = clampNavWidth(settings.navWidth)
+  navResizing.value = true
+  // 整窗 ondragstart 在 NavTree 里很常见(连接拖拽),拖宽期间禁用文本选中
+  // 跟原生拖拽行为, 否则光标在右侧 main 里掠过会选中查询编辑器文本.
+  const prevUserSelect = document.body.style.userSelect
+  const prevCursor = document.body.style.cursor
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+
+  function onMove(ev: MouseEvent): void {
+    const next = clampNavWidth(startW + (ev.clientX - startX))
+    document.documentElement.style.setProperty('--nav-width', `${next}px`)
+  }
+  function onUp(): void {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    document.body.style.userSelect = prevUserSelect
+    document.body.style.cursor = prevCursor
+    navResizing.value = false
+    // 读回最终 CSS 变量,写到 settings → 触发持久化 + applyNavWidth(幂等).
+    const finalRaw = document.documentElement.style.getPropertyValue('--nav-width').trim()
+    const finalW = clampNavWidth(Number.parseFloat(finalRaw) || startW)
+    if (finalW !== settings.navWidth) settings.navWidth = finalW
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
+
+function onNavResizerReset(): void {
+  settings.navWidth = 300
+}
+
+// 暴露给模板里 readonly 引用,clamp 上下限可见(虽未实际渲染,留作未来 tooltip)
+void NAV_WIDTH_MIN
+void NAV_WIDTH_MAX
 /**
  * 更新 UI 状态(完全由 main 进程的 updates:status 事件驱动)。
  * - dev 模式下 main 端 autoUpdater 不启用,IPC 会回 devMode=true,UI 退回 GitHub 链接
@@ -2892,6 +2947,19 @@ onMounted(async () => {
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
+
+  <!-- #17 nav resizer: 4px draggable column between NavTree and main.
+       Visible only on hover (subtle purple band) so it doesn't add visual
+       weight at rest. Cursor switches to col-resize over its hit area,
+       which is widened to 8px via `::before` overlay so users can actually
+       grab the 4px line without pixel hunting. -->
+  <div
+    class="nav-resizer"
+    :class="{ 'nav-resizer-active': navResizing }"
+    @mousedown.prevent="onNavResizerDown"
+    @dblclick="onNavResizerReset"
+    title="拖动调整导航宽度 · 双击重置 300px"
+  ></div>
 
   <main class="main">
     <QueryTabs
@@ -3922,6 +3990,32 @@ onMounted(async () => {
   pointer-events: none;
   user-select: none;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* #17 NavTree resizer — sits between .tree and .main as a 4px column.
+   At rest it's transparent; hover and active drag tint it accent-purple.
+   The ::before extends the hit area to 8px (4px each side) so the line
+   is grabbable without millimeter precision; the visible line stays 4px. */
+.nav-resizer {
+  flex: none;
+  width: 4px;
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.12s ease-in-out;
+  z-index: 5;
+}
+.nav-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -2px;
+  right: -2px;
+}
+.nav-resizer:hover,
+.nav-resizer-active {
+  background: var(--accent, #7c6cff);
 }
 .about {
   min-width: 360px;

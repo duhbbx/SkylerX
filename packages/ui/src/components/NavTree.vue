@@ -1183,7 +1183,10 @@ function onGroupDrop(targetGroup: string): void {
 
 <style scoped>
 .tree {
-  width: 300px;
+  /* #17: 宽度由 :root 上的 --nav-width 驱动, Workspace 的 .nav-resizer
+     拖动期间直接改这个变量, settings.navWidth 兜底持久化. 300px 是历史值,
+     新装/老用户都不变. */
+  width: var(--nav-width, 300px);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;

@@ -118,6 +118,14 @@ export interface Settings {
    *  - 未在此数组里的分组(从连接的 group 字段冒出来的)默认追加在末尾。
    */
   groupOrder: string[]
+
+  /**
+   * #17: NavTree 宽度(像素),允许用户拖动 .nav-resizer 调整。
+   * 范围 [NAV_WIDTH_MIN, NAV_WIDTH_MAX],Workspace 启动时写到 --nav-width
+   * CSS 变量,NavTree 的 .tree 用 `width: var(--nav-width)` 读取。
+   * 缺省 300 跟旧的硬编码一致(老用户升级无视觉跳变)。
+   */
+  navWidth: number
 }
 
 const KEY = 'skylerx.settings'
@@ -162,6 +170,7 @@ const DEFAULTS: Settings = {
   keyBindings: {},
   navSortByUsage: false,
   groupOrder: [],
+  navWidth: 300,
 }
 
 interface LegacySettings {
@@ -333,6 +342,27 @@ function applyZoom(): void {
 }
 applyZoom()
 watch(() => settings.uiZoom, applyZoom)
+
+// #17: NavTree 宽度 — 写到 :root 的 --nav-width 变量, .tree 通过它读宽度.
+// 拖动 .nav-resizer 期间 Workspace 直接更新 CSS 变量 (避免每帧触发 settings
+// 持久化 watch); mouseup 才把最终值落到 settings.navWidth, 这里的 watch
+// 兜底处理 "从持久层 / 其它端导入设置时" 同步 DOM.
+export const NAV_WIDTH_MIN = 200
+export const NAV_WIDTH_MAX = 600
+export function clampNavWidth(w: number): number {
+  if (!Number.isFinite(w)) return DEFAULTS.navWidth
+  return Math.max(NAV_WIDTH_MIN, Math.min(NAV_WIDTH_MAX, Math.round(w)))
+}
+function applyNavWidth(): void {
+  if (hasDom) {
+    document.documentElement.style.setProperty(
+      '--nav-width',
+      `${clampNavWidth(settings.navWidth)}px`,
+    )
+  }
+}
+applyNavWidth()
+watch(() => settings.navWidth, applyNavWidth)
 
 function clampZoom(z: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
