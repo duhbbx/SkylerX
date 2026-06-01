@@ -32,6 +32,17 @@ export function isReadOnlyStatement(sql: string): boolean {
 }
 
 /**
+ * 结构变更判定：DDL 增删改对象后导航树需要刷新。
+ * 命中 CREATE / DROP / ALTER / TRUNCATE / RENAME / COMMENT（可带前导注释 / 空白）。
+ * 故意不含 GRANT/REVOKE（改权限不增减树节点）。
+ */
+export function isStructureChangingStatement(sql: string): boolean {
+  // 去掉前导行注释 / 块注释，避免 `-- create...\nSELECT` 被误判
+  const head = sql.replace(/^\s*(?:--[^\n]*\n|\/\*[\s\S]*?\*\/|\s)+/, '')
+  return /^(create|drop|alter|truncate|rename|comment)\b/i.test(head)
+}
+
+/**
  * 解析连接初始的提交模式（仅用于「新建 query tab 时取个默认值」）。
  *
  * 不再读 `conn.extra.commitMode`——提交模式已经从连接配置迁移到 query tab，

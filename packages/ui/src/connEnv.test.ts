@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { describe, expect, it } from 'vitest'
-import { connEnv, connReadOnly, isReadOnlyStatement } from './connEnv'
+import { connEnv, connReadOnly, isReadOnlyStatement, isStructureChangingStatement } from './connEnv'
 
 describe('connEnv', () => {
   it('reads valid env markers from extra.env', () => {
@@ -52,5 +52,39 @@ describe('isReadOnlyStatement', () => {
     ]) {
       expect(isReadOnlyStatement(s)).toBe(false)
     }
+  })
+})
+
+describe('isStructureChangingStatement', () => {
+  it('flags DDL that adds/removes/renames objects', () => {
+    for (const s of [
+      'CREATE TABLE t (a int)',
+      'create or replace package pkg as end;',
+      '  DROP SYNONYM s',
+      'ALTER TABLE t ADD c int',
+      'TRUNCATE TABLE t',
+      'RENAME a TO b',
+      "COMMENT ON TABLE t IS 'x'",
+    ]) {
+      expect(isStructureChangingStatement(s)).toBe(true)
+    }
+  })
+  it('ignores DML / reads / privilege changes', () => {
+    for (const s of [
+      'SELECT 1',
+      'INSERT INTO t VALUES (1)',
+      'UPDATE t SET a=1',
+      'DELETE FROM t',
+      'GRANT SELECT ON t TO u',
+      'REVOKE SELECT ON t FROM u',
+    ]) {
+      expect(isStructureChangingStatement(s)).toBe(false)
+    }
+  })
+  it('sees through leading comments', () => {
+    expect(isStructureChangingStatement('-- make a table\nCREATE TABLE t (a int)')).toBe(true)
+    expect(isStructureChangingStatement('/* ddl */ DROP TABLE t')).toBe(true)
+    // a comment that merely mentions create must not flip a SELECT
+    expect(isStructureChangingStatement('-- create later\nSELECT 1')).toBe(false)
   })
 })

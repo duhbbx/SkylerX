@@ -9,7 +9,8 @@ import {
   type DbDialect,
   MetaNodeKind,
 } from '@db-tool/shared-types'
-import { computed, nextTick, onMounted, provide, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import { onSchemaChanged } from '../chat-bus'
 import { connEnv } from '../connEnv'
 import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
@@ -531,6 +532,10 @@ const selectedKey = ref<string | null>(null)
 function nodeKey(node: TreeNode, connId: string): string {
   return `${connId}::${node.kind}::${node.path.join('/')}::${node.group ?? ''}`
 }
+/** 子树身份键（不含 connId）：深刷新重建子节点后用它把展开状态对回新节点。 */
+function subtreeKey(node: TreeNode): string {
+  return `${node.kind}::${node.path.join('/')}::${node.group ?? ''}`
+}
 
 // 唯一的控制器实例：provide 给整棵树；动作原语桥接到 App
 const controller: TreeController = {
@@ -738,13 +743,28 @@ const controller: TreeController = {
   duplicateConnection: (connId) => emit('duplicateConn', connId),
   runSql: (connId, sql) => emit('runSql', connId, sql),
   async refreshNode(node, connId) {
-    node.children = null
-    if (node.expanded) await this.loadChildren(node, connId)
+    // 折叠 / 叶子节点：清掉缓存让下次展开重新拉取，当前无需立即加载。
+    if (!node.expanded) {
+      node.children = null
+      return
+    }
+    // 记录哪些子节点当前是展开的 —— loadChildren 会用新对象替换 children，
+    // 重新拉完后按 subtreeKey 把展开状态对回新节点并递归刷新，避免「刷新即折叠、
+    // 新建对象不浮现」。这也让手动刷新 schema 时其已展开分组里的新对象直接显示。
+    const wasExpanded = new Set((node.children ?? []).filter((c) => c.expanded).map(subtreeKey))
+    await this.loadChildren(node, connId)
     // count（"表 (15)" 这种数字）是父库元数据拉取时存好的；增删后用实际 children.length 同步
     // 注：TS 看不到 loadChildren 的副作用，children 类型仍被收窄为 null，所以这里走 unknown 中转
     const reloaded = node.children as unknown as TreeNode[] | null
     if (node.kind === MetaNodeKind.Group && reloaded) {
       node.count = reloaded.length
+    }
+    if (!reloaded) return
+    for (const child of reloaded) {
+      if (wasExpanded.has(subtreeKey(child))) {
+        child.expanded = true
+        await this.refreshNode(child, connId)
+      }
     }
   },
   copyText: (text) => void navigator.clipboard?.writeText(text),
@@ -1207,6 +1227,15 @@ defineExpose({
   expandAll,
   collapseAll,
 })
+// query tab 执行 / 提交 DDL 后 → 深刷新对应连接子树（只重载已展开的节点，
+// 开销受用户已展开范围约束）。schema 只是提示，这里统一深刷新整连接根：
+// 能覆盖「对象落到了非预期 schema」的错配场景，让新对象在它真正所在处浮现。
+const unsubSchemaChanged = onSchemaChanged(({ connId }) => {
+  const root = roots.value.find((r) => r.id === connId)
+  if (root) void controller.refreshNode(root.node, connId)
+})
+onBeforeUnmount(() => unsubSchemaChanged())
+
 onMounted(() => {
   void reload()
   // #A: 全局 Ctrl/Cmd+F 仅在焦点不在 Monaco 编辑器内时拦截 (Monaco 自己的 find 优先).

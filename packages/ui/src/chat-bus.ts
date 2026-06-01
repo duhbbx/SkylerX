@@ -77,3 +77,35 @@ export function onChatErrorAsk(l: ErrorAskListener): () => void {
     errorAskListeners.delete(l)
   }
 }
+
+/**
+ * 结构变更信号：query tab 执行 / 提交了 DDL 后广播，导航树深刷新对应连接子树。
+ *
+ * 同样走横切事件总线而非 emit 链：执行链 QueryPane → QueryTabs → Workspace → NavTree，
+ * 中间 QueryTabs 是抽象多 tab 容器，逐层冒泡污染 props 又难追踪。
+ */
+export interface SchemaChangedEvent {
+  connId: string
+  /** 执行时的 schema 上下文（execOptions().schema）；缺省 = 深刷新整连接已展开子树 */
+  schema?: string
+}
+
+type SchemaChangedListener = (e: SchemaChangedEvent) => void
+const schemaChangedListeners = new Set<SchemaChangedListener>()
+
+export function emitSchemaChanged(e: SchemaChangedEvent): void {
+  for (const l of schemaChangedListeners) {
+    try {
+      l(e)
+    } catch {
+      /* 监听器自己处理 */
+    }
+  }
+}
+
+export function onSchemaChanged(l: SchemaChangedListener): () => void {
+  schemaChangedListeners.add(l)
+  return () => {
+    schemaChangedListeners.delete(l)
+  }
+}

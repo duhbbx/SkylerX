@@ -14,8 +14,15 @@ import {
 import { type SqlLanguage, format as sqlFormat } from 'sql-formatter'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { aiInlineDefaultEnabled, registerAiInlineCompletion } from '../aiInline'
-import { emitChatSqlExecuted } from '../chat-bus'
-import { ENV_META, connEnv, connReadOnly, initialCommitMode, isReadOnlyStatement } from '../connEnv'
+import { emitChatSqlExecuted, emitSchemaChanged } from '../chat-bus'
+import {
+  ENV_META,
+  connEnv,
+  connReadOnly,
+  initialCommitMode,
+  isReadOnlyStatement,
+  isStructureChangingStatement,
+} from '../connEnv'
 import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
 import {
@@ -437,6 +444,8 @@ async function commit(): Promise<void> {
   try {
     await client.connections.commitSession(sid)
     dirty.value = false
+    // 提交后结构可能已变更 → 通知导航树深刷新（schema 缺省 = 整连接已展开子树）
+    emitSchemaChanged({ connId: props.conn.id, schema: execOptions().schema })
     toast.success(t('commit.committed'))
   } catch (e) {
     reportError(e, { tag: 'commit.commitFail' })
@@ -1012,6 +1021,11 @@ async function execSql(text: string): Promise<void> {
     // AI 聊天面板：以原文 SQL 为 key 广播执行结果，更新代码块旁的执行徽章
     const firstErr = next.find((t) => t.error)?.error ?? null
     emitChatSqlExecuted({ sql: text, ok: !firstErr, error: firstErr })
+    // 结构变更（DDL）执行成功 → 通知导航树深刷新对应连接子树。
+    // 仅 auto 模式即时刷新；manual 模式等 commit() 后再刷新（未提交的 DDL 别的 session 看不到）。
+    if (!sid && next.some((tb) => !tb.error && isStructureChangingStatement(tb.sql))) {
+      emitSchemaChanged({ connId: props.conn.id, schema: execOptions().schema })
+    }
     // I1 通知 webhook：失败 → query-error；耗时超阈值 → slow-query
     void notifyExecResult(text, next, firstErr)
   } finally {
