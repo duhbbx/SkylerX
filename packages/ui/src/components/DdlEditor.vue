@@ -14,6 +14,7 @@ import {
   objectRef,
   objectTemplate,
 } from '../ddl'
+import { toast } from '../dialog'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { settings } from '../settings'
@@ -34,7 +35,7 @@ const props = withDefaults(
   }>(),
   { mode: 'create', node: undefined },
 )
-const emit = defineEmits<{ created: []; cancel: [] }>()
+const emit = defineEmits<{ created: [opts?: { keepOpen?: boolean }]; cancel: [] }>()
 
 const isEdit = props.mode === 'edit'
 const code = ref(isEdit ? '' : objectTemplate(props.dialect, props.objectKind, props.ctx))
@@ -135,7 +136,10 @@ async function create(): Promise<void> {
       schema: props.ctx.schema,
     })
     resetDirtyBaseline() // 保存成功 → 基线对齐
-    emit('created')
+    // 用户报告: 保存后不要关 tab, 留在编辑器里继续编辑. 走 toast 提示成功;
+    // keepOpen 传给上层 onCreated, QueryTabs 见 keepOpen 不会 close(tab.id).
+    toast.success(isEdit ? (t('common.saved') ?? '已保存') : (t('common.created') ?? '已创建'))
+    emit('created', { keepOpen: true })
   } catch (e) {
     reportInlineError(error, e)
   } finally {

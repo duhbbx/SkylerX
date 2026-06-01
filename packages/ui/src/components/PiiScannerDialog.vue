@@ -83,6 +83,22 @@ function listColumnsSql(): string {
       ${tblFilter.value ? `AND table_name LIKE '${tblFilter.value.replace(/'/g, "''")}'` : ''}
       ORDER BY table_schema, table_name, ordinal_position`
   }
+  if (fam === 'oracle') {
+    // Oracle/DM 没有 information_schema. 用 ALL_TAB_COLUMNS, 字段名归一到 PG/MySQL 同款.
+    // 列名小写化 + AS, 让上游 cols 的 r.table_schema 等键稳定.
+    const owner = (schemaName.value || dbName.value).replace(/'/g, "''")
+    return `SELECT owner AS "table_schema", table_name AS "table_name",
+                  column_name AS "column_name", data_type AS "data_type"
+       FROM all_tab_columns
+       WHERE owner NOT IN (
+         'SYS','SYSTEM','XDB','MDSYS','CTXSYS','DBSNMP','OUTLN',
+         'APEX_040000','APPQOSSYS','GSMADMIN_INTERNAL','OJVMSYS',
+         'ORDDATA','ORDSYS','SI_INFORMTN_SCHEMA','WMSYS'
+       )
+       ${owner ? `AND owner = '${owner}'` : ''}
+       ${tblFilter.value ? `AND table_name LIKE '${tblFilter.value.replace(/'/g, "''")}'` : ''}
+       ORDER BY owner, table_name, column_id`
+  }
   // mysql / sqlserver / 通用走 information_schema
   return `SELECT table_schema, table_name, column_name, data_type
     FROM information_schema.columns
@@ -99,7 +115,11 @@ async function sampleColumn(schema: string, table: string, column: string): Prom
     if (fam === 'mysql') return `\`${s.replace(/`/g, '``')}\``
     return `"${s.replace(/"/g, '""')}"`
   }
-  const sql = `SELECT ${q(column)} FROM ${q(schema)}.${q(table)} WHERE ${q(column)} IS NOT NULL LIMIT ${sampleN.value}`
+  // LIMIT 跨方言: mysql/pg/sqlserver 走 LIMIT; oracle/dm 用 FETCH FIRST N ROWS ONLY
+  // (12c+ / DM 标准 SQL:2008), 老 Oracle 用 ROWNUM 但我们的 supported set 都 ≥12c.
+  const limitClause =
+    fam === 'oracle' ? `FETCH FIRST ${sampleN.value} ROWS ONLY` : `LIMIT ${sampleN.value}`
+  const sql = `SELECT ${q(column)} FROM ${q(schema)}.${q(table)} WHERE ${q(column)} IS NOT NULL ${limitClause}`
   try {
     const rows = await execSql(sql, dbName.value || undefined)
     return rows.map((r) => Object.values(r)[0])

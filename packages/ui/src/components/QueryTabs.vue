@@ -593,7 +593,7 @@ watch(tabs, saveLayout, { deep: true })
             :ctx="t.ctx!"
             :mode="t.mode === 'edit' ? 'edit' : 'create'"
             :node="t.node"
-            @created="onCreated(t)"
+            @created="(opts) => onCreated(t, opts)"
             @cancel="close(t.id)"
           />
         </div>

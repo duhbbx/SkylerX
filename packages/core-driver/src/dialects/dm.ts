@@ -43,6 +43,11 @@ async function loadDmdb(): Promise<any> {
     const mod: any = await import(spec)
     const dmdb = mod.default ?? mod
     dmdb.outFormat = dmdb.OUT_FORMAT_OBJECT
+    // 必须强制 CLOB 直接返回 string, 否则 dmdb 返回 Lob 句柄(带 read() / close()
+    // 方法), Electron IPC 走 structured clone 会抛 "An object could not be cloned".
+    // 表现就是用户点"编辑视图定义" / "复制 DDL"等读 ALL_VIEWS.TEXT / ALL_SOURCE.TEXT
+    // 的操作都报错. 跟 oracle.ts 的设置一致.
+    if (dmdb.CLOB != null) dmdb.fetchAsString = [dmdb.CLOB]
     return dmdb
   } catch {
     throw new Error(
