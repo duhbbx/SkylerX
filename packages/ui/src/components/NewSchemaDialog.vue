@@ -40,6 +40,13 @@ const name = ref('')
 const ownerOrPassword = ref('')
 const comment = ref('')
 const submitting = ref(false)
+/**
+ * Oracle/DM 模式: 是否要 "顺便创建独立用户" (用户报告:不一定每个 schema 都要建新用户,
+ * 我可能就是想在当前用户下加一个 schema 容器). 默认 false — 只发一句 CREATE SCHEMA,
+ * 让 DB 默认行为接管(DM 下当前用户的子 schema; Oracle 下则会失败要求 AUTHORIZATION).
+ * 勾上 = 完整 CREATE USER + GRANT (但不再硬编码 USERS 表空间).
+ */
+const createDedicatedUser = ref(false)
 
 /** 该方言 schema 概念说明,null = 不支持。 */
 const supportInfo = computed<string | null>(() => {
@@ -98,34 +105,34 @@ const sqlStatements = computed<string[]>(() => {
     if (comment.value.trim()) sql += ` COMMENT = ${quoteStr(comment.value.trim())}`
     out.push(sql)
   } else if (info === 'oracle') {
-    // Schema = User; 必须有密码
-    const pwd = ownerOrPassword.value.trim() || 'CHANGE_ME_123'
-    // Oracle 用户名:
-    //  - 合法 unquoted 标识符(只含字母/数字/_/$/#,字母开头)→ 不加引号,Oracle 自动转大写
-    //    避免「用双引号导致的小写名,后续 ALTER USER xxx 找不到」之类的坑
-    //  - 含特殊字符 / 中文 / 想保留小写 → 用户自己在 SQL 预览里加双引号
-    //  - 密码同理:不加引号让 Oracle 按身份验证默认处理(纯文字密码常态)
+    // Oracle/DM 路径有两种语义,看 createDedicatedUser:
+    //  - false (默认): 只发 CREATE SCHEMA. DM 接受这个并把 schema 挂在当前连接用户下;
+    //    Oracle 则需要 AUTHORIZATION existing_user, 此时把 ownerOrPassword 当作"已存在
+    //    的用户名"传入. 不创建新用户, 不碰表空间.
+    //  - true: 完整路径 — 建新用户 + GRANT 开发常用权限. 不再硬编码
+    //    DEFAULT TABLESPACE USERS / TEMPORARY TABLESPACE TEMP — DM 默认表空间是 MAIN/TEMP,
+    //    很多 Oracle 部署也没有名叫 USERS 的表空间, 强写会触发 "表空间 USERS 不存在".
+    //    交给 DB 默认 (Oracle: DEFAULT TABLESPACE 由 DBA 配; DM: MAIN). 用户需要自定义可在
+    //    SQL 预览里手工加, 而不是被默认值卡住.
     const safeIdent = (s: string): string => (/^[A-Za-z][A-Za-z0-9_$#]*$/.test(s) ? s : quoteId(s))
     const u = safeIdent(n)
-    const p = safeIdent(pwd)
-    // 默认表空间 + QUOTA UNLIMITED 防止 ORA-01950(新用户 USERS 上 quota=0,
-    // 一插入就报"insufficient quota on tablespace USERS")。
-    out.push(
-      `CREATE USER ${u} IDENTIFIED BY ${p} DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP QUOTA UNLIMITED ON USERS`,
-    )
-    // 开发场景下"用户=schema"的默认授权:
-    //  - CONNECT/RESOURCE:登录 + 基础对象(table/index/sequence)
-    //  - UNLIMITED TABLESPACE:任意表空间无配额限制(简化 12c+ 多表空间场景)
-    //  - 显式 DDL 权限:Oracle 12c+ RESOURCE 不再含 CREATE VIEW / SEQUENCE 等,补齐开发常用
-    //  - 不给 SELECT ANY TABLE / DBA / SYSDBA,保持"只能玩自己 schema"
-    //  用户可在 SQL 预览里裁掉不需要的。
-    out.push(
-      `GRANT CONNECT, RESOURCE, UNLIMITED TABLESPACE,
-            CREATE VIEW, CREATE SYNONYM, CREATE SEQUENCE,
-            CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE,
-            CREATE MATERIALIZED VIEW, CREATE DATABASE LINK
-       TO ${u}`,
-    )
+    if (!createDedicatedUser.value) {
+      let sql = `CREATE SCHEMA ${u}`
+      const auth = ownerOrPassword.value.trim()
+      if (auth) sql += ` AUTHORIZATION ${safeIdent(auth)}`
+      out.push(sql)
+    } else {
+      const pwd = ownerOrPassword.value.trim() || 'CHANGE_ME_123'
+      const p = safeIdent(pwd)
+      out.push(`CREATE USER ${u} IDENTIFIED BY ${p}`)
+      out.push(
+        `GRANT CONNECT, RESOURCE, UNLIMITED TABLESPACE,
+              CREATE VIEW, CREATE SYNONYM, CREATE SEQUENCE,
+              CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE,
+              CREATE MATERIALIZED VIEW, CREATE DATABASE LINK
+         TO ${u}`,
+      )
+    }
   }
   return out
 })
@@ -174,12 +181,16 @@ watch(
   },
 )
 
-const ownerLabel = computed(() => (supportInfo.value === 'oracle' ? '密码' : '所有者 (可选)'))
-const ownerHint = computed(() =>
-  supportInfo.value === 'oracle'
-    ? 'Oracle/DM 的 schema = user,需要为用户设置初始密码'
-    : '留空则归当前会话用户',
-)
+const ownerLabel = computed(() => {
+  if (supportInfo.value !== 'oracle') return '所有者 (可选)'
+  return createDedicatedUser.value ? '初始密码' : '已有用户名 (可选)'
+})
+const ownerHint = computed(() => {
+  if (supportInfo.value !== 'oracle') return '留空则归当前会话用户'
+  return createDedicatedUser.value
+    ? 'Oracle/DM 把这个用户的 schema 创建出来,密码用于后续 OB 登录该 schema'
+    : '不创建新用户。留空 = 在当前连接用户下建 schema (DM 支持);填入已有用户名 = AUTHORIZATION 给那个用户 (Oracle 需要)'
+})
 </script>
 
 <template>
@@ -195,13 +206,25 @@ const ownerHint = computed(() =>
         <input v-model="name" class="ip" placeholder="例如 public / app_v2" autofocus />
       </div>
 
+      <!-- Oracle/DM 专属: 是否顺便建独立用户. 关闭(默认) = 只建 schema 容器,
+           开启 = 完整 CREATE USER + GRANT 套餐 -->
+      <div v-if="supportInfo === 'oracle'" class="row check-row">
+        <label class="check-lbl">
+          <input v-model="createDedicatedUser" type="checkbox" />
+          <span>顺便创建独立用户 (CREATE USER + GRANT)</span>
+        </label>
+        <div class="meta">不勾 = 只发一句 CREATE SCHEMA, 不动用户系统 / 表空间</div>
+      </div>
+
       <div class="row">
         <label class="lbl">{{ ownerLabel }}</label>
         <input
           v-model="ownerOrPassword"
           class="ip"
-          :type="supportInfo === 'oracle' ? 'password' : 'text'"
-          :placeholder="supportInfo === 'oracle' ? '初始密码,留空将使用 CHANGE_ME_123' : '用户名,留空 = 当前用户'"
+          :type="supportInfo === 'oracle' && createDedicatedUser ? 'password' : 'text'"
+          :placeholder="supportInfo === 'oracle'
+            ? (createDedicatedUser ? '初始密码,留空将使用 CHANGE_ME_123' : '已有用户名,留空 = 当前用户')
+            : '用户名,留空 = 当前用户'"
         />
         <div class="meta">{{ ownerHint }}</div>
       </div>
@@ -268,6 +291,15 @@ const ownerHint = computed(() =>
 .meta {
   font-size: 11px;
   color: var(--muted);
+}
+.check-row .check-lbl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text);
 }
 .unsupported {
   padding: 16px;

@@ -64,10 +64,14 @@ function fmtCallsite(c: NonNullable<typeof errorModal.data>['callsite']): string
 </script>
 
 <template>
+  <!-- topmost: 错误必须比当前所有业务 Modal (如 NewSchemaDialog) 都高一层, 否则
+       触发错误的表单会把错误盖住, 用户看不到. 走 Modal 的 topmost (z >= 10000)
+       路径, 跟系统级 file dialog 同层 — 跟"用户必须先处理这个"的语义一致. -->
   <Modal
     v-if="errorModal.open && errorModal.data"
     :title="'⚠ ' + (errorModal.data.tag ? `[${errorModal.data.tag}] ` : '') + '出错了'"
     width="medium"
+    topmost
     @close="dismissErrorModal"
   >
     <div class="err-modal">
