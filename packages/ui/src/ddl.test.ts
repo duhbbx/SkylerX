@@ -314,6 +314,28 @@ describe('buildDrop', () => {
     )
     expect(pg?.sql).toBe('DROP TRIGGER "trg" ON "orders"')
   })
+
+  it('oracle trigger drops by name (no ON table)', () => {
+    const r = buildDrop(
+      DbDialect.Oracle,
+      node(MetaNodeKind.Trigger, 'TRG', '"HR"."TRG"', ['HR', 'TRG']),
+    )
+    expect(r?.sql).toBe('DROP TRIGGER "HR"."TRG"')
+  })
+
+  it('drops package / type / synonym (oracle family)', () => {
+    const pkg = buildDrop(DbDialect.DM, node(MetaNodeKind.Package, 'PKG', '"HR"."PKG"', ['HR', 'PKG']))
+    expect(pkg?.sql).toBe('DROP PACKAGE "HR"."PKG"')
+    const syn = buildDrop(DbDialect.DM, node(MetaNodeKind.Synonym, 'SYN', '"HR"."SYN"', ['HR', 'SYN']))
+    expect(syn?.sql).toBe('DROP SYNONYM "HR"."SYN"')
+    const typ = buildDrop(DbDialect.Oracle, node(MetaNodeKind.Type, 'T1', '"HR"."T1"', ['HR', 'T1']))
+    expect(typ?.sql).toBe('DROP TYPE "HR"."T1"')
+  })
+
+  it('DROP TYPE cascade adds FORCE', () => {
+    const typ = buildDrop(DbDialect.Oracle, node(MetaNodeKind.Type, 'T1', '"HR"."T1"', ['HR', 'T1']), true)
+    expect(typ?.sql).toBe('DROP TYPE "HR"."T1" FORCE')
+  })
 })
 
 describe('objectDdlQuery — oracle family (Oracle/DM)', () => {

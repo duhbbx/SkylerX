@@ -1006,10 +1006,20 @@ export function buildDrop(
       return { sql: `DROP SEQUENCE ${node.sqlName ?? q(name)}${cs}`, ctx }
     case 'trigger': {
       if (fam === 'mysql') return { sql: `DROP TRIGGER ${q(name)}`, ctx }
-      // PG/Oracle：DROP TRIGGER name ON 表（表取自 path 倒数第二段）
+      // Oracle/DM: 触发器是 schema 级对象 → DROP TRIGGER schema.name（不带 ON 表）。
+      // 之前用 path 倒数第二段当"表"，但 Oracle/DM 下那是 schema → 生成的语句报错。
+      if (fam === 'oracle') return { sql: `DROP TRIGGER ${node.sqlName ?? q(name)}`, ctx }
+      // PG：DROP TRIGGER name ON 表（表取自 path 倒数第二段）
       const tbl = node.path[node.path.length - 2]
       return tbl ? { sql: `DROP TRIGGER ${q(name)} ON ${q(tbl)}${cs}`, ctx } : null
     }
+    case 'package':
+      return { sql: `DROP PACKAGE ${node.sqlName ?? q(name)}`, ctx }
+    case 'synonym':
+      return { sql: `DROP SYNONYM ${node.sqlName ?? q(name)}`, ctx }
+    case 'type':
+      // cascade → FORCE：类型被表/列引用时强制删除（Oracle/DM 语义）。
+      return { sql: `DROP TYPE ${node.sqlName ?? q(name)}${cascade ? ' FORCE' : ''}`, ctx }
     case 'event':
       return fam === 'mysql' ? { sql: `DROP EVENT ${q(name)}`, ctx } : null
     case 'database':
