@@ -163,6 +163,24 @@ const MULTI_KINDS: MetaNodeKind[] = [
 const multiSel = reactive(new Map<string, { node: TreeNode; connId: string }>())
 
 /**
+ * 同辈兄弟判定 (#multi-select sibling-only): 两个节点能一起多选当且仅当:
+ *   - 同连接 (connId 相等) — 跨连接的批量 DROP 半天定位不出来 ref;
+ *   - 同 kind — DROP TABLE 和 DROP VIEW 等价语法不一样, 不能混;
+ *   - 同 parent path — node.path 去掉自己那段后剩下的祖先链相等 (e.g. 都在
+ *     schema=A 的"表"组下). 跨 schema / 跨 group 的"同 kind"不算兄弟.
+ */
+function isSiblingOf(
+  a: { node: TreeNode; connId: string },
+  b: { node: TreeNode; connId: string },
+): boolean {
+  if (a.connId !== b.connId) return false
+  if (a.node.kind !== b.node.kind) return false
+  const pa = a.node.path.slice(0, -1).join('')
+  const pb = b.node.path.slice(0, -1).join('')
+  return pa === pb
+}
+
+/**
  * 批量选连接(独立于 multiSel — connection 没有 TreeNode 概念).
  * key = connectionId. 用户 Ctrl-click 连接条目时进这个集合;
  * 跟 multiSel 互斥(一次只能批量一种家族).
@@ -564,6 +582,11 @@ const controller: TreeController = {
     // non-empty. Mixing connections and objects in one batch isn't meaningful
     // (the bulk ops dispatch differently) so we just refuse the toggle.
     if (multiSelConn.size > 0) return
+    // 同辈约束: 多选只在 "同一上级 + 同一 kind" 的兄弟节点之间允许. 跨 schema /
+    // 跨 group / 跨 kind 的混选语义模糊(DROP TABLE 和 DROP VIEW 不一样, 跨 schema
+    // 引用语法也不同), 直接拒绝, 不打扰. 用户想换一组就先取消现有再选.
+    const first = multiSel.values().next().value
+    if (first && !isSiblingOf(first, { node, connId })) return
     const k = nodeKey(node, connId)
     if (multiSel.has(k)) multiSel.delete(k)
     else multiSel.set(k, { node, connId })
@@ -600,10 +623,14 @@ const controller: TreeController = {
       controller.toggleMulti(node, connId)
       return
     }
+    const anchor = flat[a]
     const [lo, hi] = a <= b ? [a, b] : [b, a]
     for (let i = lo; i <= hi; i++) {
       const it = flat[i]
       if (!MULTI_KINDS.includes(it.node.kind)) continue
+      // Shift-range 同样套同辈约束: 区间里只收跟锚点(anchor) 同 parent + 同 kind 的.
+      // 这样跨 schema / 跨 group 选不到, 跟单击 toggleMulti 一致.
+      if (!isSiblingOf(anchor, it)) continue
       multiSel.set(nodeKey(it.node, it.connId), { node: it.node, connId: it.connId })
     }
     lastClickedKey.value = me
@@ -650,6 +677,23 @@ const controller: TreeController = {
     menu.y = y
     menu.node = node
     menu.connId = connId
+    // 多选模式 — 右键命中已选中的对象 / 连接 → 显示批量菜单, 不显示单节点菜单.
+    // 选了一组表 → 右键某一张 → "批量删除 / 复制 SELECT / 导出 DDL ..." 走这里.
+    // 选中集中不含被点的节点 → 当作"单选切换", 走普通单节点菜单.
+    if (
+      node.kind === MetaNodeKind.Connection &&
+      multiSelConn.size > 0 &&
+      multiSelConn.has(connId)
+    ) {
+      menu.entries = bulkConnMenuEntries()
+      menu.visible = true
+      return
+    }
+    if (multiSel.size > 0 && multiSel.has(nodeKey(node, connId))) {
+      menu.entries = bulkObjectMenuEntries()
+      menu.visible = true
+      return
+    }
     // 查 ConnRoot 取方言,菜单按方言过滤(隐藏 NoSQL 不适用的 ER 图 / 导出 SQL / 数据字典等)
     const root = roots.value.find((r) => r.id === connId)
     menu.entries = menuEntriesFor(node, root?.dialect as DbDialect | undefined)
@@ -1041,15 +1085,6 @@ async function revealObject(connId: string, schema: string, table: string): Prom
 }
 
 // ── 批量操作 (#25) ──
-/** 当前是否在连接级多选 (跟 object 多选互斥). */
-const isBulkConnMode = computed(() => multiSelConn.size > 0)
-/** 当前选中是否全部是 Table 类节点 (用来判断 TRUNCATE / SELECT 模板按钮是否亮). */
-const bulkAllTables = computed(() => {
-  if (isBulkConnMode.value) return false
-  if (!multiSel.size) return false
-  for (const v of multiSel.values()) if (v.node.kind !== MetaNodeKind.Table) return false
-  return true
-})
 function bulkDrop(): void {
   emit('bulkDrop', [...multiSel.values()])
 }
@@ -1078,6 +1113,63 @@ function bulkMoveToGroup(): void {
 }
 function bulkTestConnections(): void {
   emit('bulkTestConnections', [...multiSelConn])
+}
+
+/**
+ * 右键菜单 — 批量对象模式. 跟单节点 TreeAction 同一形态(id/label/run/...),
+ * 但 run 不读 ctx, 直接调用本组件的 bulkXxx 函数 (它们走 emit 上抛 Workspace).
+ * 表 / 视图 / 函数 / etc. 公用 删除 / 复制名 / 导出 DDL; 全选都是 Table 时多出
+ * TRUNCATE 和 复制 SELECT 模板.
+ *
+ * MenuEntry.kinds 留单个占位 — 这条菜单只在 openContextMenu 已经决定走 bulk
+ * 路径时使用, 不会过 menuEntriesFor 的 kind 过滤.
+ */
+function bulkObjectMenuEntries(): MenuEntry[] {
+  const all = [...multiSel.values()]
+  const allTables = all.length > 0 && all.every((v) => v.node.kind === MetaNodeKind.Table)
+  const kindNames = new Set(all.map((v) => v.node.kind))
+  const onlyKind = kindNames.size === 1 ? [...kindNames][0] : null
+  const stub = (id: string, label: string, run: () => void, danger = false): TreeAction => ({
+    id,
+    label,
+    kinds: onlyKind ? [onlyKind] : [MetaNodeKind.Table],
+    section: 'misc',
+    danger,
+    run,
+  })
+  const out: MenuEntry[] = [stub('bulk-drop', `删除所选 (${all.length})`, bulkDrop, true)]
+  if (allTables) {
+    out.push(stub('bulk-truncate', `TRUNCATE 所选表 (${all.length})`, bulkTruncate, true))
+  }
+  out.push({ divider: true, id: 'd1' })
+  out.push(stub('bulk-copy-names', `复制名 (${all.length})`, bulkCopyNames))
+  if (allTables) {
+    out.push(stub('bulk-copy-select', `复制 SELECT * 模板 (${all.length})`, bulkCopySelect))
+  }
+  out.push(stub('bulk-export-ddl', `导出 DDL 到文件 (${all.length})`, bulkExportDdl))
+  out.push({ divider: true, id: 'd2' })
+  out.push(stub('bulk-clear', '清空选择', () => controller.clearMulti()))
+  return out
+}
+
+function bulkConnMenuEntries(): MenuEntry[] {
+  const n = multiSelConn.size
+  const stub = (id: string, label: string, run: () => void, danger = false): TreeAction => ({
+    id,
+    label,
+    kinds: [MetaNodeKind.Connection],
+    section: 'misc',
+    danger,
+    run,
+  })
+  return [
+    stub('bulk-test-conns', `测试连接 (${n})`, bulkTestConnections),
+    stub('bulk-move-group', `移动到分组... (${n})`, bulkMoveToGroup),
+    { divider: true, id: 'd1' },
+    stub('bulk-del-conns', `删除连接 (${n})`, bulkDeleteConnections, true),
+    { divider: true, id: 'd2' },
+    stub('bulk-clear', '清空选择', () => controller.clearMulti()),
+  ]
 }
 
 /**
@@ -1560,35 +1652,11 @@ function onGroupDrop(targetGroup: string): void {
       ></div>
     </div>
 
-    <!-- Object-level bulk bar (tables / views / functions / procedures / etc.).
-         Buttons appear conditionally on the selection kind family. #25 -->
-    <div v-if="multiSel.size" class="bulk-bar">
-      <span class="bcount">{{ t('bulk.selected', { n: multiSel.size }) }}</span>
-      <button class="danger" :title="t('bulk.delete')" @click="bulkDrop">{{ t('bulk.delete') }}</button>
-      <button
-        v-if="bulkAllTables"
-        class="danger"
-        title="TRUNCATE 所选表 (PG 支持单语句; 其它方言顺序执行, 遇错即停)"
-        @click="bulkTruncate"
-      >TRUNCATE</button>
-      <button :title="t('bulk.copyNames')" @click="bulkCopyNames">{{ t('bulk.copyNames') }}</button>
-      <button
-        v-if="bulkAllTables"
-        title="把所选表名生成 SELECT * FROM ...; 模板复制到剪贴板"
-        @click="bulkCopySelect"
-      >复制 SELECT</button>
-      <button
-        title="导出所选对象的 CREATE DDL 到一个 .sql 文件"
-        @click="bulkExportDdl"
-      >导出 DDL</button>
-      <button class="ghost" :title="t('common.cancel')" @click="controller.clearMulti()">✕</button>
-    </div>
-    <!-- Connection-level bulk bar (when Ctrl-clicked multiple connections). #25 -->
-    <div v-else-if="multiSelConn.size" class="bulk-bar">
-      <span class="bcount">{{ t('bulk.selected', { n: multiSelConn.size }) }} (连接)</span>
-      <button class="danger" title="批量删除所选连接" @click="bulkDeleteConnections">删除连接</button>
-      <button title="批量移动到分组" @click="bulkMoveToGroup">移动到分组</button>
-      <button title="并行测试所选连接" @click="bulkTestConnections">测试连接</button>
+    <!-- Multi-select status footer: 只显示计数 + 清空,
+         所有批量操作通过"右键已选中的节点 → 批量菜单"触发, 跟单节点菜单一致. -->
+    <div v-if="multiSel.size || multiSelConn.size" class="bulk-status">
+      <span class="bcount">{{ t('bulk.selected', { n: multiSel.size || multiSelConn.size }) }}{{ multiSelConn.size ? ' (连接)' : '' }}</span>
+      <span class="bulk-hint">右键选中项 → 批量操作</span>
       <button class="ghost" :title="t('common.cancel')" @click="controller.clearMulti()">✕</button>
     </div>
 
@@ -1929,34 +1997,34 @@ function onGroupDrop(targetGroup: string): void {
   box-shadow: inset 0 -3px 0 0 var(--accent, #7c6cff);
   background: rgba(124, 108, 255, 0.08);
 }
-.bulk-bar {
+/* Multi-select 状态条 — 只显示计数 + 清空, 没有操作按钮. 操作走右键菜单. */
+.bulk-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 5px 10px;
   border-top: 1px solid var(--border);
   background: var(--bg);
-}
-.bulk-bar .bcount {
   font-size: 12px;
+}
+.bulk-status .bcount {
+  color: var(--accent, #7c6cff);
+  font-weight: 600;
+}
+.bulk-status .bulk-hint {
   color: var(--muted);
-  margin-right: auto;
+  flex: 1;
+  font-size: 11px;
 }
-.bulk-bar button {
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  cursor: pointer;
-}
-.bulk-bar button.danger {
-  border-color: var(--err);
-  color: var(--err);
-}
-.bulk-bar button.ghost {
+.bulk-status .ghost {
+  background: transparent;
   border: none;
   color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 6px;
+}
+.bulk-status .ghost:hover {
+  color: var(--text);
 }
 </style>
