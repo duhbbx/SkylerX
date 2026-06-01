@@ -95,7 +95,7 @@ Get in touch:
 - Cell viewer with **NULL / empty / large-text / JSON / BLOB** visual differentiation
 - **JSON column editing** + **BLOB preview** (auto-detect PNG / JPEG / GIF / WEBP signatures, render inline image or hex dump)
 - Column filter, multi-format copy (CSV / TSV / JSON / Markdown / SQL VALUES), export
-- **Result charting** (bar / line / pie via inline SVG, PNG export)
+- **Result charting** (bar / line / pie / scatter via tree-shaken ECharts, auto-detects X/Y columns, zoom + multi-series, caps render at 5000 rows)
 - **Alternative views**: pivot table, self-FK tree, geo scatter, timeline
 - **Cell right-click**: reverse value search, FK navigation, "Ask AI" about error
 - **Foreign key navigation**: jump to referenced row, browse incoming references
@@ -146,6 +146,15 @@ Get in touch:
 - **Data masking** (column-name rules → mask phone / email / ID card / bank card)
 - **Data contracts** (notNull / range / regex rules → scan results)
 - **Webhook notifications** (DingTalk / Feishu / Slack / generic) for slow query / query error / manual
+
+### Navigation tree (sidebar)
+- **Multi-select + batch ops** (Ctrl/⌘+click, Shift+range): batch DROP / TRUNCATE / move-to-group / copy `SELECT *` template / export DDL / parallel test connections. Native multi-target SQL where the dialect supports it (PG: `DROP TABLE a, b, c`), fail-fast sequential elsewhere (Oracle / DM / SQLite); production connections require typed `KILL` / connection-name confirmation
+- **Drag-to-resize width** (200-600px range, double-click to reset, persisted)
+- **Per-connection visible-DB/schema filter** with DataGrip-style N/M chip — pick which databases / schemas show in the tree, also supports nested per-database schema selection for PG / MSSQL / ClickHouse
+- **Tree search (Ctrl/⌘+F)** — live filter on loaded nodes, with auto-expand of branches that have matching descendants
+- **Full-catalog object index** — silent background build on first search; per-connection in-memory cache (~5MB / 100k objects) with 10-minute TTL; cross-connection name match for tables / views / functions / procedures / sequences / triggers / indexes; kind-pill filter pills under the hit list
+- **Redis key click linkage** — single-click a Redis key in nav focuses the matching open RedisPane tab and selects that key
+- **Process / session list + Kill** (right-click connection) — cross-dialect `information_schema.PROCESSLIST` / `pg_stat_activity` / `sys.dm_exec_requests` / `v$session`; per-row Kill button with prod-connection confirmation
 
 ### Connections
 - CRUD + test, local SQLite + `safeStorage` encrypted password store

@@ -127,10 +127,10 @@
 | 状态 | 功能 | 说明 |
 |---|---|---|
 | ✅ | EXPLAIN 可视化 · 慢查询 sparkline · 健康检查 | 已上线 |
+| ✅ | 长跑 query 杀手(进程 / 会话列表 + Kill) | 跨方言:MySQL `information_schema.PROCESSLIST` / PG `pg_stat_activity` / MSSQL `sys.dm_exec_requests` / Oracle `v$session`;生产环境 KILL 需二次输入 `KILL` 确认 |
 | 🟢 | **死索引检测 + 体积统计** | 长期未命中索引列表 + drop SQL 候选 |
 | 🟢 | **慢查询 → 自动重写 + 索引建议** | 选 slow log 行,AI 给重写 + 索引方案 |
 | 🔵 | **复制延迟仪表板** | MySQL/PG 主从延迟可视化 |
-| 🔵 | **长跑 query 杀手** | 表格列出 + 一键 kill + 记录原因 |
 | ⚪ | **存储增长趋势预测** | 7/30/90 天容量曲线 |
 | ⚪ | **连接池调优器** | 看历史并发 / 等待时间,给 max-connections 建议 |
 | ⚪ | **审计日志(签名加密)** | 所有 DDL / DML 写本地签名链 |
@@ -164,7 +164,8 @@
 | 状态 | 功能 | 说明 |
 |---|---|---|
 | ✅ | CSV / Excel / JSON / SQL / Parquet / Markdown 导出 | 已上线 |
-| 🔵 | **图表 viewer** | 结果集 → ECharts(柱 / 线 / 饼 / 热力) |
+| ✅ | 图表 viewer(ECharts) | 结果集一键切图:折线 / 柱 / 饼 / 散点,自动按列类型选 X / Y,支持 zoom & 多系列;5000 行内主线程,超过自动 head-N |
+| 🔵 | **图表持久化 / 模板** | 把"这个查询 → 这个图"存档,做 dashboard 卡片 |
 | 🔵 | **导出到 BI** | Metabase / Superset / PowerBI / Tableau 数据源 push |
 | ⚪ | **REST API 模拟** | 连接 → 自动生成只读 REST 接口预览 |
 | ⚪ | **GraphQL 模拟** | 同上,自动出 GraphQL schema |
@@ -176,6 +177,23 @@
 | 🔵 | **第三方 driver 插件 API** | 社区自己加冷门数据库 |
 | ⚪ | **导出格式插件** | 自定义导出器 |
 | ⚪ | **主题 / 配色插件** | 当前内置主题 → 开放 |
+
+### 2.9 导航树 / 工作区导航
+
+NavTree 是日常 95% 工作的入口,长期投入打磨 — 一波本季度刚落地的改动:
+
+| 状态 | 功能 | 说明 |
+|---|---|---|
+| ✅ | **多选 + 批量操作** | Ctrl/⌘+click / Shift+range 选;支持 DROP / TRUNCATE / move-to-group / 复制 SELECT 模板 / 导出 DDL / 并行测试连接;批量 SQL 按方言走原生 multi-target(PG `DROP TABLE a, b, c`)或 fail-fast 串行(Oracle/DM/SQLite) — Refs #25 |
+| ✅ | **拖拽调整宽度** | 200-600px,双击重置;持久化到 settings;Refs #17 |
+| ✅ | **可见库/Schema 过滤** | 连接行右侧 DataGrip 风格 N/M chip,点开弹窗按 checkbox 选;v2 支持库下二级 schema 过滤;TreeItem.displayChildren 处过滤,不打扰服务端;Refs #24 |
+| ✅ | **本地树搜索 (Ctrl/⌘+F)** | 已加载节点实时过滤,命中分支强制展开,命中祖先链保留 |
+| ✅ | **全库对象索引 + 搜索** | 按连接维护 flat 内存 catalog,10w 对象 ≈ 5MB / 10ms 搜索;首次搜索后台静默 build(失败不打扰),命中显示在树上方;支持 table / view / function / procedure / sequence / trigger / index;按 kind pill 二次过滤 |
+| ✅ | **Redis key 联动** | 单击 Redis key → 自动激活匹配的 RedisPane tab 并选中该 key;不开新 tab;Refs #19 |
+| 🟢 | **Cmd+Shift+P 全局对象 finder** | 跨连接 fuzzy,与 NavTree 搜索互补 — finder 不带本地树 filter 而是独立 modal |
+| 🔵 | **索引持久化到 IndexedDB** | 冷启动秒出搜索结果(带 staleness 标记) |
+| 🔵 | **revealObject 扩展到全 kind** | 当前只能 reveal 表/视图,函数/过程命中后只 toast;补全全 kind 路径展开 |
+| ⚪ | **批量操作:对全选连接** | 比如对所有标 `prod` 的连接生成日报 |
 
 ---
 
@@ -192,6 +210,17 @@
 | ⚪ | **AppImage / Snap / Flatpak** | Linux 多种分发 |
 | ⚪ | **Microsoft Store / Mac App Store** | 当前只有 GitHub releases |
 | ⚪ | **官方 Homebrew tap** | `brew install --cask skylerx` |
+
+---
+
+## 3.5 已知上游问题(Upstream blockers)
+
+跟踪那些**不在 SkylerX 这边能解决**,但影响用户体验的依赖问题。我们只能做缓解 + 等上游。
+
+| 状态 | 问题 | 缓解方案 | 跟踪 |
+|---|---|---|---|
+| 🔴 持续 | **dmdb 默认 DES-CFB cipher 跟现代 Electron BoringSSL 不兼容**:dmdb 1.0.49630(最新)的协议握手默认协商 DES-CFB,但 Electron 22+ 的 BoringSSL 砍掉了这个 cipher 且没有 legacy provider 概念。导致 DM 连接报 `[6071] 消息加密失败 - Unknown cipher`。 | 🟢 **dm.ts URL 加 `?loginEncrypt=0`** 跳过握手加密(已实现) + 🔵 **DM 接入 SkylerX 现有的 SSH 隧道 UI**,把 cleartext 包进 SSH(本季度) + ⚪ **DM SSL 模式**(`sslEncrypt=1`)给愿意配证书的客户 | 详见 [`docs/qa/databases/dm.md`](./docs/qa/databases/dm.md#major-upstream-limitation-dmdb-cipher-incompatibility-with-electrons-boringssl)。已 4 年未修(Node 17 + OpenSSL 3 是 2021 年的事)。待 dameng 上游修 |
+| 🟡 持续 | OB Oracle 租户没有 `VERSION()` 函数(MySQL 模式有)| Driver 探测时 try MySQL `VERSION()` → fallback Oracle `SELECT 1 FROM DUAL` + `v$version` 拼版本(已实现,#28 修复) | OceanBase 上游 |
 
 ---
 

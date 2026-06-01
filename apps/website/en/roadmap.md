@@ -113,9 +113,10 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 | Status | Feature |
 |---|---|
 | ✅ | EXPLAIN visualizer · slow-query sparklines · Health check v1 |
+| ✅ | **Long-running query killer** — cross-dialect process/session list (MySQL `information_schema.PROCESSLIST` / PG `pg_stat_activity` / MSSQL `sys.dm_exec_requests` / Oracle `v$session`); per-row KILL with typed `KILL` confirmation on prod connections |
 | 🟢 | **Dead index detection** + size stats |
 | 🟢 | **Slow query → auto rewrite + index suggestion** |
-| 🔵 | Replication lag dashboard · Long-running query killer with reason |
+| 🔵 | Replication lag dashboard |
 | ⚪ | Storage growth forecasting · Connection pool tuning · Signed audit log · Backup scheduler |
 
 ### 2.5 AI
@@ -144,7 +145,8 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 | Status | Feature |
 |---|---|
 | ✅ | Export to CSV / Excel / JSON / SQL / Parquet / Markdown |
-| 🔵 | **Chart viewer** — result set → ECharts (bar / line / pie / heatmap) |
+| ✅ | **Chart viewer (ECharts)** — one click from result grid: line / bar / pie / scatter; auto-detect numeric columns for Y, non-numeric for X; supports zoom + multi-series; main-thread render up to 5000 rows |
+| 🔵 | **Chart presets / dashboards** — save "this query → this chart" for reuse |
 | 🔵 | **BI export** — Metabase / Superset / PowerBI / Tableau data sources |
 | ⚪ | REST / GraphQL mock endpoints |
 
@@ -154,6 +156,23 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 |---|---|
 | 🔵 | **Third-party driver plugin API** |
 | ⚪ | Export-format plugins / theme plugins |
+
+### 2.9 Navigation tree / workspace nav
+
+NavTree is the entry point for 95% of daily work — a wave of polish that just landed:
+
+| Status | Feature |
+|---|---|
+| ✅ | **Multi-select + batch ops** — Ctrl/⌘+click / Shift+range; DROP / TRUNCATE / move-to-group / copy SELECT template / export DDL / parallel test connections; batch SQL uses native multi-target where supported (PG `DROP TABLE a, b, c`) or fail-fast sequential elsewhere (Oracle/DM/SQLite). Refs #25 |
+| ✅ | **Drag to resize width** — 200-600px, double-click resets, persisted to settings. Refs #17 |
+| ✅ | **Per-connection visible-DB/Schema filter** — DataGrip-style N/M chip next to connection name; v2 supports per-database schema filter (PG with 50 schemas in one DB scenario). Refs #24 |
+| ✅ | **Local tree search (Ctrl/⌘+F)** — live filter on loaded nodes, force-expand branches with matches |
+| ✅ | **Full-catalog object index + cross-tree search** — per-connection flat catalog cache (~5MB / 100k objects / 10ms scan); silent background build on first search; matches surface above the tree; covers tables / views / functions / procedures / sequences / triggers / indexes; kind-pill filtering |
+| ✅ | **Redis key click-to-link** — single-click a Redis key in nav focuses the matching RedisPane tab and selects the key; doesn't spawn a new tab. Refs #19 |
+| 🟢 | **Cmd+Shift+P global object finder** — cross-connection fuzzy modal, complements in-tree search |
+| 🔵 | **Persist index to IndexedDB** — cold-start results in milliseconds (with staleness marker) |
+| 🔵 | **revealObject for all kinds** — currently reveals tables/views in the tree; expand to functions / procedures / sequences |
+| ⚪ | **Batch ops across selected connections** — e.g. nightly report on all `prod`-tagged connections |
 
 ---
 

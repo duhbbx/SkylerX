@@ -95,7 +95,7 @@ SkylerX 由武汉斯凯勒网络科技有限公司开发并维护。
 - 单元格查看器：**NULL / 空串 / 长文本 / JSON / BLOB** 视觉区分
 - **JSON 列编辑** + **BLOB 预览**（识别 PNG / JPEG / GIF / WEBP 头，渲染为图像或十六进制 dump）
 - 列筛选、多格式复制（CSV / TSV / JSON / Markdown / SQL VALUES）、导出
-- **结果图表化**（柱 / 线 / 饼，内嵌 SVG，可导出 PNG）
+- **结果图表化**（柱 / 线 / 饼 / 散点，tree-shaken ECharts，自动按列类型选 X/Y，支持 zoom + 多系列，单次最多渲染 5000 行）
 - **替代视图**：透视表、自引用 FK 树、地理散点、时间轴
 - **单元格右键**：反查值在哪些表出现、跳 FK、问 AI
 - **外键跳转**：跳到被引用行、查看反向引用
@@ -146,6 +146,15 @@ SkylerX 由武汉斯凯勒网络科技有限公司开发并维护。
 - **数据脱敏**（按列名规则脱敏手机 / 邮箱 / 身份证 / 银行卡）
 - **数据契约**（notNull / range / regex 规则 → 扫描结果）
 - **Webhook 通知**（钉钉 / 飞书 / Slack / 通用），可由慢查询 / SQL 报错 / 手动触发
+
+### 导航树（侧栏）
+- **多选 + 批量操作**（Ctrl/⌘+click / Shift+range）：批量 DROP / TRUNCATE / 移动到分组 / 复制 `SELECT *` 模板 / 导出 DDL / 并行测试连接。按方言走原生 multi-target SQL（PG: `DROP TABLE a, b, c`），不支持的方言（Oracle / DM / SQLite）走 fail-fast 串行；生产连接需要输入 `KILL` / 连接名二次确认
+- **拖拽调整宽度**（200-600px 范围，双击重置，自动持久化）
+- **可见库/Schema 过滤** — 连接行右侧 DataGrip 风格 N/M chip，弹窗按 checkbox 选要显示的库；v2 支持库下二级 schema 过滤（PG / MSSQL / ClickHouse 50 schemas / 库场景）
+- **树搜索**（Ctrl/⌘+F）— 已加载节点实时过滤，命中分支强制展开，命中祖先链保留
+- **全库对象索引** — 首次搜索后台静默 build，每连接 ~5MB / 10w 对象 / 10ms 搜索，10 分钟 TTL；跨连接按 name 模糊匹配表 / 视图 / 函数 / 过程 / 序列 / 触发器 / 索引；命中下方 kind 过滤 pill 行二次缩窄
+- **Redis key 联动** — 单击 Redis key → 自动激活匹配的 RedisPane tab 并选中该 key，不会开新 tab
+- **进程/会话列表 + Kill**（右键连接）— 跨方言 `information_schema.PROCESSLIST` / `pg_stat_activity` / `sys.dm_exec_requests` / `v$session`；逐行 Kill,生产环境需输入 `KILL` 二次确认
 
 ### 连接
 - 增删改 + 测试，本地 SQLite + `safeStorage` 加密存口令
