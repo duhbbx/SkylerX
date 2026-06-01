@@ -643,6 +643,10 @@ export const OBJECT_LABEL: Record<ObjectKind, string> = {
   function: '新建函数',
   procedure: '新建存储过程',
   trigger: '新建触发器',
+  sequence: '新建序列',
+  package: '新建包',
+  type: '新建类型',
+  synonym: '新建同义词',
 }
 
 /** 视图/函数/存储过程的起始 DDL 模板（按方言）。表用结构化设计器，不走这里。 */
