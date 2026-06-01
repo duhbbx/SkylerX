@@ -261,16 +261,64 @@ export async function buildIndex(
 }
 
 /**
- * 在已有索引中搜 — 仅匹配对象 name (不含 db/schema, 用户不想要"碰巧 db 里有这个词"
- * 的杂项命中). 大小写不敏感, includes. 不命中返回 []. 不会自动 build — 调用前
- * 应检查 getCached().
+ * VSCode 风格搜索选项. 跟编辑器的 ⌘F 三按钮一一对应.
+ *   caseSensitive: Aa — 大小写敏感
+ *   wholeWord:     \b — 全词匹配 (用 \b 边界包裹)
+ *   useRegex:      .* — 用户输入按 RegExp 解析; 编译失败则匹配空 (UI 在用户连打时
+ *                       会经过非法状态, 这种 transient invalid 不该报错刷屏)
  */
-export function searchIndex(idx: ObjectIndex, query: string, limit = 200): IndexHit[] {
-  const q = query.trim().toLowerCase()
-  if (!q || idx.entries.length === 0) return []
+export interface SearchOpts {
+  caseSensitive: boolean
+  wholeWord: boolean
+  useRegex: boolean
+}
+
+function escRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** 把 query+opts 编译成一个 string → boolean 谓词. 空 query / 非法 regex 都返回安全谓词. */
+export function buildMatcher(query: string, opts: SearchOpts): (s: string) => boolean {
+  const q = query.trim()
+  if (!q) return () => true
+  if (opts.useRegex) {
+    try {
+      const flags = opts.caseSensitive ? '' : 'i'
+      const pat = opts.wholeWord ? `\\b(?:${q})\\b` : q
+      const re = new RegExp(pat, flags)
+      return (s: string) => re.test(s)
+    } catch {
+      return () => false
+    }
+  }
+  if (opts.wholeWord) {
+    const re = new RegExp(`\\b${escRe(q)}\\b`, opts.caseSensitive ? '' : 'i')
+    return (s: string) => re.test(s)
+  }
+  if (opts.caseSensitive) {
+    return (s: string) => s.includes(q)
+  }
+  const needle = q.toLowerCase()
+  return (s: string) => s.toLowerCase().includes(needle)
+}
+
+const DEFAULT_OPTS: SearchOpts = { caseSensitive: false, wholeWord: false, useRegex: false }
+
+/**
+ * 在已有索引中搜 — 仅匹配对象 name (不含 db/schema). 用 buildMatcher 编一次谓词后
+ * 线性扫. 默认大小写不敏感 / contains; opts 走 VSCode 风格三按钮组合.
+ */
+export function searchIndex(
+  idx: ObjectIndex,
+  query: string,
+  limit = 200,
+  opts: SearchOpts = DEFAULT_OPTS,
+): IndexHit[] {
+  if (!query.trim() || idx.entries.length === 0) return []
+  const match = buildMatcher(query, opts)
   const out: IndexHit[] = []
   for (const e of idx.entries) {
-    if (e.name.toLowerCase().includes(q)) {
+    if (match(e.name)) {
       out.push({ ...e, connId: idx.connId })
       if (out.length >= limit) break
     }
@@ -279,10 +327,14 @@ export function searchIndex(idx: ObjectIndex, query: string, limit = 200): Index
 }
 
 /** 跨所有已建索引的连接搜 — NavTree 全局搜索面板用. */
-export function searchAllIndexes(query: string, limit = 200): IndexHit[] {
+export function searchAllIndexes(
+  query: string,
+  limit = 200,
+  opts: SearchOpts = DEFAULT_OPTS,
+): IndexHit[] {
   const all: IndexHit[] = []
   for (const idx of cache.values()) {
-    const perConn = searchIndex(idx, query, limit)
+    const perConn = searchIndex(idx, query, limit, opts)
     all.push(...perConn)
     if (all.length >= limit) break
   }

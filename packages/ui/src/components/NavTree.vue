@@ -19,7 +19,9 @@ import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type IndexHit,
+  type SearchOpts,
   buildIndex,
+  buildMatcher,
   getCached,
   invalidate as invalidateIndex,
   isStale,
@@ -210,6 +212,24 @@ const searchQuery = ref('')
 const searchVisible = ref(false)
 const searchInputEl = ref<HTMLInputElement>()
 const searchLower = computed(() => searchQuery.value.trim().toLowerCase())
+/** VSCode 风格搜索选项 — 三按钮 Aa / \b / .* . 全 off = 历史行为 (大小写不敏感 + contains). */
+const searchOpts = ref<SearchOpts>({ caseSensitive: false, wholeWord: false, useRegex: false })
+function toggleCase(): void {
+  searchOpts.value = { ...searchOpts.value, caseSensitive: !searchOpts.value.caseSensitive }
+}
+function toggleWord(): void {
+  searchOpts.value = { ...searchOpts.value, wholeWord: !searchOpts.value.wholeWord }
+}
+function toggleRegex(): void {
+  searchOpts.value = { ...searchOpts.value, useRegex: !searchOpts.value.useRegex }
+}
+/** 编译当前 query+opts 一次, 复用给 nodeMatchesSearch (树本地) 用. */
+const localMatch = computed(() => buildMatcher(searchQuery.value, searchOpts.value))
+/** 用于 catalog 命中 watch / globalHits 触发 — opts 一变就重算 */
+const optsSignature = computed(
+  () =>
+    `${searchOpts.value.caseSensitive ? 'C' : 'c'}${searchOpts.value.wholeWord ? 'W' : 'w'}${searchOpts.value.useRegex ? 'R' : 'r'}`,
+)
 
 function toggleSearch(): void {
   if (searchQuery.value) {
@@ -317,10 +337,11 @@ const enabledKinds = ref<Set<IndexKind>>(new Set(ALL_INDEX_KINDS))
  *  (b) kindCounts = 各 kind 下的总数 (用户决定要不要勾选这个 kind 看更多) */
 const rawHits = computed<IndexHit[]>(() => {
   void indexVersion.value
-  const q = searchLower.value
+  void optsSignature.value // VSCode 按钮变化也要触发重算
+  const q = searchQuery.value.trim()
   if (!q) return []
   // 上限给宽一些 — kind 过滤后才截 200, 否则用户取消勾选某 kind 可能导致看似为空
-  return searchAllIndexes(q, 1000)
+  return searchAllIndexes(q, 1000, searchOpts.value)
 })
 
 const globalHits = computed<IndexHit[]>(() => {
@@ -375,13 +396,12 @@ async function revealIndexHit(hit: IndexHit): Promise<void> {
   searchVisible.value = false
 }
 
-/** 递归判断: 该节点自身名字命中, 或任何已加载的后代命中.
- *  懒加载未触发 (children===null) 时无法判断, 严格隐藏 — 用户搜不出来时
- *  清空搜索框手动展开就行, 没有跨连接强制网络请求的成本. */
+/** 递归判断: 该节点自身名字命中, 或任何已加载的后代命中. 用 localMatch (含
+ *  VSCode 风格 case/word/regex 选项) 做实际匹配; 空 query 时 buildMatcher 返
+ *  回 () => true, 所有节点都通过. */
 function nodeMatchesSearch(node: TreeNode): boolean {
-  const q = searchLower.value
-  if (!q) return true
-  if (node.name.toLowerCase().includes(q)) return true
+  if (!searchQuery.value.trim()) return true
+  if (localMatch.value(node.name)) return true
   const kids = node.children
   if (kids == null) return false
   return kids.some(nodeMatchesSearch)
@@ -1351,12 +1371,33 @@ function onGroupDrop(targetGroup: string): void {
         placeholder="搜索 库 / 表 / 列..."
         @keydown.escape="closeSearch"
       />
-      <button
-        v-if="searchQuery"
-        class="tree-search-clear"
-        title="清空"
-        @click="searchQuery = ''"
-      >×</button>
+      <!-- VSCode 风格三个选项按钮 — 跟 ⌘F 编辑器搜索行为一致 -->
+      <div class="tree-search-opts">
+        <button
+          class="opt-btn"
+          :class="{ on: searchOpts.caseSensitive }"
+          title="区分大小写"
+          @click="toggleCase"
+        >Aa</button>
+        <button
+          class="opt-btn"
+          :class="{ on: searchOpts.wholeWord }"
+          title="全词匹配 (\b)"
+          @click="toggleWord"
+        >\b</button>
+        <button
+          class="opt-btn"
+          :class="{ on: searchOpts.useRegex }"
+          title="正则表达式"
+          @click="toggleRegex"
+        >.*</button>
+        <button
+          v-if="searchQuery"
+          class="opt-btn opt-clear"
+          title="清空"
+          @click="searchQuery = ''"
+        >×</button>
+      </div>
     </div>
     <!-- #A v2: 全库目录命中面板. 搜索激活时自动出现; 后台静默 build 索引,
          不提示用户操作. 没有命中也显示 (区分 "没结果" vs "还在 build"). -->
@@ -1578,21 +1619,48 @@ function onGroupDrop(targetGroup: string): void {
 .tree-search:focus {
   border-color: var(--accent, #7c6cff);
 }
-.tree-search-clear {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
+/* VSCode 风格搜索选项按钮组 — 横排紧贴 input 右侧 */
+.tree-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tree-search {
+  flex: 1;
+  padding-right: 8px;
+}
+.tree-search-opts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.opt-btn {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 10px;
   line-height: 1;
-  padding: 0 4px;
+  padding: 3px 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  min-width: 20px;
+  text-align: center;
 }
-.tree-search-clear:hover {
+.opt-btn:hover {
+  background: rgba(124, 108, 255, 0.12);
   color: var(--text);
+}
+.opt-btn.on {
+  background: rgba(124, 108, 255, 0.18);
+  color: var(--accent, #7c6cff);
+  border-color: rgba(124, 108, 255, 0.4);
+}
+.opt-clear {
+  font-size: 14px;
+  color: var(--muted);
+  min-width: 16px;
 }
 
 /* #A v2 全库目录命中面板 — 贴在 tree-body 上方, 控制高度别撑爆树 */

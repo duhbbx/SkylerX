@@ -126,28 +126,42 @@ class DmConnection implements DriverConnection {
   }
 
   private async schemaGroups(schema: string): Promise<MetadataNode[]> {
-    const [tables, views] = await Promise.all([
-      this.scalar('SELECT COUNT(*) AS "c" FROM all_tables WHERE owner = :1', [schema]),
-      this.scalar('SELECT COUNT(*) AS "c" FROM all_views WHERE owner = :1', [schema]),
-    ])
+    // 跟 Oracle 同款一次性聚合 — DM 的 all_objects.object_type 覆盖 TABLE / VIEW /
+    // SEQUENCE / TRIGGER / FUNCTION / PROCEDURE / PACKAGE / SYNONYM / TYPE / MATERIALIZED VIEW.
+    // 之前只列 表 + 视图, 用户报告 DM 下 schema 看不到序列 / 触发器 / 函数 / 过程 — 补齐.
+    const objCounts = await this.q(
+      `SELECT object_type AS "t", COUNT(*) AS "c"
+         FROM all_objects
+        WHERE owner = :1
+          AND object_type IN (
+            'TABLE','VIEW','MATERIALIZED VIEW','SEQUENCE','TRIGGER',
+            'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM'
+          )
+        GROUP BY object_type`,
+      [schema],
+    )
+    const cnt = (t: string): number =>
+      Number((objCounts.find((r: any) => r.t === t) as { c?: number } | undefined)?.c ?? 0)
     const p = [schema]
+    const mk = (name: string, group: string, count: number): MetadataNode => ({
+      kind: MetaNodeKind.Group,
+      name,
+      path: p,
+      group,
+      hasChildren: count > 0,
+      count,
+    })
     return [
-      {
-        kind: MetaNodeKind.Group,
-        name: '表',
-        path: p,
-        group: 'tables',
-        hasChildren: true,
-        count: tables,
-      },
-      {
-        kind: MetaNodeKind.Group,
-        name: '视图',
-        path: p,
-        group: 'views',
-        hasChildren: true,
-        count: views,
-      },
+      mk('表', 'tables', cnt('TABLE')),
+      mk('视图', 'views', cnt('VIEW')),
+      mk('物化视图', 'mviews', cnt('MATERIALIZED VIEW')),
+      mk('函数', 'functions', cnt('FUNCTION')),
+      mk('存储过程', 'procedures', cnt('PROCEDURE')),
+      mk('包', 'packages', cnt('PACKAGE')),
+      mk('序列', 'sequences', cnt('SEQUENCE')),
+      mk('触发器', 'triggers', cnt('TRIGGER')),
+      mk('类型', 'types', cnt('TYPE')),
+      mk('同义词', 'synonyms', cnt('SYNONYM')),
     ]
   }
 
@@ -206,7 +220,18 @@ class DmConnection implements DriverConnection {
   }
 
   private async listSchemas(): Promise<MetadataNode[]> {
-    const rows = await this.q('SELECT username AS "name" FROM all_users ORDER BY username')
+    // 之前只看 all_users — 在 DM 里 schema 是独立对象(可以跟用户同名也可以不同名:
+    // CREATE SCHEMA name 不创建用户). 用户报告"新建 schema 后不显示" 根因就是这里:
+    // 新 schema 没有对应的 all_users 行. 改成 SYS.SYSOBJECTS WHERE TYPE$='SCH', 这是
+    // DM 系统表里专门记 schema 的入口, 用户+非用户 schema 都覆盖. 失败回 all_users 兜底.
+    let rows: any[]
+    try {
+      rows = await this.q(
+        `SELECT NAME AS "name" FROM SYS.SYSOBJECTS WHERE TYPE$ = 'SCH' ORDER BY NAME`,
+      )
+    } catch {
+      rows = await this.q('SELECT username AS "name" FROM all_users ORDER BY username')
+    }
     return rows.map((r: any) => ({
       kind: MetaNodeKind.Schema,
       name: String(r.name),
@@ -266,6 +291,82 @@ class DmConnection implements DriverConnection {
         name: String(r.name),
         path: [schema, String(r.name)],
         hasChildren: true,
+        sqlName: `${quote(schema)}.${quote(String(r.name))}`,
+      }))
+    }
+    if (group === 'mviews') {
+      const rows = await this.q(
+        'SELECT mview_name AS "name" FROM all_mviews WHERE owner = :1 ORDER BY mview_name',
+        [schema],
+      )
+      return rows.map((r: any) => ({
+        kind: MetaNodeKind.View,
+        name: String(r.name),
+        path: [schema, String(r.name)],
+        hasChildren: false,
+        sqlName: `${quote(schema)}.${quote(String(r.name))}`,
+      }))
+    }
+    if (group === 'sequences') {
+      const rows = await this.q(
+        'SELECT sequence_name AS "name" FROM all_sequences WHERE sequence_owner = :1 ORDER BY sequence_name',
+        [schema],
+      )
+      return rows.map((r: any) => ({
+        kind: MetaNodeKind.Sequence,
+        name: String(r.name),
+        path: [schema, String(r.name)],
+        hasChildren: false,
+        sqlName: `${quote(schema)}.${quote(String(r.name))}`,
+      }))
+    }
+    if (group === 'triggers') {
+      const rows = await this.q(
+        'SELECT trigger_name AS "name" FROM all_triggers WHERE owner = :1 ORDER BY trigger_name',
+        [schema],
+      )
+      return rows.map((r: any) => ({
+        kind: MetaNodeKind.Trigger,
+        name: String(r.name),
+        path: [schema, String(r.name)],
+        hasChildren: false,
+        sqlName: `${quote(schema)}.${quote(String(r.name))}`,
+      }))
+    }
+    if (
+      group === 'functions' ||
+      group === 'procedures' ||
+      group === 'packages' ||
+      group === 'types' ||
+      group === 'synonyms'
+    ) {
+      const dmType =
+        group === 'functions'
+          ? 'FUNCTION'
+          : group === 'procedures'
+            ? 'PROCEDURE'
+            : group === 'packages'
+              ? 'PACKAGE'
+              : group === 'types'
+                ? 'TYPE'
+                : 'SYNONYM'
+      const rows = await this.q(
+        `SELECT object_name AS "name" FROM all_objects
+          WHERE owner = :1 AND object_type = :2 ORDER BY object_name`,
+        [schema, dmType],
+      )
+      const kind =
+        group === 'functions'
+          ? MetaNodeKind.Function
+          : group === 'procedures'
+            ? MetaNodeKind.Procedure
+            : MetaNodeKind.View // packages / types / synonyms 暂复用 view 图标
+      return rows.map((r: any) => ({
+        kind,
+        name: String(r.name),
+        path: [schema, String(r.name)],
+        hasChildren: false,
+        group,
         sqlName: `${quote(schema)}.${quote(String(r.name))}`,
       }))
     }
