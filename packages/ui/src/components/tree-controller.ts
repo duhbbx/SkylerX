@@ -172,6 +172,9 @@ export interface TreeController {
   nodeMatchesSearch(node: TreeNode): boolean
   /** #D: 打开 "进程 / 会话列表" 对话框 (process list + kill). */
   openProcessList(connId: string): void
+  /** #A v2: 重建该连接的全库对象索引. 旧索引立即作废, 后台 fetch 重建.
+   *  完成后 toast; 失败 toast warn (或不支持方言时友好提示). */
+  rebuildObjectIndex(connId: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

@@ -764,6 +764,17 @@ export const TREE_ACTIONS: TreeAction[] = [
     excludeDialects: [DbDialect.SQLite, DbDialect.DuckDB],
     run: ({ connId, ctrl }) => ctrl.openProcessList(connId),
   },
+  // #A v2: 重建全库对象索引 — 全库 catalog 一次性 scan, 10w 对象 ~3s, 用于
+  // NavTree 搜索时跨整个 DB 找对象 (不止当前已展开节点).
+  {
+    id: 'rebuild-object-index',
+    label: 'ctx.rebuild-object-index',
+    section: 'conn',
+    kinds: [MetaNodeKind.Connection],
+    excludeKind: DbKind.NoSql,
+    excludeDialects: [DbDialect.SQLite, DbDialect.DuckDB, DbDialect.ClickHouse],
+    run: ({ connId, ctrl }) => ctrl.rebuildObjectIndex(connId),
+  },
 
   // ── 刷新 ──
   {

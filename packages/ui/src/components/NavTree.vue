@@ -17,6 +17,15 @@ import type { ObjectKind, SqlTemplateKind } from '../ddl'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import { t } from '../i18n'
+import {
+  type IndexHit,
+  ObjectIndexNotSupported,
+  buildIndex,
+  getCached,
+  invalidate as invalidateIndex,
+  isStale,
+  searchAllIndexes,
+} from '../nav-object-index'
 import { settings } from '../settings'
 import ContextMenu from './ContextMenu.vue'
 import TreeItem from './TreeItem.vue'
@@ -217,6 +226,78 @@ function toggleSearch(): void {
 }
 function closeSearch(): void {
   searchQuery.value = ''
+  searchVisible.value = false
+}
+
+// ── 全库对象索引 (#A v2) — 跨连接 catalog 缓存 ─────────────────────────
+/** 当前正在 build 索引的 connId 集合 — 进度条 + 防重入 */
+const buildingIndexes = ref<Set<string>>(new Set())
+/** 触发响应式 — getCached() 不是 reactive, 用一个递增计数让 globalHits 能跟着更新 */
+const indexVersion = ref(0)
+
+async function buildConnIndex(connId: string): Promise<void> {
+  if (buildingIndexes.value.has(connId)) return
+  const root = roots.value.find((r) => r.id === connId)
+  if (!root) return
+  buildingIndexes.value = new Set([...buildingIndexes.value, connId])
+  try {
+    const idx = await buildIndex(client, connId, root.dialect as DbDialect)
+    indexVersion.value++
+    toast.success(`${root.node.name}: 已索引 ${idx.entries.length} 个对象`)
+  } catch (e) {
+    if (e instanceof ObjectIndexNotSupported) {
+      toast.warn(`${root.node.name}: ${e.message}`)
+    } else {
+      reportError(e, { tag: 'build-object-index' })
+    }
+  } finally {
+    const next = new Set(buildingIndexes.value)
+    next.delete(connId)
+    buildingIndexes.value = next
+  }
+}
+
+function rebuildConnIndex(connId: string): void {
+  invalidateIndex(connId)
+  void buildConnIndex(connId)
+}
+
+/**
+ * 当前 query 在已建索引里的全局命中. 触发 indexVersion 时重算.
+ * 上限 200 条避免 UI 卡; 大量结果让用户细化 query.
+ */
+const globalHits = computed<IndexHit[]>(() => {
+  void indexVersion.value // 触发依赖
+  const q = searchLower.value
+  if (!q) return []
+  return searchAllIndexes(q, 200)
+})
+
+/** 哪些连接没建过 / 已过期索引 — 搜索时给个一键 "全部建立" 入口 */
+const connsNeedIndex = computed(() => {
+  void indexVersion.value
+  return roots.value.filter((r) => isStale(getCached(r.id))).map((r) => r.id)
+})
+
+/** Reveal 一个 IndexHit 到树里, 失败给 toast 提示. */
+async function revealIndexHit(hit: IndexHit): Promise<void> {
+  // 当前 revealObject 仅认 tables/views; functions/procedures 等先 fallback
+  // 到 toast (后续 v2 扩展 walkReveal 也认它们).
+  if (hit.kind !== 'table' && hit.kind !== 'view') {
+    toast.warn(
+      `已找到 ${hit.kind} ${hit.name} (定位到 ${hit.db || hit.schema || ''}, 自动展开暂未支持)`,
+    )
+    return
+  }
+  // PG 用 schema 作"库"参数 (revealObject 内部 walkReveal 会按方言判定);
+  // 其它方言 hit.db 就是导航首层.
+  const schemaForReveal = hit.schema || hit.db
+  const ok = await revealObject(hit.connId, schemaForReveal, hit.name)
+  if (!ok) {
+    toast.warn(`未在树中找到 ${schemaForReveal}.${hit.name} (可能已被过滤或刚被删除)`)
+    return
+  }
+  // 命中后顺手收起搜索栏, 让用户看到选中节点 (不清空 query — 万一还想看别的)
   searchVisible.value = false
 }
 
@@ -559,6 +640,7 @@ const controller: TreeController = {
   searchActive: () => searchLower.value.length > 0,
   nodeMatchesSearch,
   openProcessList: (connId) => emit('openProcessList', connId),
+  rebuildObjectIndex: (connId) => rebuildConnIndex(connId),
 }
 
 provide(TreeControllerKey, controller)
@@ -1202,6 +1284,50 @@ function onGroupDrop(targetGroup: string): void {
         @click="searchQuery = ''"
       >×</button>
     </div>
+    <!-- #A v2: 全库目录命中面板 — 仅在搜索激活且有结果时显示, 在 tree-body 上方 -->
+    <div
+      v-if="searchVisible && searchQuery && (globalHits.length > 0 || connsNeedIndex.length > 0)"
+      class="catalog-hits"
+    >
+      <div class="catalog-bar">
+        <span v-if="globalHits.length > 0" class="catalog-title">
+          📚 数据库目录命中 ({{ globalHits.length }}{{ globalHits.length >= 200 ? '+' : '' }})
+        </span>
+        <span v-else class="catalog-title catalog-empty">📚 目录里没找到</span>
+        <button
+          v-if="connsNeedIndex.length > 0"
+          class="catalog-build"
+          :disabled="buildingIndexes.size > 0"
+          :title="`未建索引: ${connsNeedIndex.length} 个连接 (TTL 10 分钟)`"
+          @click="connsNeedIndex.forEach(buildConnIndex)"
+        >
+          {{ buildingIndexes.size > 0 ? `建立中 (${buildingIndexes.size})...` : `🔧 建立索引 (${connsNeedIndex.length})` }}
+        </button>
+      </div>
+      <ul v-if="globalHits.length > 0" class="catalog-list">
+        <li
+          v-for="(h, hi) in globalHits"
+          :key="hi + ':' + h.connId + ':' + h.kind + ':' + h.db + ':' + h.schema + ':' + h.name"
+          class="catalog-row"
+          :title="`${h.kind} · ${[h.db, h.schema, h.name].filter(Boolean).join('.')}`"
+          @click="revealIndexHit(h)"
+        >
+          <span class="catalog-kind">{{
+            h.kind === 'table' ? '🗃' :
+            h.kind === 'view' ? '👁' :
+            h.kind === 'function' ? 'ƒ' :
+            h.kind === 'procedure' ? '⚙' :
+            h.kind === 'sequence' ? '#' :
+            h.kind === 'trigger' ? '⚡' : '·'
+          }}</span>
+          <span class="catalog-name">{{ h.name }}</span>
+          <span class="catalog-path">
+            {{ [h.db, h.schema].filter(Boolean).join(' / ') }}
+            <span class="catalog-conn">@ {{ roots.find((r) => r.id === h.connId)?.node.name ?? h.connId }}</span>
+          </span>
+        </li>
+      </ul>
+    </div>
     <div ref="treeBodyEl" class="tree-body" @contextmenu="onTreeBodyContextmenu">
       <div v-if="!roots.length" class="tree-status">{{ t('nav.empty') }}</div>
 
@@ -1386,6 +1512,89 @@ function onGroupDrop(targetGroup: string): void {
 }
 .tree-search-clear:hover {
   color: var(--text);
+}
+
+/* #A v2 全库目录命中面板 — 贴在 tree-body 上方, 控制高度别撑爆树 */
+.catalog-hits {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  max-height: 240px;
+  display: flex;
+  flex-direction: column;
+}
+.catalog-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--panel);
+}
+.catalog-title {
+  color: var(--muted);
+}
+.catalog-title.catalog-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.catalog-build {
+  background: rgba(124, 108, 255, 0.12);
+  border: 1px solid var(--accent, #7c6cff);
+  color: var(--accent, #7c6cff);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+.catalog-build:hover:not(:disabled) {
+  background: rgba(124, 108, 255, 0.22);
+}
+.catalog-build:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.catalog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+.catalog-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.catalog-row:hover {
+  background: rgba(124, 108, 255, 0.12);
+}
+.catalog-kind {
+  width: 14px;
+  text-align: center;
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+.catalog-name {
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+.catalog-path {
+  flex: 1;
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.catalog-conn {
+  color: var(--accent, #7c6cff);
+  margin-left: 4px;
 }
 
 .tree-head {
