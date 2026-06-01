@@ -177,6 +177,9 @@ interface ConnRoot {
   /** #24: 可见库/Schema 白名单 (从 extra.visibleDatabases 抄过来). 非空时
    *  TreeItem.displayChildren 用它过滤 Connection 节点直挂的 Database / Schema. */
   visibleDatabases?: string[]
+  /** #24: 配置过滤时 snapshot 的总数 (top-level database/schema 数量).
+   *  用于 N/M chip 在连接未展开时也能立即显示分母. 跟 visibleDatabases 一起进/出. */
+  visibleDatabasesTotal?: number
 }
 
 const roots = ref<ConnRoot[]>([])
@@ -487,6 +490,9 @@ const controller: TreeController = {
     if (!root?.visibleDatabases || root.visibleDatabases.length === 0) return null
     return new Set(root.visibleDatabases)
   },
+  connVisibleTotal(connId) {
+    return roots.value.find((r) => r.id === connId)?.visibleDatabasesTotal ?? null
+  },
   configureNavFilter: (connId) => emit('configureNavFilter', connId),
 }
 
@@ -649,11 +655,17 @@ async function reload(): Promise<void> {
     const reused = prev.get(c.id)
     const node = reused ?? rootNode(c.name || t('common.untitled'))
     if (reused) reused.name = c.name || t('common.untitled')
-    const allow = (c.extra as { visibleDatabases?: unknown } | undefined)?.visibleDatabases
+    const extra = c.extra as
+      | { visibleDatabases?: unknown; visibleDatabasesTotal?: unknown }
+      | undefined
+    const allow = extra?.visibleDatabases
     const visibleDatabases =
       Array.isArray(allow) && allow.length > 0
         ? allow.filter((x): x is string => typeof x === 'string')
         : undefined
+    const totalRaw = extra?.visibleDatabasesTotal
+    const visibleDatabasesTotal =
+      typeof totalRaw === 'number' && Number.isFinite(totalRaw) ? totalRaw : undefined
     return {
       id: c.id,
       node,
@@ -663,6 +675,7 @@ async function reload(): Promise<void> {
       sortIndex: c.sortIndex,
       createdAt: c.createdAt,
       visibleDatabases,
+      visibleDatabasesTotal,
     }
   })
   // 新出现的分组默认展开（保留用户已折叠的）

@@ -157,6 +157,9 @@ export interface TreeController {
   /** #24: 当前连接是否启用了 "可见库/Schema 过滤" — 启用时 TreeItem 会画指示器,
    *  返回的 Set 用来在 displayChildren 里过滤 Connection 节点直挂的子节点. */
   connVisibleFilter(connId: string): Set<string> | null
+  /** #24: 配置过滤时 snapshot 的顶层总数 — 用于 chip 的分母. 即便连接未展开
+   *  也能立即显示 "N/M", 而不是只有 N. 没配过过滤时返回 null. */
+  connVisibleTotal(connId: string): number | null
   /** #24: 打开 "配置可见库/Schema" 对话框. */
   configureNavFilter(connId: string): void
 }

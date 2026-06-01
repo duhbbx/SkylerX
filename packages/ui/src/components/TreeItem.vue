@@ -69,27 +69,35 @@ const hasNavFilter = computed(
 )
 
 /**
- * #24: DataGrip-style filter chip: shows "N/M" when filter is active
+ * #24: DataGrip-style filter chip: "N/M" when filter is active.
  *   N = filter set size (configured visible count)
- *   M = total top-level children on the server (only known after connection
- *       has been expanded once — children !== null). Before expansion we
- *       just show "N" since the server total isn't known yet.
+ *   M = total top-level children. Two sources, in priority:
+ *       a) the persisted snapshot from when the filter was last configured
+ *          (always available right after save, no expand required)
+ *       b) the live children count if the connection has been expanded
+ *          (newer reality if dbs were added/removed since save)
+ *   Priority order: prefer (b) when available since it reflects current
+ *   server state; fall back to (a) so we still show N/M before first expand;
+ *   last resort is just N if neither is known.
  *
- * children may contain non-database/schema nodes for some dialects (Redis
- * exposes db0..db15 as kind=Database, Mongo exposes kind=Schema for dbs),
- * but the count semantic stays right: "what the filter applies to" === those
- * direct children whose kind is Database or Schema.
+ * children may contain non-database/schema nodes for some dialects, but the
+ * count semantic stays right: filter only applies to Database / Schema kids,
+ * so we filter on those kinds before counting.
  */
 const filterChipText = computed<string>(() => {
   if (!hasNavFilter.value) return ''
   const allow = ctrl.connVisibleFilter(props.connId)
   const n = allow?.size ?? 0
   const kids = props.node.children
-  if (kids == null) return String(n) // not yet expanded → server total unknown
-  const m = kids.filter(
-    (k) => k.kind === MetaNodeKind.Database || k.kind === MetaNodeKind.Schema,
-  ).length
-  return `${n}/${m}`
+  if (kids != null) {
+    const live = kids.filter(
+      (k) => k.kind === MetaNodeKind.Database || k.kind === MetaNodeKind.Schema,
+    ).length
+    return `${n}/${live}`
+  }
+  const snapshot = ctrl.connVisibleTotal(props.connId)
+  if (snapshot != null) return `${n}/${snapshot}`
+  return String(n)
 })
 
 async function toggle(): Promise<void> {

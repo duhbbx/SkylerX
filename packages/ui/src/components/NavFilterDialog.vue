@@ -97,11 +97,16 @@ async function save(): Promise<void> {
       // 全勾 = 无过滤, 把字段去掉. biome 偏好赋 undefined 而非 delete
       // (在 JSON 序列化层等价 — JSON.stringify 会跳过 undefined 字段).
       restExtra.visibleDatabases = undefined
+      restExtra.visibleDatabasesTotal = undefined
     } else {
       // 按 items 顺序保存, 不按 Set 迭代序 (Set 迭代序是 insert 序, 不直观).
       restExtra.visibleDatabases = items.value
         .filter((n) => checked.value.has(n.name))
         .map((n) => n.name)
+      // #24: 把"配置时的总数" snapshot 也持久化 — 用于 NavTree 上的 N/M chip,
+      // 这样连接未展开时也能立即显示 "3/13" 而不是只 "3". 总数偏好 server-side
+      // 视图(database + schema 顶层条目数), 跟 dialog 列出的一致.
+      restExtra.visibleDatabasesTotal = items.value.length
     }
     await client.connections.update({
       ...props.conn,
