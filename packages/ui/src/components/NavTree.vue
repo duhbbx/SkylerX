@@ -9,7 +9,7 @@ import {
   type DbDialect,
   MetaNodeKind,
 } from '@db-tool/shared-types'
-import { computed, nextTick, onMounted, provide, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, provide, reactive, ref, watch } from 'vue'
 import { connEnv } from '../connEnv'
 import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
@@ -19,7 +19,6 @@ import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import {
   type IndexHit,
-  ObjectIndexNotSupported,
   buildIndex,
   getCached,
   invalidate as invalidateIndex,
@@ -235,20 +234,27 @@ const buildingIndexes = ref<Set<string>>(new Set())
 /** 触发响应式 — getCached() 不是 reactive, 用一个递增计数让 globalHits 能跟着更新 */
 const indexVersion = ref(0)
 
+/**
+ * 后台静默 build — 失败永远不弹模态 / 不 toast 警告. 索引构建只服务于搜索, 失败
+ * 等于该连接的对象暂时搜不到, 不是用户能立即处理的状态, 不打扰. 仅 console.debug
+ * 留痕给开发者诊断. ObjectIndexNotSupported 同样静默 (用户改不了方言).
+ *
+ * 失败的连接会被 isStale() 判定为 stale, 下次 searchQuery 变化时 watch 会再尝试
+ * 一次 — 不浪费机会, 但不刷屏.
+ */
 async function buildConnIndex(connId: string): Promise<void> {
   if (buildingIndexes.value.has(connId)) return
   const root = roots.value.find((r) => r.id === connId)
   if (!root) return
   buildingIndexes.value = new Set([...buildingIndexes.value, connId])
   try {
-    const idx = await buildIndex(client, connId, root.dialect as DbDialect)
+    await buildIndex(client, connId, root.dialect as DbDialect)
     indexVersion.value++
-    toast.success(`${root.node.name}: 已索引 ${idx.entries.length} 个对象`)
   } catch (e) {
-    if (e instanceof ObjectIndexNotSupported) {
-      toast.warn(`${root.node.name}: ${e.message}`)
-    } else {
-      reportError(e, { tag: 'build-object-index' })
+    // 静默 — 见上方注释. 写一条 debug 行方便开发模式下 DevTools 看
+    if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV === true) {
+      // biome-ignore lint/suspicious/noConsole: dev-only diagnostic
+      console.debug('[nav-object-index] build failed for', root.node.name, e)
     }
   } finally {
     const next = new Set(buildingIndexes.value)
@@ -263,6 +269,23 @@ function rebuildConnIndex(connId: string): void {
 }
 
 /**
+ * 用户开始搜索时, 后台并发触发所有 stale 连接的索引构建. 默认行为, 不需要任何
+ * UI prompt. 重复搜索不重复 build (buildingIndexes Set + isStale 双重保护).
+ * 防抖 150ms — 用户连打几个字符不要每个字符触发一波. */
+let searchAutoBuildTimer: ReturnType<typeof setTimeout> | null = null
+watch(searchLower, (q) => {
+  if (!q) return
+  if (searchAutoBuildTimer) clearTimeout(searchAutoBuildTimer)
+  searchAutoBuildTimer = setTimeout(() => {
+    for (const r of roots.value) {
+      if (isStale(getCached(r.id)) && !buildingIndexes.value.has(r.id)) {
+        void buildConnIndex(r.id)
+      }
+    }
+  }, 150)
+})
+
+/**
  * 当前 query 在已建索引里的全局命中. 触发 indexVersion 时重算.
  * 上限 200 条避免 UI 卡; 大量结果让用户细化 query.
  */
@@ -273,11 +296,8 @@ const globalHits = computed<IndexHit[]>(() => {
   return searchAllIndexes(q, 200)
 })
 
-/** 哪些连接没建过 / 已过期索引 — 搜索时给个一键 "全部建立" 入口 */
-const connsNeedIndex = computed(() => {
-  void indexVersion.value
-  return roots.value.filter((r) => isStale(getCached(r.id))).map((r) => r.id)
-})
+/** 搜索激活但还有连接正在后台 build 索引 — UI 上用静默 dot 提示 (不抢操作) */
+const isAnyIndexBuilding = computed(() => buildingIndexes.value.size > 0)
 
 /** Reveal 一个 IndexHit 到树里, 失败给 toast 提示. */
 async function revealIndexHit(hit: IndexHit): Promise<void> {
@@ -1284,25 +1304,18 @@ function onGroupDrop(targetGroup: string): void {
         @click="searchQuery = ''"
       >×</button>
     </div>
-    <!-- #A v2: 全库目录命中面板 — 仅在搜索激活且有结果时显示, 在 tree-body 上方 -->
-    <div
-      v-if="searchVisible && searchQuery && (globalHits.length > 0 || connsNeedIndex.length > 0)"
-      class="catalog-hits"
-    >
+    <!-- #A v2: 全库目录命中面板. 搜索激活时自动出现; 后台静默 build 索引,
+         不提示用户操作. 没有命中也显示 (区分 "没结果" vs "还在 build"). -->
+    <div v-if="searchVisible && searchQuery" class="catalog-hits">
       <div class="catalog-bar">
         <span v-if="globalHits.length > 0" class="catalog-title">
           📚 数据库目录命中 ({{ globalHits.length }}{{ globalHits.length >= 200 ? '+' : '' }})
         </span>
+        <span v-else-if="isAnyIndexBuilding" class="catalog-title catalog-empty">
+          📚 索引中... ({{ buildingIndexes.size }} 个连接)
+        </span>
         <span v-else class="catalog-title catalog-empty">📚 目录里没找到</span>
-        <button
-          v-if="connsNeedIndex.length > 0"
-          class="catalog-build"
-          :disabled="buildingIndexes.size > 0"
-          :title="`未建索引: ${connsNeedIndex.length} 个连接 (TTL 10 分钟)`"
-          @click="connsNeedIndex.forEach(buildConnIndex)"
-        >
-          {{ buildingIndexes.size > 0 ? `建立中 (${buildingIndexes.size})...` : `🔧 建立索引 (${connsNeedIndex.length})` }}
-        </button>
+        <span v-if="isAnyIndexBuilding && globalHits.length > 0" class="catalog-dot" title="后台还有连接在建索引">●</span>
       </div>
       <ul v-if="globalHits.length > 0" class="catalog-list">
         <li
@@ -1537,22 +1550,15 @@ function onGroupDrop(targetGroup: string): void {
   color: var(--muted);
   font-style: italic;
 }
-.catalog-build {
-  background: rgba(124, 108, 255, 0.12);
-  border: 1px solid var(--accent, #7c6cff);
+/* 后台索引中的静默小点 — 紫色脉动, 不抢操作 */
+.catalog-dot {
   color: var(--accent, #7c6cff);
-  cursor: pointer;
-  font-size: 10px;
-  line-height: 1;
-  padding: 3px 8px;
-  border-radius: 3px;
+  font-size: 8px;
+  animation: catalog-pulse 1.2s ease-in-out infinite;
 }
-.catalog-build:hover:not(:disabled) {
-  background: rgba(124, 108, 255, 0.22);
-}
-.catalog-build:disabled {
-  opacity: 0.6;
-  cursor: wait;
+@keyframes catalog-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 .catalog-list {
   list-style: none;
