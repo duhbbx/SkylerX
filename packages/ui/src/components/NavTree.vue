@@ -374,6 +374,17 @@ function toggleKind(k: IndexKind): void {
 /** 搜索激活但还有连接正在后台 build 索引 — UI 上用静默 dot 提示 (不抢操作) */
 const isAnyIndexBuilding = computed(() => buildingIndexes.value.size > 0)
 
+/** 当前已构建索引的总对象数 — 用户搜不到时给个 "我们到底搜了多少东西" 的反馈,
+ *  避免 "目录里没找到" 这种模糊提示让人怀疑功能没工作. */
+const indexedTotal = computed(() => {
+  void indexVersion.value
+  let n = 0
+  for (const r of roots.value) {
+    n += getCached(r.id)?.entries.length ?? 0
+  }
+  return n
+})
+
 /** Reveal 一个 IndexHit 到树里, 失败给 toast 提示. */
 async function revealIndexHit(hit: IndexHit): Promise<void> {
   // 当前 revealObject 仅认 tables/views; functions/procedures 等先 fallback
@@ -1404,12 +1415,17 @@ function onGroupDrop(targetGroup: string): void {
     <div v-if="searchVisible && searchQuery" class="catalog-hits">
       <div class="catalog-bar">
         <span v-if="globalHits.length > 0" class="catalog-title">
-          📚 数据库目录命中 ({{ globalHits.length }}{{ globalHits.length >= 200 ? '+' : '' }})
+          📚 命中 {{ globalHits.length }}{{ globalHits.length >= 200 ? '+' : '' }}
+          <span class="catalog-sub">· 已索引 {{ indexedTotal }} 个对象</span>
         </span>
         <span v-else-if="isAnyIndexBuilding" class="catalog-title catalog-empty">
-          📚 索引中... ({{ buildingIndexes.size }} 个连接)
+          📚 索引构建中... ({{ buildingIndexes.size }} 个连接)
         </span>
-        <span v-else class="catalog-title catalog-empty">📚 目录里没找到</span>
+        <span v-else-if="indexedTotal > 0" class="catalog-title catalog-empty">
+          📚 无匹配
+          <span class="catalog-sub">· 已搜过 {{ indexedTotal }} 个对象</span>
+        </span>
+        <span v-else class="catalog-title catalog-empty">📚 索引尚未建立</span>
         <span v-if="isAnyIndexBuilding && globalHits.length > 0" class="catalog-dot" title="后台还有连接在建索引">●</span>
       </div>
       <!-- kind 过滤 pill 行 — 只显示 rawHits 里有的 kind, 0 count 隐藏避免噪声 -->
@@ -1685,6 +1701,12 @@ function onGroupDrop(targetGroup: string): void {
 .catalog-title.catalog-empty {
   color: var(--muted);
   font-style: italic;
+}
+.catalog-sub {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 10px;
+  margin-left: 4px;
 }
 /* 后台索引中的静默小点 — 紫色脉动, 不抢操作 */
 .catalog-dot {
