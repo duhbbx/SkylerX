@@ -213,9 +213,43 @@ DM has a MySQL-compat mode that changes some behaviors. If enabled on the test s
 
 ## Known limitations
 
-- DM native module is large (~50MB); bundle size impact noted
-- electron-rebuild step REQUIRED after any Electron version change — document for contributors
+- DM native module: actually dmdb is **pure JS** (NOT native), so no electron-rebuild needed despite older docs. Size ~few MB.
 - DM uses some non-standard SQL extensions (e.g. `DBMS_PIPE` for IPC inside engine) — out of scope to test
 - Some DBA views are restricted to DBA role; without DBA grant, health check should degrade gracefully
 - DM's audit log (审计) is server-side; app does not consume it directly
 - 国产化 / 信创认证: SkylerX itself does not undergo 等保 / 信创 certification — that's the DM server's responsibility
+- DM-specific quirk: `CURRENT_SCHEMA()` function is NOT supported, throws `[-2207] Member access [CURRENT_SCHEMA] unresolved`. Use `SYS_CONTEXT('USERENV','CURRENT_SCHEMA')` instead.
+
+## ⚠️ Major upstream limitation — dmdb cipher incompatibility with Electron's BoringSSL
+
+**Symptom**: DM connections from packaged SkylerX (or any Electron-based app) fail with `[6071] 消息加密失败 - Unknown cipher` or `[20017] 获取连接请求等待超时`.
+
+**Root cause** (verified end-to-end on 2026-06-01):
+
+dmdb's protocol-level password handshake hard-codes the **DES-CFB** cipher when the server reports its default `algorighm = 0` (typo is in dmdb source — preserved here for grep). Three independent OpenSSL ecosystems behave differently:
+
+| Runtime | Crypto library | DES-CFB support |
+|---|---|---|
+| Node 12 / 14 (era of dameng's official examples) | OpenSSL 1.1.x | ✅ default |
+| **Node 18+ / 24** (modern Node CLI) | OpenSSL 3.x default | ❌ removed |
+| **Node 18+ / 24 with `--openssl-legacy-provider`** | OpenSSL 3.x + legacy provider | ✅ available |
+| **Electron 22+ / 34** (production SkylerX runtime) | **BoringSSL** (`process.versions.openssl === '0.0.0'`) | ❌ permanently removed, no legacy provider concept |
+
+BoringSSL is Google's OpenSSL fork used by Chromium; it aggressively prunes legacy ciphers and **does NOT have a legacy provider mechanism at all**. There is no Node CLI flag that can re-enable DES-CFB in Electron.
+
+**Diagnostic trap**: standalone Node tests of dmdb will pass (Node 24 OpenSSL 3.6.2 still has DES-CFB via legacy provider) while the same code in Electron fails. **Always test crypto-using drivers in actual Electron, not standalone Node.**
+
+**Workaround in SkylerX** (`packages/core-driver/src/dialects/dm.ts`):
+- `buildDmUrl()` appends `?loginEncrypt=0` to the connection URL, telling dmdb to **skip the protocol-level password handshake encryption entirely**.
+- Trade-off: password is sent in cleartext on the wire. Safe only for:
+  - localhost / Docker containers
+  - Connections wrapped in SSH tunnel (SkylerX's existing SSH feature)
+  - Connections wrapped in DM server-side SSL (`ENABLE_ENCRYPT=1`)
+
+**Other workarounds we tried and abandoned**:
+- `?algorighm=1` URL param — does not flow into `this.pt.algorighm` (server overrides via startup response)
+- `OPENSSL_CONF` with legacy provider section — Electron's BoringSSL doesn't read provider configs
+- Monkey-patching `MsgSecurity.DES_CFB = MsgSecurity.AES256_CFB` — client encrypts with AES, server expects DES, gives `[-2501] 用户名或密码错误`
+- `NODE_OPTIONS=--openssl-legacy-provider` — Electron rejects this from NODE_OPTIONS; even as a direct CLI arg it has no effect because Electron uses BoringSSL not OpenSSL
+
+**Long-term fix**: dameng must update dmdb to support modern OpenSSL/BoringSSL-compatible ciphers (e.g., default to AES-256-CFB). This is tracked upstream; until then, document the SSH-tunnel recommendation in the UI / docs.

@@ -2,8 +2,10 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
+
 import { join } from 'node:path'
 import { BrowserWindow, app, ipcMain, shell } from 'electron'
+import { logCryptoProbe } from './crypto-probe.js'
 import { closeDb } from './db/sqlite.js'
 import { registerAiIpc } from './ipc/ai.js'
 import { registerConnectionIpc } from './ipc/connections.js'
@@ -13,6 +15,11 @@ import { setupSystemIpc } from './ipc/system.js'
 import { setupMenu } from './menu.js'
 import { disposeTransport } from './transport.js'
 import { setupAutoUpdate } from './updater.js'
+
+// Boot-time crypto runtime check — logs OpenSSL/BoringSSL identity + missing legacy
+// ciphers so future driver crypto bugs (DM / Oracle / etc.) are one log line away
+// from a diagnosis. Cheap (synchronous, ~ms). 详见 crypto-probe.ts 头注释.
+logCryptoProbe()
 
 const isDev = !app.isPackaged
 

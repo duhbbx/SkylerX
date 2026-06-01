@@ -26,11 +26,16 @@ import { oracleFamilyHelpers } from './base.js'
  * dmdb 强制要求 connectString 为完整 URL（`dm://user:pass@host:port`）;
  * 早期版本接受 `host:port` 但 1.0.4xxxx 起会抛 "URL must start with 'dm://'".
  * 用户名/密码里若含 `@/:` 等保留字符需要 percent-encode, 这里统一走 encodeURIComponent.
+ *
+ * ⚠️ `loginEncrypt=0` — 必须加, 否则 dmdb 协议级密码握手会协商 DES-CFB cipher,
+ * 但 Node 18+ / Electron 22+ 的 OpenSSL 3 已彻底删除 DES-CFB (legacy provider 也没),
+ * 触发 "Unknown cipher" 错误. 这条参数让 dmdb 跳过这段加密, 直接用明文协议传递密码.
+ * 安全影响仅限本机回环 / 受信网络; 跨网必须配 SSL 隧道. 详见 dmdb/src/net/access.js.
  */
 function buildDmUrl(config: ConnectionConfig): string {
   const user = encodeURIComponent(config.user ?? '')
   const password = encodeURIComponent(config.password ?? '')
-  return `dm://${user}:${password}@${config.host}:${config.port}`
+  return `dm://${user}:${password}@${config.host}:${config.port}?loginEncrypt=0`
 }
 async function loadDmdb(): Promise<any> {
   const spec: string = 'dmdb'
@@ -300,6 +305,10 @@ export function createDmDriver(dialect: DbDialect): DatabaseDriver {
       const dmdb = await loadDmdb()
       const pool = await dmdb.createPool({
         connectString: buildDmUrl(config),
+        // ⚠️ poolMin 必须 ≥ 1: dmdb 1.0.49630 在 poolMin=0(默认) 时只是占位 pool,
+        // 不预热任何 worker, 之后 getConnection 全部排队 → ECJS_POOL_QUEUE_TIMEOUT [20017].
+        // 与 oracledb 行为不同 (Oracle 默认 poolMin=0 也能工作).
+        poolMin: 1,
         poolMax: 5,
       })
       return new DmConnection(pool)

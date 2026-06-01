@@ -85,6 +85,10 @@ describe('myFn()', () => {
 - Real database interactions (use `executeBatch` happy-path testing in QA instead)
 - Trivial getters / setters
 
+> ⚠️ **Crypto-using drivers (DM / Oracle / etc.) — standalone Node vs Electron differ.**
+> Vitest runs in plain Node 24 (OpenSSL 3.6.2 + legacy provider available). Production runtime is Electron, which uses **BoringSSL** (`process.versions.openssl === '0.0.0'`). BoringSSL has aggressively removed legacy ciphers (RC2, DES-CFB, etc.) AND has no legacy-provider concept — there's no flag that brings them back.
+> Concrete impact: a `vitest` test of dmdb / 达梦 driver may pass while the same code in the desktop app throws `Unknown cipher`. **Always verify the actual user-visible flow inside Electron via the manual QA checklist** ([`docs/qa/databases/dm.md`](./docs/qa/databases/dm.md)), not just unit tests. Same caveat for any other dialect whose protocol uses pre-AES algorithms.
+
 ### Running tests
 
 ```bash
