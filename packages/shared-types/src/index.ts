@@ -378,6 +378,12 @@ export enum MetaNodeKind {
   Trigger = 'trigger',
   Sequence = 'sequence',
   Event = 'event',
+  /** 包（Oracle/DM PL/SQL package；spec + body） */
+  Package = 'package',
+  /** 用户自定义类型 / 对象类型（Oracle/DM TYPE） */
+  Type = 'type',
+  /** 同义词（Oracle/DM SYNONYM，指向另一对象） */
+  Synonym = 'synonym',
 }
 
 /**
