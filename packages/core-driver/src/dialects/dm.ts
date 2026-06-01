@@ -81,7 +81,13 @@ class DmConnection implements DriverConnection {
       if (options?.schema) {
         await conn.execute(`SET SCHEMA ${oracleFamilyHelpers.quoteIdentifier(options.schema)}`)
       }
-      const res = await conn.execute(paginate(sql, options), params as unknown[])
+      // 达梦/dmdb 默认 autoCommit=false（同 oracledb）：不显式提交，INSERT/UPDATE/DELETE/DDL
+      // 都不会落库，连接归还连接池后还会被回滚 —— 表现就是"执行成功但对象/数据没真正生成"
+      // （例如建 TYPE 后在数据字典里查不到）。这里统一 autoCommit=true，跟 MySQL/PG 默认行为
+      // 及 oracle.ts 对齐；手动事务由上层 session 路径处理（达梦暂未实现，回落到 auto）。
+      const res = await conn.execute(paginate(sql, options), params as unknown[], {
+        autoCommit: true,
+      })
       const executionTimeMs = Date.now() - start
       if (res.metaData) {
         const columns: QueryColumn[] = res.metaData.map((m: any) => ({
