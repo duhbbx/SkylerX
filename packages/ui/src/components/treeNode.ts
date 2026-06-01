@@ -78,6 +78,12 @@ export function iconFor(node: TreeNode): string {
       return '⚡'
     case MetaNodeKind.Sequence:
       return '#'
+    case MetaNodeKind.Package:
+      return '📦'
+    case MetaNodeKind.Type:
+      return '🅣'
+    case MetaNodeKind.Synonym:
+      return '↪'
     case MetaNodeKind.Event:
       return '⏱'
     case MetaNodeKind.Column:
