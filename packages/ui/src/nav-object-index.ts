@@ -261,30 +261,18 @@ export async function buildIndex(
 }
 
 /**
- * 在已有索引中搜. 命中按 [name → schema → db] 模糊优先级排序 (跟用户视觉惯例一致).
- * 不命中返回 []. 不会自动 build — 调用前应检查 getCached().
+ * 在已有索引中搜 — 仅匹配对象 name (不含 db/schema, 用户不想要"碰巧 db 里有这个词"
+ * 的杂项命中). 大小写不敏感, includes. 不命中返回 []. 不会自动 build — 调用前
+ * 应检查 getCached().
  */
 export function searchIndex(idx: ObjectIndex, query: string, limit = 200): IndexHit[] {
   const q = query.trim().toLowerCase()
   if (!q || idx.entries.length === 0) return []
   const out: IndexHit[] = []
   for (const e of idx.entries) {
-    // 名字优先 (最常见的搜索意图)
     if (e.name.toLowerCase().includes(q)) {
       out.push({ ...e, connId: idx.connId })
       if (out.length >= limit) break
-    }
-  }
-  // 名字没满还有 budget → 再扫 schema/db
-  if (out.length < limit) {
-    const seen = new Set(out.map((h) => `${h.kind}::${h.db}::${h.schema}::${h.name}`))
-    for (const e of idx.entries) {
-      const key = `${e.kind}::${e.db}::${e.schema}::${e.name}`
-      if (seen.has(key)) continue
-      if (e.db.toLowerCase().includes(q) || e.schema.toLowerCase().includes(q)) {
-        out.push({ ...e, connId: idx.connId })
-        if (out.length >= limit) break
-      }
     }
   }
   return out

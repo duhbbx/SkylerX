@@ -286,15 +286,69 @@ watch(searchLower, (q) => {
 })
 
 /**
- * 当前 query 在已建索引里的全局命中. 触发 indexVersion 时重算.
+ * 当前 query 在已建索引里的全局命中. 触发 indexVersion 时重算. searchAllIndexes
+ * 只按 name 匹配, 这里再过 kind 过滤 (用户在 pill 行勾选要看的对象类型).
  * 上限 200 条避免 UI 卡; 大量结果让用户细化 query.
  */
-const globalHits = computed<IndexHit[]>(() => {
-  void indexVersion.value // 触发依赖
+const ALL_INDEX_KINDS = [
+  'table',
+  'view',
+  'function',
+  'procedure',
+  'sequence',
+  'trigger',
+  'index',
+] as const
+type IndexKind = (typeof ALL_INDEX_KINDS)[number]
+const KIND_META: Record<IndexKind, { icon: string; label: string }> = {
+  table: { icon: '🗃', label: '表' },
+  view: { icon: '👁', label: '视图' },
+  function: { icon: 'ƒ', label: '函数' },
+  procedure: { icon: '⚙', label: '过程' },
+  sequence: { icon: '#', label: '序列' },
+  trigger: { icon: '⚡', label: '触发器' },
+  index: { icon: '∝', label: '索引' },
+}
+/** 用户勾选的 kind 集合 — 默认全选 */
+const enabledKinds = ref<Set<IndexKind>>(new Set(ALL_INDEX_KINDS))
+
+/** 当前 query 的所有 name-match 命中, 用于:
+ *  (a) globalHits = enabledKinds 过滤后的最终列表
+ *  (b) kindCounts = 各 kind 下的总数 (用户决定要不要勾选这个 kind 看更多) */
+const rawHits = computed<IndexHit[]>(() => {
+  void indexVersion.value
   const q = searchLower.value
   if (!q) return []
-  return searchAllIndexes(q, 200)
+  // 上限给宽一些 — kind 过滤后才截 200, 否则用户取消勾选某 kind 可能导致看似为空
+  return searchAllIndexes(q, 1000)
 })
+
+const globalHits = computed<IndexHit[]>(() => {
+  return rawHits.value.filter((h) => enabledKinds.value.has(h.kind as IndexKind)).slice(0, 200)
+})
+
+const kindCounts = computed<Record<IndexKind, number>>(() => {
+  const out = {
+    table: 0,
+    view: 0,
+    function: 0,
+    procedure: 0,
+    sequence: 0,
+    trigger: 0,
+    index: 0,
+  } as Record<IndexKind, number>
+  for (const h of rawHits.value) {
+    if (h.kind in out) out[h.kind as IndexKind]++
+  }
+  return out
+})
+
+function toggleKind(k: IndexKind): void {
+  const next = new Set(enabledKinds.value)
+  if (next.has(k)) next.delete(k)
+  else next.add(k)
+  enabledKinds.value = next
+}
 
 /** 搜索激活但还有连接正在后台 build 索引 — UI 上用静默 dot 提示 (不抢操作) */
 const isAnyIndexBuilding = computed(() => buildingIndexes.value.size > 0)
@@ -1317,6 +1371,20 @@ function onGroupDrop(targetGroup: string): void {
         <span v-else class="catalog-title catalog-empty">📚 目录里没找到</span>
         <span v-if="isAnyIndexBuilding && globalHits.length > 0" class="catalog-dot" title="后台还有连接在建索引">●</span>
       </div>
+      <!-- kind 过滤 pill 行 — 只显示 rawHits 里有的 kind, 0 count 隐藏避免噪声 -->
+      <div v-if="rawHits.length > 0" class="catalog-kinds">
+        <button
+          v-for="k in ALL_INDEX_KINDS"
+          v-show="kindCounts[k] > 0"
+          :key="k"
+          class="kind-pill"
+          :class="{ on: enabledKinds.has(k) }"
+          :title="KIND_META[k].label + ` (${kindCounts[k]})`"
+          @click="toggleKind(k)"
+        >
+          {{ KIND_META[k].icon }} {{ kindCounts[k] }}
+        </button>
+      </div>
       <ul v-if="globalHits.length > 0" class="catalog-list">
         <li
           v-for="(h, hi) in globalHits"
@@ -1559,6 +1627,37 @@ function onGroupDrop(targetGroup: string): void {
 @keyframes catalog-pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
+}
+/* #A v2 kind 过滤 pill 行 — 紧凑横排, 点 toggle 启用/排除某类对象命中 */
+.catalog-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 10px 6px;
+  background: var(--panel);
+  border-top: 1px dashed var(--border);
+}
+.kind-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.kind-pill:hover {
+  border-color: var(--accent, #7c6cff);
+}
+.kind-pill.on {
+  background: rgba(124, 108, 255, 0.14);
+  border-color: var(--accent, #7c6cff);
+  color: var(--accent, #7c6cff);
 }
 .catalog-list {
   list-style: none;
