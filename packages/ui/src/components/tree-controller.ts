@@ -154,6 +154,11 @@ export interface TreeController {
   openAiSchemaReverse(connId: string, database?: string): void
   /** AI 建表助手(对话式) */
   openAiSchemaArchitect(connId: string, database?: string): void
+  /** #24: 当前连接是否启用了 "可见库/Schema 过滤" — 启用时 TreeItem 会画指示器,
+   *  返回的 Set 用来在 displayChildren 里过滤 Connection 节点直挂的子节点. */
+  connVisibleFilter(connId: string): Set<string> | null
+  /** #24: 打开 "配置可见库/Schema" 对话框. */
+  configureNavFilter(connId: string): void
 }
 
 export const TreeControllerKey: InjectionKey<TreeController> = Symbol('tree-controller')

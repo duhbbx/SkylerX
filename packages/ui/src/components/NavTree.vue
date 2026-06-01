@@ -129,6 +129,8 @@ const emit = defineEmits<{
   newConnInGroup: [groupName: string]
   /** 打开 Workspace 导出/导入对话框 */
   openWorkspaceExport: []
+  /** #24: 打开 "配置可见库/Schema" 对话框 */
+  configureNavFilter: [connId: string]
 }>()
 
 // 批量可选的对象类型(与可删除类型一致). Connection 单独走另一套(connection multi-set)
@@ -172,6 +174,9 @@ interface ConnRoot {
   /** 拖拽排序用 */
   sortIndex?: number
   createdAt?: number
+  /** #24: 可见库/Schema 白名单 (从 extra.visibleDatabases 抄过来). 非空时
+   *  TreeItem.displayChildren 用它过滤 Connection 节点直挂的 Database / Schema. */
+  visibleDatabases?: string[]
 }
 
 const roots = ref<ConnRoot[]>([])
@@ -477,6 +482,12 @@ const controller: TreeController = {
     emit('openAiInsights', connId, prefillSql, prefillError, tab),
   openAiSchemaReverse: (connId, database) => emit('openAiSchemaReverse', connId, database),
   openAiSchemaArchitect: (connId, database) => emit('openAiSchemaArchitect', connId, database),
+  connVisibleFilter(connId) {
+    const root = roots.value.find((r) => r.id === connId)
+    if (!root?.visibleDatabases || root.visibleDatabases.length === 0) return null
+    return new Set(root.visibleDatabases)
+  },
+  configureNavFilter: (connId) => emit('configureNavFilter', connId),
 }
 
 provide(TreeControllerKey, controller)
@@ -638,6 +649,11 @@ async function reload(): Promise<void> {
     const reused = prev.get(c.id)
     const node = reused ?? rootNode(c.name || t('common.untitled'))
     if (reused) reused.name = c.name || t('common.untitled')
+    const allow = (c.extra as { visibleDatabases?: unknown } | undefined)?.visibleDatabases
+    const visibleDatabases =
+      Array.isArray(allow) && allow.length > 0
+        ? allow.filter((x): x is string => typeof x === 'string')
+        : undefined
     return {
       id: c.id,
       node,
@@ -646,6 +662,7 @@ async function reload(): Promise<void> {
       dialect: c.dialect,
       sortIndex: c.sortIndex,
       createdAt: c.createdAt,
+      visibleDatabases,
     }
   })
   // 新出现的分组默认展开（保留用户已折叠的）

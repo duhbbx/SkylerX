@@ -46,6 +46,7 @@ import MongoAggregationDialog from './components/MongoAggregationDialog.vue'
 import MongoCollectionInfoDialog from './components/MongoCollectionInfoDialog.vue'
 import MppPartitionDialog from './components/MppPartitionDialog.vue'
 import MysqlAdvancedDialog from './components/MysqlAdvancedDialog.vue'
+import NavFilterDialog from './components/NavFilterDialog.vue'
 import NavTree from './components/NavTree.vue'
 import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
 import NewDatabaseDialog from './components/NewDatabaseDialog.vue'
@@ -1848,6 +1849,11 @@ const pasteImportOpen = ref<{ preferConnId?: string; prefillRows?: string[][] } 
 const aiArchOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
 /** Workspace 导出/导入 */
 const wsExportOpen = ref<boolean>(false)
+/** #24: 配置可见库/Schema 过滤 — 携带的 conn 用于 dialog 初始化 + 保存 */
+const navFilterOpen = ref<ConnectionConfig | null>(null)
+async function onConfigureNavFilter(connId: string): Promise<void> {
+  navFilterOpen.value = await client.connections.get(connId)
+}
 /** 新建数据库弹窗(per 连接) */
 const newDbOpen = ref<{ conn: ConnectionConfig; parent: TreeNode } | null>(null)
 /** 新建 Schema 弹窗(per 连接 + 可选父库) */
@@ -2954,6 +2960,7 @@ onMounted(async () => {
     @open-ai-schema-reverse="(cid, db) => client.connections.get(cid).then(c => { aiSchemaRevOpen = { conn: c, database: db } })"
     @open-ai-schema-architect="(cid, db) => client.connections.get(cid).then(c => { aiArchOpen = { conn: c, database: db } })"
     @open-workspace-export="wsExportOpen = true"
+    @configure-nav-filter="onConfigureNavFilter"
     @open-settings="settingsOpen = true"
     @toggle-ai-chat="aiChatOpen = !aiChatOpen"
   />
@@ -3540,6 +3547,14 @@ onMounted(async () => {
     :open="wsExportOpen"
     @close="wsExportOpen = false"
     @imported="navRef?.reload()"
+  />
+
+  <!-- #24 配置可见库/Schema 过滤 -->
+  <NavFilterDialog
+    v-if="navFilterOpen"
+    :conn="navFilterOpen"
+    @close="navFilterOpen = null"
+    @saved="navRef?.reload()"
   />
 
   <!-- 新建数据库 -->

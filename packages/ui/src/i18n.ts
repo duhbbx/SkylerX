@@ -1405,6 +1405,10 @@ const DICT: Record<string, [string, string]> = {
   'ctx.edit-conn': ['编辑连接', 'Edit connection'],
   'ctx.duplicate-conn': ['复制连接', 'Duplicate connection'],
   'ctx.toggle-prod': ['标记为生产环境 / 取消标记', 'Mark as production / Unmark'],
+  'ctx.configure-nav-filter': [
+    '配置可见库 / Schema...',
+    'Configure visible databases / schemas...',
+  ],
   'ctx.refresh': ['刷新', 'Refresh'],
   'ctx.drop-object': ['删除', 'Drop'],
   'ctx.del-conn': ['删除连接', 'Delete connection'],

@@ -30,11 +30,25 @@ const ctrl = inject(TreeControllerKey)!
  * 按使用频率降序重排。其他类型（Group / Table / Column）保持原序——
  * 表列字典序比频率更直观。
  *
+ * #24: 同一处再加可见库/Schema 白名单过滤 — 仅在 Connection 节点直挂的
+ * Database / Schema 那一层生效 (因为白名单存在连接级 extra 上,
+ * 子层级 schema 不在 v1 范围). 过滤先做,再走 usage 排序.
+ *
  * 依赖 navUsageVersion 触发响应式重算（cache 本身是 plain object 不是 reactive）。
  */
 const displayChildren = computed<TreeNode[]>(() => {
   void navUsageVersion.value // 触发依赖
-  const kids = props.node.children || []
+  let kids = props.node.children || []
+  // #24 过滤: 仅 Connection 节点的 Database / Schema 直挂子节点 (白名单)
+  if (props.node.kind === MetaNodeKind.Connection) {
+    const allow = ctrl.connVisibleFilter(props.connId)
+    if (allow) {
+      kids = kids.filter(
+        (k) =>
+          (k.kind !== MetaNodeKind.Database && k.kind !== MetaNodeKind.Schema) || allow.has(k.name),
+      )
+    }
+  }
   if (!settings.navSortByUsage || kids.length < 2) return kids
   const sortable = kids.every(
     (k) => k.kind === MetaNodeKind.Database || k.kind === MetaNodeKind.Schema,
@@ -47,6 +61,12 @@ const displayChildren = computed<TreeNode[]>(() => {
     return a.name.localeCompare(b.name)
   })
 })
+
+/** #24: 连接节点旁的过滤指示器 — 启用时画一个小漏斗图标提示 */
+const hasNavFilter = computed(
+  () =>
+    props.node.kind === MetaNodeKind.Connection && ctrl.connVisibleFilter(props.connId) !== null,
+)
 
 async function toggle(): Promise<void> {
   const node = props.node
@@ -131,6 +151,8 @@ function onContext(e: MouseEvent): void {
         :title="t('env.dotTitle', { label: t('env.' + env) })"
       />
       <span class="label">{{ node.name }}</span>
+      <!-- #24: 显式漏斗指示器 — 该连接启用了可见库/Schema 过滤. 用户右键 → 配置 → 修改 -->
+      <span v-if="hasNavFilter" class="filter-dot" title="已配置可见库/Schema 过滤">▼</span>
       <span v-if="node.count != null" class="count">({{ node.count }})</span>
       <span v-if="node.detail?.dataType" class="col-type">{{ node.detail.dataType }}</span>
       <button
@@ -215,6 +237,13 @@ function onContext(e: MouseEvent): void {
   width: 7px;
   height: 7px;
   border-radius: 50%;
+}
+.filter-dot {
+  /* #24 nav-filter indicator — 紫色小漏斗(用 ▼ 字符), 提示该连接被过滤了 */
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--accent, #7c6cff);
+  opacity: 0.85;
 }
 .label {
   overflow: hidden;

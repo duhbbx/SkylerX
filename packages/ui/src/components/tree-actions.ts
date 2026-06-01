@@ -743,6 +743,15 @@ export const TREE_ACTIONS: TreeAction[] = [
     kinds: [MetaNodeKind.Connection],
     run: ({ connId, ctrl }) => ctrl.toggleProdMark(connId),
   },
+  // #24: 可见库/Schema 过滤. 适用于所有方言 — Oracle/DM 的 schema 直挂在连接下,
+  // 跟其它方言的 Database 共用语义.
+  {
+    id: 'configure-nav-filter',
+    label: 'ctx.configure-nav-filter',
+    section: 'conn',
+    kinds: [MetaNodeKind.Connection],
+    run: ({ connId, ctrl }) => ctrl.configureNavFilter(connId),
+  },
 
   // ── 刷新 ──
   {
