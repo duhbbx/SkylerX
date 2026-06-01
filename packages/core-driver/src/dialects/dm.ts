@@ -406,6 +406,15 @@ class DmConnection implements DriverConnection {
   }
 }
 
+/**
+ * 进程内单调递增，给每个 dmdb 池一个唯一 poolAlias。
+ * dmdb 1.0.49630 对省略 poolAlias 的池一律登记为 "default"(driver/pool.js)，
+ * 同一进程里第二个就抛 [20006] ECJS_POOL_ALIAS_CONFLICT（多开一个 DM 连接即触发）。
+ * oracledb 不会——省略即不登记到 cache。DmConnection 直接持有 pool 句柄、从不按
+ * alias 反查，故任意唯一串都安全；close() 时 dmdb 会把该 alias 从全局表删除。
+ */
+let dmPoolSeq = 0
+
 export function createDmDriver(dialect: DbDialect): DatabaseDriver {
   return {
     dialect,
@@ -420,6 +429,8 @@ export function createDmDriver(dialect: DbDialect): DatabaseDriver {
         // 与 oracledb 行为不同 (Oracle 默认 poolMin=0 也能工作).
         poolMin: 1,
         poolMax: 5,
+        // 唯一 alias，避免多个 DM 池共享 "default" 而冲突（见上方 dmPoolSeq 说明）。
+        poolAlias: `skylerx-dm-${++dmPoolSeq}`,
       })
       return new DmConnection(pool)
     },

@@ -25,6 +25,8 @@ import type { ConnectionConfigStore, SqlTransport } from '../transport.js'
  */
 export class LocalTransport implements SqlTransport {
   private readonly connections = new Map<string, DriverConnection>()
+  /** 进行中的建连 Promise（按 connId 去重并发 acquire，避免重复 connect()/建池） */
+  private readonly pending = new Map<string, Promise<DriverConnection>>()
   /** sessionId → 持有 session 的 DriverConnection（用于 commit/rollback/end 路由） */
   private readonly sessionOwners = new Map<string, DriverConnection>()
 
@@ -132,10 +134,23 @@ export class LocalTransport implements SqlTransport {
     const existing = this.connections.get(conn.id)
     if (existing) return existing
 
-    const config = await this.resolveConfig(conn)
-    const connection = await getDriver(config.dialect).connect(config)
-    this.connections.set(conn.id, connection)
-    return connection
+    // 复用进行中的建连 Promise：并发 acquire 同一 connId 时只 connect() 一次。
+    // 之前是 check-then-act（get → await connect → set），两个并发调用都看到空缓存
+    // 各建一条连接 → 各建一个池。多数驱动只是浪费/泄漏池，但 dmdb 对省略 poolAlias
+    // 的池一律登记为 "default"，第二个直接抛 [20006] ECJS_POOL_ALIAS_CONFLICT。
+    const inflight = this.pending.get(conn.id)
+    if (inflight) return inflight
+
+    const building = (async () => {
+      const config = await this.resolveConfig(conn)
+      const connection = await getDriver(config.dialect).connect(config)
+      this.connections.set(conn.id, connection)
+      return connection
+    })()
+    this.pending.set(conn.id, building)
+    // 成败都清理 pending：成功后已落入 connections；失败后允许下次重连（不缓存失败）。
+    void building.finally(() => this.pending.delete(conn.id)).catch(() => {})
+    return building
   }
 
   private async resolveConfig(conn: ConnectionRef): Promise<ConnectionConfig> {
