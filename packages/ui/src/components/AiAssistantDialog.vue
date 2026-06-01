@@ -5,7 +5,7 @@
  */
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { onMounted, onUnmounted, ref } from 'vue'
-import { type AiMode, askAi, extractSql } from '../ai'
+import { type AiMode, askAi, extractSql, fmtOracleType } from '../ai'
 import { useDataClient } from '../data-client'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
@@ -41,9 +41,10 @@ const MODES: { id: AiMode; label: () => string }[] = [
   { id: 'diagnose', label: () => t('ai.modeDiagnose') },
 ]
 
-function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
+function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'oracle' | 'other' {
   if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
   if (d && [DbDialect.PostgreSQL, DbDialect.KingbaseES].includes(d)) return 'pg'
+  if (d && [DbDialect.Oracle, DbDialect.DM].includes(d)) return 'oracle'
   return 'other'
 }
 const connOf = (id: string) => conns.value.find((c) => c.id === id)
@@ -65,12 +66,20 @@ async function loadSchema(): Promise<void> {
   schemaLoading.value = true
   error.value = null
   try {
+    // Oracle/DM：当前 schema（SYS_CONTEXT CURRENT_SCHEMA）下的表/列；ROWNUM 子查询限行兼容老版本。
     const sql =
       f === 'mysql'
         ? `SELECT TABLE_NAME tbl, COLUMN_NAME col, COLUMN_TYPE ty FROM information_schema.COLUMNS
            WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION LIMIT 2000`
-        : `SELECT table_name tbl, column_name col, data_type ty FROM information_schema.columns
-           WHERE table_schema = 'public' ORDER BY table_name, ordinal_position LIMIT 2000`
+        : f === 'pg'
+          ? `SELECT table_name tbl, column_name col, data_type ty FROM information_schema.columns
+             WHERE table_schema = 'public' ORDER BY table_name, ordinal_position LIMIT 2000`
+          : `SELECT "tbl","col","ty","len","prec","scale" FROM (
+               SELECT table_name "tbl", column_name "col", data_type "ty",
+                      data_length "len", data_precision "prec", data_scale "scale"
+               FROM all_tab_columns WHERE owner = SYS_CONTEXT('USERENV','CURRENT_SCHEMA')
+               ORDER BY table_name, column_id
+             ) WHERE ROWNUM <= 2000`
     const res = (await client.connections.execute(c.id, sql, [], {
       database: c.database,
     })) as QueryResult
@@ -78,7 +87,8 @@ async function loadSchema(): Promise<void> {
     for (const r of res.rows as Record<string, unknown>[]) {
       const tbl = String(r.tbl)
       if (!byTable.has(tbl)) byTable.set(tbl, [])
-      byTable.get(tbl)?.push(`${String(r.col)} ${String(r.ty)}`)
+      const ty = f === 'oracle' ? fmtOracleType(r.ty, r.len, r.prec, r.scale) : String(r.ty)
+      byTable.get(tbl)?.push(`${String(r.col)} ${ty}`)
     }
     const lines: string[] = []
     for (const [tbl, cols] of byTable) {

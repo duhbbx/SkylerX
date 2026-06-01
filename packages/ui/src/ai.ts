@@ -6,6 +6,26 @@ import type { DbDialect } from '@db-tool/shared-types'
 import { locale } from './i18n'
 import { type AiProvider, settings } from './settings'
 
+/**
+ * Oracle/DM 列类型带上长度/精度渲染：VARCHAR2(50) / NUMBER(10,2)。
+ * all_tab_columns 的裸 data_type（VARCHAR2 / NUMBER）信息量太低，AI 写 SQL 时需要长度与精度。
+ */
+export function fmtOracleType(ty: unknown, len: unknown, prec: unknown, scale: unknown): string {
+  const t = String(ty ?? '')
+  const num = (v: unknown): number | null => (v == null || v === '' ? null : Number(v))
+  if (/CHAR|RAW/i.test(t)) {
+    const l = num(len)
+    return l ? `${t}(${l})` : t
+  }
+  if (t.toUpperCase() === 'NUMBER') {
+    const p = num(prec)
+    if (p == null) return 'NUMBER'
+    const s = num(scale)
+    return s ? `NUMBER(${p},${s})` : `NUMBER(${p})`
+  }
+  return t
+}
+
 /** 根据当前 UI 语言生成「请用对应语言回答」的提示，让 AI 回复跟着我们的 i18n 走。 */
 function langPrompt(): string {
   return locale.value === 'zh'

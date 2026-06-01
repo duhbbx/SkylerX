@@ -134,6 +134,11 @@ const SYSTEM_SCHEMA_NAMES = new Set<string>([
   'APEX_PUBLIC_USER',
 ])
 
+/** 名称是否属于内置系统 schema（Oracle/DM/PG/SQL Server）。供 AI 库结构上下文等复用。 */
+export function isSystemSchemaName(name: string): boolean {
+  return SYSTEM_SCHEMA_NAMES.has(name)
+}
+
 function isSystemSchemaOrDb(node: TreeNode): boolean {
   if (node.kind === MetaNodeKind.Database) return SYSTEM_DATABASE_NAMES.has(node.name)
   if (node.kind === MetaNodeKind.Schema) {

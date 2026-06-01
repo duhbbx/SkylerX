@@ -5,7 +5,7 @@
  */
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { type ChatMessage, askAiChat, extractAllSql } from '../ai'
+import { type ChatMessage, askAiChat, extractAllSql, fmtOracleType } from '../ai'
 import { onChatSqlExecuted } from '../chat-bus'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
@@ -15,6 +15,7 @@ import { renderMarkdown } from '../markdown'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
 import { monaco } from '../monaco-setup'
 import { AI_PROVIDER_LABEL, AI_PROVIDER_ORDER, type AiProvider, settings } from '../settings'
+import { isSystemSchemaName } from './tree-actions'
 
 /**
  * 右侧 AI 聊天侧边栏（类 Cursor 体验）。
@@ -304,9 +305,10 @@ watch(selectedDb, () => {
   if (useSchema.value) void loadSchema()
 })
 
-function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
+function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'oracle' | 'other' {
   if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
   if (d && [DbDialect.PostgreSQL, DbDialect.KingbaseES].includes(d)) return 'pg'
+  if (d && [DbDialect.Oracle, DbDialect.DM].includes(d)) return 'oracle'
   return 'other'
 }
 const connOf = (id: string): ConnectionConfig | undefined => conns.value.find((c) => c.id === id)
@@ -320,18 +322,23 @@ async function loadDbList(): Promise<void> {
   if (f === 'other') return
   dbLoading.value = true
   try {
+    // Oracle/DM：schema = 用户，all_users 列全部 owner，系统 schema 客户端过滤。
     const sql =
       f === 'mysql'
         ? `SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA
            WHERE SCHEMA_NAME NOT IN ('mysql','information_schema','performance_schema','sys')
            ORDER BY SCHEMA_NAME`
-        : `SELECT nspname AS name FROM pg_namespace
-           WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'
-           ORDER BY nspname`
+        : f === 'pg'
+          ? `SELECT nspname AS name FROM pg_namespace
+             WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'
+             ORDER BY nspname`
+          : 'SELECT username AS name FROM all_users ORDER BY username'
     const res = (await client.connections.execute(c.id, sql, [])) as QueryResult
-    dbList.value = (res.rows as { name: string }[]).map((r) => r.name)
-    // 默认选项：连接的 database（mysql）/ public（pg）/ 列表第一个
-    const def = f === 'mysql' ? c.database || dbList.value[0] : 'public'
+    let names = (res.rows as { name: string }[]).map((r) => r.name)
+    if (f === 'oracle') names = names.filter((n) => !isSystemSchemaName(n))
+    dbList.value = names
+    // 默认选项：连接默认库（mysql=database / oracle=当前用户=c.database）/ public（pg）/ 列表第一个
+    const def = f === 'pg' ? 'public' : c.database || dbList.value[0]
     if (!selectedDb.value && def && dbList.value.includes(def)) selectedDb.value = def
     if (!selectedDb.value) selectedDb.value = dbList.value[0] ?? ''
   } catch {
@@ -353,28 +360,38 @@ async function loadSchema(): Promise<void> {
   schemaLoading.value = true
   error.value = null
   try {
-    // 用户选的容器名优先；没选时回退到连接默认（mysql=database / pg=public）
-    const target = selectedDb.value || (f === 'mysql' ? c.database || '' : 'public')
+    // 用户选的容器名优先；没选时回退到连接默认（pg=public / 其余=连接默认库/当前用户）
+    const target = selectedDb.value || (f === 'pg' ? 'public' : c.database || '')
     if (!target) {
       schemaText.value = ''
       error.value = t('aichat.schemaNoTarget')
       return
     }
+    const lit = target.replace(/'/g, "''")
+    // Oracle/DM：all_tab_columns（owner=schema）；ROWNUM 子查询限行，兼容 Oracle 9i+ / 所有 DM。
     const sql =
       f === 'mysql'
         ? `SELECT TABLE_NAME tbl, COLUMN_NAME col, COLUMN_TYPE ty FROM information_schema.COLUMNS
-           WHERE TABLE_SCHEMA = '${target.replace(/'/g, "''")}' ORDER BY TABLE_NAME, ORDINAL_POSITION LIMIT 2000`
-        : `SELECT table_name tbl, column_name col, data_type ty FROM information_schema.columns
-           WHERE table_schema = '${target.replace(/'/g, "''")}' ORDER BY table_name, ordinal_position LIMIT 2000`
+           WHERE TABLE_SCHEMA = '${lit}' ORDER BY TABLE_NAME, ORDINAL_POSITION LIMIT 2000`
+        : f === 'pg'
+          ? `SELECT table_name tbl, column_name col, data_type ty FROM information_schema.columns
+             WHERE table_schema = '${lit}' ORDER BY table_name, ordinal_position LIMIT 2000`
+          : `SELECT "tbl","col","ty","len","prec","scale" FROM (
+               SELECT table_name "tbl", column_name "col", data_type "ty",
+                      data_length "len", data_precision "prec", data_scale "scale"
+               FROM all_tab_columns WHERE owner = '${lit}'
+               ORDER BY table_name, column_id
+             ) WHERE ROWNUM <= 2000`
     const res = (await client.connections.execute(c.id, sql, [], {
       database: f === 'mysql' ? target : c.database,
-      schema: f === 'pg' ? target : undefined,
+      schema: f === 'pg' || f === 'oracle' ? target : undefined,
     })) as QueryResult
     const byTable = new Map<string, string[]>()
     for (const r of res.rows as Record<string, unknown>[]) {
       const tbl = String(r.tbl)
       if (!byTable.has(tbl)) byTable.set(tbl, [])
-      byTable.get(tbl)?.push(`${String(r.col)} ${String(r.ty)}`)
+      const ty = f === 'oracle' ? fmtOracleType(r.ty, r.len, r.prec, r.scale) : String(r.ty)
+      byTable.get(tbl)?.push(`${String(r.col)} ${ty}`)
     }
     const lines: string[] = [`-- ${target}`]
     for (const [tbl, cols] of byTable) {

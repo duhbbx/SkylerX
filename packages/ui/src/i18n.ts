@@ -1199,8 +1199,8 @@ const DICT: Record<string, [string, string]> = {
     'No API key configured — open "Settings → AI Assistant"',
   ],
   'ai.schemaUnsupported': [
-    '库结构上下文仅支持 MySQL/PG 系连接',
-    'Schema context only supports MySQL/PG connections',
+    '库结构上下文仅支持 MySQL / PostgreSQL / Oracle / DM 系连接',
+    'Schema context only supports MySQL / PostgreSQL / Oracle / DM connections',
   ],
   'ai.schemaEmpty': [
     '未拉取到库结构（请确认连接默认库已设置）',
@@ -1858,8 +1858,8 @@ const DICT: Record<string, [string, string]> = {
   ],
   'aichat.dbNone': ['（无）', '(none)'],
   'aichat.schemaUnsupported': [
-    '当前方言暂不支持库结构上下文（仅 MySQL/PG）',
-    'Schema context unsupported for this dialect (MySQL/PG only)',
+    '当前方言暂不支持库结构上下文（仅 MySQL / PostgreSQL / Oracle / DM 系）',
+    'Schema context unsupported for this dialect (MySQL / PostgreSQL / Oracle / DM only)',
   ],
   'aichat.schemaNoTarget': [
     '请先在「库」下拉里选择要扫的 database 或 schema',
