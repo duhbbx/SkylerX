@@ -151,10 +151,19 @@ function onContext(e: MouseEvent): void {
         :title="t('env.dotTitle', { label: t('env.' + env) })"
       />
       <span class="label">{{ node.name }}</span>
-      <!-- #24: 显式漏斗指示器 — 该连接启用了可见库/Schema 过滤. 用户右键 → 配置 → 修改 -->
-      <span v-if="hasNavFilter" class="filter-dot" title="已配置可见库/Schema 过滤">▼</span>
       <span v-if="node.count != null" class="count">({{ node.count }})</span>
       <span v-if="node.detail?.dataType" class="col-type">{{ node.detail.dataType }}</span>
+      <!-- #24: 过滤配置按钮 — 既是指示器(filter 启用时常驻紫色),又是入口(点击即可配置).
+           替代之前的 .filter-dot 静态 ▼ + 右键菜单两道操作. -->
+      <button
+        v-if="node.kind === 'connection'"
+        class="filter-btn"
+        :class="{ active: hasNavFilter }"
+        :title="hasNavFilter ? '已过滤 · 点击修改可见库/Schema' : '配置可见库/Schema'"
+        @click.stop="ctrl.configureNavFilter(connId)"
+      >
+        ▼
+      </button>
       <button
         v-if="node.kind === 'connection'"
         class="edit-btn"
@@ -204,7 +213,7 @@ function onContext(e: MouseEvent): void {
   font-weight: 600;
 }
 .tree-node .edit-btn {
-  margin-left: auto;
+  /* 右对齐由前面的 .filter-btn margin-left: auto 接管, edit-btn 紧贴其后 */
   background: transparent;
   border: none;
   color: var(--muted);
@@ -238,12 +247,26 @@ function onContext(e: MouseEvent): void {
   height: 7px;
   border-radius: 50%;
 }
-.filter-dot {
-  /* #24 nav-filter indicator — 紫色小漏斗(用 ▼ 字符), 提示该连接被过滤了 */
-  margin-left: 4px;
-  font-size: 9px;
+/* #24 过滤按钮 — 跟 .edit-btn 的 hover-only 模式一致, 但当过滤已启用时
+   常驻可见(紫色), 用 .active class 切换. margin-left: auto 接管"右对齐",
+   原本是 .edit-btn 的任务, 现在 filter-btn 在前面所以由它承担. */
+.tree-node .filter-btn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1;
+}
+.tree-node.conn:hover .filter-btn,
+.tree-node .filter-btn.active {
+  opacity: 1;
+}
+.tree-node .filter-btn.active {
   color: var(--accent, #7c6cff);
-  opacity: 0.85;
 }
 .label {
   overflow: hidden;

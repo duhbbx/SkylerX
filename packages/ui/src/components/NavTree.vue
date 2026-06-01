@@ -1297,21 +1297,27 @@ function onGroupDrop(targetGroup: string): void {
   position: relative;
   cursor: grab;
 }
-/* Top / bottom drop rails — always present and always 14px tall so the
-   DOM/layout never shifts at dragstart (an earlier v-if version was
-   silently cancelling Chromium's drag operation because the rail appeared
-   between dragstart and the first dragover, pushing the source element
-   down by 18px mid-drag).
-   pointer-events: none keeps them from ever swallowing a click.
-   They're transparent at rest so the 14px slot is visually invisible;
-   they tint purple via .drag-over only when something is being dragged
-   over them (and only then do pointer-events kick in so the drop fires). */
+/* Top / bottom drop rails — always present and stable height so DOM doesn't
+   shift at dragstart (earlier v-if version silently cancelled Chromium's drag
+   because the rail appearing between dragstart and first dragover pushed the
+   source element down by 18px mid-drag).
+
+   Visible footprint kept to ~0 via negative margins that pull each rail to
+   overlap its neighbour:
+     - .drop-rail (top): margin-top: -8px → overlaps bottom 8px of tree-head
+     - .drop-rail-bottom: margin-top: -8px → overlaps bottom of last item
+   At rest both are transparent + pointer-events: none, so they don't show
+   and don't swallow clicks. During an active connection drag pointer-events
+   turns auto, the dashed outline appears, and dragover fills purple to
+   preview the drop target. Height 8px is enough to be grabbable. */
 .drop-rail {
-  height: 14px;
-  margin: 2px 4px;
+  height: 8px;
+  margin: -8px 4px 0;
   border-radius: 3px;
   outline: 1px dashed transparent;
   pointer-events: none;
+  position: relative;
+  z-index: 1;
 }
 .drop-rail.drag-active {
   pointer-events: auto;
@@ -1321,7 +1327,8 @@ function onGroupDrop(targetGroup: string): void {
   outline-color: var(--accent, #7c6cff);
 }
 .drop-rail-bottom {
-  margin-top: 6px;
+  /* 同样负 top margin 把视觉占位归零, 覆盖在最后一个连接/分组的底 8px */
+  margin: -8px 4px 0;
 }
 /* Per-group tail rail was removed — its drop-catch responsibility moved
    into group-row's @dragover via Y-split (see onGroupRowDragOver). Frees
