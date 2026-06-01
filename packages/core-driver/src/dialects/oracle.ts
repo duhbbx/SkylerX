@@ -358,7 +358,9 @@ class OracleConnection implements DriverConnection {
           ? MetaNodeKind.Function
           : group === 'procedures'
             ? MetaNodeKind.Procedure
-            : MetaNodeKind.Function // 包/类型借用 Function 类型(树侧渲染一致),前端无独立 kind
+            : group === 'packages'
+              ? MetaNodeKind.Package
+              : MetaNodeKind.Type
       return rows.map((r: any) => ({
         kind,
         name: String(r.name),
@@ -400,11 +402,12 @@ class OracleConnection implements DriverConnection {
         [schema],
       )
       return rows.map((r: any) => ({
-        kind: MetaNodeKind.View, // 同义词最像视图(指向另一个对象);前端可读
-        // 名字直接带上目标,免去用户点开找跳转
+        kind: MetaNodeKind.Synonym,
+        // 显示名带上目标,免去用户点开找跳转；path/sqlName 用干净的同义词名供 DDL/DROP 使用。
         name: `${String(r.name)} → ${String(r.towner)}.${String(r.tname)}`,
         path: [schema, String(r.name)],
         hasChildren: false,
+        sqlName: `${quote(schema)}.${quote(String(r.name))}`,
       }))
     }
     return []

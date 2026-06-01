@@ -365,7 +365,11 @@ class DmConnection implements DriverConnection {
           ? MetaNodeKind.Function
           : group === 'procedures'
             ? MetaNodeKind.Procedure
-            : MetaNodeKind.View // packages / types / synonyms 暂复用 view 图标
+            : group === 'packages'
+              ? MetaNodeKind.Package
+              : group === 'types'
+                ? MetaNodeKind.Type
+                : MetaNodeKind.Synonym
       return rows.map((r: any) => ({
         kind,
         name: String(r.name),
