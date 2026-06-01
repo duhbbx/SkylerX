@@ -1039,7 +1039,7 @@ async function onCopyTable(connId: string, node: TreeNode, withData: boolean): P
  * 不走结构化设计器：这两类对象的字段太少且方言相关性高，让用户在 SQL 编辑器里直接调更灵活。
  */
 async function onCreateTemplateDraft(
-  kind: 'sequence' | 'event',
+  kind: 'sequence' | 'event' | 'trigger' | 'package' | 'type' | 'synonym',
   connId: string,
   node: TreeNode,
 ): Promise<void> {

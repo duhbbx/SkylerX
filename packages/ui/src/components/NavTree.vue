@@ -66,7 +66,11 @@ const emit = defineEmits<{
   renameTable: [string, TreeNode]
   copyTable: [string, TreeNode, boolean]
   toggleProdMark: [string]
-  createTemplateDraft: ['sequence' | 'event', string, TreeNode]
+  createTemplateDraft: [
+    'sequence' | 'event' | 'trigger' | 'package' | 'type' | 'synonym',
+    string,
+    TreeNode,
+  ]
   dataDict: [string, TreeNode]
   dataDictHtml: [string, TreeNode]
   editObject: [string, TreeNode]
