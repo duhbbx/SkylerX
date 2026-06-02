@@ -33,6 +33,10 @@ export enum DbDialect {
   OpenGauss = 'opengauss',
   /** Vastbase 海量数据库 G100（openGauss 内核，PG 协议兼容，信创） */
   Vastbase = 'vastbase',
+  /** MogDB（云和恩墨，openGauss 内核企业发行版，信创） */
+  MogDB = 'mogdb',
+  /** 瀚高 HighGo（PostgreSQL 系，信创） */
+  HighGo = 'highgo',
   /** SQLite（本地文件 SQL，better-sqlite3） */
   SQLite = 'sqlite',
   /** DuckDB（本地文件 OLAP SQL） */

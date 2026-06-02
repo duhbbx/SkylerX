@@ -120,6 +120,8 @@ function familyOf(d: DbDialect): Family {
       DbDialect.Greenplum,
       DbDialect.OpenGauss,
       DbDialect.Vastbase,
+      DbDialect.MogDB,
+      DbDialect.HighGo,
       DbDialect.H2,
       DbDialect.Redshift,
       DbDialect.PolarDBPG,

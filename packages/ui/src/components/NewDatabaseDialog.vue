@@ -72,6 +72,8 @@ const supportsComment = computed<boolean>(() => {
     case DbDialect.KingbaseES:
     case DbDialect.OpenGauss:
     case DbDialect.Vastbase:
+    case DbDialect.MogDB:
+    case DbDialect.HighGo:
     case DbDialect.Greenplum:
     case DbDialect.CockroachDB:
     case DbDialect.Redshift:
@@ -98,6 +100,8 @@ const charsetOptions = computed<string[]>(() => {
     case DbDialect.KingbaseES:
     case DbDialect.OpenGauss:
     case DbDialect.Vastbase:
+    case DbDialect.MogDB:
+    case DbDialect.HighGo:
     case DbDialect.Greenplum:
     case DbDialect.CockroachDB:
     case DbDialect.Redshift:
@@ -175,6 +179,8 @@ const sqlStatements = computed<string[]>(() => {
     case DbDialect.KingbaseES:
     case DbDialect.OpenGauss:
     case DbDialect.Vastbase:
+    case DbDialect.MogDB:
+    case DbDialect.HighGo:
     case DbDialect.Greenplum:
     case DbDialect.CockroachDB:
     case DbDialect.Redshift: {

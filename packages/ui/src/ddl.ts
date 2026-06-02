@@ -167,6 +167,8 @@ export function familyOf(dialect: DbDialect): Family {
     case DbDialect.Greenplum:
     case DbDialect.OpenGauss:
     case DbDialect.Vastbase:
+    case DbDialect.MogDB:
+    case DbDialect.HighGo:
     case DbDialect.H2:
     case DbDialect.Redshift:
     case DbDialect.PolarDBPG:

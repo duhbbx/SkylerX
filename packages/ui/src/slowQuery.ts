@@ -68,6 +68,8 @@ export function slowFamilyOf(dialect: DbDialect): SlowFamily {
     case DbDialect.OpenGauss:
     case DbDialect.KingbaseES:
     case DbDialect.Vastbase:
+    case DbDialect.MogDB:
+    case DbDialect.HighGo:
     case DbDialect.Redshift:
     case DbDialect.PolarDBPG:
     case DbDialect.GaussDB:

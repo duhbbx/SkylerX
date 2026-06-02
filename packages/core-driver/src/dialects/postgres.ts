@@ -26,6 +26,8 @@ const OPENGAUSS_KERNEL: ReadonlySet<DbDialect> = new Set([
   DbDialect.OpenGauss,
   DbDialect.GaussDB,
   DbDialect.Vastbase,
+  DbDialect.MogDB, // openGauss 内核（云和恩墨）→ 走 pg-opengauss
+  // 注：HighGo 是标准 PostgreSQL 系（非 openGauss 内核），用标准 pg 即可，不在此列
 ])
 /** 按方言挑 Pool 实现：openGauss 内核 → pg-opengauss，否则标准 pg。两者 API 同构。 */
 function pickPool(dialect: DbDialect): typeof Pool {

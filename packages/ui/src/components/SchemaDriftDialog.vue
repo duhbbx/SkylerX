@@ -99,6 +99,8 @@ function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
       DbDialect.Greenplum,
       DbDialect.OpenGauss,
       DbDialect.Vastbase,
+      DbDialect.MogDB,
+      DbDialect.HighGo,
     ].includes(d)
   ) {
     return 'pg'

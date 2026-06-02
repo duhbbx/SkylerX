@@ -33,6 +33,8 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'oracle' | 'mssql' | 'other' {
       DbDialect.Greenplum,
       DbDialect.OpenGauss,
       DbDialect.Vastbase,
+      DbDialect.MogDB,
+      DbDialect.HighGo,
       DbDialect.Redshift,
       DbDialect.PolarDBPG,
       DbDialect.GaussDB,

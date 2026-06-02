@@ -50,6 +50,8 @@ export function registerBuiltinDrivers(): void {
   registerDriver(createPostgresDriver(DbDialect.Greenplum))
   registerDriver(createPostgresDriver(DbDialect.OpenGauss))
   registerDriver(createPostgresDriver(DbDialect.Vastbase))
+  registerDriver(createPostgresDriver(DbDialect.MogDB))
+  registerDriver(createPostgresDriver(DbDialect.HighGo))
   registerDriver(createPostgresDriver(DbDialect.H2))
   registerDriver(createPostgresDriver(DbDialect.Redshift))
   registerDriver(createPostgresDriver(DbDialect.PolarDBPG))

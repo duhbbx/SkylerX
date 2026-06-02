@@ -412,10 +412,10 @@ describe('dependencyQueries', () => {
     expect(q?.dependents).toContain("table_name = 'v1'")
     expect(q?.dependsOn).toContain("view_name = 'v1'")
   })
-  it('openGauss/Vastbase ride the PG family', () => {
-    expect(dependencyQueries(DbDialect.Vastbase, { schema: 'app' }, 'v')?.dependents).toContain(
-      'view_table_usage',
-    )
+  it('openGauss-family + Highgo ride the PG family', () => {
+    for (const d of [DbDialect.Vastbase, DbDialect.MogDB, DbDialect.HighGo]) {
+      expect(dependencyQueries(d, { schema: 'app' }, 'v')?.dependents).toContain('view_table_usage')
+    }
   })
   it('MySQL family uses VIEW_TABLE_USAGE keyed by database', () => {
     const q = dependencyQueries(DbDialect.MySQL, { database: 'shop' }, 'orders')

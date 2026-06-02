@@ -1032,7 +1032,7 @@ async function onCopyTable(connId: string, node: TreeNode, withData: boolean): P
   const newQuoted = quoteId(conn.dialect, newName.trim())
   const fam = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
     ? 'mysql'
-    : ['postgresql', 'kingbase', 'vastbase'].includes(conn.dialect)
+    : ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(conn.dialect)
       ? 'pg'
       : 'other'
   const lines: string[] = []
@@ -1066,7 +1066,7 @@ async function onCreateTemplateDraft(
   const ctx = deriveContext(conn.dialect, node)
   const fam = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
     ? 'mysql'
-    : ['postgresql', 'kingbase', 'vastbase'].includes(conn.dialect)
+    : ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(conn.dialect)
       ? 'pg'
       : 'other'
   const q = (n: string) => quoteId(conn.dialect, n)

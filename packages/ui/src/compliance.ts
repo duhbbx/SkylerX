@@ -360,6 +360,8 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
     d === DbDialect.KingbaseES ||
     d === DbDialect.OpenGauss ||
     d === DbDialect.Vastbase ||
+    d === DbDialect.MogDB ||
+    d === DbDialect.HighGo ||
     d === DbDialect.Greenplum ||
     d === DbDialect.CockroachDB
   )

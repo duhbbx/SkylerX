@@ -65,6 +65,8 @@ const dialectOptions = [
   { value: DbDialect.TiDB, label: 'TiDB (PingCAP)' },
   { value: DbDialect.TimescaleDB, label: 'TimescaleDB (PG 扩展, 时序)' },
   { value: DbDialect.Vastbase, label: 'Vastbase (海量, openGauss 内核)' },
+  { value: DbDialect.MogDB, label: 'MogDB (云和恩墨, openGauss 内核)' },
+  { value: DbDialect.HighGo, label: 'HighGo (瀚高, PG 系)' },
 ]
 
 const defaultPorts: Record<string, number> = {
@@ -78,6 +80,8 @@ const defaultPorts: Record<string, number> = {
   [DbDialect.Greenplum]: 5432,
   [DbDialect.OpenGauss]: 5432,
   [DbDialect.Vastbase]: 5432,
+  [DbDialect.MogDB]: 26000,
+  [DbDialect.HighGo]: 5866,
   [DbDialect.Oracle]: 1521,
   [DbDialect.DM]: 5236,
   [DbDialect.SqlServer]: 1433,

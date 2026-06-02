@@ -27,7 +27,7 @@ export function estimateSkew(n: PlanNode): number | null {
 
 function family(d: DbDialect): 'mysql' | 'pg' | 'other' {
   if (['mysql', 'mariadb', 'oceanbase'].includes(d)) return 'mysql'
-  if (['postgresql', 'kingbase', 'vastbase'].includes(d)) return 'pg'
+  if (['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(d)) return 'pg'
   return 'other'
 }
 

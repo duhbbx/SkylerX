@@ -24,6 +24,8 @@ const PAGINATABLE = [
   'postgresql',
   'kingbase',
   'vastbase',
+  'mogdb',
+  'highgo',
   'sqlserver',
 ]
 
