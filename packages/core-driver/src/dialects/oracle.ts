@@ -81,6 +81,33 @@ function paginate(sql: string, options?: ExecuteOptions): string {
 class OracleConnection implements DriverConnection {
   constructor(private readonly pool: any) {}
 
+  /** 手动提交会话：sessionId → 钉住的 oracledb 连接（statement 走 autoCommit:false）。 */
+  private readonly sessions = new Map<string, any>()
+  private sessionSeq = 0
+
+  /** oracledb 结果 → QueryResult（execute 与 executeInSession 共用，避免重复）。 */
+  private mapResult(res: any, start: number, options?: ExecuteOptions): QueryResult {
+    const executionTimeMs = Date.now() - start
+    if (res.metaData) {
+      const columns: QueryColumn[] = res.metaData.map((m: any) => ({
+        name: m.name,
+        dataType: m.dbTypeName ?? 'unknown',
+      }))
+      const all = (res.rows ?? []) as Array<Record<string, unknown>>
+      const max = options?.maxRows
+      const truncated = typeof max === 'number' && all.length > max
+      const rows = truncated ? all.slice(0, max) : all
+      return { columns, rows, rowCount: rows.length, executionTimeMs, truncated }
+    }
+    return {
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      affectedRows: res.rowsAffected ?? 0,
+      executionTimeMs,
+    }
+  }
+
   async execute(
     sql: string,
     params: unknown[] = [],
@@ -94,35 +121,73 @@ class OracleConnection implements DriverConnection {
           `ALTER SESSION SET CURRENT_SCHEMA = ${oracleFamilyHelpers.quoteIdentifier(options.schema)}`,
         )
       }
-      // Oracle 默认 autoCommit=false,如果不显式提交 INSERT/UPDATE/DELETE/DDL,
-      // 用户在另一个 session(比如查询页)看不到改动,误以为"没生效"。
-      // 这里把 autoCommit 设为 true 跟 MySQL/PG 默认行为对齐;
-      // 未来引入 manual commit session 时再走 ExecuteOptions.commit=false 分支。
+      // autoCommit:true 对齐 MySQL/PG 默认；手动事务走 executeInSession(autoCommit:false)。
       const res = await conn.execute(paginate(sql, options), params as unknown[], {
         autoCommit: true,
       })
-      const executionTimeMs = Date.now() - start
-      if (res.metaData) {
-        const columns: QueryColumn[] = res.metaData.map((m: any) => ({
-          name: m.name,
-          dataType: m.dbTypeName ?? 'unknown',
-        }))
-        const all = (res.rows ?? []) as Array<Record<string, unknown>>
-        const max = options?.maxRows
-        const truncated = typeof max === 'number' && all.length > max
-        const rows = truncated ? all.slice(0, max) : all
-        return { columns, rows, rowCount: rows.length, executionTimeMs, truncated }
-      }
-      return {
-        columns: [],
-        rows: [],
-        rowCount: 0,
-        affectedRows: res.rowsAffected ?? 0,
-        executionTimeMs,
-      }
+      return this.mapResult(res, start, options)
     } finally {
       await conn.close()
     }
+  }
+
+  // ── 手动提交事务会话 ───────────────────────────────────────────
+  // Oracle 事务隐式开始（无 BEGIN）：拿一条连接钉住，statement 走 autoCommit:false，
+  // commit/rollback 后下一条语句自动开新事务；endSession 才把连接还给池。
+  async beginSession(options?: ExecuteOptions): Promise<string> {
+    const conn = await this.pool.getConnection()
+    try {
+      if (options?.schema) {
+        await conn.execute(
+          `ALTER SESSION SET CURRENT_SCHEMA = ${oracleFamilyHelpers.quoteIdentifier(options.schema)}`,
+        )
+      }
+    } catch (e) {
+      await conn.close().catch(() => {})
+      throw e
+    }
+    const sid = `oracle-s${++this.sessionSeq}-${Date.now()}`
+    this.sessions.set(sid, conn)
+    return sid
+  }
+
+  async executeInSession(
+    sessionId: string,
+    sql: string,
+    params: unknown[] = [],
+    options?: ExecuteOptions,
+  ): Promise<QueryResult> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) throw new Error('SESSION_NOT_FOUND')
+    const start = Date.now()
+    const res = await conn.execute(paginate(sql, options), params as unknown[], {
+      autoCommit: false,
+    })
+    return this.mapResult(res, start, options)
+  }
+
+  async commitSession(sessionId: string): Promise<void> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) throw new Error('SESSION_NOT_FOUND')
+    await conn.commit()
+  }
+
+  async rollbackSession(sessionId: string): Promise<void> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) throw new Error('SESSION_NOT_FOUND')
+    await conn.rollback()
+  }
+
+  async endSession(sessionId: string): Promise<void> {
+    const conn = this.sessions.get(sessionId)
+    if (!conn) return
+    this.sessions.delete(sessionId)
+    try {
+      await conn.rollback()
+    } catch {
+      /* 已提交/回滚:忽略 */
+    }
+    await conn.close().catch(() => {})
   }
 
   // Oracle 无独立 database 层（一连接=一实例），schema=用户，与 MySQL/PG 对齐：
