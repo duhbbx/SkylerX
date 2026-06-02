@@ -129,6 +129,8 @@ class PgConnection implements DriverConnection {
     private readonly pool: Pool,
     /** 本连接所在数据库（pg 一个连接对应一个库） */
     private readonly database: string,
+    /** 方言：openGauss 内核(openGauss/Vastbase/MogDB/磐维/GaussDB)额外展示「包」等专属对象 */
+    private readonly dialect: DbDialect = DbDialect.PostgreSQL,
   ) {}
 
   async execute(
@@ -215,7 +217,8 @@ class PgConnection implements DriverConnection {
 
   private async schemaGroups(path: string[]): Promise<MetadataNode[]> {
     const [, schema] = path
-    const [tables, views, funcs, seqs] = await Promise.all([
+    const og = OPENGAUSS_KERNEL.has(this.dialect)
+    const [tables, views, funcs, seqs, pkgs] = await Promise.all([
       this.scalar(
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='BASE TABLE'",
         [schema],
@@ -231,8 +234,15 @@ class PgConnection implements DriverConnection {
       this.scalar('SELECT COUNT(*) c FROM information_schema.sequences WHERE sequence_schema=$1', [
         schema,
       ]),
+      // openGauss 内核才有「包」(gs_package)；标准 PG / 金仓等无此表，跳过查询直接 0。
+      og
+        ? this.scalar(
+            'SELECT COUNT(*) c FROM gs_package gp JOIN pg_namespace n ON n.oid = gp.pkgnamespace WHERE n.nspname=$1',
+            [schema],
+          )
+        : Promise.resolve(0),
     ])
-    return [
+    const groups: MetadataNode[] = [
       {
         kind: MetaNodeKind.Group,
         name: '表',
@@ -266,6 +276,17 @@ class PgConnection implements DriverConnection {
         count: seqs,
       },
     ]
+    if (og) {
+      groups.push({
+        kind: MetaNodeKind.Group,
+        name: '包',
+        path,
+        group: 'packages',
+        hasChildren: pkgs > 0,
+        count: pkgs,
+      })
+    }
+    return groups
   }
 
   private async tableSubGroups(path: string[]): Promise<MetadataNode[]> {
@@ -376,6 +397,20 @@ class PgConnection implements DriverConnection {
           name: String(r.name),
           path: [db, schema, String(r.name)],
           hasChildren: false,
+        }))
+      }
+      case 'packages': {
+        // openGauss 内核专属:包(gs_package)。仅在 schemaGroups 为 openGauss 内核挂了「包」组时到这。
+        const res = await this.pool.query(
+          'SELECT pkgname AS name FROM gs_package gp JOIN pg_namespace n ON n.oid = gp.pkgnamespace WHERE n.nspname=$1 ORDER BY pkgname',
+          [schema],
+        )
+        return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+          kind: MetaNodeKind.Package,
+          name: String(r.name),
+          path: [db, schema, String(r.name)],
+          hasChildren: false,
+          sqlName: `${q(schema)}.${q(String(r.name))}`,
         }))
       }
       case 'triggers': {
@@ -598,7 +633,7 @@ export function createPostgresDriver(dialect: DbDialect): DatabaseDriver {
         })
         throw unwrapAggregate(e)
       }
-      return new PgConnection(pool, config.database || 'postgres')
+      return new PgConnection(pool, config.database || 'postgres', dialect)
     },
 
     async test(config: ConnectionConfig): Promise<TestResult> {
