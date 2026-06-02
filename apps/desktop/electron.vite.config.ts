@@ -52,6 +52,11 @@ function monacoNlsShim(): Plugin {
 
 export default defineConfig({
   main: {
+    // pg-opengauss 被打进主进程(经 @db-tool/core-driver),它的 lib/native/client.js
+    // 静态 require('pg-native')。pg-native 是可选原生依赖(未安装),且仅在使用 .native
+    // 客户端时才加载——纯 JS 客户端运行时不会触及。标记为 external,避免 esbuild 静态
+    // 解析失败导致主进程加载即崩。
+    build: { rollupOptions: { external: ['pg-native'] } },
     plugins: [externalizeDepsPlugin({ exclude: workspacePkgs })],
   },
   preload: {
