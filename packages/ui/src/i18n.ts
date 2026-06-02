@@ -1669,6 +1669,8 @@ const DICT: Record<string, [string, string]> = {
 
   // Oracle → DM 迁移向导（信创外包高频；OracleToDmWizard）
   'o2dm.title': ['Oracle → DM 迁移向导', 'Oracle → DM Migration Wizard'],
+  'mig.title': ['信创迁移评估', 'XinChuang Migration Assessment'],
+  'ctx.migrate-assess': ['🧭 信创迁移评估…', '🧭 Migration assessment…'],
   'o2dm.step.conn': ['连接', 'Connections'],
   'o2dm.step.pick': ['对象', 'Objects'],
   'o2dm.step.preview': ['预览', 'Preview'],

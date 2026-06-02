@@ -1,0 +1,677 @@
+<script setup lang="ts">
+/*
+ * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/**
+ * 信创「去O」迁移评估向导
+ *
+ * 把一个 Oracle/DM 源库评估成「迁去 openGauss 系国产库」的可行性报告。5 步:
+ *   1) 连接   :选源库(可画像方言)+ 目标库(有结构转换通道的方言)
+ *   2) 画像   :列 database/schema(过滤系统),勾选要迁的 schema,出对象数/表数/
+ *               行数分桶(≥100万/1000万/1亿)/表空间大小 —— 源库精准画像
+ *   3) 评估   :拉所选 schema 的对象,确定性 IR 转换打 A/B/C/D 等级 + 就绪度
+ *   4) AI 转换:把 C 级(PL/SQL 过程体等)逐个交 AI 翻成目标方言(只读,供复核)
+ *   5) 报告   :Markdown 汇总,可复制 / 落盘
+ *
+ * 逻辑全在 ../migrate/*(已单测 + 活库验证);本组件只做编排 + 展示。
+ * 集成:父组件 ref 本组件,调 open();不直接挂菜单。
+ */
+import { type ConnectionConfig, MetaNodeKind, type MetadataNode } from '@db-tool/shared-types'
+import { computed, ref } from 'vue'
+import { useDataClient } from '../data-client'
+import { formatBytes, objectDdlQuery } from '../ddl'
+import { toast } from '../dialog'
+import { reportError } from '../errorReporter'
+import { locale } from '../i18n'
+import { convertObject } from '../migrate/aiConvert'
+import { assessBatch } from '../migrate/assess'
+import { hasStructuralPath } from '../migrate/convert'
+import { buildExcel, buildHtmlDoc, openPrintWindow } from '../migrate/export'
+import {
+  CATEGORY_LABEL,
+  type DatabaseInfo,
+  OBJECT_CATEGORIES,
+  type ObjectCategory,
+  type ObjectInventory,
+  type SchemaInfo,
+  type SourceProfile,
+  canProfile,
+  profileSource,
+} from '../migrate/profile'
+import { buildReport } from '../migrate/report'
+import {
+  type AssessInput,
+  type AssessItem,
+  type AssessSummary,
+  type ConvertResult,
+  GRADE_LABEL,
+} from '../migrate/types'
+import { saveFileWithDialog } from '../saveFile'
+import Modal from './Modal.vue'
+
+const client = useDataClient()
+/** 自包含双语助手(本付费组件不铺 i18n.ts)。 */
+const L = (zh: string, en: string): string => (locale.value === 'en' ? en : zh)
+
+/** 盘点类目标签(随界面语言)。 */
+const catLabel = (c: ObjectCategory): string => {
+  const [zh, en] = CATEGORY_LABEL[c]
+  return L(zh, en)
+}
+/** 盘点单元格:数字或 —(库不支持/未取到)。 */
+const invCell = (inv: ObjectInventory, c: ObjectCategory): string => {
+  const v = inv[c]
+  return v == null ? '—' : String(v)
+}
+/** 风险指标:数字或 —。 */
+const metricCell = (v: number | null | undefined): string => (v == null ? '—' : String(v))
+/** 暴露给模板的类目常量。 */
+const CATEGORIES = OBJECT_CATEGORIES
+
+// ── 步骤 ────────────────────────────────────────────────────────
+type StepId = 'conn' | 'profile' | 'assess' | 'convert' | 'report'
+const STEPS: { id: StepId; label: () => string }[] = [
+  { id: 'conn', label: () => L('连接', 'Connect') },
+  { id: 'profile', label: () => L('源库画像', 'Profile') },
+  { id: 'assess', label: () => L('评估', 'Assess') },
+  { id: 'convert', label: () => L('AI 转换', 'AI Convert') },
+  { id: 'report', label: () => L('报告', 'Report') },
+]
+const open = ref(false)
+const step = ref<StepId>('conn')
+const stepIdx = (s: StepId): number => STEPS.findIndex((x) => x.id === s)
+
+// ── Step 1:连接 ────────────────────────────────────────────────
+const conns = ref<ConnectionConfig[]>([])
+const srcConnId = ref('')
+const tgtConnId = ref('')
+const loadingConns = ref(false)
+
+const srcConn = computed(() => conns.value.find((c) => c.id === srcConnId.value))
+const tgtConn = computed(() => conns.value.find((c) => c.id === tgtConnId.value))
+const srcDialect = computed(() => srcConn.value?.dialect)
+const tgtDialect = computed(() => tgtConn.value?.dialect)
+/** 源库:能画像的(Oracle/DM/PG 系)。 */
+const sourceConns = computed(() => conns.value.filter((c) => canProfile(c.dialect)))
+/** 目标库:有确定性结构转换通道的(PG 系 / DM)。 */
+const targetConns = computed(() =>
+  conns.value.filter((c) => srcDialect.value && hasStructuralPath(srcDialect.value, c.dialect)),
+)
+const connReady = computed(
+  () =>
+    !!srcConnId.value &&
+    !!tgtConnId.value &&
+    srcConnId.value !== tgtConnId.value &&
+    !!srcDialect.value &&
+    !!tgtDialect.value &&
+    hasStructuralPath(srcDialect.value, tgtDialect.value),
+)
+
+async function loadConns(): Promise<void> {
+  loadingConns.value = true
+  try {
+    conns.value = await client.connections.list()
+  } catch (e) {
+    reportError(e, { tag: 'mig.loadConns' })
+  } finally {
+    loadingConns.value = false
+  }
+}
+
+/** 包 execute 成 profiler / DDL 用的行执行器。 */
+const execRows = (sql: string): Promise<Array<Record<string, unknown>>> =>
+  client.connections.execute(srcConnId.value, sql).then((r) => r.rows)
+
+// ── Step 2:画像 ────────────────────────────────────────────────
+const profiling = ref(false)
+const profile = ref<SourceProfile | null>(null)
+const databases = ref<DatabaseInfo[]>([])
+const schemas = ref<SchemaInfo[]>([])
+const pickedSchemas = ref<Set<string>>(new Set())
+const showSystem = ref(false)
+
+const visibleSchemas = computed(() =>
+  showSystem.value ? schemas.value : schemas.value.filter((s) => !s.system),
+)
+
+async function runProfileList(): Promise<void> {
+  if (!srcDialect.value) return
+  profiling.value = true
+  try {
+    const p = await profileSource(execRows, srcDialect.value, { schemas: [] })
+    databases.value = p.databases
+    schemas.value = p.schemas
+    // 默认勾选所有非系统 schema
+    pickedSchemas.value = new Set(p.schemas.filter((s) => !s.system).map((s) => s.name))
+  } catch (e) {
+    reportError(e, { tag: 'mig.profileList' })
+    toast.info(L('画像失败,请检查源库权限', 'Profiling failed — check source privileges'))
+  } finally {
+    profiling.value = false
+  }
+}
+
+function toggleSchema(name: string): void {
+  const s = new Set(pickedSchemas.value)
+  s.has(name) ? s.delete(name) : s.add(name)
+  pickedSchemas.value = s
+}
+
+async function runDeepProfile(): Promise<void> {
+  if (!srcDialect.value) return
+  const picks = [...pickedSchemas.value]
+  if (!picks.length) {
+    toast.info(L('请至少勾选一个 schema', 'Pick at least one schema'))
+    return
+  }
+  profiling.value = true
+  try {
+    profile.value = await profileSource(execRows, srcDialect.value, { schemas: picks })
+  } catch (e) {
+    reportError(e, { tag: 'mig.deepProfile' })
+  } finally {
+    profiling.value = false
+  }
+}
+
+// ── Step 3:评估 ────────────────────────────────────────────────
+const assessing = ref(false)
+const assessProgress = ref('')
+const summary = ref<AssessSummary | null>(null)
+
+/** metadata group → 迁移对象类型。 */
+const PROC_GROUPS: Array<[group: string, kind: AssessInput['kind']]> = [
+  ['views', 'view'],
+  ['functions', 'function'],
+  ['procedures', 'procedure'],
+  ['packages', 'package'],
+  ['triggers', 'trigger'],
+  ['types', 'type'],
+  ['sequences', 'sequence'],
+  ['synonyms', 'synonym'],
+]
+
+async function meta(path: string[], group: string): Promise<MetadataNode[]> {
+  return client.connections
+    .metadata(srcConnId.value, { parentKind: MetaNodeKind.Group, path, group })
+    .catch(() => [])
+}
+
+async function runAssess(): Promise<void> {
+  if (!srcDialect.value || !tgtDialect.value) return
+  assessing.value = true
+  assessProgress.value = ''
+  try {
+    const inputs: AssessInput[] = []
+    for (const schema of pickedSchemas.value) {
+      // 表:拉列元数据走确定性 IR
+      const tableNodes = await meta([schema], 'tables')
+      for (const tn of tableNodes) {
+        assessProgress.value = L(`读取表 ${schema}.${tn.name}`, `Reading ${schema}.${tn.name}`)
+        const cols = await meta([schema, tn.name], 'columns')
+        inputs.push({
+          kind: 'table',
+          schema,
+          name: tn.name,
+          columns: cols.map((c) => ({
+            name: c.name,
+            dataType: c.detail?.dataType ?? '',
+            nullable: c.detail?.nullable ?? true,
+            default: c.detail?.defaultValue == null ? undefined : String(c.detail.defaultValue),
+            comment: c.detail?.comment,
+          })),
+          primaryKey: cols.filter((c) => c.detail?.primaryKey).map((c) => c.name),
+        })
+      }
+      // 过程化对象:只记类型/名,DDL 留到 AI 转换阶段再拉
+      for (const [group, kind] of PROC_GROUPS) {
+        const nodes = await meta([schema], group)
+        for (const n of nodes) inputs.push({ kind, schema, name: n.name })
+      }
+    }
+    summary.value = assessBatch(inputs, srcDialect.value, tgtDialect.value)
+    conversions.value = []
+  } catch (e) {
+    reportError(e, { tag: 'mig.assess' })
+  } finally {
+    assessing.value = false
+    assessProgress.value = ''
+  }
+}
+
+const gradeOrder = ['A', 'B', 'C', 'D'] as const
+function gradeText(g: 'A' | 'B' | 'C' | 'D'): string {
+  const [zh, en] = GRADE_LABEL[g]
+  return `${g} ${L(zh, en)}`
+}
+
+// ── Step 4:AI 转换 ─────────────────────────────────────────────
+const converting = ref(false)
+const convertProgress = ref({ done: 0, total: 0 })
+const conversions = ref<ConvertResult[]>([])
+let abort: AbortController | null = null
+
+const aiItems = computed<AssessItem[]>(() => summary.value?.items.filter((i) => i.needsAi) ?? [])
+
+/** 取单个对象的源 DDL(过程体)供 AI 翻译。 */
+async function fetchDdl(item: AssessItem): Promise<string> {
+  if (!srcDialect.value) return ''
+  const ref0 = `${item.schema}.${item.name}`
+  const q = objectDdlQuery(srcDialect.value, item.kind as never, ref0)
+  if (!q) return ''
+  try {
+    const r = await client.connections.execute(srcConnId.value, q.sql)
+    const row = r.rows[0] ?? {}
+    const k = Object.keys(row).find((x) => /ddl|text|definition|body/i.test(x))
+    return String(row[k ?? Object.keys(row)[0] ?? ''] ?? '').trim()
+  } catch {
+    return ''
+  }
+}
+
+async function runConvert(): Promise<void> {
+  if (!srcDialect.value || !tgtDialect.value) return
+  const items = aiItems.value
+  if (!items.length) {
+    toast.info(L('没有需要 AI 转换的对象', 'Nothing needs AI conversion'))
+    return
+  }
+  converting.value = true
+  abort = new AbortController()
+  convertProgress.value = { done: 0, total: items.length }
+  conversions.value = []
+  try {
+    for (const item of items) {
+      if (abort.signal.aborted) break
+      const ddl = await fetchDdl(item)
+      const r = await convertObject(
+        { ...item, ddl },
+        srcDialect.value,
+        tgtDialect.value,
+        abort.signal,
+      )
+      conversions.value = [...conversions.value, r]
+      convertProgress.value = { done: conversions.value.length, total: items.length }
+    }
+  } catch (e) {
+    reportError(e, { tag: 'mig.convert' })
+  } finally {
+    converting.value = false
+    abort = null
+  }
+}
+
+function cancelConvert(): void {
+  abort?.abort()
+}
+
+// ── Step 5:报告 + 导出 ────────────────────────────────────────
+const reportMd = computed(() =>
+  summary.value
+    ? buildReport(summary.value, {
+        conversions: conversions.value.length ? conversions.value : undefined,
+        profile: profile.value ?? undefined,
+      })
+    : '',
+)
+
+const stamp = (): string => new Date().toISOString().slice(0, 10)
+const docTitle = (): string => L('信创迁移评估报告', 'Migration Assessment Report')
+
+async function copyReport(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(reportMd.value)
+    toast.success(L('已复制到剪贴板', 'Copied to clipboard'))
+  } catch (e) {
+    reportError(e, { tag: 'mig.copyReport' })
+  }
+}
+
+async function exportMarkdown(): Promise<void> {
+  await saveFileWithDialog({
+    defaultName: `migration-assess-${stamp()}.md`,
+    content: reportMd.value,
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  })
+}
+
+const exporting = ref(false)
+async function exportExcel(): Promise<void> {
+  if (!profile.value) return
+  exporting.value = true
+  try {
+    const bytes = await buildExcel(profile.value, summary.value, conversions.value)
+    await saveFileWithDialog({
+      defaultName: `migration-assess-${stamp()}.xlsx`,
+      content: bytes,
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+    })
+  } catch (e) {
+    reportError(e, { tag: 'mig.exportExcel' })
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function exportWord(): Promise<void> {
+  const html = buildHtmlDoc(reportMd.value, { title: docTitle() })
+  await saveFileWithDialog({
+    defaultName: `migration-assess-${stamp()}.doc`,
+    content: html,
+    filters: [{ name: 'Word', extensions: ['doc'] }],
+  })
+}
+
+function exportPdf(): void {
+  const html = buildHtmlDoc(reportMd.value, { title: docTitle(), autoPrint: true })
+  if (!openPrintWindow(html)) {
+    toast.info(L('弹窗被拦截,请允许弹窗后重试', 'Popup blocked — allow popups and retry'))
+  }
+}
+
+// ── 导航 ────────────────────────────────────────────────────────
+function next(): void {
+  const i = stepIdx(step.value)
+  if (i < STEPS.length - 1) step.value = STEPS[i + 1].id
+}
+function prev(): void {
+  const i = stepIdx(step.value)
+  if (i > 0) step.value = STEPS[i - 1].id
+}
+const canNext = computed(() => {
+  switch (step.value) {
+    case 'conn':
+      return connReady.value
+    case 'profile':
+      return pickedSchemas.value.size > 0
+    case 'assess':
+      return !!summary.value
+    default:
+      return true
+  }
+})
+
+function openWizard(opts?: { srcConnId?: string }): void {
+  open.value = true
+  step.value = 'conn'
+  summary.value = null
+  profile.value = null
+  conversions.value = []
+  loadConns().then(() => {
+    if (opts?.srcConnId) srcConnId.value = opts.srcConnId
+  })
+}
+defineExpose({ open: openWizard })
+</script>
+
+<template>
+  <Modal v-if="open" :title="L('信创迁移评估', 'XinChuang Migration Assessment')" width="wide" @close="open = false">
+    <div class="mig">
+      <!-- 步骤指示 -->
+      <ol class="steps">
+        <li
+          v-for="(s, i) in STEPS"
+          :key="s.id"
+          :class="{ active: s.id === step, done: stepIdx(step) > i }"
+        >
+          <span class="n">{{ i + 1 }}</span>{{ s.label() }}
+        </li>
+      </ol>
+
+      <!-- Step 1: 连接 -->
+      <section v-if="step === 'conn'" class="panel">
+        <p class="hint">
+          {{ L('选择源库(待迁出的 Oracle/DM)和目标国产库(openGauss 系 / DM)。',
+                'Pick the source (Oracle/DM to migrate off) and the target domestic DB (openGauss-kernel / DM).') }}
+        </p>
+        <div class="row2">
+          <label>
+            <span>{{ L('源库', 'Source') }}</span>
+            <select v-model="srcConnId">
+              <option value="">{{ loadingConns ? '…' : L('选择源库', 'select source') }}</option>
+              <option v-for="c in sourceConns" :key="c.id" :value="c.id">
+                {{ c.name }} ({{ c.dialect }})
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>{{ L('目标库', 'Target') }}</span>
+            <select v-model="tgtConnId">
+              <option value="">{{ L('选择目标库', 'select target') }}</option>
+              <option v-for="c in targetConns" :key="c.id" :value="c.id">
+                {{ c.name }} ({{ c.dialect }})
+              </option>
+            </select>
+          </label>
+        </div>
+        <p v-if="srcConnId && tgtConnId && !connReady" class="warn">
+          {{ L('该源 → 目标组合暂无确定性结构转换通道。', 'No structural conversion path for this source → target pair.') }}
+        </p>
+      </section>
+
+      <!-- Step 2: 画像 -->
+      <section v-else-if="step === 'profile'" class="panel">
+        <div class="bar">
+          <button class="primary" :disabled="profiling" @click="runProfileList">
+            {{ profiling ? L('画像中…', 'profiling…') : L('① 列举库 / schema', '① List DBs / schemas') }}
+          </button>
+          <label class="chk"><input type="checkbox" v-model="showSystem" />{{ L('显示系统对象', 'show system') }}</label>
+          <button :disabled="profiling || !pickedSchemas.size" @click="runDeepProfile">
+            {{ L('② 评估所选 schema', '② Profile selected') }}
+          </button>
+        </div>
+
+        <div v-if="databases.length" class="dbgrid">
+          <div class="card">
+            <h4>{{ L('数据库', 'Databases') }} · {{ databases.length }}</h4>
+            <ul class="mini">
+              <li v-for="d in databases" :key="d.name">
+                {{ d.name }}<span v-if="d.system" class="tag">sys</span>
+                <span class="sz">{{ formatBytes(d.sizeBytes ?? 0) }}</span>
+              </li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>{{ L('Schema', 'Schemas') }} · {{ visibleSchemas.length }}</h4>
+            <ul class="mini scroll">
+              <li v-for="s in visibleSchemas" :key="s.name">
+                <label class="chk">
+                  <input
+                    type="checkbox"
+                    :checked="pickedSchemas.has(s.name)"
+                    @change="toggleSchema(s.name)"
+                  />
+                  {{ s.name }}<span v-if="s.system" class="tag">sys</span>
+                </label>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div v-if="profile && profile.schemaProfiles.length" class="prof">
+          <h4>{{ L('源库画像', 'Source profile') }}</h4>
+          <div class="totals">
+            <span>{{ L('schema', 'schemas') }}: <b>{{ profile.totals.schemas }}</b></span>
+            <span>{{ L('表', 'tables') }}: <b>{{ profile.totals.tables }}</b></span>
+            <span>{{ L('对象', 'objects') }}: <b>{{ profile.totals.objects }}</b></span>
+            <span>{{ L('总大小', 'size') }}: <b>{{ formatBytes(profile.totals.sizeBytes) }}</b></span>
+            <span>{{ L('估算行数', 'rows') }}: <b>{{ profile.totals.metrics.totalRows.toLocaleString() }}</b></span>
+          </div>
+          <div class="buckets">
+            <span class="bk">≥100万: <b>{{ profile.totals.rowBuckets.over1M }}</b></span>
+            <span class="bk">≥1000万: <b>{{ profile.totals.rowBuckets.over10M }}</b></span>
+            <span class="bk">≥1亿: <b>{{ profile.totals.rowBuckets.over100M }}</b></span>
+            <span class="note">{{ L('行数为统计估算值', 'estimated rows') }}</span>
+          </div>
+          <div class="buckets risk">
+            <span>{{ L('无主键表', 'no-PK tables') }}: <b>{{ metricCell(profile.totals.metrics.tablesWithoutPk) }}</b></span>
+            <span>{{ L('LOB 列', 'LOB cols') }}: <b>{{ metricCell(profile.totals.metrics.lobColumns) }}</b></span>
+            <span>{{ L('带触发器表', 'w/ triggers') }}: <b>{{ metricCell(profile.totals.metrics.tablesWithTriggers) }}</b></span>
+            <span>{{ L('有注释表', 'w/ comments') }}: <b>{{ metricCell(profile.totals.metrics.tablesWithComment) }}</b></span>
+          </div>
+
+          <h4>{{ L('对象盘点', 'Object inventory') }} <small>{{ L('(— = 该库不支持)', '(— = unsupported)') }}</small></h4>
+          <div class="invscroll">
+            <table class="tbl">
+              <thead><tr>
+                <th>Schema</th>
+                <th v-for="c in CATEGORIES" :key="c">{{ catLabel(c) }}</th>
+              </tr></thead>
+              <tbody>
+                <tr v-for="sp in profile.schemaProfiles" :key="sp.schema">
+                  <td>{{ sp.schema }}</td>
+                  <td v-for="c in CATEGORIES" :key="c">{{ invCell(sp.inventory, c) }}</td>
+                </tr>
+                <tr class="totrow">
+                  <td>{{ L('合计', 'Total') }}</td>
+                  <td v-for="c in CATEGORIES" :key="c">{{ invCell(profile.totals.inventory, c) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Step 3: 评估 -->
+      <section v-else-if="step === 'assess'" class="panel">
+        <div class="bar">
+          <button class="primary" :disabled="assessing" @click="runAssess">
+            {{ assessing ? L('评估中…', 'assessing…') : L('开始评估', 'Run assessment') }}
+          </button>
+          <span class="prog">{{ assessProgress }}</span>
+        </div>
+        <div v-if="summary" class="assess">
+          <div class="readiness" :class="{
+            good: summary.readiness >= 70, mid: summary.readiness >= 40 && summary.readiness < 70,
+            bad: summary.readiness < 40 }">
+            {{ L('可迁移就绪度', 'Readiness') }}: <b>{{ summary.readiness }}</b>/100
+          </div>
+          <div class="grades">
+            <span v-for="g in gradeOrder" :key="g" :class="['gr', 'g' + g]">
+              {{ gradeText(g) }}: <b>{{ summary.byGrade[g] }}</b>
+            </span>
+            <span class="ai">{{ L('待 AI 转换', 'AI candidates') }}: <b>{{ summary.aiCandidates }}</b></span>
+          </div>
+          <table class="tbl scroll">
+            <thead><tr>
+              <th>{{ L('对象', 'object') }}</th><th>{{ L('类型', 'kind') }}</th>
+              <th>{{ L('等级', 'grade') }}</th><th>{{ L('关注点', 'concerns') }}</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="(it, i) in summary.items" :key="i">
+                <td>{{ it.schema }}.{{ it.name }}</td>
+                <td>{{ it.kind }}</td>
+                <td :class="'g' + it.grade">{{ it.grade }}</td>
+                <td class="concern">{{ it.notes.map((n) => n.msg).join('; ') || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Step 4: AI 转换 -->
+      <section v-else-if="step === 'convert'" class="panel">
+        <p class="hint">
+          {{ L(`将 ${aiItems.length} 个 C 级对象(过程体/复杂 SQL)交 AI 翻成目标方言。结果只读,供人工复核。`,
+                `Hand ${aiItems.length} grade-C objects (PL/SQL / complex SQL) to AI. Results are review-only.`) }}
+        </p>
+        <div class="bar">
+          <button class="primary" :disabled="converting || !aiItems.length" @click="runConvert">
+            {{ L('开始 AI 转换', 'Start AI conversion') }}
+          </button>
+          <button v-if="converting" @click="cancelConvert">{{ L('取消', 'Cancel') }}</button>
+          <span v-if="convertProgress.total" class="prog">
+            {{ convertProgress.done }} / {{ convertProgress.total }}
+          </span>
+        </div>
+        <div v-for="(c, i) in conversions" :key="i" class="conv">
+          <h5>{{ c.schema }}.{{ c.name }} <small>({{ c.kind }})</small></h5>
+          <p v-if="c.error" class="warn">❌ {{ c.error }}</p>
+          <template v-else>
+            <pre v-if="c.sql" class="sql">{{ c.sql }}</pre>
+            <p v-if="c.notes" class="cnotes">{{ c.notes }}</p>
+          </template>
+        </div>
+      </section>
+
+      <!-- Step 5: 报告 -->
+      <section v-else class="panel">
+        <div class="bar">
+          <button class="primary" @click="copyReport">{{ L('复制', 'Copy') }}</button>
+          <button @click="exportMarkdown">Markdown</button>
+          <button :disabled="exporting || !profile" @click="exportExcel">
+            {{ exporting ? '…' : 'Excel' }}
+          </button>
+          <button @click="exportWord">Word</button>
+          <button @click="exportPdf">PDF</button>
+          <span class="note">{{ L('PDF 在新窗口用浏览器「另存为 PDF」', 'PDF via browser Save-as-PDF in new window') }}</span>
+        </div>
+        <pre class="report">{{ reportMd }}</pre>
+      </section>
+    </div>
+
+    <template #footer>
+      <button v-if="stepIdx(step) > 0" @click="prev">{{ L('上一步', 'Back') }}</button>
+      <span class="sp" />
+      <button v-if="stepIdx(step) < STEPS.length - 1" class="primary" :disabled="!canNext" @click="next">
+        {{ L('下一步', 'Next') }}
+      </button>
+      <button v-else @click="open = false">{{ L('完成', 'Done') }}</button>
+    </template>
+  </Modal>
+</template>
+
+<style scoped>
+.mig { display: flex; flex-direction: column; gap: 12px; min-width: 720px; }
+.steps { display: flex; gap: 6px; list-style: none; padding: 0; margin: 0; font-size: 12px; }
+.steps li { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 14px; background: var(--bg-subtle, #f1f1f1); color: var(--fg-muted, #888); }
+.steps li.active { background: var(--accent, #2d7ff9); color: #fff; }
+.steps li.done { color: var(--accent, #2d7ff9); }
+.steps .n { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: rgba(0,0,0,.12); font-size: 10px; }
+.panel { min-height: 320px; }
+.hint { font-size: 13px; color: var(--fg-muted, #777); margin: 0 0 10px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.row2 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+select { padding: 6px; }
+.bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.chk { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.prog { font-size: 12px; color: var(--fg-muted, #888); }
+.warn { color: #c0392b; font-size: 12px; }
+.dbgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card { border: 1px solid var(--border, #e3e3e3); border-radius: 8px; padding: 10px; }
+.card h4 { margin: 0 0 8px; font-size: 13px; }
+.mini { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.mini li { padding: 2px 0; display: flex; align-items: center; gap: 6px; }
+.mini.scroll { max-height: 200px; overflow: auto; }
+.tag { font-size: 10px; background: #eee; color: #999; border-radius: 3px; padding: 0 4px; }
+.sz { margin-left: auto; color: var(--fg-muted, #999); }
+.prof { margin-top: 14px; }
+.totals, .buckets { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 6px 0; }
+.buckets .note { color: var(--fg-muted, #aaa); font-size: 11px; }
+.bk b { color: #d35400; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.tbl th, .tbl td { border: 1px solid var(--border, #e8e8e8); padding: 4px 8px; text-align: left; }
+.tbl.scroll { display: block; max-height: 260px; overflow: auto; }
+.buckets.risk b { color: #c0392b; }
+.invscroll { overflow-x: auto; max-width: 100%; }
+.invscroll .tbl { font-size: 11px; white-space: nowrap; }
+.invscroll .totrow { font-weight: 700; background: var(--bg-subtle, #f7f7f7); }
+.readiness { font-size: 16px; padding: 8px 12px; border-radius: 8px; display: inline-block; }
+.readiness.good { background: #e8f6ec; color: #1e7e34; }
+.readiness.mid { background: #fff5e6; color: #c87f0a; }
+.readiness.bad { background: #fdecea; color: #c0392b; }
+.grades { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; font-size: 13px; }
+.gr { padding: 2px 8px; border-radius: 6px; background: #f3f3f3; }
+.gA { color: #1e7e34; } .gB { color: #2d7ff9; } .gC { color: #c87f0a; } .gD { color: #c0392b; }
+td.gA, td.gB, td.gC, td.gD { font-weight: 700; }
+.ai { margin-left: auto; }
+.concern { color: var(--fg-muted, #888); max-width: 360px; }
+.conv { border-top: 1px solid var(--border, #eee); padding: 8px 0; }
+.conv h5 { margin: 0 0 6px; font-size: 13px; }
+.sql, .report { background: var(--bg-code, #1e1e1e); color: #dcdcdc; padding: 10px; border-radius: 6px; font-size: 12px; overflow: auto; max-height: 360px; white-space: pre-wrap; }
+.cnotes { font-size: 12px; color: var(--fg-muted, #777); white-space: pre-wrap; }
+.sp { flex: 1; }
+.primary { background: var(--accent, #2d7ff9); color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+.primary:disabled { opacity: .5; cursor: default; }
+</style>

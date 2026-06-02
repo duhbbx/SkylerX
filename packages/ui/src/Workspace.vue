@@ -56,6 +56,7 @@ import NotificationSettingsDialog from './components/NotificationSettingsDialog.
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
+import MigrationAssessWizard from './components/MigrationAssessWizard.vue'
 import OracleToDmWizard from './components/OracleToDmWizard.vue'
 import PasteImportDialog from './components/PasteImportDialog.vue'
 import PgAdvancedDialog from './components/PgAdvancedDialog.vue'
@@ -628,6 +629,9 @@ async function onMockData(connId: string, node: TreeNode): Promise<void> {
 
 /** Oracle → DM 迁移向导（独立工具，自带连接选择步骤） */
 const o2dmRef = useTemplateRef<{ open: () => void } | null>('o2dmRef')
+const migAssessRef = useTemplateRef<{ open: (o?: { srcConnId?: string }) => void } | null>(
+  'migAssessRef',
+)
 
 /** 等保 2.0 合规检查（按连接打开） */
 const complianceOpen = ref<{ conn: ConnectionConfig } | null>(null)
@@ -2623,6 +2627,8 @@ const paletteItems = computed<PaletteItem[]>(() => [
   })),
   // Oracle → DM 迁移向导（信创外包高频）
   { id: 'act:o2dm', label: t('o2dm.title'), group: t('pal.groupActions') },
+  // 信创迁移评估（源库画像 + 等级 + AI 转换）
+  { id: 'act:mig-assess', label: t('mig.title'), group: t('pal.groupActions') },
   // 慢查询日志分析（按连接）
   ...paletteConns.value.map((c) => ({
     id: `act:slowq:${c.id}`,
@@ -2721,6 +2727,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:dashboard') dashboardOpen.value = true
   else if (item.id === 'act:ndjson-viewer') void openNdjsonViewer()
   else if (item.id === 'act:o2dm') o2dmRef.value?.open?.()
+  else if (item.id === 'act:mig-assess') migAssessRef.value?.open?.()
   else if (item.id.startsWith('act:slowq:')) {
     const cid = item.id.slice('act:slowq:'.length)
     void openSlowQuery(cid)
@@ -3054,6 +3061,7 @@ onMounted(async () => {
     @ai-comment-table="(cid, node) => openAiCommentForTable(cid, node.sqlName ?? node.name)"
     @ai-health-check="openHealth"
     @index-recommender="openIdxRec"
+    @migrate-assess="(cid) => migAssessRef?.open?.({ srcConnId: cid })"
     @rename-table="onRenameTable"
     @copy-table="onCopyTable"
     @toggle-prod-mark="onToggleProdMark"
@@ -3410,6 +3418,9 @@ onMounted(async () => {
 
   <!-- Oracle → DM 迁移向导（信创外包） -->
   <OracleToDmWizard ref="o2dmRef" />
+
+  <!-- 信创迁移评估（源库画像 + 等级 + AI 转换） -->
+  <MigrationAssessWizard ref="migAssessRef" />
 
   <!-- 等保 2.0 合规检查（按连接） -->
   <ComplianceDialog

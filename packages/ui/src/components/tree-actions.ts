@@ -720,6 +720,15 @@ export const TREE_ACTIONS: TreeAction[] = [
     excludeKind: DbKind.NoSql,
     run: ({ connId, ctrl }) => ctrl.indexRecommender(connId),
   },
+  // 信创迁移评估：从源库(Oracle/DM)右键直接进评估向导,预填该连接为源
+  {
+    id: 'migrate-assess-conn',
+    label: 'ctx.migrate-assess',
+    section: 'meta',
+    kinds: [MetaNodeKind.Connection],
+    onlyDialects: [DbDialect.Oracle, DbDialect.DM],
+    run: ({ connId, ctrl }) => ctrl.migrateAssess(connId),
+  },
   {
     id: 'import-data',
     label: 'ctx.import-data',

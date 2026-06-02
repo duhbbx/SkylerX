@@ -66,6 +66,7 @@ const emit = defineEmits<{
   aiCommentTable: [string, TreeNode]
   aiHealthCheck: [string]
   indexRecommender: [string]
+  migrateAssess: [string]
   renameTable: [string, TreeNode]
   copyTable: [string, TreeNode, boolean]
   toggleProdMark: [string]
@@ -785,6 +786,7 @@ const controller: TreeController = {
   aiCommentTable: (node, connId) => emit('aiCommentTable', connId, node),
   aiHealthCheck: (connId) => emit('aiHealthCheck', connId),
   indexRecommender: (connId) => emit('indexRecommender', connId),
+  migrateAssess: (connId) => emit('migrateAssess', connId),
   openRedisKey: (connId, dbIndex, key) => emit('openRedisKey', connId, dbIndex, key),
   deleteRedisKey: (connId, dbIndex, key, parent) =>
     emit('deleteRedisKey', connId, dbIndex, key, parent),

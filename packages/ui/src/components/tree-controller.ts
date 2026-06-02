@@ -122,6 +122,8 @@ export interface TreeController {
   aiHealthCheck(connId: string): void
   /** C5 索引推荐器（连接级） */
   indexRecommender(connId: string): void
+  /** 信创迁移评估（连接级，源库 Oracle/DM） */
+  migrateAssess(connId: string): void
   /** Redis 专属:打开 RedisPane 并选中该 key */
   openRedisKey(connId: string, dbIndex: number, key: string): void
   /** Redis 专属:删除 key(DEL),删除后刷新父节点(类型组) */
