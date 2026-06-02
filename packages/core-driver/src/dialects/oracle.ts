@@ -196,7 +196,7 @@ class OracleConnection implements DriverConnection {
   async fetchMetadata(scope: MetaScope): Promise<MetadataNode[]> {
     switch (scope.parentKind) {
       case MetaNodeKind.Connection:
-        return this.listSchemas()
+        return this.listSchemas(scope.showSystem)
       case MetaNodeKind.Schema:
         return this.schemaGroups(scope.path[0])
       case MetaNodeKind.Group:
@@ -308,7 +308,7 @@ class OracleConnection implements DriverConnection {
     }
   }
 
-  private async listSchemas(): Promise<MetadataNode[]> {
+  private async listSchemas(showSystem = false): Promise<MetadataNode[]> {
     // Oracle 12c+ all_users 有 oracle_maintained 字段 ('Y' = 系统内置如 SYS/SYSTEM/MDSYS/XDB...)
     // 用它精准过滤系统 schema; 12c 以下回落到一条无过滤查询(可接受,旧版本受众小)。
     let rows: any[]
@@ -322,7 +322,7 @@ class OracleConnection implements DriverConnection {
       rows = await this.q('SELECT username AS "name" FROM all_users ORDER BY username')
     }
     return rows
-      .filter((r: any) => r.sys !== 'Y') // 隐藏系统 schema
+      .filter((r: any) => showSystem || r.sys !== 'Y') // 默认隐藏系统 schema;开「显示系统对象」则全显
       .map((r: any) => ({
         kind: MetaNodeKind.Schema,
         name: String(r.name),

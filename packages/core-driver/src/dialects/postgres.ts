@@ -196,7 +196,7 @@ class PgConnection implements DriverConnection {
           },
         ]
       case MetaNodeKind.Database:
-        return this.listSchemas(scope.path[0])
+        return this.listSchemas(scope.path[0], scope.showSystem)
       case MetaNodeKind.Schema:
         return this.schemaGroups(scope.path)
       case MetaNodeKind.Group:
@@ -338,15 +338,17 @@ class PgConnection implements DriverConnection {
     ]
   }
 
-  private async listSchemas(db: string): Promise<MetadataNode[]> {
-    // 过滤内置系统 schema：PG/openGauss 给用户创建的对象分配 OID >= 16384(FirstNormalObjectId)，
+  private async listSchemas(db: string, showSystem = false): Promise<MetadataNode[]> {
+    // 默认过滤内置系统 schema：PG/openGauss 给用户创建的对象分配 OID >= 16384(FirstNormalObjectId)，
     // 内置 schema OID 更小。用 OID 而非硬编码名单——openGauss/Vastbase 有 30+ 个内置 schema
     // (dbe_perf / cstore / blockchain / dbms_* / sys …) 会把树塞满，且随版本变化。public 始终保留；
     // pg_% (pg_catalog / pg_temp_* / pg_toast*) 一并排除。跟 Oracle/DM 驱动按 oracle_maintained 过滤同理。
+    // showSystem=true(设置「显示系统对象」)时不过滤，全量返回。
+    const where = showSystem
+      ? ''
+      : "WHERE (oid >= 16384 OR nspname = 'public') AND nspname NOT LIKE 'pg_%'"
     const res = await this.pool.query(
-      `SELECT nspname AS name FROM pg_namespace
-        WHERE (oid >= 16384 OR nspname = 'public') AND nspname NOT LIKE 'pg_%'
-        ORDER BY nspname`,
+      `SELECT nspname AS name FROM pg_namespace ${where} ORDER BY nspname`,
     )
     return (res.rows as Array<Record<string, unknown>>).map((r) => ({
       kind: MetaNodeKind.Schema,

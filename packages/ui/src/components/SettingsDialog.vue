@@ -253,6 +253,12 @@ function watermarkPreviewSvg(): string {
               {{ t('settings.navSortByUsageReset') }}
             </button>
           </p>
+          <!-- 显示系统对象：PG 系 pg_catalog/openGauss dbe_perf 等系统 schema、Oracle 系统用户（默认关） -->
+          <label class="row">
+            <span class="lbl">{{ t('settings.showSystemObjects') }}</span>
+            <input v-model="settings.showSystemObjects" type="checkbox" class="chk" />
+          </label>
+          <p class="hint">{{ t('settings.showSystemObjectsDesc') }}</p>
           <!-- #13 数据脱敏：列名匹配 → 结果集渲染遮罩 -->
           <label class="row">
             <span class="lbl">{{ t('mask.enabled') }}</span>

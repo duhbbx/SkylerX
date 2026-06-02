@@ -112,6 +112,12 @@ export interface Settings {
   navSortByUsage: boolean
 
   /**
+   * 开启后导航树展示内置系统对象（PG 系的 pg_catalog / openGauss 的 dbe_perf 等系统 schema、
+   * Oracle/DM 的系统用户）。默认关闭——这些 schema 通常用不上、数量又多，藏起来树更清爽。
+   */
+  showSystemObjects: boolean
+
+  /**
    * 用户在 NavTree 里的分组顺序(支持空分组持久化)。
    *  - 用户点"新建分组" → 名字进这里;即使该分组下没有任何连接也会显示。
    *  - 拖动分组改顺序 → 重写整个数组。
@@ -169,6 +175,7 @@ const DEFAULTS: Settings = {
   maskingRules: structuredClone(DEFAULT_MASK_RULES),
   keyBindings: {},
   navSortByUsage: false,
+  showSystemObjects: false,
   groupOrder: [],
   navWidth: 300,
 }

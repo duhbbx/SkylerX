@@ -407,6 +407,8 @@ export interface MetaScope {
   path: string[]
   /** 父节点为 Group 时，指明它装的对象类型，如 'tables' | 'views' | 'functions' */
   group?: string
+  /** 是否展示内置系统对象（系统 schema / 系统用户）。缺省/false = 过滤掉，树更清爽。 */
+  showSystem?: boolean
 }
 
 /** 导航树节点（库/schema/分组/表/列等统一表达）。 */

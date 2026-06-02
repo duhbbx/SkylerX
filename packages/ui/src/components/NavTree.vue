@@ -548,6 +548,7 @@ const controller: TreeController = {
         parentKind: node.kind,
         path: [...node.path],
         group: node.group,
+        showSystem: settings.showSystemObjects,
       })
       node.children = children.map((n) => {
         const child = fromMetadata(n)
@@ -1246,6 +1247,14 @@ const unsubSchemaChanged = onSchemaChanged(({ connId }) => {
   if (root) void controller.refreshNode(root.node, connId)
 })
 onBeforeUnmount(() => unsubSchemaChanged())
+
+// 「显示系统对象」开关切换 → 深刷新所有已展开连接子树，让系统 schema 即时显隐。
+watch(
+  () => settings.showSystemObjects,
+  () => {
+    for (const r of roots.value) void controller.refreshNode(r.node, r.id)
+  },
+)
 
 onMounted(() => {
   void reload()

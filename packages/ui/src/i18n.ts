@@ -101,6 +101,11 @@ const DICT: Record<string, [string, string]> = {
   // ── 设置中心分类 ──
   'settings.cat.general': ['常规', 'General'],
   // 用户报告 #7: NavTree 库/schema 按使用频率排序
+  'settings.showSystemObjects': ['显示系统对象', 'Show system objects'],
+  'settings.showSystemObjectsDesc': [
+    '开启后导航树展示内置系统 schema（PG 的 pg_catalog、openGauss 的 dbe_perf / cstore 等）与 Oracle 系统用户。默认关闭——这些通常用不上、数量又多，藏起来树更清爽。',
+    'When on, the tree shows built-in system schemas (PG pg_catalog, openGauss dbe_perf / cstore …) and Oracle system users. Off (default) hides them for a cleaner tree.',
+  ],
   'settings.navSortByUsage': ['按使用频率排序数据库 / Schema', 'Sort DBs / Schemas by usage'],
   'settings.navSortByUsageDesc': [
     '开启后，导航树中的库 / Schema 子节点按你「展开 / 双击 / 选中」累计次数高频在前。关闭则保持驱动返回的字典序。',
