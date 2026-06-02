@@ -91,6 +91,9 @@ const props = defineProps<{
   initialSql?: string
   /** 初始库/schema 上下文（新建查询时按触发节点预选；找不到则用默认库） */
   initialCtx?: TableContext
+  /** 该 tab 是否为当前激活 tab。用于把自动补全上下文的元数据拉取推迟到首次激活，
+   *  避免启动恢复多个后台 tab 时同时探测所有连接（很多还连不上 → 报错刷屏）。 */
+  active?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -1327,9 +1330,24 @@ function setupAiInline(): void {
   })
 }
 
+// 自动补全上下文懒加载：只在该 tab 首次激活时拉一次元数据，避免启动恢复的后台 tab
+// 同时探测所有连接。已加载过就不再重复。
+let contextLoaded = false
+function ensureContext(): void {
+  if (contextLoaded) return
+  contextLoaded = true
+  void loadContext()
+}
+watch(
+  () => props.active,
+  (a) => {
+    if (a) ensureContext()
+  },
+)
+
 onMounted(() => {
   void loadHistory()
-  void loadContext()
+  if (props.active) ensureContext()
   if (props.pending) {
     sql.value = props.pending.sql
     void run()

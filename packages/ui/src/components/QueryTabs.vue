@@ -527,6 +527,7 @@ watch(tabs, saveLayout, { deep: true })
             :pending="t.pending"
             :initial-sql="t.draft"
             :initial-ctx="t.ctx"
+            :active="t.id === activeId"
             :ref="(el) => setDirtyRef(t.id, el)"
             @conn-error="(id, msg) => emit('connError', id, msg)"
             @ai="(sql, cid, errMsg) => emit('ai', sql, cid, errMsg)"

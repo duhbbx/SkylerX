@@ -5,6 +5,7 @@
  */
 import { type ConnectionEnv, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, inject } from 'vue'
+import { connStatus } from '../conn-status'
 import { ENV_META } from '../connEnv'
 import { t } from '../i18n'
 import { bumpUsage, getUsage, navUsageVersion } from '../nav-usage'
@@ -202,6 +203,12 @@ function onContext(e: MouseEvent): void {
         :style="{ background: ENV_META[env].color }"
         :title="t('env.dotTitle', { label: t('env.' + env) })"
       />
+      <span
+        v-if="node.kind === 'connection' && connStatus(connId)"
+        class="status-dot"
+        :class="connStatus(connId)"
+        :title="connStatus(connId) === 'ok' ? t('conn.statusOk') : t('conn.statusError')"
+      />
       <span class="label">{{ node.name }}</span>
       <span v-if="node.count != null" class="count">({{ node.count }})</span>
       <span v-if="node.detail?.dataType" class="col-type">{{ node.detail.dataType }}</span>
@@ -301,6 +308,19 @@ function onContext(e: MouseEvent): void {
   width: 7px;
   height: 7px;
   border-radius: 50%;
+}
+/* 连接可达性小圆点：🟢 上次连上 / 🔴 上次出错（未尝试不显示）。 */
+.status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.status-dot.ok {
+  background: #4caf50;
+}
+.status-dot.error {
+  background: #e04050;
 }
 /* #24 过滤入口 — 两个状态:
    静态 = 不启用过滤: 透明 ▾ 入口, hover 才可见 (跟 .edit-btn 一致).

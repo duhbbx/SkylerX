@@ -11,6 +11,7 @@ import {
 } from '@db-tool/shared-types'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { onSchemaChanged } from '../chat-bus'
+import { setConnStatus } from '../conn-status'
 import { connEnv } from '../connEnv'
 import { isConnectionError } from '../connError'
 import { useDataClient } from '../data-client'
@@ -552,6 +553,8 @@ const controller: TreeController = {
         child.parent = node
         return child
       })
+      // 成功拉到元数据 → 该连接可达,记一个绿点
+      setConnStatus(connId, 'ok')
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       // 不在树里显示错误：收起该节点，错误通过弹窗 / toast 呈现
@@ -559,6 +562,7 @@ const controller: TreeController = {
       node.expanded = false
       // 连接节点打不开，或任意层级的连接级错误 → 弹出该连接编辑框
       if (node.kind === MetaNodeKind.Connection || isConnectionError(msg)) {
+        setConnStatus(connId, 'error')
         emit('connError', connId, msg)
       } else {
         // 非连接级错误(权限/SQL/驱动 bug 等):用户之前报告"不报错只是节点收起",

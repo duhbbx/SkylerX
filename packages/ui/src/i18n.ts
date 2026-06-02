@@ -938,6 +938,8 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 连接表单 ConnectionForm ──
   'conn.failed': ['✗ 连接失败：{msg}', '✗ Connection failed: {msg}'],
+  'conn.statusOk': ['上次连接正常', 'Last connection OK'],
+  'conn.statusError': ['上次连接出错', 'Last connection failed'],
   'conn.tab.general': ['常规', 'General'],
   'conn.tab.ssh': ['SSH 隧道', 'SSH tunnel'],
   'conn.name': ['名称', 'Name'],
