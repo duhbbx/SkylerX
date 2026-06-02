@@ -42,7 +42,15 @@ const knownCount = ref(0)
 const adopted = ref<Set<number>>(new Set())
 
 function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
-  if ([DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.TiDB].includes(d)) {
+  if (
+    [
+      DbDialect.MySQL,
+      DbDialect.MariaDB,
+      DbDialect.OceanBase,
+      DbDialect.GBase8a,
+      DbDialect.TiDB,
+    ].includes(d)
+  ) {
     return 'mysql'
   }
   if (
@@ -54,6 +62,7 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
       DbDialect.OpenGauss,
       DbDialect.Vastbase,
       DbDialect.MogDB,
+      DbDialect.Panweidb,
       DbDialect.HighGo,
       DbDialect.H2,
     ].includes(d)

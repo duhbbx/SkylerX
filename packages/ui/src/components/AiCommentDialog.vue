@@ -67,7 +67,15 @@ let controller: AbortController | null = null
 
 const fam = computed<'mysql' | 'pg' | 'other'>(() => {
   const d = props.conn.dialect
-  if ([DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.TiDB].includes(d))
+  if (
+    [
+      DbDialect.MySQL,
+      DbDialect.MariaDB,
+      DbDialect.OceanBase,
+      DbDialect.GBase8a,
+      DbDialect.TiDB,
+    ].includes(d)
+  )
     return 'mysql'
   if (
     [
@@ -78,6 +86,7 @@ const fam = computed<'mysql' | 'pg' | 'other'>(() => {
       DbDialect.OpenGauss,
       DbDialect.Vastbase,
       DbDialect.MogDB,
+      DbDialect.Panweidb,
       DbDialect.HighGo,
       DbDialect.H2,
     ].includes(d)

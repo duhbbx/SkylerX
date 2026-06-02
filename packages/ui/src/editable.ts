@@ -16,15 +16,17 @@ export interface EditChanges {
   deletes: Row[]
 }
 
-const MYSQL = ['mysql', 'mariadb', 'oceanbase']
+const MYSQL = ['mysql', 'mariadb', 'oceanbase', 'gbase8a']
 const PAGINATABLE = [
   'mysql',
   'mariadb',
   'oceanbase',
+  'gbase8a',
   'postgresql',
   'kingbase',
   'vastbase',
   'mogdb',
+  'panweidb',
   'highgo',
   'sqlserver',
 ]

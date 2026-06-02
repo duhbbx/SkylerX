@@ -129,6 +129,7 @@ async function loadTableColumns(): Promise<void> {
         DbDialect.MySQL,
         DbDialect.MariaDB,
         DbDialect.OceanBase,
+        DbDialect.GBase8a,
         DbDialect.TiDB,
         DbDialect.Doris,
         DbDialect.StarRocks,

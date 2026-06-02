@@ -62,7 +62,7 @@ const originalIndexes = ref<IndexDef[]>([]) // 现有索引快照
 const originalForeignKeys = ref<ForeignKeyDef[]>([]) // 现有外键快照
 const loading = ref(false)
 const types = typeOptions(props.dialect)
-const isMysql = ['mysql', 'mariadb', 'oceanbase'].includes(props.dialect)
+const isMysql = ['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(props.dialect)
 const tableRef = computed(() => props.node?.sqlName ?? props.node?.name ?? tableName.value)
 
 /**
@@ -97,7 +97,9 @@ const INNER = [
 const inner = ref<(typeof INNER)[number]>('fields')
 const selected = ref(0)
 const selCol = computed(() => spec.columns[selected.value])
-const isPg = ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(props.dialect)
+const isPg = ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'panweidb', 'highgo'].includes(
+  props.dialect,
+)
 const indexTypes = isMysql
   ? ['BTREE', 'HASH', 'FULLTEXT', 'SPATIAL']
   : isPg

@@ -61,10 +61,12 @@ const PAGINATABLE = [
   'mysql',
   'mariadb',
   'oceanbase',
+  'gbase8a',
   'postgresql',
   'kingbase',
   'vastbase',
   'mogdb',
+  'panweidb',
   'highgo',
   'sqlserver',
 ]
@@ -640,8 +642,8 @@ const BUILTIN_SNIPPETS = [
   { label: 'del', insertText: 'DELETE FROM  WHERE ;' },
   { label: 'cte', insertText: 'WITH t AS (\n  \n)\nSELECT * FROM t' },
 ]
-const MYSQL_FAM = ['mysql', 'mariadb', 'oceanbase']
-const PG_FAM = ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo']
+const MYSQL_FAM = ['mysql', 'mariadb', 'oceanbase', 'gbase8a']
+const PG_FAM = ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'panweidb', 'highgo']
 const ORA_FAM = ['oracle', 'dm']
 
 const COMMON_FUNCS = [
@@ -1121,8 +1123,9 @@ function clearEditor(): void {
 
 /** 方言 → sql-formatter 语言。 */
 function fmtLang(d: string): SqlLanguage {
-  if (['mysql', 'mariadb', 'oceanbase'].includes(d)) return 'mysql'
-  if (['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(d)) return 'postgresql'
+  if (['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(d)) return 'mysql'
+  if (['postgresql', 'kingbase', 'vastbase', 'mogdb', 'panweidb', 'highgo'].includes(d))
+    return 'postgresql'
   if (d === 'sqlserver') return 'transactsql'
   if (['oracle', 'dm'].includes(d)) return 'plsql'
   return 'sql'

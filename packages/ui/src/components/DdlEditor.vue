@@ -114,7 +114,7 @@ onMounted(async () => {
  * 不依赖 QueryPane 的内部 helper，独立可移植；将来要复用再抽到 packages/ui/src/sql-fmt.ts）。
  */
 function fmtLang(d: string): SqlLanguage {
-  if (['mysql', 'mariadb', 'oceanbase', 'tidb'].includes(d)) return 'mysql'
+  if (['mysql', 'mariadb', 'oceanbase', 'gbase8a', 'tidb'].includes(d)) return 'mysql'
   if (
     [
       'postgresql',

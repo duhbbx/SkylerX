@@ -56,6 +56,7 @@ export function slowFamilyOf(dialect: DbDialect): SlowFamily {
     case DbDialect.MariaDB:
     case DbDialect.TiDB:
     case DbDialect.OceanBase:
+    case DbDialect.GBase8a:
     case DbDialect.Doris:
     case DbDialect.StarRocks:
     case DbDialect.PolarDBX:
@@ -69,6 +70,7 @@ export function slowFamilyOf(dialect: DbDialect): SlowFamily {
     case DbDialect.KingbaseES:
     case DbDialect.Vastbase:
     case DbDialect.MogDB:
+    case DbDialect.Panweidb:
     case DbDialect.HighGo:
     case DbDialect.Redshift:
     case DbDialect.PolarDBPG:

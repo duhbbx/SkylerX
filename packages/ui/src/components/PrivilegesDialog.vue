@@ -40,7 +40,8 @@ const withGrant = ref(false)
 
 const connOf = (id: string) => conns.value.find((c) => c.id === id)
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'oracle' | 'mssql' | 'other' {
-  if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
+  if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.GBase8a].includes(d))
+    return 'mysql'
   if (
     d &&
     [

@@ -352,6 +352,7 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
     d === DbDialect.MySQL ||
     d === DbDialect.MariaDB ||
     d === DbDialect.OceanBase ||
+    d === DbDialect.GBase8a ||
     d === DbDialect.TiDB
   )
     return 'mysql'
@@ -361,6 +362,7 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
     d === DbDialect.OpenGauss ||
     d === DbDialect.Vastbase ||
     d === DbDialect.MogDB ||
+    d === DbDialect.Panweidb ||
     d === DbDialect.HighGo ||
     d === DbDialect.Greenplum ||
     d === DbDialect.CockroachDB

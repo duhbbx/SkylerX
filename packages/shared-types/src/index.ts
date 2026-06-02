@@ -35,8 +35,12 @@ export enum DbDialect {
   Vastbase = 'vastbase',
   /** MogDB（云和恩墨，openGauss 内核企业发行版，信创） */
   MogDB = 'mogdb',
+  /** 磐维 panweidb（中国移动，openGauss 内核，信创） */
+  Panweidb = 'panweidb',
   /** 瀚高 HighGo（PostgreSQL 系，信创） */
   HighGo = 'highgo',
+  /** 南大通用 GBase 8a（MySQL 协议兼容，列存 MPP，信创） */
+  GBase8a = 'gbase8a',
   /** SQLite（本地文件 SQL，better-sqlite3） */
   SQLite = 'sqlite',
   /** DuckDB（本地文件 OLAP SQL） */

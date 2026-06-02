@@ -28,8 +28,8 @@ export interface ErdData {
 type Row = Record<string, unknown>
 
 function family(d: DbDialect): 'mysql' | 'pg' | 'other' {
-  if (['mysql', 'mariadb', 'oceanbase'].includes(d)) return 'mysql'
-  if (['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(d)) return 'pg'
+  if (['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(d)) return 'mysql'
+  if (['postgresql', 'kingbase', 'vastbase', 'mogdb', 'panweidb', 'highgo'].includes(d)) return 'pg'
   return 'other'
 }
 

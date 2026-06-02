@@ -44,7 +44,8 @@ const copied = ref(false)
 let controller: AbortController | null = null
 
 function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
-  if ([DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
+  if ([DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.GBase8a].includes(d))
+    return 'mysql'
   if (
     [
       DbDialect.PostgreSQL,
@@ -54,6 +55,7 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
       DbDialect.OpenGauss,
       DbDialect.Vastbase,
       DbDialect.MogDB,
+      DbDialect.Panweidb,
       DbDialect.HighGo,
       DbDialect.H2,
     ].includes(d)

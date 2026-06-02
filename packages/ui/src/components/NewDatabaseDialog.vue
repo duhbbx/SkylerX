@@ -73,6 +73,7 @@ const supportsComment = computed<boolean>(() => {
     case DbDialect.OpenGauss:
     case DbDialect.Vastbase:
     case DbDialect.MogDB:
+    case DbDialect.Panweidb:
     case DbDialect.HighGo:
     case DbDialect.Greenplum:
     case DbDialect.CockroachDB:
@@ -92,6 +93,7 @@ const charsetOptions = computed<string[]>(() => {
     case DbDialect.MySQL:
     case DbDialect.MariaDB:
     case DbDialect.OceanBase:
+    case DbDialect.GBase8a:
     case DbDialect.TiDB:
     case DbDialect.Doris:
     case DbDialect.StarRocks:
@@ -101,6 +103,7 @@ const charsetOptions = computed<string[]>(() => {
     case DbDialect.OpenGauss:
     case DbDialect.Vastbase:
     case DbDialect.MogDB:
+    case DbDialect.Panweidb:
     case DbDialect.HighGo:
     case DbDialect.Greenplum:
     case DbDialect.CockroachDB:
@@ -118,6 +121,7 @@ const collationOptions = computed<string[]>(() => {
       DbDialect.MySQL,
       DbDialect.MariaDB,
       DbDialect.OceanBase,
+      DbDialect.GBase8a,
       DbDialect.TiDB,
       DbDialect.Doris,
       DbDialect.StarRocks,
@@ -135,6 +139,7 @@ function quoteId(n: string): string {
     case DbDialect.MySQL:
     case DbDialect.MariaDB:
     case DbDialect.OceanBase:
+    case DbDialect.GBase8a:
     case DbDialect.TiDB:
     case DbDialect.Doris:
     case DbDialect.StarRocks:
@@ -165,6 +170,7 @@ const sqlStatements = computed<string[]>(() => {
     case DbDialect.MySQL:
     case DbDialect.MariaDB:
     case DbDialect.OceanBase:
+    case DbDialect.GBase8a:
     case DbDialect.TiDB:
     case DbDialect.Doris:
     case DbDialect.StarRocks: {
@@ -180,6 +186,7 @@ const sqlStatements = computed<string[]>(() => {
     case DbDialect.OpenGauss:
     case DbDialect.Vastbase:
     case DbDialect.MogDB:
+    case DbDialect.Panweidb:
     case DbDialect.HighGo:
     case DbDialect.Greenplum:
     case DbDialect.CockroachDB:

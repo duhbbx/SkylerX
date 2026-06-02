@@ -28,7 +28,7 @@ const ddl = ref('')
 const error = ref<string | null>(null)
 const loading = ref(true)
 
-const isMysql = ['mysql', 'mariadb', 'oceanbase'].includes(props.dialect)
+const isMysql = ['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(props.dialect)
 
 function meta(group: string): Promise<MetadataNode[]> {
   return client.connections.metadata(props.connId, {

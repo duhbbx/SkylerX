@@ -89,7 +89,8 @@ const expanded = ref<string | null>(null) // 展开看双栏 DDL 的表名
 
 // ── 辅助：方言归类 ───────────────────────────────────────────────────
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
-  if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
+  if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.GBase8a].includes(d))
+    return 'mysql'
   if (
     d &&
     [
@@ -100,6 +101,7 @@ function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
       DbDialect.OpenGauss,
       DbDialect.Vastbase,
       DbDialect.MogDB,
+      DbDialect.Panweidb,
       DbDialect.HighGo,
     ].includes(d)
   ) {

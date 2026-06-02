@@ -762,7 +762,7 @@ async function onCopyDdl(connId: string, node: TreeNode): Promise<void> {
   const ctx = deriveContext(conn.dialect, node)
   try {
     let ddl = ''
-    if (['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)) {
+    if (['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(conn.dialect)) {
       const r = await client.connections.execute(
         connId,
         `SHOW CREATE TABLE ${node.sqlName ?? node.name}`,
@@ -1006,7 +1006,7 @@ async function onRenameTable(connId: string, node: TreeNode): Promise<void> {
   const ctx = deriveContext(conn.dialect, node)
   const ref = node.sqlName ?? node.name
   const newQuoted = quoteId(conn.dialect, newName.trim())
-  const sql = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
+  const sql = ['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(conn.dialect)
     ? `RENAME TABLE ${ref} TO ${newQuoted}`
     : `ALTER TABLE ${ref} RENAME TO ${newQuoted}`
   try {
@@ -1030,9 +1030,9 @@ async function onCopyTable(connId: string, node: TreeNode, withData: boolean): P
   if (!newName || !newName.trim()) return
   const ref = node.sqlName ?? node.name
   const newQuoted = quoteId(conn.dialect, newName.trim())
-  const fam = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
+  const fam = ['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(conn.dialect)
     ? 'mysql'
-    : ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(conn.dialect)
+    : ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'panweidb', 'highgo'].includes(conn.dialect)
       ? 'pg'
       : 'other'
   const lines: string[] = []
@@ -1064,9 +1064,9 @@ async function onCreateTemplateDraft(
 ): Promise<void> {
   const conn = await client.connections.get(connId)
   const ctx = deriveContext(conn.dialect, node)
-  const fam = ['mysql', 'mariadb', 'oceanbase'].includes(conn.dialect)
+  const fam = ['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(conn.dialect)
     ? 'mysql'
-    : ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'highgo'].includes(conn.dialect)
+    : ['postgresql', 'kingbase', 'vastbase', 'mogdb', 'panweidb', 'highgo'].includes(conn.dialect)
       ? 'pg'
       : 'other'
   const q = (n: string) => quoteId(conn.dialect, n)
