@@ -241,7 +241,9 @@ jobs:
         run: |
           # 从 tag 提取 prerelease channel(如 v0.5.0-rc1 → rc, v0.5.0 → 空)
           TAG="${GITHUB_REF_NAME#v}"
-          CH=$(echo "$TAG" | grep -oE '\-([a-z]+)' | head -1 | tr -d -)
+          # || true: 稳定 tag(无 -rc/-beta 后缀)时 grep 无匹配返回 1，配合 set -e -o pipefail
+          # 会在到达下面 stable 分支前就中断脚本。兜底成空字符串走稳定版逻辑。
+          CH=$(echo "$TAG" | grep -oE '\-([a-z]+)' | head -1 | tr -d - || true)
           if [ -z "$CH" ]; then
             echo "::notice::Stable release ($TAG), 不生成额外 channel yml"
             ls apps/desktop/release/*.yml 2>/dev/null | sort
@@ -473,7 +475,9 @@ jobs:
         if: env.OSS_BUCKET != '' && env.OSS_ACCESS_KEY_ID != ''
         run: |
           TAG="${GITHUB_REF_NAME#v}"
-          CH=$(echo "$TAG" | grep -oE '\-([a-z]+)' | head -1 | tr -d -)
+          # || true: 稳定 tag(无 -rc/-beta 后缀)时 grep 无匹配返回 1，配合 set -e -o pipefail
+          # 会在到达下面 stable 分支前就中断脚本。兜底成空字符串走稳定版逻辑。
+          CH=$(echo "$TAG" | grep -oE '\-([a-z]+)' | head -1 | tr -d - || true)
           if [ -z "$CH" ]; then
             echo "::notice::Stable release ($TAG), 不生成额外 channel yml"
             ls dist/*.yml 2>/dev/null | sort
