@@ -51,6 +51,7 @@ const emit = defineEmits<{
   newObject: [ObjectKind, string, TreeNode]
   dropObject: [string, TreeNode]
   viewStructure: [string, TreeNode]
+  objectDeps: [string, TreeNode]
   designTable: [string, TreeNode]
   tableStats: [string, TreeNode]
   mockData: [string, TreeNode]
@@ -716,6 +717,7 @@ const controller: TreeController = {
   createObject: (kind, node, connId) => emit('newObject', kind, connId, node),
   dropObject: (node, connId) => emit('dropObject', connId, node),
   viewStructure: (node, connId) => emit('viewStructure', connId, node),
+  objectDependencies: (node, connId) => emit('objectDeps', connId, node),
   previewTable: (node, connId) => emit('previewTable', connId, node),
   designTable: (node, connId) => emit('designTable', connId, node),
   tableStats: (node, connId) => emit('tableStats', connId, node),

@@ -537,6 +537,12 @@ async function onViewStructure(connId: string, node: TreeNode): Promise<void> {
   tabsRef.value?.openStructure(conn, node)
 }
 
+// 对象依赖 / 影响分析 → 开依赖页签
+async function onViewDependencies(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  tabsRef.value?.openDependencies(conn, node)
+}
+
 // 查询前 200 行 → 按方言生成限行 SQL 并在查询页执行
 async function onPreviewTable(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
@@ -3020,6 +3026,7 @@ onMounted(async () => {
     @new-object="onNewObject"
     @drop-object="onDropObject"
     @view-structure="onViewStructure"
+    @object-deps="onViewDependencies"
     @preview-table="onPreviewTable"
     @design-table="onDesignTable"
     @table-stats="onTableStats"

@@ -10,6 +10,7 @@ import {
   buildCreateTable,
   buildDrop,
   buildSqlTemplate,
+  dependencyQueries,
   emptyColumn,
   emptyTableSpec,
   formatBytes,
@@ -324,26 +325,43 @@ describe('buildDrop', () => {
   })
 
   it('drops package / type / synonym (oracle family)', () => {
-    const pkg = buildDrop(DbDialect.DM, node(MetaNodeKind.Package, 'PKG', '"HR"."PKG"', ['HR', 'PKG']))
+    const pkg = buildDrop(
+      DbDialect.DM,
+      node(MetaNodeKind.Package, 'PKG', '"HR"."PKG"', ['HR', 'PKG']),
+    )
     expect(pkg?.sql).toBe('DROP PACKAGE "HR"."PKG"')
-    const syn = buildDrop(DbDialect.DM, node(MetaNodeKind.Synonym, 'SYN', '"HR"."SYN"', ['HR', 'SYN']))
+    const syn = buildDrop(
+      DbDialect.DM,
+      node(MetaNodeKind.Synonym, 'SYN', '"HR"."SYN"', ['HR', 'SYN']),
+    )
     expect(syn?.sql).toBe('DROP SYNONYM "HR"."SYN"')
-    const typ = buildDrop(DbDialect.Oracle, node(MetaNodeKind.Type, 'T1', '"HR"."T1"', ['HR', 'T1']))
+    const typ = buildDrop(
+      DbDialect.Oracle,
+      node(MetaNodeKind.Type, 'T1', '"HR"."T1"', ['HR', 'T1']),
+    )
     expect(typ?.sql).toBe('DROP TYPE "HR"."T1"')
   })
 
   it('DROP TYPE cascade adds FORCE', () => {
-    const typ = buildDrop(DbDialect.Oracle, node(MetaNodeKind.Type, 'T1', '"HR"."T1"', ['HR', 'T1']), true)
+    const typ = buildDrop(
+      DbDialect.Oracle,
+      node(MetaNodeKind.Type, 'T1', '"HR"."T1"', ['HR', 'T1']),
+      true,
+    )
     expect(typ?.sql).toBe('DROP TYPE "HR"."T1" FORCE')
   })
 })
 
 describe('objectDdlQuery — oracle family (Oracle/DM)', () => {
-  const n = (kind: MetaNodeKind, name: string) =>
-    node(kind, name, `"HR"."${name}"`, ['HR', name])
+  const n = (kind: MetaNodeKind, name: string) => node(kind, name, `"HR"."${name}"`, ['HR', name])
 
   it('sequence → get_ddl SEQUENCE', () => {
-    const q = objectDdlQuery(DbDialect.Oracle, 'sequence', '"HR"."S1"', n(MetaNodeKind.Sequence, 'S1'))
+    const q = objectDdlQuery(
+      DbDialect.Oracle,
+      'sequence',
+      '"HR"."S1"',
+      n(MetaNodeKind.Sequence, 'S1'),
+    )
     expect(q?.mode).toBe('oracle-ddl')
     expect(q?.sql).toContain("get_ddl('SEQUENCE', 'S1', 'HR')")
     expect(q?.bodySql).toBeUndefined()
@@ -368,7 +386,49 @@ describe('objectDdlQuery — oracle family (Oracle/DM)', () => {
   })
 
   it('escapes single quotes in names', () => {
-    const q = objectDdlQuery(DbDialect.Oracle, 'sequence', `"HR"."O'X"`, node(MetaNodeKind.Sequence, "O'X", `"HR"."O'X"`, ['HR', "O'X"]))
+    const q = objectDdlQuery(
+      DbDialect.Oracle,
+      'sequence',
+      `"HR"."O'X"`,
+      node(MetaNodeKind.Sequence, "O'X", `"HR"."O'X"`, ['HR', "O'X"]),
+    )
     expect(q?.sql).toContain("get_ddl('SEQUENCE', 'O''X', 'HR')")
+  })
+})
+
+describe('dependencyQueries', () => {
+  it('Oracle/DM use all_dependencies in both directions', () => {
+    const q = dependencyQueries(DbDialect.DM, { schema: 'HR' }, 'EMP')
+    expect(q?.dependents).toContain('all_dependencies')
+    expect(q?.dependents).toContain("referenced_owner = 'HR'")
+    expect(q?.dependents).toContain("referenced_name = 'EMP'")
+    expect(q?.dependsOn).toContain("owner = 'HR'")
+    expect(q?.dependsOn).toContain("name = 'EMP'")
+  })
+  it('PG family uses information_schema.view_table_usage', () => {
+    const q = dependencyQueries(DbDialect.PostgreSQL, { schema: 'public' }, 'v1')
+    expect(q?.dependents).toContain('information_schema.view_table_usage')
+    expect(q?.dependents).toContain("table_schema = 'public'")
+    expect(q?.dependents).toContain("table_name = 'v1'")
+    expect(q?.dependsOn).toContain("view_name = 'v1'")
+  })
+  it('openGauss/Vastbase ride the PG family', () => {
+    expect(dependencyQueries(DbDialect.Vastbase, { schema: 'app' }, 'v')?.dependents).toContain(
+      'view_table_usage',
+    )
+  })
+  it('MySQL family uses VIEW_TABLE_USAGE keyed by database', () => {
+    const q = dependencyQueries(DbDialect.MySQL, { database: 'shop' }, 'orders')
+    expect(q?.dependents).toContain('information_schema.VIEW_TABLE_USAGE')
+    expect(q?.dependents).toContain("TABLE_SCHEMA = 'shop'")
+  })
+  it('escapes single quotes in the object name', () => {
+    const q = dependencyQueries(DbDialect.MySQL, { database: 'd' }, "o'b")
+    expect(q?.dependents).toContain("TABLE_NAME = 'o''b'")
+  })
+  it('returns null for dialects without a dependency catalog', () => {
+    expect(dependencyQueries(DbDialect.SQLite, {}, 't')).toBeNull()
+    expect(dependencyQueries(DbDialect.ClickHouse, {}, 't')).toBeNull()
+    expect(dependencyQueries(DbDialect.Snowflake, {}, 't')).toBeNull()
   })
 })

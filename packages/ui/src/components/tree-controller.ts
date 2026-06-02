@@ -49,6 +49,8 @@ export interface TreeController {
   dropObject(node: TreeNode, connId: string): void
   /** 查看表/视图结构（只读列信息页） */
   viewStructure(node: TreeNode, connId: string): void
+  /** 对象依赖 / 影响分析（被谁依赖 + 依赖什么），独立于已有的 FK 引用弹窗(viewDependencies) */
+  objectDependencies(node: TreeNode, connId: string): void
   /** 查询前 N 行（按方言生成正确的限行 SQL 并执行） */
   previewTable(node: TreeNode, connId: string): void
   /** 设计表：在表设计器中以「修改表」(alter) 模式打开 */

@@ -1500,3 +1500,69 @@ export function existingForeignKeysQuery(
       return null
   }
 }
+
+/**
+ * 对象依赖查询（影响分析）：返回「被谁依赖 dependents」+「依赖什么 dependsOn」两条 SQL。
+ * 输出列统一别名 sch / nm / ty（避开各方言保留字 schema/name/type）。不支持的方言返回 null。
+ *  - Oracle/DM：all_dependencies（最全，覆盖视图/函数/过程/包/触发器等对象级依赖）
+ *  - PG 系 / MySQL 系：information_schema.view_table_usage（SQL 标准，视图↔表;MySQL 需 8.0.13+）
+ *  - SQLite/DuckDB/ClickHouse/Snowflake 等无对应目录：null
+ */
+export function dependencyQueries(
+  dialect: DbDialect,
+  ctx: TableContext,
+  name: string,
+): { dependents: string; dependsOn: string } | null {
+  const esc = (s: string) => s.replace(/'/g, "''")
+  const nm = esc(name)
+  if (
+    dialect === DbDialect.SQLite ||
+    dialect === DbDialect.DuckDB ||
+    dialect === DbDialect.ClickHouse ||
+    dialect === DbDialect.Snowflake
+  )
+    return null
+  switch (familyOf(dialect)) {
+    case 'oracle': {
+      const sch = esc(ctx.schema ?? '')
+      return {
+        dependents: `SELECT owner AS "sch", name AS "nm", type AS "ty"
+          FROM all_dependencies
+          WHERE referenced_owner = '${sch}' AND referenced_name = '${nm}'
+          ORDER BY owner, name`,
+        dependsOn: `SELECT referenced_owner AS "sch", referenced_name AS "nm", referenced_type AS "ty"
+          FROM all_dependencies
+          WHERE owner = '${sch}' AND name = '${nm}' AND referenced_owner IS NOT NULL
+          ORDER BY referenced_owner, referenced_name`,
+      }
+    }
+    case 'pg': {
+      const sch = esc(ctx.schema ?? 'public')
+      return {
+        dependents: `SELECT view_schema AS sch, view_name AS nm, 'VIEW' AS ty
+          FROM information_schema.view_table_usage
+          WHERE table_schema = '${sch}' AND table_name = '${nm}'
+          ORDER BY 1, 2`,
+        dependsOn: `SELECT table_schema AS sch, table_name AS nm, 'TABLE' AS ty
+          FROM information_schema.view_table_usage
+          WHERE view_schema = '${sch}' AND view_name = '${nm}'
+          ORDER BY 1, 2`,
+      }
+    }
+    case 'mysql': {
+      const db = esc(ctx.database ?? '')
+      return {
+        dependents: `SELECT VIEW_SCHEMA AS sch, VIEW_NAME AS nm, 'VIEW' AS ty
+          FROM information_schema.VIEW_TABLE_USAGE
+          WHERE TABLE_SCHEMA = '${db}' AND TABLE_NAME = '${nm}'
+          ORDER BY 1, 2`,
+        dependsOn: `SELECT TABLE_SCHEMA AS sch, TABLE_NAME AS nm, 'TABLE' AS ty
+          FROM information_schema.VIEW_TABLE_USAGE
+          WHERE VIEW_SCHEMA = '${db}' AND VIEW_NAME = '${nm}'
+          ORDER BY 1, 2`,
+      }
+    }
+    default:
+      return null
+  }
+}

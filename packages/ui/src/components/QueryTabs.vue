@@ -20,6 +20,7 @@ import DialectIcon from './DialectIcon.vue'
 import ElasticPane from './ElasticPane.vue'
 import ErdView from './ErdView.vue'
 import MongoPane from './MongoPane.vue'
+import ObjectDependencyView from './ObjectDependencyView.vue'
 import QueryPane from './QueryPane.vue'
 import RedisPane from './RedisPane.vue'
 import TableDesigner from './TableDesigner.vue'
@@ -28,7 +29,15 @@ import type { TreeNode } from './treeNode'
 
 interface Tab {
   id: number
-  kind: 'query' | 'structure' | 'erd' | ObjectKind | 'mongoCollection' | 'redisDb' | 'esIndex'
+  kind:
+    | 'query'
+    | 'structure'
+    | 'objdeps'
+    | 'erd'
+    | ObjectKind
+    | 'mongoCollection'
+    | 'redisDb'
+    | 'esIndex'
   conn: ConnectionConfig
   title: string
   pending: { sql: string; seq: number } | null // query
@@ -199,6 +208,25 @@ function openStructure(conn: ConnectionConfig, node: TreeNode): void {
     kind: 'structure',
     conn,
     title: tr('tabs.titleStructure', { name: node.name }),
+    pending: null,
+    node,
+  })
+}
+
+/** 打开对象依赖 / 影响分析页（已有则聚焦）。 */
+function openDependencies(conn: ConnectionConfig, node: TreeNode): void {
+  const key = node.sqlName ?? node.name
+  const existing = tabs.value.find(
+    (t) => t.kind === 'objdeps' && (t.node?.sqlName ?? t.node?.name) === key,
+  )
+  if (existing) {
+    activeId.value = existing.id
+    return
+  }
+  push({
+    kind: 'objdeps',
+    conn,
+    title: tr('tabs.titleDeps', { name: node.name }),
     pending: null,
     node,
   })
@@ -426,6 +454,7 @@ defineExpose({
   newForCurrent,
   newObject,
   openStructure,
+  openDependencies,
   editTable,
   editObject,
   openErd,
@@ -575,6 +604,12 @@ watch(tabs, saveLayout, { deep: true })
           />
           <TableStructure
             v-else-if="t.kind === 'structure'"
+            :conn-id="t.conn.id"
+            :node="t.node!"
+            :dialect="t.conn.dialect"
+          />
+          <ObjectDependencyView
+            v-else-if="t.kind === 'objdeps'"
             :conn-id="t.conn.id"
             :node="t.node!"
             :dialect="t.conn.dialect"

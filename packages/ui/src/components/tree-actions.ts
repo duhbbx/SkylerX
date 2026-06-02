@@ -310,6 +310,20 @@ export const TREE_ACTIONS: TreeAction[] = [
     run: ({ node, connId, ctrl }) => ctrl.viewStructure(node, connId),
   },
   {
+    // 依赖 / 影响分析：被谁依赖 + 依赖什么。SQLite/ClickHouse 等无依赖目录由 dependencyQueries 兜底。
+    id: 'view-dependencies',
+    label: 'ctx.view-dependencies',
+    section: 'open',
+    kinds: [MetaNodeKind.Table, MetaNodeKind.View, MetaNodeKind.Function, MetaNodeKind.Procedure],
+    excludeDialects: [
+      DbDialect.SQLite,
+      DbDialect.DuckDB,
+      DbDialect.ClickHouse,
+      DbDialect.Snowflake,
+    ],
+    run: ({ node, connId, ctrl }) => ctrl.objectDependencies(node, connId),
+  },
+  {
     id: 'view-definition',
     label: 'ctx.view-definition',
     section: 'open',
