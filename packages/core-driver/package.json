@@ -21,7 +21,8 @@
     "@db-tool/shared-types": "workspace:*",
     "mssql": "^11.0.1",
     "mysql2": "^3.11.5",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "pg-opengauss": "^1.4.0"
   },
   "peerDependencies": {
     "@clickhouse/client": "^1",
@@ -35,15 +36,33 @@
     "snowflake-sdk": "^2"
   },
   "peerDependenciesMeta": {
-    "@clickhouse/client": { "optional": true },
-    "@duckdb/node-api": { "optional": true },
-    "@elastic/elasticsearch": { "optional": true },
-    "@tdengine/websocket": { "optional": true },
-    "better-sqlite3": { "optional": true },
-    "ioredis": { "optional": true },
-    "mongodb": { "optional": true },
-    "oracledb": { "optional": true },
-    "snowflake-sdk": { "optional": true }
+    "@clickhouse/client": {
+      "optional": true
+    },
+    "@duckdb/node-api": {
+      "optional": true
+    },
+    "@elastic/elasticsearch": {
+      "optional": true
+    },
+    "@tdengine/websocket": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    },
+    "ioredis": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "oracledb": {
+      "optional": true
+    },
+    "snowflake-sdk": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/mssql": "^9.1.7",

@@ -4,7 +4,7 @@
  */
 import {
   type ConnectionConfig,
-  type DbDialect,
+  DbDialect,
   type ExecuteOptions,
   MetaNodeKind,
   type MetaScope,
@@ -14,8 +14,23 @@ import {
   type TestResult,
 } from '@db-tool/shared-types'
 import { Pool, type PoolClient, type PoolConfig } from 'pg'
+// openGauss 内核（openGauss / GaussDB / Vastbase）用自研 sha256 / SM3 口令认证，标准 pg
+// 握不上手。pg-opengauss 是 pg 的认证适配 fork（纯 JS，API 同构），仅给这几类方言用。
+// @ts-expect-error pg-opengauss 不自带类型声明；运行时与 pg 同构，下面 cast 成 pg.Pool 使用。
+import { Pool as OpenGaussPool } from 'pg-opengauss'
 import { type DatabaseDriver, type DriverConnection, driverExtra } from '../driver.js'
 import { pgFamilyHelpers } from './base.js'
+
+/** openGauss 内核方言：连接走 pg-opengauss（自研 sha256/SM3 认证），其余 PG 系走标准 pg。 */
+const OPENGAUSS_KERNEL: ReadonlySet<DbDialect> = new Set([
+  DbDialect.OpenGauss,
+  DbDialect.GaussDB,
+  DbDialect.Vastbase,
+])
+/** 按方言挑 Pool 实现：openGauss 内核 → pg-opengauss，否则标准 pg。两者 API 同构。 */
+function pickPool(dialect: DbDialect): typeof Pool {
+  return OPENGAUSS_KERNEL.has(dialect) ? (OpenGaussPool as typeof Pool) : Pool
+}
 
 /**
  * 把 ES2021 AggregateError 拆成可读单条消息.
@@ -553,12 +568,13 @@ class PgConnection implements DriverConnection {
 
 /** 构建 PostgreSQL 系驱动（PostgreSQL / KingbaseES 协议兼容，共用实现）。 */
 export function createPostgresDriver(dialect: DbDialect): DatabaseDriver {
+  const PoolImpl = pickPool(dialect)
   return {
     dialect,
     sql: pgFamilyHelpers,
 
     async connect(config: ConnectionConfig): Promise<DriverConnection> {
-      const pool = new Pool(buildPoolConfig(config))
+      const pool = new PoolImpl(buildPoolConfig(config))
       // 空闲连接报错兜底，避免未处理错误导致主进程崩溃
       pool.on('error', (err) => console.error('[pg] pool error:', err.message))
       // pg.Pool 是 lazy connection（new Pool 不真连,要等第一次 query 才连）.
@@ -578,7 +594,7 @@ export function createPostgresDriver(dialect: DbDialect): DatabaseDriver {
 
     async test(config: ConnectionConfig): Promise<TestResult> {
       const start = Date.now()
-      const pool = new Pool(buildPoolConfig(config))
+      const pool = new PoolImpl(buildPoolConfig(config))
       try {
         const res = await pool.query('SELECT version() AS v')
         const raw = String((res.rows[0] as Record<string, unknown> | undefined)?.v ?? '')

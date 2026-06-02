@@ -177,6 +177,9 @@ importers:
       pg:
         specifier: ^8.13.1
         version: 8.21.0
+      pg-opengauss:
+        specifier: ^1.4.0
+        version: 1.4.0(pg@8.21.0)
       snowflake-sdk:
         specifier: ^2
         version: 2.4.3(asn1.js@5.4.1)
@@ -2812,6 +2815,9 @@ packages:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
     engines: {node: '>= 0.4'}
 
+  gm-crypto@0.1.12:
+    resolution: {integrity: sha512-ercd9ionBqxR+/FCXICr0eo+jzC8BvSK0j9L7/eB0uwbyjgeMPTdBNrcQTqIuRXOtOAKSGsTNvtLYFnIxNEoFg==}
+
   google-auth-library@10.6.2:
     resolution: {integrity: sha512-e27Z6EThmVNNvtYASwQxose/G57rkRuaRbQyxM2bvYLLX/GqWZ5chWq2EBoUchJbCc57eC9ArzO5wMsEmWftCw==}
     engines: {node: '>=18'}
@@ -3046,6 +3052,9 @@ packages:
   js-yaml@4.1.1:
     resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
     hasBin: true
+
+  jsbn@1.1.0:
+    resolution: {integrity: sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A==}
 
   jsesc@3.1.0:
     resolution: {integrity: sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==}
@@ -3570,6 +3579,18 @@ packages:
     resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
     engines: {node: '>=4.0.0'}
 
+  pg-opengauss-protocol@1.1.0:
+    resolution: {integrity: sha512-xg3LXnF9sx0gxJdQEByPjiytD6tKDxtFmspW9EF/lQC3DtSJn+NGdi3qu5EUXs5GvzKleiX5znFrsm1zcUC8LA==}
+
+  pg-opengauss@1.4.0:
+    resolution: {integrity: sha512-YDqt9OxnKgF6rEdLGxIrlfXi6RoY5dtnGH5cUJciA0T/S2i3moFzX1HoYRHlYK3Iii/OJ+B3H3ABngAXp3SRqA==}
+    engines: {node: '>= 8.0.0'}
+    peerDependencies:
+      pg-native: '>=3.0.1'
+    peerDependenciesMeta:
+      pg-native:
+        optional: true
+
   pg-pool@3.14.0:
     resolution: {integrity: sha512-gKtPkFdQPU3DksooVLi9LsjZxrsBUZIpa+7aVx+LV5pNh0KzP4Zleud2po+ConrxbuXGBJ6Hfer6hdgpIBpBaw==}
     peerDependencies:
@@ -4067,6 +4088,9 @@ packages:
   tmp@0.2.5:
     resolution: {integrity: sha512-voyz6MApa1rQGUxT3E+BK7/ROe8itEx7vD8/HEvt4xwXucvQ5G5oeEiHkmHZJuBO21RpOf+YYm9MOivj709jow==}
     engines: {node: '>=14.14'}
+
+  to-arraybuffer@1.0.1:
+    resolution: {integrity: sha512-okFlQcoGTi4LQBG/PgSYblw9VOyptsz2KJZqc6qtgGdes8VktzUQkj4BI2blit072iS8VODNcMA+tvnS9dnuMA==}
 
   toml@3.0.0:
     resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
@@ -7427,6 +7451,12 @@ snapshots:
       gopd: 1.2.0
     optional: true
 
+  gm-crypto@0.1.12:
+    dependencies:
+      buffer: 5.7.1
+      jsbn: 1.1.0
+      to-arraybuffer: 1.0.1
+
   google-auth-library@10.6.2:
     dependencies:
       base64-js: 1.5.1
@@ -7665,6 +7695,8 @@ snapshots:
   js-yaml@4.1.1:
     dependencies:
       argparse: 2.0.1
+
+  jsbn@1.1.0: {}
 
   jsesc@3.1.0: {}
 
@@ -8178,6 +8210,21 @@ snapshots:
   pg-connection-string@2.13.0: {}
 
   pg-int8@1.0.1: {}
+
+  pg-opengauss-protocol@1.1.0: {}
+
+  pg-opengauss@1.4.0(pg@8.21.0):
+    dependencies:
+      gm-crypto: 0.1.12
+      pg-connection-string: 2.13.0
+      pg-opengauss-protocol: 1.1.0
+      pg-pool: 3.14.0(pg@8.21.0)
+      pg-types: 2.2.0
+      pgpass: 1.0.5
+    optionalDependencies:
+      pg-cloudflare: 1.4.0
+    transitivePeerDependencies:
+      - pg
 
   pg-pool@3.14.0(pg@8.21.0):
     dependencies:
@@ -8759,6 +8806,8 @@ snapshots:
       tmp: 0.2.5
 
   tmp@0.2.5: {}
+
+  to-arraybuffer@1.0.1: {}
 
   toml@3.0.0: {}
 
