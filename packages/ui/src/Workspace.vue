@@ -441,16 +441,25 @@ async function onDatabaseCreated(): Promise<void> {
 /** 新建 Schema:打开弹窗。父节点为 Database 时取其 name 作为 schema 所在库。 */
 async function onNewSchema(connId: string, parent: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
-  // Database 节点:把 name 作为父库;Connection 节点:不带 database(走默认上下文)
-  const database = parent.kind === MetaNodeKind.Database ? parent.name : undefined
+  // Database 节点:name 即父库;Schema 节点:PG 系 path=[库, schema] → 父库取 path[0]
+  // (建同库下的兄弟 schema);Oracle/DM 的 schema path=[schema] 无库层 → undefined。
+  // Connection 节点:不带 database(走默认上下文)。
+  const database =
+    parent.kind === MetaNodeKind.Database
+      ? parent.name
+      : parent.kind === MetaNodeKind.Schema && parent.path.length > 1
+        ? parent.path[0]
+        : undefined
   newSchemaOpen.value = { conn, database, parent }
 }
 
-/** 新建 Schema 成功:刷新父节点(库或连接,刷出新 schema)。 */
+/** 新建 Schema 成功:刷新出新 schema。从 Schema 节点建的是兄弟 schema → 刷新它的父
+ *  (库/连接);从 库/连接节点建的就刷新自身。reveal=true 让新 schema 直接浮现。 */
 async function onSchemaCreated(): Promise<void> {
   if (!newSchemaOpen.value) return
   const { conn, parent } = newSchemaOpen.value
-  await navRef.value?.refreshNode(parent, conn.id)
+  const target = parent.kind === MetaNodeKind.Schema ? (parent.parent ?? parent) : parent
+  await navRef.value?.refreshNode(target, conn.id, true)
 }
 
 async function onDeleteConn(id: string): Promise<void> {

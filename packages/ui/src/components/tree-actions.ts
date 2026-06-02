@@ -185,7 +185,8 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-schema',
     label: 'ctx.new-schema',
     section: 'create',
-    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database],
+    // Schema 节点也挂:右键已有 schema → 在同库下建兄弟 schema（PG 系常用）。
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
     onlyDialects: [
       DbDialect.PostgreSQL,
       DbDialect.KingbaseES,
