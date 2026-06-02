@@ -3,7 +3,15 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["**/dist/**", "**/out/**", "**/release/**", "**/node_modules/**", "**/*.d.ts"]
+    "ignore": [
+      "**/dist/**",
+      "**/out/**",
+      "**/release/**",
+      "**/node_modules/**",
+      "**/*.d.ts",
+      "**/.vitepress/cache/**",
+      "**/.vitepress/dist/**"
+    ]
   },
   "formatter": {
     "enabled": true,

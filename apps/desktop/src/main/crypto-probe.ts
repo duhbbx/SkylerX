@@ -55,12 +55,11 @@ export function probeCrypto(): CryptoProbe {
 /** 启动时调一次, 把结果写到 console (Electron dev tools / 系统日志都能看到). */
 export function logCryptoProbe(): void {
   const p = probeCrypto()
-  console.info(
-    `[crypto] library=${p.library} ciphers=${p.cipherCount}` +
-      (p.missingProblemCiphers.length > 0
-        ? ` | missing problem ciphers: ${p.missingProblemCiphers.join(', ')}`
-        : ''),
-  )
+  const missing =
+    p.missingProblemCiphers.length > 0
+      ? ` | missing problem ciphers: ${p.missingProblemCiphers.join(', ')}`
+      : ''
+  console.info(`[crypto] library=${p.library} ciphers=${p.cipherCount}${missing}`)
   if (p.missingProblemCiphers.includes('des-cfb')) {
     console.info(
       '[crypto] note: des-cfb missing → DM driver uses ?loginEncrypt=0 workaround. ' +

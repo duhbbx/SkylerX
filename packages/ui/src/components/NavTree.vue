@@ -296,7 +296,6 @@ async function buildConnIndex(connId: string): Promise<void> {
   } catch (e) {
     // 静默 — 见上方注释. 写一条 debug 行方便开发模式下 DevTools 看
     if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV === true) {
-      // biome-ignore lint/suspicious/noConsole: dev-only diagnostic
       console.debug('[nav-object-index] build failed for', root.node.name, e)
     }
   } finally {

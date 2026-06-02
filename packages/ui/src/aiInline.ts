@@ -27,9 +27,7 @@ export interface AiInlineOptions {
 }
 
 /** Monaco / editor 类型走 any：避免在通用文件里硬依赖 monaco 类型（编辑器在多个面板里有差异）。 */
-// biome-ignore lint/suspicious/noExplicitAny: monaco 实例由调用方传入，避免循环依赖
 type MonacoNs = any
-// biome-ignore lint/suspicious/noExplicitAny: 同上
 type Editor = any
 
 const DEBOUNCE_MS = 600
