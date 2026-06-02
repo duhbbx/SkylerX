@@ -29,7 +29,7 @@ type Row = Record<string, unknown>
 
 function family(d: DbDialect): 'mysql' | 'pg' | 'other' {
   if (['mysql', 'mariadb', 'oceanbase'].includes(d)) return 'mysql'
-  if (['postgresql', 'kingbase'].includes(d)) return 'pg'
+  if (['postgresql', 'kingbase', 'vastbase'].includes(d)) return 'pg'
   return 'other'
 }
 

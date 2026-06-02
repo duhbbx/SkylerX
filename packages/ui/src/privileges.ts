@@ -32,6 +32,7 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'oracle' | 'mssql' | 'other' {
       DbDialect.CockroachDB,
       DbDialect.Greenplum,
       DbDialect.OpenGauss,
+      DbDialect.Vastbase,
       DbDialect.Redshift,
       DbDialect.PolarDBPG,
       DbDialect.GaussDB,

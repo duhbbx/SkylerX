@@ -1034,6 +1034,7 @@ function jsonExtractSql(path: string): string {
     dialect === DbDialect.PostgreSQL ||
     dialect === DbDialect.KingbaseES ||
     dialect === DbDialect.OpenGauss ||
+    dialect === DbDialect.Vastbase ||
     dialect === DbDialect.Greenplum ||
     dialect === DbDialect.CockroachDB
   ) {

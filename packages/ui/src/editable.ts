@@ -17,7 +17,15 @@ export interface EditChanges {
 }
 
 const MYSQL = ['mysql', 'mariadb', 'oceanbase']
-const PAGINATABLE = ['mysql', 'mariadb', 'oceanbase', 'postgresql', 'kingbase', 'sqlserver']
+const PAGINATABLE = [
+  'mysql',
+  'mariadb',
+  'oceanbase',
+  'postgresql',
+  'kingbase',
+  'vastbase',
+  'sqlserver',
+]
 
 /** 该方言是否支持可编辑网格（MySQL 系 + PG 系 + SQL Server）。 */
 export function dialectEditable(dialect: DbDialect): boolean {

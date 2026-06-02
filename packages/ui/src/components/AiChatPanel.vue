@@ -307,7 +307,7 @@ watch(selectedDb, () => {
 
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'oracle' | 'other' {
   if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
-  if (d && [DbDialect.PostgreSQL, DbDialect.KingbaseES].includes(d)) return 'pg'
+  if (d && [DbDialect.PostgreSQL, DbDialect.KingbaseES, DbDialect.Vastbase].includes(d)) return 'pg'
   if (d && [DbDialect.Oracle, DbDialect.DM].includes(d)) return 'oracle'
   return 'other'
 }

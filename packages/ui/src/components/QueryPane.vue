@@ -57,7 +57,15 @@ import Watermark from './Watermark.vue'
 
 const client = useDataClient()
 
-const PAGINATABLE = ['mysql', 'mariadb', 'oceanbase', 'postgresql', 'kingbase', 'sqlserver']
+const PAGINATABLE = [
+  'mysql',
+  'mariadb',
+  'oceanbase',
+  'postgresql',
+  'kingbase',
+  'vastbase',
+  'sqlserver',
+]
 function isSelect(s: string): boolean {
   return /^\s*(select|with)\b/i.test(s)
 }
@@ -628,7 +636,7 @@ const BUILTIN_SNIPPETS = [
   { label: 'cte', insertText: 'WITH t AS (\n  \n)\nSELECT * FROM t' },
 ]
 const MYSQL_FAM = ['mysql', 'mariadb', 'oceanbase']
-const PG_FAM = ['postgresql', 'kingbase']
+const PG_FAM = ['postgresql', 'kingbase', 'vastbase']
 const ORA_FAM = ['oracle', 'dm']
 
 const COMMON_FUNCS = [
@@ -1109,7 +1117,7 @@ function clearEditor(): void {
 /** 方言 → sql-formatter 语言。 */
 function fmtLang(d: string): SqlLanguage {
   if (['mysql', 'mariadb', 'oceanbase'].includes(d)) return 'mysql'
-  if (['postgresql', 'kingbase'].includes(d)) return 'postgresql'
+  if (['postgresql', 'kingbase', 'vastbase'].includes(d)) return 'postgresql'
   if (d === 'sqlserver') return 'transactsql'
   if (['oracle', 'dm'].includes(d)) return 'plsql'
   return 'sql'

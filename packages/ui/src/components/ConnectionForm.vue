@@ -64,6 +64,7 @@ const dialectOptions = [
   { value: DbDialect.TDSQLC, label: 'TDSQL-C (腾讯, MySQL 兼容)' },
   { value: DbDialect.TiDB, label: 'TiDB (PingCAP)' },
   { value: DbDialect.TimescaleDB, label: 'TimescaleDB (PG 扩展, 时序)' },
+  { value: DbDialect.Vastbase, label: 'Vastbase (海量, openGauss 内核)' },
 ]
 
 const defaultPorts: Record<string, number> = {
@@ -76,6 +77,7 @@ const defaultPorts: Record<string, number> = {
   [DbDialect.CockroachDB]: 26257,
   [DbDialect.Greenplum]: 5432,
   [DbDialect.OpenGauss]: 5432,
+  [DbDialect.Vastbase]: 5432,
   [DbDialect.Oracle]: 1521,
   [DbDialect.DM]: 5236,
   [DbDialect.SqlServer]: 1433,

@@ -76,6 +76,7 @@ const fam = computed<'mysql' | 'pg' | 'other'>(() => {
       DbDialect.CockroachDB,
       DbDialect.Greenplum,
       DbDialect.OpenGauss,
+      DbDialect.Vastbase,
       DbDialect.H2,
     ].includes(d)
   )

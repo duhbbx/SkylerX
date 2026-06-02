@@ -31,6 +31,8 @@ export enum DbDialect {
   Greenplum = 'greenplum',
   /** openGauss（PG 协议兼容，华为信创） */
   OpenGauss = 'opengauss',
+  /** Vastbase 海量数据库 G100（openGauss 内核，PG 协议兼容，信创） */
+  Vastbase = 'vastbase',
   /** SQLite（本地文件 SQL，better-sqlite3） */
   SQLite = 'sqlite',
   /** DuckDB（本地文件 OLAP SQL） */

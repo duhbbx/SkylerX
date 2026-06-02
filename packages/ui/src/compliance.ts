@@ -359,6 +359,7 @@ function fam(d: DbDialect): 'mysql' | 'pg' | 'other' {
     d === DbDialect.PostgreSQL ||
     d === DbDialect.KingbaseES ||
     d === DbDialect.OpenGauss ||
+    d === DbDialect.Vastbase ||
     d === DbDialect.Greenplum ||
     d === DbDialect.CockroachDB
   )

@@ -166,6 +166,7 @@ export function familyOf(dialect: DbDialect): Family {
     case DbDialect.CockroachDB:
     case DbDialect.Greenplum:
     case DbDialect.OpenGauss:
+    case DbDialect.Vastbase:
     case DbDialect.H2:
     case DbDialect.Redshift:
     case DbDialect.PolarDBPG:
@@ -299,8 +300,7 @@ export function objectDdlQuery(
     const getDdl = (t: string) =>
       `SELECT dbms_metadata.get_ddl('${t}', '${esc(name)}', '${esc(schema)}') AS "ddl" FROM dual`
     // 包 / 对象类型有 spec + body 两段；body 由消费方单独执行（可能不存在）。
-    const bodyType =
-      kind === 'package' ? 'PACKAGE_BODY' : kind === 'type' ? 'TYPE_BODY' : null
+    const bodyType = kind === 'package' ? 'PACKAGE_BODY' : kind === 'type' ? 'TYPE_BODY' : null
     return {
       sql: getDdl(oraType),
       mode: 'oracle-ddl',

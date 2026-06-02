@@ -115,7 +115,11 @@ onMounted(async () => {
  */
 function fmtLang(d: string): SqlLanguage {
   if (['mysql', 'mariadb', 'oceanbase', 'tidb'].includes(d)) return 'mysql'
-  if (['postgresql', 'kingbase', 'cockroachdb', 'greenplum', 'opengauss', 'h2'].includes(d))
+  if (
+    ['postgresql', 'kingbase', 'vastbase', 'cockroachdb', 'greenplum', 'opengauss', 'h2'].includes(
+      d,
+    )
+  )
     return 'postgresql'
   if (d === 'sqlserver') return 'transactsql'
   if (['oracle', 'dm'].includes(d)) return 'plsql'

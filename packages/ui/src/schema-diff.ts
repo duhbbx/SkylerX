@@ -119,6 +119,7 @@ function familyOf(d: DbDialect): Family {
       DbDialect.CockroachDB,
       DbDialect.Greenplum,
       DbDialect.OpenGauss,
+      DbDialect.Vastbase,
       DbDialect.H2,
       DbDialect.Redshift,
       DbDialect.PolarDBPG,

@@ -24,7 +24,7 @@ let prev: { counter: number; at: number } | null = null
 
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
   if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase].includes(d)) return 'mysql'
-  if (d && [DbDialect.PostgreSQL, DbDialect.KingbaseES].includes(d)) return 'pg'
+  if (d && [DbDialect.PostgreSQL, DbDialect.KingbaseES, DbDialect.Vastbase].includes(d)) return 'pg'
   return 'other'
 }
 const connOf = (id: string) => conns.value.find((c) => c.id === id)

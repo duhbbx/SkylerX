@@ -54,6 +54,7 @@ const supportInfo = computed<string | null>(() => {
     case DbDialect.PostgreSQL:
     case DbDialect.KingbaseES:
     case DbDialect.OpenGauss:
+    case DbDialect.Vastbase:
     case DbDialect.Greenplum:
     case DbDialect.CockroachDB:
     case DbDialect.Redshift:

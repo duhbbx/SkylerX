@@ -82,6 +82,7 @@ export const DRIVER_PACKAGES: Record<DbDialect, string> = {
   [DbDialect.CockroachDB]: 'pg',
   [DbDialect.Greenplum]: 'pg',
   [DbDialect.OpenGauss]: 'pg',
+  [DbDialect.Vastbase]: 'pg',
   [DbDialect.SQLite]: 'better-sqlite3',
   [DbDialect.DuckDB]: '@duckdb/node-api',
   [DbDialect.ClickHouse]: '@clickhouse/client',

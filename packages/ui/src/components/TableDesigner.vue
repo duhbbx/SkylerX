@@ -97,7 +97,7 @@ const INNER = [
 const inner = ref<(typeof INNER)[number]>('fields')
 const selected = ref(0)
 const selCol = computed(() => spec.columns[selected.value])
-const isPg = ['postgresql', 'kingbase'].includes(props.dialect)
+const isPg = ['postgresql', 'kingbase', 'vastbase'].includes(props.dialect)
 const indexTypes = isMysql
   ? ['BTREE', 'HASH', 'FULLTEXT', 'SPATIAL']
   : isPg
