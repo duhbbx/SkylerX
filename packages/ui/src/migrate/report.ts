@@ -159,6 +159,14 @@ export function buildReport(summary: AssessSummary, opts: ReportOptions = {}): s
         L.push('')
         continue
       }
+      if (c.validated === true) {
+        const fixed = (c.attempts ?? 1) > 1 ? `(AI 自修复 ${(c.attempts ?? 1) - 1} 次)` : ''
+        L.push(`> ✅ 已在目标库事务内验证通过${fixed}`)
+        L.push('')
+      } else if (c.validated === false) {
+        L.push(`> ❌ 目标库校验未通过:${c.validationError ?? ''}`)
+        L.push('')
+      }
       if (c.sql) {
         L.push('```sql')
         L.push(c.sql)

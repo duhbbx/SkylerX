@@ -95,4 +95,10 @@ export interface ConvertResult {
   sql: string
   notes: string
   error?: string
+  /** 是否在目标库事务内校验通过(undefined=未校验:目标库不支持或未启用)。 */
+  validated?: boolean
+  /** 校验未通过时的目标库报错。 */
+  validationError?: string
+  /** AI 尝试次数(首次 + 自修复重试)。 */
+  attempts?: number
 }

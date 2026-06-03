@@ -16,6 +16,7 @@ import type { DbDialect } from '@db-tool/shared-types'
 import { askAiChat, extractAllSql } from '../ai'
 import { familyOf } from '../ddl'
 import type { AssessItem, ConvertResult } from './types'
+import { type StmtRunner, supportsTxnValidation, validateDdl } from './validate'
 
 /** 目标方言的人类可读名 + 内核家族描述,拼进提示词让 AI 用对兼容口径。 */
 function targetProfile(target: DbDialect): { name: string; kernel: string } {
@@ -102,6 +103,92 @@ export async function convertObject(
 /** 去掉 ```sql ... ``` 代码块,留下散文说明部分。 */
 function stripSqlFences(text: string): string {
   return text.replace(/```sql[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/g, '')
+}
+
+/**
+ * 拿到目标库的报错,让 AI 修复上一版 DDL。返回新 SQL + 说明(沿用同一份转换 system)。
+ */
+async function repairWithAi(
+  prev: ConvertResult,
+  source: DbDialect,
+  target: DbDialect,
+  failedStatement: string,
+  error: string,
+  signal?: AbortSignal,
+): Promise<ConvertResult> {
+  const fence = '```'
+  const userMsg =
+    `The ${target} DDL you produced for ${prev.schema}.${prev.name} failed when executed on the ` +
+    `target database. Fix it and return the corrected full DDL.\n\n` +
+    `Your previous DDL:\n${fence}sql\n${prev.sql}\n${fence}\n\n` +
+    `The statement that failed:\n${fence}sql\n${failedStatement}\n${fence}\n\n` +
+    `Target database error:\n${error}\n\n` +
+    `Return the complete corrected DDL in one ${fence}sql block, then a short note on what you changed.`
+  try {
+    const reply = await askAiChat({
+      messages: [{ role: 'user', content: userMsg }],
+      dialect: target,
+      extraSystem: buildConvertSystem(source, target),
+      signal,
+    })
+    const sql = extractAllSql(reply).join('\n\n').trim()
+    return {
+      schema: prev.schema,
+      name: prev.name,
+      kind: prev.kind,
+      sql,
+      notes: stripSqlFences(reply).trim(),
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { ...prev, error: msg === 'NO_API_KEY' ? 'AI 未配置 API Key' : msg }
+  }
+}
+
+/**
+ * AI 转换 + 目标库自修复闭环。
+ *  1) convertObject 先翻一版
+ *  2) 在目标库(PG 系,事务内 ROLLBACK)校验
+ *  3) 不过就把报错回喂 AI 修,重校验,直到通过或到 maxAttempts
+ * run 缺省 / 目标库不支持事务校验时,退化为「只转不验」(validated=undefined)。
+ */
+export async function convertObjectValidated(
+  item: AssessItem,
+  source: DbDialect,
+  target: DbDialect,
+  opts: { run?: StmtRunner; maxAttempts?: number; signal?: AbortSignal } = {},
+): Promise<ConvertResult> {
+  const max = opts.maxAttempts ?? 3
+  let result = await convertObject(item, source, target, opts.signal)
+  if (result.error || !result.sql) return { ...result, attempts: 1 }
+  if (!opts.run || !supportsTxnValidation(target)) return { ...result, attempts: 1 }
+
+  let attempts = 1
+  let v = await validateDdl(opts.run, result.sql, target)
+  while (!v.ok && attempts < max) {
+    if (opts.signal?.aborted) break
+    attempts++
+    const fixed = await repairWithAi(
+      result,
+      source,
+      target,
+      v.failedStatement ?? '',
+      v.error ?? '',
+      opts.signal,
+    )
+    if (fixed.error || !fixed.sql) {
+      result = fixed
+      break
+    }
+    result = fixed
+    v = await validateDdl(opts.run, result.sql, target)
+  }
+  return {
+    ...result,
+    validated: v.ok,
+    validationError: v.ok ? undefined : v.error,
+    attempts,
+  }
 }
 
 /**

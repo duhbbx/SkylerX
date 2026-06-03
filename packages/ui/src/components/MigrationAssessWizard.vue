@@ -24,7 +24,7 @@ import { formatBytes, objectDdlQuery } from '../ddl'
 import { toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
-import { convertObject } from '../migrate/aiConvert'
+import { convertObjectValidated } from '../migrate/aiConvert'
 import { assessBatch } from '../migrate/assess'
 import { hasStructuralPath } from '../migrate/convert'
 import { buildExcel, buildHtmlDoc, openPrintWindow } from '../migrate/export'
@@ -47,6 +47,7 @@ import {
   type ConvertResult,
   GRADE_LABEL,
 } from '../migrate/types'
+import { type StmtRunner, supportsTxnValidation } from '../migrate/validate'
 import { saveFileWithDialog } from '../saveFile'
 import Modal from './Modal.vue'
 
@@ -270,12 +271,25 @@ async function fetchDdl(item: AssessItem): Promise<string> {
   }
 }
 
+const selfRepair = ref(true)
+/** 目标库支持事务内 DDL 校验(PG 系)才能开自修复。 */
+const canSelfRepair = computed(() => !!tgtDialect.value && supportsTxnValidation(tgtDialect.value))
+
 async function runConvert(): Promise<void> {
   if (!srcDialect.value || !tgtDialect.value) return
   const items = aiItems.value
   if (!items.length) {
     toast.info(L('没有需要 AI 转换的对象', 'Nothing needs AI conversion'))
     return
+  }
+  // 在目标库事务内跑 DDL 做校验(BEGIN…ROLLBACK,不留痕);出错回喂 AI 自修复。
+  const targetRun: StmtRunner = async (sql) => {
+    try {
+      await client.connections.execute(tgtConnId.value, sql)
+      return {}
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
   }
   converting.value = true
   abort = new AbortController()
@@ -285,12 +299,11 @@ async function runConvert(): Promise<void> {
     for (const item of items) {
       if (abort.signal.aborted) break
       const ddl = await fetchDdl(item)
-      const r = await convertObject(
-        { ...item, ddl },
-        srcDialect.value,
-        tgtDialect.value,
-        abort.signal,
-      )
+      const r = await convertObjectValidated({ ...item, ddl }, srcDialect.value, tgtDialect.value, {
+        run: selfRepair.value && canSelfRepair.value ? targetRun : undefined,
+        maxAttempts: 3,
+        signal: abort.signal,
+      })
       conversions.value = [...conversions.value, r]
       convertProgress.value = { done: conversions.value.length, total: items.length }
     }
@@ -581,14 +594,27 @@ defineExpose({ open: openWizard })
             {{ L('开始 AI 转换', 'Start AI conversion') }}
           </button>
           <button v-if="converting" @click="cancelConvert">{{ L('取消', 'Cancel') }}</button>
+          <label class="chk" :title="canSelfRepair ? '' : L('目标库不支持事务内 DDL 校验', 'target lacks transactional DDL')">
+            <input type="checkbox" v-model="selfRepair" :disabled="!canSelfRepair" />
+            {{ L('目标库校验 + 自修复', 'Validate on target + self-repair') }}
+          </label>
           <span v-if="convertProgress.total" class="prog">
             {{ convertProgress.done }} / {{ convertProgress.total }}
           </span>
         </div>
+        <p class="hint" v-if="selfRepair && canSelfRepair">
+          {{ L('每个对象转换后在目标库事务内试跑(BEGIN…ROLLBACK,不留痕),报错回喂 AI 自动重修,最多 3 次。',
+                'Each result is dry-run on the target (BEGIN…ROLLBACK), and errors are fed back to AI to self-repair, up to 3 attempts.') }}
+        </p>
         <div v-for="(c, i) in conversions" :key="i" class="conv">
-          <h5>{{ c.schema }}.{{ c.name }} <small>({{ c.kind }})</small></h5>
+          <h5>
+            {{ c.schema }}.{{ c.name }} <small>({{ c.kind }})</small>
+            <span v-if="c.validated === true" class="badge ok">✅ {{ L('目标库已验证', 'validated') }}<template v-if="(c.attempts ?? 1) > 1"> · {{ L('修复', 'fixed') }} ×{{ (c.attempts ?? 1) - 1 }}</template></span>
+            <span v-else-if="c.validated === false" class="badge bad">❌ {{ L('校验未过', 'invalid') }}</span>
+          </h5>
           <p v-if="c.error" class="warn">❌ {{ c.error }}</p>
           <template v-else>
+            <p v-if="c.validated === false && c.validationError" class="warn">{{ c.validationError }}</p>
             <pre v-if="c.sql" class="sql">{{ c.sql }}</pre>
             <p v-if="c.notes" class="cnotes">{{ c.notes }}</p>
           </template>
@@ -667,6 +693,9 @@ select { padding: 6px; }
 td.gA, td.gB, td.gC, td.gD { font-weight: 700; }
 .ai { margin-left: auto; }
 .concern { color: var(--fg-muted, #888); max-width: 360px; }
+.badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 8px; font-weight: 400; }
+.badge.ok { background: #e8f6ec; color: #1e7e34; }
+.badge.bad { background: #fdecea; color: #c0392b; }
 .conv { border-top: 1px solid var(--border, #eee); padding: 8px 0; }
 .conv h5 { margin: 0 0 6px; font-size: 13px; }
 .sql, .report { background: var(--bg-code, #1e1e1e); color: #dcdcdc; padding: 10px; border-radius: 6px; font-size: 12px; overflow: auto; max-height: 360px; white-space: pre-wrap; }
