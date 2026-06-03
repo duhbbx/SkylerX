@@ -28,6 +28,16 @@ import { convertObjectValidated } from '../migrate/aiConvert'
 import { type ApplyResult, applyScript } from '../migrate/apply'
 import { assessBatch } from '../migrate/assess'
 import { convertSchema, hasStructuralPath } from '../migrate/convert'
+import {
+  buildColumnStats,
+  buildCount,
+  buildInsert,
+  buildPagedSelect,
+  compareColumnStats,
+  copyTable,
+  parseColumnStats,
+  reconcile,
+} from '../migrate/dataMigrate'
 import { buildExcel, buildHtmlDoc, openPrintWindow } from '../migrate/export'
 import { canIntrospect, readSchema } from '../migrate/introspect'
 import {
@@ -73,13 +83,14 @@ const metricCell = (v: number | null | undefined): string => (v == null ? '—' 
 const CATEGORIES = OBJECT_CATEGORIES
 
 // ── 步骤 ────────────────────────────────────────────────────────
-type StepId = 'conn' | 'profile' | 'assess' | 'convert' | 'report'
+type StepId = 'conn' | 'profile' | 'assess' | 'convert' | 'report' | 'migrate'
 const STEPS: { id: StepId; label: () => string }[] = [
   { id: 'conn', label: () => L('连接', 'Connect') },
   { id: 'profile', label: () => L('源库画像', 'Profile') },
   { id: 'assess', label: () => L('评估', 'Assess') },
   { id: 'convert', label: () => L('AI 转换', 'AI Convert') },
   { id: 'report', label: () => L('报告', 'Report') },
+  { id: 'migrate', label: () => L('数据迁移', 'Data') },
 ]
 const open = ref(false)
 const step = ref<StepId>('conn')
@@ -465,6 +476,143 @@ async function applyToTarget(): Promise<void> {
   }
 }
 
+// ── Step 6:数据迁移 ────────────────────────────────────────────
+interface MigTable {
+  schema: string
+  name: string
+  columns: string[]
+  pk: string[]
+  sel: boolean
+  status: 'pending' | 'running' | 'done' | 'error'
+  copied: number
+  rowsOk?: boolean
+  colsOk?: boolean
+  detail?: string
+}
+const migTables = ref<MigTable[]>([])
+const migPreparing = ref(false)
+const migrating = ref(false)
+const migBatchSize = ref(1000)
+const migDeepCheck = ref(true)
+let migAbort: AbortController | null = null
+const canMigrate = computed(() => !!srcDialect.value && canIntrospect(srcDialect.value))
+
+/** 读所选 schema 的表 + 列 + 主键,作为搬运清单。 */
+async function prepareMigration(): Promise<void> {
+  if (!srcDialect.value) return
+  migPreparing.value = true
+  try {
+    const out: MigTable[] = []
+    for (const schema of pickedSchemas.value) {
+      const si = await readSchema(execRows, srcDialect.value, schema)
+      for (const t of si.tables) {
+        out.push({
+          schema,
+          name: t.name,
+          columns: t.columns.map((c) => c.name),
+          pk: t.primaryKey ?? [],
+          sel: true,
+          status: 'pending',
+          copied: 0,
+        })
+      }
+    }
+    migTables.value = out
+    if (!out.length) toast.info(L('没有可迁移的表', 'No tables to migrate'))
+  } catch (e) {
+    reportError(e, { tag: 'mig.prepare' })
+  } finally {
+    migPreparing.value = false
+  }
+}
+
+const rows1 = (sql: string, connId: string): Promise<Array<Record<string, unknown>>> =>
+  client.connections.execute(connId, sql).then((r) => r.rows)
+
+/** 逐表分块搬运 + 行/列对账;已 done 的跳过(断点续)。 */
+async function runMigration(): Promise<void> {
+  const src = srcDialect.value
+  const tgt = tgtDialect.value
+  if (!src || !tgt) return
+  migAbort = new AbortController()
+  migrating.value = true
+  try {
+    for (const t of migTables.value) {
+      if (migAbort.signal.aborted) break
+      if (!t.sel || t.status === 'done') continue
+      t.status = 'running'
+      t.copied = 0
+      t.detail = undefined
+      const orderBy = t.pk.length ? t.pk : t.columns.slice(0, 1)
+      try {
+        const res = await copyTable(
+          (offset, limit) =>
+            rows1(buildPagedSelect(src, t.schema, t.name, orderBy, offset, limit), srcConnId.value),
+          async (batch) => {
+            await client.connections.execute(
+              tgtConnId.value,
+              buildInsert(tgt, t.schema, t.name, t.columns, batch),
+            )
+          },
+          {
+            batchSize: migBatchSize.value,
+            signal: migAbort.signal,
+            onProgress: (p) => {
+              t.copied = p.copied
+            },
+          },
+        )
+        if (res.aborted) {
+          t.status = 'pending'
+          break
+        }
+        // 行数对账
+        const sc = Number(
+          (await rows1(buildCount(src, t.schema, t.name), srcConnId.value))[0]?.n ?? 0,
+        )
+        const tc = Number(
+          (await rows1(buildCount(tgt, t.schema, t.name), tgtConnId.value))[0]?.n ?? 0,
+        )
+        t.rowsOk = reconcile(sc, tc).ok
+        // 列级对账(主键列;无主键跳过)
+        if (migDeepCheck.value && t.pk.length) {
+          const ss = parseColumnStats(
+            (await rows1(buildColumnStats(src, t.schema, t.name, t.pk), srcConnId.value))[0] ?? {},
+            t.pk,
+          )
+          const ts = parseColumnStats(
+            (await rows1(buildColumnStats(tgt, t.schema, t.name, t.pk), tgtConnId.value))[0] ?? {},
+            t.pk,
+          )
+          const cmp = compareColumnStats(ss, ts)
+          t.colsOk = cmp.ok
+          if (!cmp.ok)
+            t.detail = cmp.diffs
+              .filter((d) => !d.ok)
+              .map((d) => `${d.column}: ${d.detail}`)
+              .join('; ')
+        }
+        t.status = 'done'
+      } catch (e) {
+        t.status = 'error'
+        t.detail = e instanceof Error ? e.message : String(e)
+      }
+    }
+    if (migTables.value.some((t) => t.sel && t.status === 'done')) {
+      toast.success(L('数据迁移完成', 'Data migration done'))
+    }
+  } catch (e) {
+    reportError(e, { tag: 'mig.runMigration' })
+  } finally {
+    migrating.value = false
+    migAbort = null
+  }
+}
+function cancelMigration(): void {
+  migAbort?.abort()
+}
+const migDone = computed(() => migTables.value.filter((t) => t.status === 'done').length)
+
 // ── 导航 ────────────────────────────────────────────────────────
 function next(): void {
   const i = stepIdx(step.value)
@@ -704,7 +852,7 @@ defineExpose({ open: openWizard })
       </section>
 
       <!-- Step 5: 报告 -->
-      <section v-else class="panel">
+      <section v-else-if="step === 'report'" class="panel">
         <div class="bar">
           <button class="primary" @click="copyReport">{{ L('复制', 'Copy') }}</button>
           <button @click="exportMarkdown">Markdown</button>
@@ -726,7 +874,7 @@ defineExpose({ open: openWizard })
             <button class="danger" :disabled="applying || !fullScript" @click="applyToTarget">
               {{ applying ? L('建库中…', 'applying…') : L('一键建库到目标', 'Apply to target') }}
             </button>
-            <span v-if="!canScript" class="note">{{ L('该源方言的结构读取器开发中(目前支持 PG 系)', 'introspection for this source dialect is in progress (PG-family now)') }}</span>
+            <span v-if="!canScript" class="note">{{ L('该源方言暂不支持结构读取', 'introspection not supported for this source dialect') }}</span>
           </div>
           <p v-if="applyOutcome" :class="['apply-res', applyOutcome.ok ? 'ok' : 'bad']">
             <template v-if="applyOutcome.ok">✅ {{ applyOutcome.committed ? L('建库完成', 'applied') : L('试跑通过', 'dry-run ok') }} · {{ applyOutcome.succeeded }}/{{ applyOutcome.total }}</template>
@@ -736,6 +884,49 @@ defineExpose({ open: openWizard })
         </div>
 
         <pre class="report">{{ reportMd }}</pre>
+      </section>
+
+      <!-- Step 6: 数据迁移 -->
+      <section v-else class="panel">
+        <p class="hint">
+          {{ L('结构建好后,把源库行数据分块搬到目标库(目标表需已存在)。逐表行数对账,主键列做列级对账。',
+                'After the schema exists, copy row data in chunks to the target (target tables must exist). Row-count reconcile per table; PK columns are checked column-level.') }}
+        </p>
+        <div class="bar">
+          <button class="primary" :disabled="migPreparing || !canMigrate" @click="prepareMigration">
+            {{ migPreparing ? '…' : L('准备表清单', 'Prepare tables') }}
+          </button>
+          <button v-if="migTables.length && !migrating" class="danger" @click="runMigration">
+            {{ migDone ? L('继续迁移', 'Resume') : L('开始数据迁移', 'Start migration') }}
+          </button>
+          <button v-if="migrating" @click="cancelMigration">{{ L('取消', 'Cancel') }}</button>
+          <label class="chk">{{ L('每批', 'batch') }}
+            <input type="number" v-model.number="migBatchSize" min="100" step="100" style="width: 72px" />
+          </label>
+          <label class="chk"><input type="checkbox" v-model="migDeepCheck" />{{ L('主键列对账', 'PK column check') }}</label>
+          <span v-if="migTables.length" class="note">{{ migDone }}/{{ migTables.length }} {{ L('表完成', 'done') }}</span>
+          <span v-if="!canMigrate" class="note">{{ L('该源方言暂不支持结构读取', 'introspection not supported for this source') }}</span>
+        </div>
+        <table v-if="migTables.length" class="tbl scroll">
+          <thead><tr>
+            <th><input type="checkbox" :checked="migTables.every((t) => t.sel)" @change="(e) => migTables.forEach((t) => { t.sel = (e.target as HTMLInputElement).checked })" /></th>
+            <th>{{ L('表', 'Table') }}</th><th>{{ L('已搬', 'Copied') }}</th>
+            <th>{{ L('行对账', 'Rows') }}</th><th>{{ L('列对账', 'Cols') }}</th><th>{{ L('状态', 'Status') }}</th>
+          </tr></thead>
+          <tbody>
+            <tr v-for="(t, i) in migTables" :key="i">
+              <td><input type="checkbox" v-model="t.sel" :disabled="migrating" /></td>
+              <td>{{ t.schema }}.{{ t.name }}</td>
+              <td>{{ t.copied.toLocaleString() }}</td>
+              <td>{{ t.rowsOk === undefined ? '—' : t.rowsOk ? '✅' : '❌' }}</td>
+              <td>{{ t.colsOk === undefined ? '—' : t.colsOk ? '✅' : '❌' }}</td>
+              <td>
+                <span :class="['mstat', t.status]">{{ t.status }}</span>
+                <span v-if="t.detail" class="mdetail">{{ t.detail }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </section>
     </div>
 
@@ -812,4 +1003,10 @@ td.gA, td.gB, td.gC, td.gD { font-weight: 700; }
 .apply-res.ok { background: #e8f6ec; color: #1e7e34; }
 .apply-res.bad { background: #fdecea; color: #c0392b; }
 .apply-res code { display: block; margin-top: 4px; font-size: 11px; }
+.mstat { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+.mstat.pending { background: #eee; color: #888; }
+.mstat.running { background: #fff5e6; color: #c87f0a; }
+.mstat.done { background: #e8f6ec; color: #1e7e34; }
+.mstat.error { background: #fdecea; color: #c0392b; }
+.mdetail { display: block; font-size: 10px; color: #c0392b; max-width: 320px; }
 </style>
