@@ -231,3 +231,17 @@ describe('MySQL-family emitter (Oracle → OceanBase/TiDB/GBase…)', () => {
     )
   })
 })
+
+describe('PG source parser (parsePgType via convertType)', () => {
+  it('reads PG native types into IR and re-emits', () => {
+    const PG = DbDialect.PostgreSQL
+    expect(convertType('character varying(50)', PG, V).sql).toBe('varchar(50)')
+    expect(convertType('numeric(10,2)', PG, V).sql).toBe('numeric(10,2)')
+    expect(convertType('integer', PG, V).sql).toBe('integer')
+    expect(convertType('timestamp without time zone', PG, V).sql).toBe('timestamp')
+    expect(convertType('bytea', PG, V).sql).toBe('bytea')
+    // PG → MySQL crosses families through the same IR
+    expect(convertType('character varying(50)', PG, DbDialect.MySQL).sql).toBe('VARCHAR(50)')
+    expect(convertType('double precision', PG, DbDialect.MySQL).sql).toBe('DOUBLE')
+  })
+})

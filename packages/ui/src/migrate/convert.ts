@@ -15,7 +15,7 @@ import { familyOf } from '../ddl'
 import { damengEmitter } from './dialects/dameng'
 import { mysqlEmitter } from './dialects/mysql'
 import { oracleParser } from './dialects/oracle'
-import { postgresEmitter } from './dialects/postgres'
+import { postgresEmitter, postgresParser } from './dialects/postgres'
 import {
   type ConvertNote,
   type DialectEmitter,
@@ -31,6 +31,7 @@ import {
 // ── 方言插件注册表(按 family,一套插件服务整个协议家族) ────────────
 const PARSERS: Partial<Record<ReturnType<typeof familyOf>, DialectParser>> = {
   oracle: oracleParser, // Oracle / DM 作源库共用(类型体系一致)
+  pg: postgresParser, // PG / openGauss / Vastbase … 作源库(去 PG 或国产库间互迁)
 }
 
 const EMITTERS: Partial<Record<ReturnType<typeof familyOf>, DialectEmitter>> = {

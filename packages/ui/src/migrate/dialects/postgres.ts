@@ -7,8 +7,92 @@
  * 这些库 PG 9.2 内核 + Oracle "A" 兼容;这里生成标准 PG 写法(A 兼容关了也能跑)。
  */
 import { DbDialect } from '@db-tool/shared-types'
-import type { ConvertNote, DialectEmitter, LogicalType } from '../ir'
+import type { ConvertNote, DialectEmitter, DialectParser, LogicalType } from '../ir'
 import { note } from '../ir'
+
+// ── PG 源 parser:PG 本地类型(format_type 输出)→ Logical IR ───────
+/** 拆 `base(arg1[,arg2])`,base 可含空格(character varying / double precision)。 */
+function splitPg(native: string): { base: string; a0?: number; a1?: number } {
+  const m = /^\s*([a-z][a-z ]*?)\s*(?:\((\d+)(?:,\s*(\d+))?\))?\s*$/i.exec(native ?? '')
+  if (!m) return { base: (native ?? '').trim().toLowerCase() }
+  return {
+    base: m[1].trim().toLowerCase(),
+    a0: m[2] != null ? Number.parseInt(m[2], 10) : undefined,
+    a1: m[3] != null ? Number.parseInt(m[3], 10) : undefined,
+  }
+}
+
+export function parsePgType(native: string): { type: LogicalType; notes: ConvertNote[] } {
+  const notes: ConvertNote[] = []
+  const { base, a0, a1 } = splitPg(native)
+  switch (base) {
+    case 'character varying':
+    case 'varchar':
+      return { type: { kind: 'string', length: a0, fixed: false }, notes }
+    case 'character':
+    case 'char':
+    case 'bpchar':
+      return { type: { kind: 'string', length: a0 ?? 1, fixed: true }, notes }
+    case 'text':
+    case 'citext':
+      return { type: { kind: 'text' }, notes }
+    case 'smallint':
+    case 'int2':
+      return { type: { kind: 'integer', bytes: 2 }, notes }
+    case 'integer':
+    case 'int':
+    case 'int4':
+    case 'serial':
+      return { type: { kind: 'integer', bytes: 4 }, notes }
+    case 'bigint':
+    case 'int8':
+    case 'bigserial':
+      return { type: { kind: 'integer', bytes: 8 }, notes }
+    case 'numeric':
+    case 'decimal':
+      return { type: { kind: 'decimal', precision: a0, scale: a1 }, notes }
+    case 'real':
+    case 'float4':
+      return { type: { kind: 'float', bytes: 4 }, notes }
+    case 'double precision':
+    case 'float8':
+      return { type: { kind: 'float', bytes: 8 }, notes }
+    case 'boolean':
+    case 'bool':
+      return { type: { kind: 'boolean' }, notes }
+    case 'date':
+      return { type: { kind: 'date' }, notes }
+    case 'time':
+    case 'time without time zone':
+    case 'time with time zone':
+      return { type: { kind: 'time' }, notes }
+    case 'timestamp':
+    case 'timestamp without time zone':
+      return { type: { kind: 'datetime', precision: a0 }, notes }
+    case 'timestamp with time zone':
+    case 'timestamptz':
+      return { type: { kind: 'datetime', precision: a0, withTimezone: true }, notes }
+    case 'bytea':
+      return { type: { kind: 'binary' }, notes }
+    case 'uuid':
+      return { type: { kind: 'uuid' }, notes }
+    case 'json':
+    case 'jsonb':
+      return { type: { kind: 'json' }, notes }
+    case 'xml':
+      return { type: { kind: 'xml' }, notes }
+    default:
+      notes.push(
+        note('review', `未识别的 PG 类型 "${native}"(可能是自定义/数组类型),原样保留待复核`),
+      )
+      return { type: { kind: 'unknown', raw: native.trim() }, notes }
+  }
+}
+
+export const postgresParser: DialectParser = {
+  dialect: DbDialect.PostgreSQL,
+  parseType: parsePgType,
+}
 
 export function emitType(t: LogicalType): { sql: string; notes: ConvertNote[] } {
   const notes: ConvertNote[] = []
