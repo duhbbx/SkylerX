@@ -124,7 +124,56 @@ export function buildPagedSelect(
   return `SELECT * FROM ${r}${order} LIMIT ${limit} OFFSET ${offset}`
 }
 
-/** 批量 INSERT(多值字面量)。cols 决定列序;rows 缺列按 NULL。 */
+/** 占位符:PG `$n`、Oracle/DM `:n`(1 起)、MySQL `?`。i 为语句内 0 起序号。 */
+export function placeholder(fam: ReturnType<typeof familyOf>, i: number): string {
+  if (fam === 'pg') return `$${i + 1}`
+  if (fam === 'oracle') return `:${i + 1}`
+  return '?' // mysql
+}
+
+/**
+ * 参数化批量 INSERT。值走绑定参数(驱动负责类型/转义,二进制/大文本/特殊字符都安全),
+ * 不拼字面量。返回 { sql, params },上层 execute(connId, sql, params)。
+ */
+export function buildInsertParams(
+  target: DbDialect,
+  schema: string,
+  table: string,
+  cols: string[],
+  rows: Array<Record<string, unknown>>,
+): { sql: string; params: unknown[] } {
+  const fam = familyOf(target)
+  const r = ref(schema, table, fam)
+  const colList = cols.map((c) => qid(c, fam)).join(', ')
+  const params: unknown[] = []
+  const tuples = rows.map(
+    (row) =>
+      `(${cols
+        .map((c) => {
+          params.push(row[c] ?? null)
+          return placeholder(fam, params.length - 1)
+        })
+        .join(', ')})`,
+  )
+  return { sql: `INSERT INTO ${r} (${colList}) VALUES ${tuples.join(', ')}`, params }
+}
+
+/** 一条 INSERT 最多放几行:PG 受 65535 参数上限约束,其余保守限包大小。 */
+export function maxRowsPerInsert(target: DbDialect, colCount: number): number {
+  const cols = Math.max(1, colCount)
+  const cap = familyOf(target) === 'pg' ? 65000 : 1000 // pg 硬上限 65535;其余按包/解析保守
+  return Math.max(1, Math.floor(cap / cols))
+}
+
+/** 把一批行切成多个子批(每批 ≤ n 行),避免超参数上限 / 包大小。 */
+export function chunkRows<T>(rows: T[], n: number): T[][] {
+  if (rows.length <= n) return rows.length ? [rows] : []
+  const out: T[][] = []
+  for (let i = 0; i < rows.length; i += n) out.push(rows.slice(i, i + n))
+  return out
+}
+
+/** 批量 INSERT(多值字面量)。cols 决定列序;rows 缺列按 NULL。仅用于预览/导出;搬运走参数化。 */
 export function buildInsert(
   target: DbDialect,
   schema: string,

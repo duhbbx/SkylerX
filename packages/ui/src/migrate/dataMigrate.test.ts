@@ -9,10 +9,14 @@ import {
   type RowWriter,
   buildColumnStats,
   buildInsert,
+  buildInsertParams,
   buildPagedSelect,
+  chunkRows,
   compareColumnStats,
   copyTable,
+  maxRowsPerInsert,
   parseColumnStats,
+  placeholder,
   reconcile,
   valueLiteral,
 } from './dataMigrate'
@@ -150,5 +154,36 @@ describe('column-level reconcile', () => {
     expect(diff.ok).toBe(false)
     expect(diff.diffs.find((d) => d.column === 'id')?.detail).toMatch(/max 100→99/)
     expect(diff.diffs.find((d) => d.column === 'name')?.detail).toMatch(/非空数 98→97/)
+  })
+})
+
+describe('parameterized insert', () => {
+  it('placeholder per family', () => {
+    expect(placeholder('pg', 0)).toBe('$1')
+    expect(placeholder('oracle', 2)).toBe(':3')
+    expect(placeholder('mysql', 5)).toBe('?')
+  })
+  it('buildInsertParams uses binds, not literals', () => {
+    const { sql, params } = buildInsertParams(
+      V,
+      'hr',
+      'emp',
+      ['id', 'name'],
+      [
+        { id: 1, name: "O'Brien" },
+        { id: 2, name: null },
+      ],
+    )
+    expect(sql).toBe('INSERT INTO "hr"."emp" ("id", "name") VALUES ($1, $2), ($3, $4)')
+    expect(params).toEqual([1, "O'Brien", 2, null]) // raw values, driver escapes
+  })
+  it('maxRowsPerInsert respects PG 65535 param cap', () => {
+    expect(maxRowsPerInsert(V, 10)).toBe(6500) // 65000/10
+    expect(maxRowsPerInsert(MY, 10)).toBe(100) // 1000/10
+    expect(maxRowsPerInsert(V, 100)).toBe(650)
+  })
+  it('chunkRows splits to bound statement size', () => {
+    expect(chunkRows([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]])
+    expect(chunkRows([], 2)).toEqual([])
   })
 })

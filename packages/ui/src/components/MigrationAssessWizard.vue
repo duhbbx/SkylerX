@@ -31,10 +31,12 @@ import { convertSchema, hasStructuralPath } from '../migrate/convert'
 import {
   buildColumnStats,
   buildCount,
-  buildInsert,
+  buildInsertParams,
   buildPagedSelect,
+  chunkRows,
   compareColumnStats,
   copyTable,
+  maxRowsPerInsert,
   parseColumnStats,
   reconcile,
 } from '../migrate/dataMigrate'
@@ -419,8 +421,20 @@ async function generateScript(): Promise<void> {
     for (const schema of pickedSchemas.value) {
       const si = await readSchema(execRows, srcDialect.value, schema)
       if (!si.tables.length && !si.sequences?.length) continue
+      // 跨 schema 改名:把读到的结构改写到目标 schema 名
+      const tgt = targetSchemaOf(schema)
+      if (tgt !== schema) {
+        for (const t of si.tables) t.schema = tgt
+        for (const s of si.sequences ?? []) s.schema = tgt
+        for (const i of si.indexes ?? []) i.schema = tgt
+        for (const f of si.foreignKeys ?? []) {
+          f.schema = tgt
+          if (f.refSchema === schema) f.refSchema = tgt
+        }
+      }
       const { sql } = convertSchema(si, srcDialect.value, tgtDialect.value)
-      if (sql.trim()) parts.push(`-- ════ schema: ${schema} ════\n${sql}`)
+      const label = tgt === schema ? schema : `${schema} → ${tgt}`
+      if (sql.trim()) parts.push(`-- ════ schema: ${label} ════\n${sql}`)
     }
     fullScript.value = parts.join('\n\n')
     if (!fullScript.value) toast.info(L('没有可生成的结构', 'Nothing to generate'))
@@ -506,6 +520,10 @@ const migDeepCheck = ref(true)
 let migAbort: AbortController | null = null
 const canMigrate = computed(() => !!srcDialect.value && canIntrospect(srcDialect.value))
 
+/** 源 schema → 目标 schema 改名映射(缺省同名)。 */
+const schemaRemap = ref<Record<string, string>>({})
+const targetSchemaOf = (s: string): string => schemaRemap.value[s]?.trim() || s
+
 /** 读所选 schema 的表 + 列 + 主键,作为搬运清单。 */
 async function prepareMigration(): Promise<void> {
   if (!srcDialect.value) return
@@ -553,15 +571,18 @@ async function runMigration(): Promise<void> {
       t.copied = 0
       t.detail = undefined
       const orderBy = t.pk.length ? t.pk : t.columns.slice(0, 1)
+      const tSchema = targetSchemaOf(t.schema) // 跨 schema 改名
+      const perStmt = maxRowsPerInsert(tgt, t.columns.length)
       try {
         const res = await copyTable(
           (offset, limit) =>
             rows1(buildPagedSelect(src, t.schema, t.name, orderBy, offset, limit), srcConnId.value),
           async (batch) => {
-            await client.connections.execute(
-              tgtConnId.value,
-              buildInsert(tgt, t.schema, t.name, t.columns, batch),
-            )
+            // 参数化写入(驱动绑定值,二进制/大文本/特殊字符安全)+ 按参数上限切分
+            for (const sub of chunkRows(batch, perStmt)) {
+              const { sql, params } = buildInsertParams(tgt, tSchema, t.name, t.columns, sub)
+              await client.connections.execute(tgtConnId.value, sql, params)
+            }
           },
           {
             batchSize: migBatchSize.value,
@@ -575,12 +596,12 @@ async function runMigration(): Promise<void> {
           t.status = 'pending'
           break
         }
-        // 行数对账
+        // 行数对账(源用源 schema,目标用改名后的 schema)
         const sc = Number(
           (await rows1(buildCount(src, t.schema, t.name), srcConnId.value))[0]?.n ?? 0,
         )
         const tc = Number(
-          (await rows1(buildCount(tgt, t.schema, t.name), tgtConnId.value))[0]?.n ?? 0,
+          (await rows1(buildCount(tgt, tSchema, t.name), tgtConnId.value))[0]?.n ?? 0,
         )
         t.rowsOk = reconcile(sc, tc).ok
         // 列级对账(主键列;无主键跳过)
@@ -590,7 +611,7 @@ async function runMigration(): Promise<void> {
             t.pk,
           )
           const ts = parseColumnStats(
-            (await rows1(buildColumnStats(tgt, t.schema, t.name, t.pk), tgtConnId.value))[0] ?? {},
+            (await rows1(buildColumnStats(tgt, tSchema, t.name, t.pk), tgtConnId.value))[0] ?? {},
             t.pk,
           )
           const cmp = compareColumnStats(ss, ts)
@@ -939,6 +960,12 @@ defineExpose({ open: openWizard })
 
         <!-- 完整迁移脚本 + 一键建库(确定性结构) -->
         <div class="scriptbox">
+          <div v-if="pickedSchemas.size" class="remap">
+            <span class="note">{{ L('目标 schema(默认同名,可改名迁移;建库 + 数据迁移都生效)', 'Target schema (default same name; rename applies to apply + data migration)') }}</span>
+            <label v-for="s in [...pickedSchemas]" :key="s" class="remapItem">
+              {{ s }} → <input v-model="schemaRemap[s]" :placeholder="s" style="width: 120px" />
+            </label>
+          </div>
           <div class="bar">
             <button class="primary" :disabled="scripting || !canScript" @click="generateScript">
               {{ scripting ? '…' : L('生成完整迁移脚本', 'Generate migration script') }}
@@ -1096,4 +1123,6 @@ td.gA, td.gB, td.gC, td.gD { font-weight: 700; }
 .jobs h4 { margin: 0 0 6px; font-size: 12px; }
 .jobrow { display: flex; align-items: center; gap: 10px; font-size: 12px; padding: 3px 0; }
 .jobrow .note { margin-right: auto; }
+.remap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.remapItem { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 </style>
