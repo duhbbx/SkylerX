@@ -11,8 +11,88 @@
  * commentStyle/tableSuffix/emitSequence 钩子表达,CREATE TABLE 主体仍走 convert.ts 通用渲染。
  */
 import { DbDialect } from '@db-tool/shared-types'
-import type { ConvertNote, DialectEmitter, LogicalSequence, LogicalType } from '../ir'
+import type {
+  ConvertNote,
+  DialectEmitter,
+  DialectParser,
+  LogicalSequence,
+  LogicalType,
+} from '../ir'
 import { note } from '../ir'
+
+// ── MySQL 源 parser:MySQL COLUMN_TYPE(如 'varchar(50)' / 'int(11) unsigned')→ IR ──
+export function parseMysqlType(native: string): { type: LogicalType; notes: ConvertNote[] } {
+  const notes: ConvertNote[] = []
+  const raw = (native ?? '').trim()
+  const unsigned = /\bunsigned\b/i.test(raw)
+  if (unsigned)
+    notes.push(note('info', 'MySQL unsigned 在 PG/Oracle 无对应,可能需更宽整型或加 CHECK'))
+  const m = /^\s*([a-z]+)\s*(?:\(\s*([^)]*)\))?/i.exec(raw)
+  const base = (m?.[1] ?? raw).toLowerCase()
+  const args = (m?.[2] ?? '').split(',').map((x) => x.trim())
+  const a0 = args[0] === '' ? undefined : Number.parseInt(args[0], 10)
+  const a1 = args[1] != null ? Number.parseInt(args[1], 10) : undefined
+  switch (base) {
+    case 'varchar':
+    case 'char':
+      return { type: { kind: 'string', length: a0, fixed: base === 'char' }, notes }
+    case 'tinytext':
+    case 'text':
+    case 'mediumtext':
+    case 'longtext':
+      return { type: { kind: 'text' }, notes }
+    case 'tinyint':
+      // tinyint(1) 习惯当布尔
+      if (a0 === 1) return { type: { kind: 'boolean' }, notes }
+      return { type: { kind: 'integer', bytes: 2 }, notes }
+    case 'smallint':
+    case 'year':
+      return { type: { kind: 'integer', bytes: 2 }, notes }
+    case 'mediumint':
+    case 'int':
+    case 'integer':
+      return { type: { kind: 'integer', bytes: 4 }, notes }
+    case 'bigint':
+      return { type: { kind: 'integer', bytes: 8 }, notes }
+    case 'decimal':
+    case 'numeric':
+      return { type: { kind: 'decimal', precision: a0, scale: a1 }, notes }
+    case 'float':
+      return { type: { kind: 'float', bytes: 4 }, notes }
+    case 'double':
+    case 'real':
+      return { type: { kind: 'float', bytes: 8 }, notes }
+    case 'bit':
+      return { type: { kind: 'boolean' }, notes }
+    case 'date':
+      return { type: { kind: 'date' }, notes }
+    case 'datetime':
+    case 'timestamp':
+      return { type: { kind: 'datetime' }, notes }
+    case 'time':
+      return { type: { kind: 'time' }, notes }
+    case 'binary':
+    case 'varbinary':
+    case 'tinyblob':
+    case 'blob':
+    case 'mediumblob':
+    case 'longblob':
+      return { type: { kind: 'binary', length: a0 }, notes }
+    case 'json':
+      return { type: { kind: 'json' }, notes }
+    case 'enum':
+    case 'set':
+      notes.push(
+        note('review', `MySQL ${base}(...) 无直接对应,降级为 varchar;取值约束需手工补 CHECK`),
+      )
+      return { type: { kind: 'string', length: 255 }, notes }
+    default:
+      notes.push(note('review', `未识别的 MySQL 类型 "${raw}",原样保留待复核`))
+      return { type: { kind: 'unknown', raw }, notes }
+  }
+}
+
+export const mysqlParser: DialectParser = { dialect: DbDialect.MySQL, parseType: parseMysqlType }
 
 export function emitType(t: LogicalType): { sql: string; notes: ConvertNote[] } {
   const notes: ConvertNote[] = []

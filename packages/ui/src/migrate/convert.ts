@@ -13,9 +13,10 @@
 import { type DbDialect } from '@db-tool/shared-types'
 import { familyOf } from '../ddl'
 import { damengEmitter } from './dialects/dameng'
-import { mysqlEmitter } from './dialects/mysql'
+import { mysqlEmitter, mysqlParser } from './dialects/mysql'
 import { oracleParser } from './dialects/oracle'
 import { postgresEmitter, postgresParser } from './dialects/postgres'
+import { sqlServerParser } from './dialects/sqlserver'
 import {
   type ConvertNote,
   type DialectEmitter,
@@ -32,6 +33,8 @@ import {
 const PARSERS: Partial<Record<ReturnType<typeof familyOf>, DialectParser>> = {
   oracle: oracleParser, // Oracle / DM 作源库共用(类型体系一致)
   pg: postgresParser, // PG / openGauss / Vastbase … 作源库(去 PG 或国产库间互迁)
+  mysql: mysqlParser, // MySQL / OceanBase / TiDB … 作源库(去 MySQL)
+  sqlserver: sqlServerParser, // SQL Server 作源库(去 SQL Server)
 }
 
 const EMITTERS: Partial<Record<ReturnType<typeof familyOf>, DialectEmitter>> = {

@@ -347,10 +347,219 @@ async function readOracle(exec: ProfileExec, schema: string): Promise<SchemaInpu
 
 export const oracleReader: SchemaReader = { dialect: D.Oracle, readSchema: readOracle }
 
+// ── MySQL 系 reader(information_schema;schema 即 database) ───────
+async function readMysql(exec: ProfileExec, schema: string): Promise<SchemaInput> {
+  const db = lit(schema)
+  const g = (r: Record<string, unknown>, k: string): unknown => r[k] ?? r[k.toUpperCase()]
+  const tableMap = new Map<string, SchemaTableInput>()
+  const tableFor = (name: string): SchemaTableInput => {
+    let t = tableMap.get(name)
+    if (!t) {
+      t = { schema, name, columns: [], primaryKey: [], uniques: [], checks: [] }
+      tableMap.set(name, t)
+    }
+    return t
+  }
+
+  for (const r of await exec(
+    `SELECT TABLE_NAME AS tbl, COLUMN_NAME AS col, COLUMN_TYPE AS typ, IS_NULLABLE AS nullable,
+            COLUMN_DEFAULT AS dflt, COLUMN_COMMENT AS cmt
+     FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ${db} ORDER BY TABLE_NAME, ORDINAL_POSITION`,
+  )) {
+    const cmt = str(g(r, 'cmt'))
+    const def = g(r, 'dflt')
+    tableFor(str(g(r, 'tbl'))).columns.push({
+      name: str(g(r, 'col')),
+      dataType: str(g(r, 'typ')),
+      nullable: str(g(r, 'nullable')).toUpperCase() !== 'NO',
+      default: def == null ? undefined : str(def),
+      comment: cmt || undefined,
+    })
+  }
+  for (const r of await exec(
+    `SELECT TABLE_NAME AS tbl, TABLE_COMMENT AS cmt FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = ${db} AND TABLE_TYPE = 'BASE TABLE'`,
+  )) {
+    const cmt = str(g(r, 'cmt'))
+    if (cmt && tableMap.has(str(g(r, 'tbl')))) tableFor(str(g(r, 'tbl'))).comment = cmt
+  }
+
+  // 约束列 + 类型
+  const kcu = await exec(
+    `SELECT CONSTRAINT_NAME AS cn, TABLE_NAME AS tbl, COLUMN_NAME AS col, ORDINAL_POSITION AS pos,
+            REFERENCED_TABLE_NAME AS rtbl, REFERENCED_COLUMN_NAME AS rcol
+     FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ${db}
+     ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
+  )
+  const colsByCon = new Map<string, string[]>()
+  const refByCon = new Map<string, { tbl: string; cols: string[] }>()
+  for (const r of kcu) {
+    const cn = str(g(r, 'cn'))
+    if (!colsByCon.has(cn)) colsByCon.set(cn, [])
+    colsByCon.get(cn)?.push(str(g(r, 'col')))
+    const rtbl = g(r, 'rtbl')
+    if (rtbl != null) {
+      if (!refByCon.has(cn)) refByCon.set(cn, { tbl: str(rtbl), cols: [] })
+      refByCon.get(cn)?.cols.push(str(g(r, 'rcol')))
+    }
+  }
+  const delRule = new Map<string, string>()
+  for (const r of await exec(
+    `SELECT CONSTRAINT_NAME AS cn, DELETE_RULE AS dr FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ${db}`,
+  ).catch(() => [])) {
+    delRule.set(str(g(r, 'cn')), str(g(r, 'dr')).toUpperCase())
+  }
+  const foreignKeys: LogicalForeignKey[] = []
+  for (const r of await exec(
+    `SELECT CONSTRAINT_NAME AS cn, TABLE_NAME AS tbl, CONSTRAINT_TYPE AS ct FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = ${db}`,
+  )) {
+    const cn = str(g(r, 'cn'))
+    const ct = str(g(r, 'ct')).toUpperCase()
+    const tbl = str(g(r, 'tbl'))
+    const cols = colsByCon.get(cn) ?? []
+    if (ct === 'PRIMARY KEY') tableFor(tbl).primaryKey = cols
+    else if (ct === 'UNIQUE') tableFor(tbl).uniques?.push({ name: cn, columns: cols })
+    else if (ct === 'FOREIGN KEY') {
+      const ref0 = refByCon.get(cn)
+      foreignKeys.push({
+        name: cn,
+        table: tbl,
+        schema,
+        columns: cols,
+        refTable: ref0?.tbl ?? '',
+        refSchema: schema,
+        refColumns: ref0?.cols ?? [],
+        onDelete:
+          delRule.get(cn) === 'CASCADE'
+            ? 'CASCADE'
+            : delRule.get(cn) === 'SET NULL'
+              ? 'SET NULL'
+              : undefined,
+      })
+    }
+  }
+
+  // 索引(排除 PRIMARY 与约束背后的)
+  const conNames = new Set([...colsByCon.keys()])
+  const indexes: LogicalIndex[] = []
+  const ixMap = new Map<string, { tbl: string; uniq: boolean; cols: string[] }>()
+  for (const r of await exec(
+    `SELECT INDEX_NAME AS idx, TABLE_NAME AS tbl, COLUMN_NAME AS col, NON_UNIQUE AS nu, SEQ_IN_INDEX AS pos
+     FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ${db} ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
+  )) {
+    const idx = str(g(r, 'idx'))
+    if (idx === 'PRIMARY' || conNames.has(idx)) continue
+    if (!ixMap.has(idx))
+      ixMap.set(idx, { tbl: str(g(r, 'tbl')), uniq: Number(g(r, 'nu')) === 0, cols: [] })
+    ixMap.get(idx)?.cols.push(str(g(r, 'col')))
+  }
+  for (const [name, v] of ixMap) {
+    indexes.push({ name, table: v.tbl, schema, columns: v.cols, unique: v.uniq })
+  }
+
+  return { tables: [...tableMap.values()], sequences: [], indexes, foreignKeys }
+}
+
+export const mysqlReader: SchemaReader = { dialect: D.MySQL, readSchema: readMysql }
+
+// ── SQL Server reader(INFORMATION_SCHEMA;schema 即 dbo 等) ──────
+/** 由 INFORMATION_SCHEMA.COLUMNS 行重建 SQL Server 类型串。 */
+export function sqlServerColType(r: Record<string, unknown>): string {
+  const g = (k: string): unknown => r[k] ?? r[k.toUpperCase()]
+  const dt = str(g('data_type')).toLowerCase()
+  const charLen = g('character_maximum_length')
+  const p = g('numeric_precision')
+  const s = g('numeric_scale')
+  if (['varchar', 'nvarchar', 'char', 'nchar', 'varbinary', 'binary'].includes(dt)) {
+    if (charLen == null) return dt
+    return Number(charLen) === -1 ? `${dt}(max)` : `${dt}(${Number(charLen)})`
+  }
+  if (['decimal', 'numeric'].includes(dt)) {
+    return p == null ? dt : `${dt}(${Number(p)},${Number(s ?? 0)})`
+  }
+  return dt
+}
+
+async function readSqlServer(exec: ProfileExec, schema: string): Promise<SchemaInput> {
+  const sc = lit(schema)
+  const g = (r: Record<string, unknown>, k: string): unknown => r[k] ?? r[k.toUpperCase()]
+  const tableMap = new Map<string, SchemaTableInput>()
+  const tableFor = (name: string): SchemaTableInput => {
+    let t = tableMap.get(name)
+    if (!t) {
+      t = { schema, name, columns: [], primaryKey: [], uniques: [], checks: [] }
+      tableMap.set(name, t)
+    }
+    return t
+  }
+
+  for (const r of await exec(
+    `SELECT TABLE_NAME AS tbl, COLUMN_NAME AS col, DATA_TYPE AS data_type,
+            CHARACTER_MAXIMUM_LENGTH AS character_maximum_length, NUMERIC_PRECISION AS numeric_precision,
+            NUMERIC_SCALE AS numeric_scale, IS_NULLABLE AS nullable, COLUMN_DEFAULT AS dflt
+     FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ${sc} ORDER BY TABLE_NAME, ORDINAL_POSITION`,
+  )) {
+    const def = g(r, 'dflt')
+    tableFor(str(g(r, 'tbl'))).columns.push({
+      name: str(g(r, 'col')),
+      dataType: sqlServerColType(r),
+      nullable: str(g(r, 'nullable')).toUpperCase() !== 'NO',
+      default: def == null ? undefined : str(def),
+    })
+  }
+
+  const kcu = await exec(
+    `SELECT CONSTRAINT_NAME AS cn, TABLE_NAME AS tbl, COLUMN_NAME AS col, ORDINAL_POSITION AS pos
+     FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ${sc} ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
+  )
+  const colsByCon = new Map<string, string[]>()
+  for (const r of kcu) {
+    const cn = str(g(r, 'cn'))
+    if (!colsByCon.has(cn)) colsByCon.set(cn, [])
+    colsByCon.get(cn)?.push(str(g(r, 'col')))
+  }
+  const foreignKeys: LogicalForeignKey[] = []
+  for (const r of await exec(
+    `SELECT rc.CONSTRAINT_NAME AS cn, fk.TABLE_NAME AS tbl, fk.DELETE_RULE AS dr,
+            pk.TABLE_NAME AS rtbl, rc.UNIQUE_CONSTRAINT_NAME AS rcn
+     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+     JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS fk ON fk.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND fk.CONSTRAINT_SCHEMA = ${sc}
+     JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS pk ON pk.CONSTRAINT_NAME = rc.UNIQUE_CONSTRAINT_NAME
+     WHERE fk.CONSTRAINT_SCHEMA = ${sc}`,
+  ).catch(() => [])) {
+    const cn = str(g(r, 'cn'))
+    foreignKeys.push({
+      name: cn,
+      table: str(g(r, 'tbl')),
+      schema,
+      columns: colsByCon.get(cn) ?? [],
+      refTable: str(g(r, 'rtbl')),
+      refSchema: schema,
+      refColumns: colsByCon.get(str(g(r, 'rcn'))) ?? [],
+      onDelete: str(g(r, 'dr')).toUpperCase() === 'CASCADE' ? 'CASCADE' : undefined,
+    })
+  }
+  for (const r of await exec(
+    `SELECT CONSTRAINT_NAME AS cn, TABLE_NAME AS tbl, CONSTRAINT_TYPE AS ct FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = ${sc}`,
+  )) {
+    const cn = str(g(r, 'cn'))
+    const ct = str(g(r, 'ct')).toUpperCase()
+    if (ct === 'PRIMARY KEY') tableFor(str(g(r, 'tbl'))).primaryKey = colsByCon.get(cn) ?? []
+    else if (ct === 'UNIQUE')
+      tableFor(str(g(r, 'tbl'))).uniques?.push({ name: cn, columns: colsByCon.get(cn) ?? [] })
+  }
+
+  return { tables: [...tableMap.values()], sequences: [], indexes: [], foreignKeys }
+}
+
+export const sqlServerReader: SchemaReader = { dialect: D.SqlServer, readSchema: readSqlServer }
+
 // ── 注册表 + 入口 ───────────────────────────────────────────────
 const READERS: Partial<Record<ReturnType<typeof familyOf>, SchemaReader>> = {
   pg: postgresReader,
   oracle: oracleReader, // Oracle / DM 共用(数据字典视图一致)
+  mysql: mysqlReader, // MySQL / OceanBase / TiDB …
+  sqlserver: sqlServerReader,
 }
 
 export function readerFor(dialect: DbDialect): SchemaReader | null {

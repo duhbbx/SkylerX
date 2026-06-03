@@ -32,11 +32,12 @@ describe('oracleColType reconstruction', () => {
 })
 
 describe('canIntrospect', () => {
-  it('PG-family and Oracle/DM supported, MySQL not yet', () => {
+  it('PG-family, Oracle/DM, MySQL and SQL Server are all supported', () => {
     expect(canIntrospect(DbDialect.Vastbase)).toBe(true)
     expect(canIntrospect(DbDialect.Oracle)).toBe(true)
     expect(canIntrospect(DbDialect.DM)).toBe(true)
-    expect(canIntrospect(DbDialect.MySQL)).toBe(false)
+    expect(canIntrospect(DbDialect.MySQL)).toBe(true)
+    expect(canIntrospect(DbDialect.SqlServer)).toBe(true)
   })
 })
 
@@ -191,5 +192,103 @@ describe('PG reader (mock catalog)', () => {
     expect(emp.comment).toBe('employees')
     expect(emp.checks).toEqual([{ name: 'ck', expr: '(id > 0)' }])
     expect((si.indexes ?? [])[0]).toMatchObject({ name: 'ix_name', columns: ['name'] })
+  })
+})
+
+describe('MySQL reader (mock information_schema)', () => {
+  it('reads columns / PK / FK / index', async () => {
+    const exec = mockExec([
+      [
+        /FROM information_schema\.COLUMNS/,
+        [
+          { tbl: 'emp', col: 'id', typ: 'int(11)', nullable: 'NO' },
+          { tbl: 'emp', col: 'dept_id', typ: 'int(11)', nullable: 'YES' },
+          { tbl: 'emp', col: 'name', typ: 'varchar(50)', nullable: 'YES', cmt: '姓名' },
+        ],
+      ],
+      [/FROM information_schema\.TABLES/, [{ tbl: 'emp', cmt: '员工' }]],
+      [
+        /KEY_COLUMN_USAGE/,
+        [
+          { cn: 'PRIMARY', tbl: 'emp', col: 'id', pos: 1 },
+          { cn: 'fk_dept', tbl: 'emp', col: 'dept_id', pos: 1, rtbl: 'dept', rcol: 'id' },
+        ],
+      ],
+      [/REFERENTIAL_CONSTRAINTS/, [{ cn: 'fk_dept', dr: 'CASCADE' }]],
+      [
+        /TABLE_CONSTRAINTS/,
+        [
+          { cn: 'PRIMARY', tbl: 'emp', ct: 'PRIMARY KEY' },
+          { cn: 'fk_dept', tbl: 'emp', ct: 'FOREIGN KEY' },
+        ],
+      ],
+      [
+        /FROM information_schema\.STATISTICS/,
+        [{ idx: 'ix_name', tbl: 'emp', col: 'name', nu: 1, pos: 1 }],
+      ],
+    ])
+    const si = await readSchema(exec, DbDialect.MySQL, 'app')
+    const emp = si.tables[0]
+    expect(emp.columns.map((c) => c.dataType)).toEqual(['int(11)', 'int(11)', 'varchar(50)'])
+    expect(emp.primaryKey).toEqual(['id'])
+    expect(emp.comment).toBe('员工')
+    expect((si.foreignKeys ?? [])[0]).toMatchObject({
+      name: 'fk_dept',
+      refTable: 'dept',
+      refColumns: ['id'],
+      onDelete: 'CASCADE',
+    })
+    expect((si.indexes ?? [])[0]).toMatchObject({
+      name: 'ix_name',
+      columns: ['name'],
+      unique: false,
+    })
+  })
+})
+
+describe('SQL Server reader (mock INFORMATION_SCHEMA)', () => {
+  it('reads columns + PK + FK with reconstructed types', async () => {
+    const exec = mockExec([
+      [
+        /INFORMATION_SCHEMA\.COLUMNS/,
+        [
+          { tbl: 'Emp', col: 'Id', data_type: 'int', nullable: 'NO' },
+          {
+            tbl: 'Emp',
+            col: 'Name',
+            data_type: 'nvarchar',
+            character_maximum_length: 100,
+            nullable: 'YES',
+          },
+          {
+            tbl: 'Emp',
+            col: 'Bio',
+            data_type: 'nvarchar',
+            character_maximum_length: -1,
+            nullable: 'YES',
+          },
+          {
+            tbl: 'Emp',
+            col: 'Pay',
+            data_type: 'decimal',
+            numeric_precision: 12,
+            numeric_scale: 2,
+            nullable: 'YES',
+          },
+        ],
+      ],
+      [/KEY_COLUMN_USAGE/, [{ cn: 'PK_Emp', tbl: 'Emp', col: 'Id', pos: 1 }]],
+      [/REFERENTIAL_CONSTRAINTS/, []],
+      [/TABLE_CONSTRAINTS/, [{ cn: 'PK_Emp', tbl: 'Emp', ct: 'PRIMARY KEY' }]],
+    ])
+    const si = await readSchema(exec, DbDialect.SqlServer, 'dbo')
+    const emp = si.tables[0]
+    expect(emp.columns.map((c) => c.dataType)).toEqual([
+      'int',
+      'nvarchar(100)',
+      'nvarchar(max)',
+      'decimal(12,2)',
+    ])
+    expect(emp.primaryKey).toEqual(['Id'])
   })
 })

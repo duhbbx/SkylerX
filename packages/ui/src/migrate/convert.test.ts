@@ -245,3 +245,31 @@ describe('PG source parser (parsePgType via convertType)', () => {
     expect(convertType('double precision', PG, DbDialect.MySQL).sql).toBe('DOUBLE')
   })
 })
+
+describe('MySQL / SQL Server source parsers (去 MySQL / 去 SQL Server)', () => {
+  const MY = DbDialect.MySQL
+  const SS = DbDialect.SqlServer
+  it('MySQL native types → Vastbase', () => {
+    expect(convertType('varchar(50)', MY, V).sql).toBe('varchar(50)')
+    expect(convertType('int(11)', MY, V).sql).toBe('integer')
+    expect(convertType('bigint(20) unsigned', MY, V).sql).toBe('bigint')
+    expect(convertType('tinyint(1)', MY, V).sql).toBe('boolean')
+    expect(convertType('decimal(10,2)', MY, V).sql).toBe('numeric(10,2)')
+    expect(convertType('datetime', MY, V).sql).toBe('timestamp')
+    expect(convertType('longtext', MY, V).sql).toBe('text')
+    expect(convertType('json', MY, V).sql).toBe('jsonb')
+  })
+  it('SQL Server native types → Vastbase', () => {
+    expect(convertType('nvarchar(100)', SS, V).sql).toBe('varchar(100)')
+    expect(convertType('nvarchar(max)', SS, V).sql).toBe('text')
+    expect(convertType('int', SS, V).sql).toBe('integer')
+    expect(convertType('bit', SS, V).sql).toBe('boolean')
+    expect(convertType('datetime2', SS, V).sql).toBe('timestamp')
+    expect(convertType('uniqueidentifier', SS, V).sql).toBe('uuid')
+    expect(convertType('money', SS, V).sql).toBe('numeric(19,4)')
+  })
+  it('hasStructuralPath: MySQL/SQLServer as source to a domestic target', () => {
+    expect(hasStructuralPath(MY, V)).toBe(true)
+    expect(hasStructuralPath(SS, DbDialect.DM)).toBe(true)
+  })
+})
