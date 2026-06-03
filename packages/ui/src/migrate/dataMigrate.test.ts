@@ -18,6 +18,8 @@ import {
   parseColumnStats,
   placeholder,
   reconcile,
+  runPool,
+  supportsConflictSkip,
   valueLiteral,
 } from './dataMigrate'
 
@@ -185,5 +187,41 @@ describe('parameterized insert', () => {
   it('chunkRows splits to bound statement size', () => {
     expect(chunkRows([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]])
     expect(chunkRows([], 2)).toEqual([])
+  })
+})
+
+describe('incremental + parallel', () => {
+  it('onConflict → PG ON CONFLICT DO NOTHING', () => {
+    const { sql } = buildInsertParams(V, 'hr', 'emp', ['id', 'name'], [{ id: 1, name: 'a' }], {
+      onConflict: ['id'],
+    })
+    expect(sql).toContain('ON CONFLICT ("id") DO NOTHING')
+  })
+  it('onConflict → MySQL INSERT IGNORE', () => {
+    const { sql } = buildInsertParams(MY, 'app', 't', ['id'], [{ id: 1 }], { onConflict: ['id'] })
+    expect(sql.startsWith('INSERT IGNORE INTO')).toBe(true)
+  })
+  it('onConflict ignored for Oracle (no equivalent)', () => {
+    const { sql } = buildInsertParams(O, 'HR', 'T', ['ID'], [{ ID: 1 }], { onConflict: ['ID'] })
+    expect(sql).not.toMatch(/CONFLICT|IGNORE/)
+  })
+  it('supportsConflictSkip', () => {
+    expect(supportsConflictSkip(V)).toBe(true)
+    expect(supportsConflictSkip(MY)).toBe(true)
+    expect(supportsConflictSkip(O)).toBe(false)
+  })
+  it('runPool runs all items with bounded concurrency', async () => {
+    const done: number[] = []
+    let active = 0
+    let maxActive = 0
+    await runPool([1, 2, 3, 4, 5], 2, async (x) => {
+      active++
+      maxActive = Math.max(maxActive, active)
+      await new Promise((r) => setTimeout(r, 5))
+      active--
+      done.push(x)
+    })
+    expect(done.sort()).toEqual([1, 2, 3, 4, 5])
+    expect(maxActive).toBeLessThanOrEqual(2)
   })
 })

@@ -141,6 +141,7 @@ export function buildInsertParams(
   table: string,
   cols: string[],
   rows: Array<Record<string, unknown>>,
+  opts: { onConflict?: string[] } = {},
 ): { sql: string; params: unknown[] } {
   const fam = familyOf(target)
   const r = ref(schema, table, fam)
@@ -155,7 +156,49 @@ export function buildInsertParams(
         })
         .join(', ')})`,
   )
-  return { sql: `INSERT INTO ${r} (${colList}) VALUES ${tuples.join(', ')}`, params }
+  // 增量/可重复跑:主键冲突跳过(PG ON CONFLICT / MySQL INSERT IGNORE);Oracle/DM 无直接对应,退化为普通 INSERT
+  const oc = opts.onConflict
+  if (oc?.length && fam === 'mysql') {
+    return { sql: `INSERT IGNORE INTO ${r} (${colList}) VALUES ${tuples.join(', ')}`, params }
+  }
+  let tail = ''
+  if (oc?.length && fam === 'pg') {
+    tail = ` ON CONFLICT (${oc.map((c) => qid(c, fam)).join(', ')}) DO NOTHING`
+  }
+  return { sql: `INSERT INTO ${r} (${colList}) VALUES ${tuples.join(', ')}${tail}`, params }
+}
+
+/** 该目标方言是否支持「冲突跳过」式增量(PG ON CONFLICT / MySQL INSERT IGNORE)。 */
+export function supportsConflictSkip(target: DbDialect): boolean {
+  const fam = familyOf(target)
+  return fam === 'pg' || fam === 'mysql'
+}
+
+/**
+ * 限并发跑一批任务(并行搬表用)。worker 抛错不中断整体(吞掉,由 worker 自己记状态)。
+ * signal 中断后不再领新任务。
+ */
+export async function runPool<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
+  let next = 0
+  const n = Math.max(1, Math.min(concurrency, items.length))
+  const runners = Array.from({ length: n }, async () => {
+    for (;;) {
+      if (signal?.aborted) return
+      const i = next++
+      if (i >= items.length) return
+      try {
+        await worker(items[i], i)
+      } catch {
+        /* worker 自行记错;不让单表失败拖垮整池 */
+      }
+    }
+  })
+  await Promise.all(runners)
 }
 
 /** 一条 INSERT 最多放几行:PG 受 65535 参数上限约束,其余保守限包大小。 */

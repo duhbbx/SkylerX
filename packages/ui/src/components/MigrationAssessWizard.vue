@@ -17,7 +17,12 @@
  * 逻辑全在 ../migrate/*(已单测 + 活库验证);本组件只做编排 + 展示。
  * 集成:父组件 ref 本组件,调 open();不直接挂菜单。
  */
-import { type ConnectionConfig, MetaNodeKind, type MetadataNode } from '@db-tool/shared-types'
+import {
+  type ConnectionConfig,
+  type DbDialect,
+  MetaNodeKind,
+  type MetadataNode,
+} from '@db-tool/shared-types'
 import { computed, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { formatBytes, objectDdlQuery } from '../ddl'
@@ -39,6 +44,8 @@ import {
   maxRowsPerInsert,
   parseColumnStats,
   reconcile,
+  runPool,
+  supportsConflictSkip,
 } from '../migrate/dataMigrate'
 import { buildExcel, buildHtmlDoc, openPrintWindow } from '../migrate/export'
 import { canIntrospect, readSchema } from '../migrate/introspect'
@@ -51,6 +58,7 @@ import {
   newJobId,
   saveJob,
 } from '../migrate/jobStore'
+import { type PreflightIssue, checkTable, summarize } from '../migrate/preflight'
 import {
   CATEGORY_LABEL,
   type DatabaseInfo,
@@ -524,9 +532,77 @@ const canMigrate = computed(() => !!srcDialect.value && canIntrospect(srcDialect
 const schemaRemap = ref<Record<string, string>>({})
 const targetSchemaOf = (s: string): string => schemaRemap.value[s]?.trim() || s
 
+// 并发 / 增量 / 预检
+const migConcurrency = ref(4)
+const migIncremental = ref(false)
+const incrementalUsable = computed(
+  () => !!tgtDialect.value && supportsConflictSkip(tgtDialect.value),
+)
+const preflighting = ref(false)
+const preflightIssues = ref<PreflightIssue[]>([])
+const preflightDone = ref(false)
+const preflightSummary = computed(() => summarize(preflightIssues.value))
+
+/** 开搬前预检:目标表存在 / 列齐 / 主键 / 目标非空。 */
+async function runPreflight(): Promise<void> {
+  const tgt = tgtDialect.value
+  if (!tgt || !migTables.value.length) return
+  preflighting.value = true
+  try {
+    const tgtExec = (sql: string): Promise<Array<Record<string, unknown>>> =>
+      client.connections.execute(tgtConnId.value, sql).then((r) => r.rows)
+    const bySchema = new Map<string, MigTable[]>()
+    for (const t of migTables.value.filter((x) => x.sel)) {
+      const ts = targetSchemaOf(t.schema)
+      if (!bySchema.has(ts)) bySchema.set(ts, [])
+      bySchema.get(ts)?.push(t)
+    }
+    const issues: PreflightIssue[] = []
+    for (const [ts, tables] of bySchema) {
+      const si = canIntrospect(tgt)
+        ? await readSchema(tgtExec, tgt, ts)
+        : { tables: [] as { name: string; columns: { name: string }[] }[] }
+      const tmap = new Map(
+        si.tables.map((x) => [x.name.toLowerCase(), x.columns.map((c) => c.name)]),
+      )
+      for (const t of tables) {
+        const cols = tmap.get(t.name.toLowerCase())
+        let rowCount = 0
+        if (cols) {
+          try {
+            rowCount = Number((await tgtExec(buildCount(tgt, ts, t.name)))[0]?.n ?? 0)
+          } catch {
+            /* 行数取不到不致命 */
+          }
+        }
+        issues.push(
+          ...checkTable(
+            { schema: t.schema, name: t.name, columns: t.columns, pk: t.pk },
+            { exists: !!cols, columns: cols ?? [], rowCount },
+          ),
+        )
+      }
+    }
+    preflightIssues.value = issues
+    preflightDone.value = true
+    const s = summarize(issues)
+    toast.info(
+      s.ok
+        ? L(`预检通过(${s.warns} 提醒)`, `Pre-flight ok (${s.warns} warnings)`)
+        : L(`预检发现 ${s.errors} 个阻断问题`, `Pre-flight: ${s.errors} blocking issues`),
+    )
+  } catch (e) {
+    reportError(e, { tag: 'mig.preflight' })
+  } finally {
+    preflighting.value = false
+  }
+}
+
 /** 读所选 schema 的表 + 列 + 主键,作为搬运清单。 */
 async function prepareMigration(): Promise<void> {
   if (!srcDialect.value) return
+  preflightDone.value = false
+  preflightIssues.value = []
   migPreparing.value = true
   try {
     const out: MigTable[] = []
@@ -556,79 +632,81 @@ async function prepareMigration(): Promise<void> {
 const rows1 = (sql: string, connId: string): Promise<Array<Record<string, unknown>>> =>
   client.connections.execute(connId, sql).then((r) => r.rows)
 
-/** 逐表分块搬运 + 行/列对账;已 done 的跳过(断点续)。 */
+/** 搬一张表 + 行/列对账。失败记到 t.detail,不抛(让并发池继续别的表)。 */
+async function migrateOneTable(t: MigTable, src: DbDialect, tgt: DbDialect): Promise<void> {
+  if (migAbort?.signal.aborted) return
+  t.status = 'running'
+  t.copied = 0
+  t.detail = undefined
+  const orderBy = t.pk.length ? t.pk : t.columns.slice(0, 1)
+  const tSchema = targetSchemaOf(t.schema)
+  const perStmt = maxRowsPerInsert(tgt, t.columns.length)
+  // 增量:目标支持冲突跳过 + 有主键时,主键冲突 DO NOTHING(可重复跑、追平)
+  const onConflict =
+    migIncremental.value && supportsConflictSkip(tgt) && t.pk.length ? t.pk : undefined
+  try {
+    const res = await copyTable(
+      (offset, limit) =>
+        rows1(buildPagedSelect(src, t.schema, t.name, orderBy, offset, limit), srcConnId.value),
+      async (batch) => {
+        for (const sub of chunkRows(batch, perStmt)) {
+          const { sql, params } = buildInsertParams(tgt, tSchema, t.name, t.columns, sub, {
+            onConflict,
+          })
+          await client.connections.execute(tgtConnId.value, sql, params)
+        }
+      },
+      {
+        batchSize: migBatchSize.value,
+        signal: migAbort?.signal,
+        onProgress: (p) => {
+          t.copied = p.copied
+        },
+      },
+    )
+    if (res.aborted) {
+      t.status = 'pending'
+      return
+    }
+    const sc = Number((await rows1(buildCount(src, t.schema, t.name), srcConnId.value))[0]?.n ?? 0)
+    const tc = Number((await rows1(buildCount(tgt, tSchema, t.name), tgtConnId.value))[0]?.n ?? 0)
+    // 增量模式目标行数可能 ≥ 源(已有数据),只在全量模式严格对账
+    t.rowsOk = onConflict ? tc >= sc : reconcile(sc, tc).ok
+    if (migDeepCheck.value && t.pk.length) {
+      const ss = parseColumnStats(
+        (await rows1(buildColumnStats(src, t.schema, t.name, t.pk), srcConnId.value))[0] ?? {},
+        t.pk,
+      )
+      const ts = parseColumnStats(
+        (await rows1(buildColumnStats(tgt, tSchema, t.name, t.pk), tgtConnId.value))[0] ?? {},
+        t.pk,
+      )
+      const cmp = compareColumnStats(ss, ts)
+      t.colsOk = cmp.ok
+      if (!cmp.ok)
+        t.detail = cmp.diffs
+          .filter((d) => !d.ok)
+          .map((d) => `${d.column}: ${d.detail}`)
+          .join('; ')
+    }
+    t.status = 'done'
+  } catch (e) {
+    t.status = 'error'
+    t.detail = e instanceof Error ? e.message : String(e)
+  }
+  persistJob() // 每表落一次盘 → 关窗口也能续
+}
+
+/** 并发搬运所选表(限并发);已 done 的跳过(断点续)。 */
 async function runMigration(): Promise<void> {
   const src = srcDialect.value
   const tgt = tgtDialect.value
   if (!src || !tgt) return
+  const todo = migTables.value.filter((t) => t.sel && t.status !== 'done')
   migAbort = new AbortController()
   migrating.value = true
   try {
-    for (const t of migTables.value) {
-      if (migAbort.signal.aborted) break
-      if (!t.sel || t.status === 'done') continue
-      t.status = 'running'
-      t.copied = 0
-      t.detail = undefined
-      const orderBy = t.pk.length ? t.pk : t.columns.slice(0, 1)
-      const tSchema = targetSchemaOf(t.schema) // 跨 schema 改名
-      const perStmt = maxRowsPerInsert(tgt, t.columns.length)
-      try {
-        const res = await copyTable(
-          (offset, limit) =>
-            rows1(buildPagedSelect(src, t.schema, t.name, orderBy, offset, limit), srcConnId.value),
-          async (batch) => {
-            // 参数化写入(驱动绑定值,二进制/大文本/特殊字符安全)+ 按参数上限切分
-            for (const sub of chunkRows(batch, perStmt)) {
-              const { sql, params } = buildInsertParams(tgt, tSchema, t.name, t.columns, sub)
-              await client.connections.execute(tgtConnId.value, sql, params)
-            }
-          },
-          {
-            batchSize: migBatchSize.value,
-            signal: migAbort.signal,
-            onProgress: (p) => {
-              t.copied = p.copied
-            },
-          },
-        )
-        if (res.aborted) {
-          t.status = 'pending'
-          break
-        }
-        // 行数对账(源用源 schema,目标用改名后的 schema)
-        const sc = Number(
-          (await rows1(buildCount(src, t.schema, t.name), srcConnId.value))[0]?.n ?? 0,
-        )
-        const tc = Number(
-          (await rows1(buildCount(tgt, tSchema, t.name), tgtConnId.value))[0]?.n ?? 0,
-        )
-        t.rowsOk = reconcile(sc, tc).ok
-        // 列级对账(主键列;无主键跳过)
-        if (migDeepCheck.value && t.pk.length) {
-          const ss = parseColumnStats(
-            (await rows1(buildColumnStats(src, t.schema, t.name, t.pk), srcConnId.value))[0] ?? {},
-            t.pk,
-          )
-          const ts = parseColumnStats(
-            (await rows1(buildColumnStats(tgt, tSchema, t.name, t.pk), tgtConnId.value))[0] ?? {},
-            t.pk,
-          )
-          const cmp = compareColumnStats(ss, ts)
-          t.colsOk = cmp.ok
-          if (!cmp.ok)
-            t.detail = cmp.diffs
-              .filter((d) => !d.ok)
-              .map((d) => `${d.column}: ${d.detail}`)
-              .join('; ')
-        }
-        t.status = 'done'
-      } catch (e) {
-        t.status = 'error'
-        t.detail = e instanceof Error ? e.message : String(e)
-      }
-      persistJob() // 每表落一次盘 → 关窗口也能续
-    }
+    await runPool(todo, migConcurrency.value, (t) => migrateOneTable(t, src, tgt), migAbort.signal)
     if (migTables.value.some((t) => t.sel && t.status === 'done')) {
       toast.success(L('数据迁移完成', 'Data migration done'))
     }
@@ -1006,16 +1084,39 @@ defineExpose({ open: openWizard })
           <button class="primary" :disabled="migPreparing || !canMigrate" @click="prepareMigration">
             {{ migPreparing ? '…' : L('准备表清单', 'Prepare tables') }}
           </button>
-          <button v-if="migTables.length && !migrating" class="danger" @click="runMigration">
+          <button v-if="migTables.length && !migrating" :disabled="preflighting" @click="runPreflight">
+            {{ preflighting ? '…' : L('预检', 'Pre-flight') }}
+          </button>
+          <button
+            v-if="migTables.length && !migrating"
+            class="danger"
+            :disabled="preflightDone && !preflightSummary.ok"
+            @click="runMigration"
+          >
             {{ migDone ? L('继续迁移', 'Resume') : L('开始数据迁移', 'Start migration') }}
           </button>
           <button v-if="migrating" @click="cancelMigration">{{ L('取消', 'Cancel') }}</button>
           <label class="chk">{{ L('每批', 'batch') }}
             <input type="number" v-model.number="migBatchSize" min="100" step="100" style="width: 72px" />
           </label>
+          <label class="chk">{{ L('并发', 'parallel') }}
+            <input type="number" v-model.number="migConcurrency" min="1" max="16" style="width: 56px" />
+          </label>
           <label class="chk"><input type="checkbox" v-model="migDeepCheck" />{{ L('主键列对账', 'PK column check') }}</label>
+          <label class="chk" :title="incrementalUsable ? '' : L('目标库不支持冲突跳过', 'target lacks conflict-skip')">
+            <input type="checkbox" v-model="migIncremental" :disabled="!incrementalUsable" />{{ L('增量(冲突跳过,可重复跑)', 'Incremental (skip conflicts)') }}
+          </label>
           <span v-if="migTables.length" class="note">{{ migDone }}/{{ migTables.length }} {{ L('表完成', 'done') }}</span>
           <span v-if="!canMigrate" class="note">{{ L('该源方言暂不支持结构读取', 'introspection not supported for this source') }}</span>
+        </div>
+        <div v-if="preflightDone" :class="['apply-res', preflightSummary.ok ? 'ok' : 'bad']">
+          <template v-if="!preflightIssues.length">✅ {{ L('预检全部通过', 'Pre-flight all clear') }}</template>
+          <template v-else>
+            {{ preflightSummary.ok ? '⚠️' : '❌' }} {{ preflightSummary.errors }} {{ L('阻断', 'errors') }} · {{ preflightSummary.warns }} {{ L('提醒', 'warnings') }}
+            <div v-for="(iss, i) in preflightIssues.slice(0, 20)" :key="i" class="mdetail">
+              {{ iss.level === 'error' ? '❌' : '⚠️' }} {{ iss.table }}:{{ iss.msg }}
+            </div>
+          </template>
         </div>
         <table v-if="migTables.length" class="tbl scroll">
           <thead><tr>
