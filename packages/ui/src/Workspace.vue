@@ -41,6 +41,7 @@ import ImportDialog from './components/ImportDialog.vue'
 import IndexRecommenderDialog from './components/IndexRecommenderDialog.vue'
 import KeyBindingsDialog from './components/KeyBindingsDialog.vue'
 import LineageDialog from './components/LineageDialog.vue'
+import MigrationAssessWizard from './components/MigrationAssessWizard.vue'
 import MockDataDialog from './components/MockDataDialog.vue'
 import Modal from './components/Modal.vue'
 import MongoAggregationDialog from './components/MongoAggregationDialog.vue'
@@ -56,7 +57,6 @@ import NotificationSettingsDialog from './components/NotificationSettingsDialog.
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
 import OperationLogDialog from './components/OperationLogDialog.vue'
-import MigrationAssessWizard from './components/MigrationAssessWizard.vue'
 import OracleToDmWizard from './components/OracleToDmWizard.vue'
 import PasteImportDialog from './components/PasteImportDialog.vue'
 import PgAdvancedDialog from './components/PgAdvancedDialog.vue'
@@ -82,6 +82,7 @@ import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import SlowQueryDialog from './components/SlowQueryDialog.vue'
 import SqlTranslateDialog from './components/SqlTranslateDialog.vue'
+import StorageCapacityDialog from './components/StorageCapacityDialog.vue'
 import VisualQueryDialog from './components/VisualQueryDialog.vue'
 import WorkspaceExportDialog from './components/WorkspaceExportDialog.vue'
 import type { TreeNode } from './components/treeNode'
@@ -645,6 +646,11 @@ const slowOpen = ref<{ conn: ConnectionConfig } | null>(null)
 async function openSlowQuery(connId: string): Promise<void> {
   const conn = await client.connections.get(connId)
   slowOpen.value = { conn }
+}
+const storageOpen = ref<{ conn: ConnectionConfig } | null>(null)
+async function openStorageTrend(connId: string): Promise<void> {
+  const conn = await client.connections.get(connId)
+  storageOpen.value = { conn }
 }
 function onSlowOpenSql(connId: string, sql: string): void {
   void (async () => {
@@ -2635,6 +2641,12 @@ const paletteItems = computed<PaletteItem[]>(() => [
     label: `${t('slowq.title')} · ${c.name || c.dialect}`,
     group: t('pal.groupActions'),
   })),
+  // 存储容量趋势 + 预测（按连接）
+  ...paletteConns.value.map((c) => ({
+    id: `act:capacity:${c.id}`,
+    label: `${t('capacity.title')} · ${c.name || c.dialect}`,
+    group: t('pal.groupActions'),
+  })),
   // 等保 2.0 合规检查（按连接）
   ...paletteConns.value.map((c) => ({
     id: `act:compliance:${c.id}`,
@@ -2731,6 +2743,8 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id.startsWith('act:slowq:')) {
     const cid = item.id.slice('act:slowq:'.length)
     void openSlowQuery(cid)
+  } else if (item.id.startsWith('act:capacity:')) {
+    void openStorageTrend(item.id.slice('act:capacity:'.length))
   } else if (item.id.startsWith('act:compliance:')) {
     const cid = item.id.slice('act:compliance:'.length)
     void openCompliance(cid)
@@ -3437,6 +3451,14 @@ onMounted(async () => {
     :open="true"
     @close="slowOpen = null"
     @open-sql="onSlowOpenSql"
+  />
+
+  <!-- 存储容量趋势 + 预测（按连接） -->
+  <StorageCapacityDialog
+    v-if="storageOpen"
+    :conn="storageOpen.conn"
+    :open="true"
+    @close="storageOpen = null"
   />
 
   <!-- #6 可视化查询构建器 -->
