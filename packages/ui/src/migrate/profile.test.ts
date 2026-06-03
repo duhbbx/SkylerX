@@ -174,3 +174,100 @@ describe('profileSource orchestration', () => {
     expect(res.totals.objects).toBe(0)
   })
 })
+
+describe('mysqlProfiler.profileSchema (mock exec)', () => {
+  it('inventories objects + metrics from information_schema', async () => {
+    const p = profilerFor(DbDialect.MySQL)!
+    const exec = mockExec([
+      [
+        /GROUP BY TABLE_TYPE/,
+        [
+          { t: 'BASE TABLE', cnt: 3 },
+          { t: 'VIEW', cnt: 1 },
+        ],
+      ],
+      [
+        /GROUP BY ROUTINE_TYPE/,
+        [
+          { t: 'PROCEDURE', cnt: 2 },
+          { t: 'FUNCTION', cnt: 1 },
+        ],
+      ],
+      [
+        /GROUP BY CONSTRAINT_TYPE/,
+        [
+          { t: 'PRIMARY KEY', cnt: 2 },
+          { t: 'FOREIGN KEY', cnt: 1 },
+          { t: 'UNIQUE', cnt: 1 },
+        ],
+      ],
+      [/FROM information_schema\.TRIGGERS/, [{ cnt: 2, tbls: 1 }]],
+      [/information_schema\.STATISTICS/, [{ cnt: 4 }]],
+      [/information_schema\.PARTITIONS/, [{ cnt: 1 }]],
+      [
+        /TABLE_TYPE = 'BASE TABLE'\s*$/m,
+        [
+          { name: 'big', rows: 2e6, bytes: 500 },
+          { name: 'small', rows: 10, bytes: 50 },
+        ],
+      ],
+      [/DATA_TYPE IN \('text'/, [{ cnt: 5 }]],
+      [/TABLE_COMMENT <> ''/, [{ cnt: 2 }]],
+    ])
+    const prof = await p.profileSchema(exec, undefined, 'app')
+    expect(prof.inventory).toMatchObject({
+      tables: 3,
+      views: 1,
+      procedures: 2,
+      functions: 1,
+      primaryKeys: 2,
+      foreignKeys: 1,
+      uniqueConstraints: 1,
+      triggers: 2,
+      indexes: 4,
+      partitionedTables: 1,
+    })
+    expect(prof.metrics.tablesWithoutPk).toBe(1) // 3 tables - 2 PK
+    expect(prof.metrics.lobColumns).toBe(5)
+    expect(prof.metrics.tablesWithTriggers).toBe(1)
+    expect(prof.rowBuckets.over1M).toBe(1)
+  })
+})
+
+describe('sqlServerProfiler.profileSchema (mock exec)', () => {
+  it('inventories objects from sys.objects', async () => {
+    const p = profilerFor(DbDialect.SqlServer)!
+    const exec = mockExec([
+      [
+        /GROUP BY o\.type/,
+        [
+          { t: 'U', cnt: 4 },
+          { t: 'V', cnt: 2 },
+          { t: 'P', cnt: 3 },
+          { t: 'FN', cnt: 1 },
+          { t: 'TR', cnt: 1 },
+          { t: 'PK', cnt: 3 },
+          { t: 'F', cnt: 2 },
+        ],
+      ],
+      [/FROM sys\.indexes/, [{ cnt: 5 }]],
+      [/sys\.dm_db_partition_stats/, [{ name: 'T1', rows: 5e7, bytes: 9000 }]],
+      [/DATA_TYPE IN \('text'/, [{ cnt: 3 }]],
+      [/FROM sys\.triggers/, [{ cnt: 1 }]],
+    ])
+    const prof = await p.profileSchema(exec, undefined, 'dbo')
+    expect(prof.inventory).toMatchObject({
+      tables: 4,
+      views: 2,
+      procedures: 3,
+      functions: 1,
+      triggers: 1,
+      primaryKeys: 3,
+      foreignKeys: 2,
+      indexes: 5,
+    })
+    expect(prof.metrics.tablesWithoutPk).toBe(1) // 4 - 3
+    expect(prof.metrics.tablesWithComment).toBe(null)
+    expect(prof.rowBuckets.over10M).toBe(1)
+  })
+})

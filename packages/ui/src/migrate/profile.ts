@@ -186,12 +186,16 @@ export function inventoryTotal(inv: ObjectInventory): number {
 }
 
 // ── 注册表(按 family)+ 编排 ──────────────────────────────────────
+import { mysqlProfiler } from './profilers/mysql'
 import { oracleProfiler } from './profilers/oracle'
 import { postgresProfiler } from './profilers/postgres'
+import { sqlServerProfiler } from './profilers/sqlserver'
 
 const PROFILERS: Partial<Record<ReturnType<typeof familyOf>, SourceProfiler>> = {
   oracle: oracleProfiler, // Oracle / DM
   pg: postgresProfiler, // openGauss / Vastbase / PostgreSQL …
+  mysql: mysqlProfiler, // MySQL / OceanBase / TiDB / GBase …
+  sqlserver: sqlServerProfiler, // SQL Server
 }
 
 export function profilerFor(dialect: DbDialect): SourceProfiler | null {
