@@ -45,6 +45,7 @@ import { pluginBuiltinSnippets } from '../plugins'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
 import { lintStatements } from '../sqlLint'
+import { loadCustomRules } from '../sqlLintCustom'
 import { splitStatements } from '../sqlSplit'
 import HistoryPanel from './HistoryPanel.vue'
 import Modal from './Modal.vue'
@@ -956,7 +957,11 @@ async function execSql(text: string): Promise<void> {
   }
   // SQL Linter：error → 弹确认；warn → toast；info → 静默（仅在 console 里留痕，方便调试）
   // 跑在 dangerOf 之前，避免「无 WHERE」这种规则与 prod 强确认双弹（lintError 命中时直接 return）。
-  const findings = lintStatements(statements, { connEnv: env, isReadOnly: readOnly })
+  const findings = lintStatements(statements, {
+    connEnv: env,
+    isReadOnly: readOnly,
+    customRules: loadCustomRules(),
+  })
   const lintErrors = findings.filter((f) => f.severity === 'error')
   if (lintErrors.length) {
     const ok = await appConfirm({

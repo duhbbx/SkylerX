@@ -15,6 +15,7 @@
  *  规则尽量便宜：纯 regex/字符串扫，避免在执行热路径上拖慢用户。
  */
 import type { ConnectionEnv } from '@db-tool/shared-types'
+import { type CustomLintRule, lintCustom } from './sqlLintCustom'
 
 export type LintSeverity = 'error' | 'warn' | 'info'
 
@@ -29,6 +30,8 @@ export interface LintContext {
   connEnv?: ConnectionEnv
   /** 整连接只读：只读连接由 isReadOnlyStatement 拦截写语句，本 linter 不再重复判 */
   isReadOnly?: boolean
+  /** 用户自定义正则规则（在内置规则之外一起跑）。 */
+  customRules?: CustomLintRule[]
 }
 
 interface Rule {
@@ -146,6 +149,8 @@ export function lintSql(sql: string, ctx: LintContext): LintFinding[] {
     const msg = r.match(sql, ctx)
     if (msg) out.push({ id: r.id, severity: r.severity, message: msg })
   }
+  // 用户自定义正则规则(可选)
+  if (ctx.customRules?.length) out.push(...lintCustom(sql, ctx.customRules))
   return out
 }
 

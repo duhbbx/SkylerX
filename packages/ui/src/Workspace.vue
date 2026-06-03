@@ -41,6 +41,7 @@ import ImportDialog from './components/ImportDialog.vue'
 import IndexRecommenderDialog from './components/IndexRecommenderDialog.vue'
 import KeyBindingsDialog from './components/KeyBindingsDialog.vue'
 import LineageDialog from './components/LineageDialog.vue'
+import LintRulesDialog from './components/LintRulesDialog.vue'
 import MigrationAssessWizard from './components/MigrationAssessWizard.vue'
 import MockDataDialog from './components/MockDataDialog.vue'
 import Modal from './components/Modal.vue'
@@ -2037,6 +2038,7 @@ const translateOpen = ref<{ initialSql?: string } | null>(null)
 const notifOpen = ref(false)
 /** K1 自定义快捷键 */
 const keybindOpen = ref(false)
+const lintRulesOpen = ref(false)
 /** D6 Schema 漂移检测（全局，对话框内自己选 2 个连接） */
 const driftOpen = ref(false)
 /** A3+B5+B6+B9+B10 数据检查器 */
@@ -2685,6 +2687,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:notif', label: t('pal.notif'), group: t('pal.groupActions') },
   // K1 自定义快捷键
   { id: 'act:keybind', label: t('pal.keybind'), group: t('pal.groupActions') },
+  { id: 'act:lint-rules', label: t('lintrules.title'), group: t('pal.groupActions') },
   // D6 Schema 漂移检测
   { id: 'act:drift', label: t('pal.drift'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
@@ -2764,6 +2767,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   } else if (item.id === 'act:translate') translateOpen.value = {}
   else if (item.id === 'act:notif') notifOpen.value = true
   else if (item.id === 'act:keybind') keybindOpen.value = true
+  else if (item.id === 'act:lint-rules') lintRulesOpen.value = true
   else if (item.id === 'act:drift') driftOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
@@ -3826,6 +3830,7 @@ onMounted(async () => {
 
   <!-- K1 自定义快捷键 -->
   <KeyBindingsDialog v-if="keybindOpen" @close="keybindOpen = false" />
+  <LintRulesDialog v-if="lintRulesOpen" :open="true" @close="lintRulesOpen = false" />
 
   <!-- D6 Schema 漂移检测（内部自己选连接） -->
   <SchemaDriftDialog v-if="driftOpen" @close="driftOpen = false" />
