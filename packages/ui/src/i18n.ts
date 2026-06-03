@@ -1673,6 +1673,7 @@ const DICT: Record<string, [string, string]> = {
   'capacity.title': ['存储容量趋势', 'Storage capacity trend'],
   'lintrules.title': ['SQL Linter 自定义规则', 'Custom SQL lint rules'],
   'sqllineage.title': ['SQL 血缘图', 'SQL lineage graph'],
+  'notebook.title': ['Notebook 笔记本', 'Notebook'],
   'ctx.migrate-assess': ['🧭 信创迁移评估…', '🧭 Migration assessment…'],
   'o2dm.step.conn': ['连接', 'Connections'],
   'o2dm.step.pick': ['对象', 'Objects'],

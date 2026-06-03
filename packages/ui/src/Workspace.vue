@@ -54,6 +54,7 @@ import NavTree from './components/NavTree.vue'
 import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
 import NewDatabaseDialog from './components/NewDatabaseDialog.vue'
 import NewSchemaDialog from './components/NewSchemaDialog.vue'
+import NotebookDialog from './components/NotebookDialog.vue'
 import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
@@ -2041,6 +2042,7 @@ const notifOpen = ref(false)
 const keybindOpen = ref(false)
 const lintRulesOpen = ref(false)
 const sqlLineageOpen = ref(false)
+const notebookOpen = ref(false)
 /** D6 Schema 漂移检测（全局，对话框内自己选 2 个连接） */
 const driftOpen = ref(false)
 /** A3+B5+B6+B9+B10 数据检查器 */
@@ -2691,6 +2693,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:keybind', label: t('pal.keybind'), group: t('pal.groupActions') },
   { id: 'act:lint-rules', label: t('lintrules.title'), group: t('pal.groupActions') },
   { id: 'act:sql-lineage', label: t('sqllineage.title'), group: t('pal.groupActions') },
+  { id: 'act:notebook', label: t('notebook.title'), group: t('pal.groupActions') },
   // D6 Schema 漂移检测
   { id: 'act:drift', label: t('pal.drift'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
@@ -2772,6 +2775,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:keybind') keybindOpen.value = true
   else if (item.id === 'act:lint-rules') lintRulesOpen.value = true
   else if (item.id === 'act:sql-lineage') sqlLineageOpen.value = true
+  else if (item.id === 'act:notebook') notebookOpen.value = true
   else if (item.id === 'act:drift') driftOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
@@ -3836,6 +3840,7 @@ onMounted(async () => {
   <KeyBindingsDialog v-if="keybindOpen" @close="keybindOpen = false" />
   <LintRulesDialog v-if="lintRulesOpen" :open="true" @close="lintRulesOpen = false" />
   <SqlLineageDialog v-if="sqlLineageOpen" :open="true" @close="sqlLineageOpen = false" />
+  <NotebookDialog v-if="notebookOpen" :open="true" @close="notebookOpen = false" />
 
   <!-- D6 Schema 漂移检测（内部自己选连接） -->
   <SchemaDriftDialog v-if="driftOpen" @close="driftOpen = false" />
