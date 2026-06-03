@@ -23,6 +23,10 @@ export interface SchemaReader {
 }
 
 const str = (v: unknown): string => (v == null ? '' : String(v))
+const num = (v: unknown): number => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
 
 /** confdeltype(PG)→ ON DELETE 子句。 */
 function pgDeleteRule(t: string): string | undefined {
@@ -182,9 +186,171 @@ async function readPg(exec: ProfileExec, schema: string): Promise<SchemaInput> {
 
 export const postgresReader: SchemaReader = { dialect: D.PostgreSQL, readSchema: readPg }
 
+// ── Oracle / DM 系 reader ───────────────────────────────────────
+/** 由 all_tab_columns 行重建 Oracle 类型串(parseType 能直接吃)。 */
+export function oracleColType(r: Record<string, unknown>): string {
+  const dt = str(r.data_type ?? r.DATA_TYPE).toUpperCase()
+  const len = num(r.char_length ?? r.CHAR_LENGTH) || num(r.data_length ?? r.DATA_LENGTH)
+  const p = r.data_precision ?? r.DATA_PRECISION
+  const s = r.data_scale ?? r.DATA_SCALE
+  if (['VARCHAR2', 'NVARCHAR2', 'CHAR', 'NCHAR', 'RAW'].includes(dt)) return `${dt}(${len})`
+  if (dt === 'NUMBER') {
+    if (p == null) return 'NUMBER'
+    return num(s) ? `NUMBER(${num(p)},${num(s)})` : `NUMBER(${num(p)})`
+  }
+  if (dt === 'FLOAT') return p != null ? `FLOAT(${num(p)})` : 'FLOAT'
+  return dt // DATE / CLOB / BLOB / 'TIMESTAMP(6)'(data_type 已含精度)等
+}
+
+/** 系统自动生成的 NOT NULL 检查约束(随列 nullable 已表达),不当作 CHECK。 */
+function isNotNullCheck(cond: string): boolean {
+  return /^\s*"?\w+"?\s+IS\s+NOT\s+NULL\s*$/i.test(cond)
+}
+
+async function readOracle(exec: ProfileExec, schema: string): Promise<SchemaInput> {
+  const owner = lit(schema)
+  const g = (r: Record<string, unknown>, k: string): unknown => r[k] ?? r[k.toUpperCase()]
+
+  // 1) 列
+  const colRows = await exec(
+    `SELECT table_name AS tbl, column_name AS col, data_type, data_length, data_precision,
+            data_scale, char_length, nullable, data_default
+     FROM all_tab_columns WHERE owner = ${owner} ORDER BY table_name, column_id`,
+  )
+  const tableMap = new Map<string, SchemaTableInput>()
+  const tableFor = (name: string): SchemaTableInput => {
+    let t = tableMap.get(name)
+    if (!t) {
+      t = { schema, name, columns: [], primaryKey: [], uniques: [], checks: [] }
+      tableMap.set(name, t)
+    }
+    return t
+  }
+  for (const r of colRows) {
+    const def = g(r, 'data_default')
+    tableFor(str(g(r, 'tbl'))).columns.push({
+      name: str(g(r, 'col')),
+      dataType: oracleColType(r),
+      nullable: str(g(r, 'nullable')).toUpperCase() !== 'N',
+      default: def == null ? undefined : str(def).trim(),
+    })
+  }
+
+  // 2) 注释
+  const colCom = await exec(
+    `SELECT table_name AS tbl, column_name AS col, comments FROM all_col_comments WHERE owner = ${owner} AND comments IS NOT NULL`,
+  )
+  for (const r of colCom) {
+    const t = tableMap.get(str(g(r, 'tbl')))
+    const col = t?.columns.find((c) => c.name === str(g(r, 'col')))
+    if (col) col.comment = str(g(r, 'comments'))
+  }
+  const tabCom = await exec(
+    `SELECT table_name AS tbl, comments FROM all_tab_comments WHERE owner = ${owner} AND comments IS NOT NULL`,
+  )
+  for (const r of tabCom) {
+    if (tableMap.has(str(g(r, 'tbl')))) tableFor(str(g(r, 'tbl'))).comment = str(g(r, 'comments'))
+  }
+
+  // 3) 约束列(按 position 保序)
+  const ccRows = await exec(
+    `SELECT constraint_name AS cn, column_name AS col, position FROM all_cons_columns WHERE owner = ${owner} ORDER BY constraint_name, position`,
+  )
+  const ccMap = new Map<string, string[]>()
+  for (const r of ccRows) {
+    const cn = str(g(r, 'cn'))
+    if (!ccMap.has(cn)) ccMap.set(cn, [])
+    ccMap.get(cn)?.push(str(g(r, 'col')))
+  }
+
+  // 4) 约束(主键/唯一/检查/外键;FK 引用表用自连接拿)
+  const foreignKeys: LogicalForeignKey[] = []
+  const conRows = await exec(
+    `SELECT c.constraint_name AS cn, c.constraint_type AS ct, c.table_name AS tbl,
+            c.search_condition AS sc, c.r_constraint_name AS rcn, c.delete_rule AS dr,
+            rc.table_name AS rtbl
+     FROM all_constraints c
+     LEFT JOIN all_constraints rc ON rc.owner = c.r_owner AND rc.constraint_name = c.r_constraint_name
+     WHERE c.owner = ${owner} AND c.constraint_type IN ('P','U','C','R')`,
+  )
+  for (const r of conRows) {
+    const cn = str(g(r, 'cn'))
+    const ct = str(g(r, 'ct')).toUpperCase()
+    const tbl = str(g(r, 'tbl'))
+    const cols = ccMap.get(cn) ?? []
+    if (ct === 'P') tableFor(tbl).primaryKey = cols
+    else if (ct === 'U') tableFor(tbl).uniques?.push({ name: cn, columns: cols })
+    else if (ct === 'C') {
+      const cond = str(g(r, 'sc'))
+      if (cond && !isNotNullCheck(cond)) tableFor(tbl).checks?.push({ name: cn, expr: cond })
+    } else if (ct === 'R') {
+      foreignKeys.push({
+        name: cn,
+        table: tbl,
+        schema,
+        columns: cols,
+        refTable: str(g(r, 'rtbl')),
+        refSchema: schema,
+        refColumns: ccMap.get(str(g(r, 'rcn'))) ?? [],
+        onDelete: str(g(r, 'dr')).toUpperCase() === 'CASCADE' ? 'CASCADE' : undefined,
+      })
+    }
+  }
+
+  // 5) 索引(排除约束背后的索引)
+  const conNames = new Set(conRows.map((r) => str(g(r, 'cn'))))
+  const indexes: LogicalIndex[] = []
+  const idxCols = await exec(
+    `SELECT index_name AS idx, column_name AS col, column_position AS pos FROM all_ind_columns WHERE index_owner = ${owner} ORDER BY index_name, column_position`,
+  )
+  const idxColMap = new Map<string, string[]>()
+  for (const r of idxCols) {
+    const idx = str(g(r, 'idx'))
+    if (!idxColMap.has(idx)) idxColMap.set(idx, [])
+    idxColMap.get(idx)?.push(str(g(r, 'col')))
+  }
+  const idxRows = await exec(
+    `SELECT index_name AS idx, table_name AS tbl, uniqueness AS uniq FROM all_indexes WHERE owner = ${owner}`,
+  )
+  for (const r of idxRows) {
+    const idx = str(g(r, 'idx'))
+    if (conNames.has(idx)) continue // 约束背后的索引,跳过
+    indexes.push({
+      name: idx,
+      table: str(g(r, 'tbl')),
+      schema,
+      columns: idxColMap.get(idx) ?? [],
+      unique: str(g(r, 'uniq')).toUpperCase() === 'UNIQUE',
+    })
+  }
+
+  // 6) 序列
+  const sequences: LogicalSequence[] = []
+  const seqRows = await exec(
+    `SELECT sequence_name AS name, min_value, increment_by, cache_size, cycle_flag, last_number
+     FROM all_sequences WHERE sequence_owner = ${owner}`,
+  ).catch(() => [])
+  for (const r of seqRows) {
+    sequences.push({
+      kind: 'sequence',
+      schema,
+      name: str(g(r, 'name')),
+      start: num(g(r, 'last_number')) || undefined,
+      increment: num(g(r, 'increment_by')) || undefined,
+      cache: num(g(r, 'cache_size')) || undefined,
+      cycle: str(g(r, 'cycle_flag')).toUpperCase() === 'Y',
+    })
+  }
+
+  return { tables: [...tableMap.values()], sequences, indexes, foreignKeys }
+}
+
+export const oracleReader: SchemaReader = { dialect: D.Oracle, readSchema: readOracle }
+
 // ── 注册表 + 入口 ───────────────────────────────────────────────
 const READERS: Partial<Record<ReturnType<typeof familyOf>, SchemaReader>> = {
   pg: postgresReader,
+  oracle: oracleReader, // Oracle / DM 共用(数据字典视图一致)
 }
 
 export function readerFor(dialect: DbDialect): SchemaReader | null {
