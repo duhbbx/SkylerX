@@ -82,6 +82,7 @@ import ServerActivityDialog from './components/ServerActivityDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import SlowQueryDialog from './components/SlowQueryDialog.vue'
+import SqlLineageDialog from './components/SqlLineageDialog.vue'
 import SqlTranslateDialog from './components/SqlTranslateDialog.vue'
 import StorageCapacityDialog from './components/StorageCapacityDialog.vue'
 import VisualQueryDialog from './components/VisualQueryDialog.vue'
@@ -2039,6 +2040,7 @@ const notifOpen = ref(false)
 /** K1 自定义快捷键 */
 const keybindOpen = ref(false)
 const lintRulesOpen = ref(false)
+const sqlLineageOpen = ref(false)
 /** D6 Schema 漂移检测（全局，对话框内自己选 2 个连接） */
 const driftOpen = ref(false)
 /** A3+B5+B6+B9+B10 数据检查器 */
@@ -2688,6 +2690,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   // K1 自定义快捷键
   { id: 'act:keybind', label: t('pal.keybind'), group: t('pal.groupActions') },
   { id: 'act:lint-rules', label: t('lintrules.title'), group: t('pal.groupActions') },
+  { id: 'act:sql-lineage', label: t('sqllineage.title'), group: t('pal.groupActions') },
   // D6 Schema 漂移检测
   { id: 'act:drift', label: t('pal.drift'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
@@ -2768,6 +2771,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:notif') notifOpen.value = true
   else if (item.id === 'act:keybind') keybindOpen.value = true
   else if (item.id === 'act:lint-rules') lintRulesOpen.value = true
+  else if (item.id === 'act:sql-lineage') sqlLineageOpen.value = true
   else if (item.id === 'act:drift') driftOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
@@ -3831,6 +3835,7 @@ onMounted(async () => {
   <!-- K1 自定义快捷键 -->
   <KeyBindingsDialog v-if="keybindOpen" @close="keybindOpen = false" />
   <LintRulesDialog v-if="lintRulesOpen" :open="true" @close="lintRulesOpen = false" />
+  <SqlLineageDialog v-if="sqlLineageOpen" :open="true" @close="sqlLineageOpen = false" />
 
   <!-- D6 Schema 漂移检测（内部自己选连接） -->
   <SchemaDriftDialog v-if="driftOpen" @close="driftOpen = false" />
