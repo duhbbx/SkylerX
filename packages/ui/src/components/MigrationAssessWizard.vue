@@ -41,6 +41,15 @@ import {
 import { buildExcel, buildHtmlDoc, openPrintWindow } from '../migrate/export'
 import { canIntrospect, readSchema } from '../migrate/introspect'
 import {
+  type JobSummary,
+  type MigJob,
+  deleteJob,
+  listJobs,
+  loadJob,
+  newJobId,
+  saveJob,
+} from '../migrate/jobStore'
+import {
   CATEGORY_LABEL,
   type DatabaseInfo,
   OBJECT_CATEGORIES,
@@ -597,6 +606,7 @@ async function runMigration(): Promise<void> {
         t.status = 'error'
         t.detail = e instanceof Error ? e.message : String(e)
       }
+      persistJob() // 每表落一次盘 → 关窗口也能续
     }
     if (migTables.value.some((t) => t.sel && t.status === 'done')) {
       toast.success(L('数据迁移完成', 'Data migration done'))
@@ -612,6 +622,66 @@ function cancelMigration(): void {
   migAbort?.abort()
 }
 const migDone = computed(() => migTables.value.filter((t) => t.status === 'done').length)
+
+// ── 任务持久化 + 历史(localStorage,跨会话断点续) ───────────────
+let currentJobId = ''
+const savedJobs = ref<JobSummary[]>([])
+function refreshJobs(): void {
+  savedJobs.value = listJobs()
+}
+/** 把当前迁移状态存盘(轻状态:不含列结构,恢复时重读)。 */
+function persistJob(): void {
+  if (!migTables.value.length) return
+  if (!currentJobId) currentJobId = newJobId(Date.now(), Math.random())
+  const now = Date.now()
+  const job: MigJob = {
+    id: currentJobId,
+    createdAt: now,
+    updatedAt: now,
+    srcConnId: srcConnId.value,
+    tgtConnId: tgtConnId.value,
+    srcName: srcConn.value?.name ?? '',
+    tgtName: tgtConn.value?.name ?? '',
+    schemas: [...pickedSchemas.value],
+    tables: migTables.value.map((t) => ({
+      schema: t.schema,
+      name: t.name,
+      status: t.status,
+      copied: t.copied,
+      rowsOk: t.rowsOk,
+      colsOk: t.colsOk,
+    })),
+  }
+  saveJob(job)
+  refreshJobs()
+}
+/** 恢复一个保存的任务:重读表清单,合并已存状态(done 的会被跳过)。 */
+async function resumeJob(id: string): Promise<void> {
+  const job = loadJob(id)
+  if (!job) return
+  currentJobId = id
+  pickedSchemas.value = new Set(job.schemas)
+  await prepareMigration()
+  const byKey = new Map(job.tables.map((t) => [`${t.schema}.${t.name}`, t]))
+  for (const t of migTables.value) {
+    const saved = byKey.get(`${t.schema}.${t.name}`)
+    if (saved) {
+      t.status = saved.status === 'running' ? 'pending' : saved.status
+      t.copied = saved.copied
+      t.rowsOk = saved.rowsOk
+      t.colsOk = saved.colsOk
+    }
+  }
+  toast.info(
+    L('已恢复任务,继续迁移会跳过已完成的表', 'Job restored — Resume skips finished tables'),
+  )
+}
+function dropJob(id: string): void {
+  deleteJob(id)
+  if (currentJobId === id) currentJobId = ''
+  refreshJobs()
+}
+const fmtTime = (t: number): string => new Date(t).toLocaleString()
 
 // ── 导航 ────────────────────────────────────────────────────────
 function next(): void {
@@ -641,6 +711,9 @@ function openWizard(opts?: { srcConnId?: string }): void {
   summary.value = null
   profile.value = null
   conversions.value = []
+  migTables.value = []
+  currentJobId = ''
+  refreshJobs()
   loadConns().then(() => {
     if (opts?.srcConnId) srcConnId.value = opts.srcConnId
   })
@@ -892,6 +965,16 @@ defineExpose({ open: openWizard })
           {{ L('结构建好后,把源库行数据分块搬到目标库(目标表需已存在)。逐表行数对账,主键列做列级对账。',
                 'After the schema exists, copy row data in chunks to the target (target tables must exist). Row-count reconcile per table; PK columns are checked column-level.') }}
         </p>
+        <!-- 已保存任务(跨会话断点续) -->
+        <div v-if="savedJobs.length" class="jobs">
+          <h4>{{ L('已保存任务', 'Saved jobs') }}</h4>
+          <div v-for="j in savedJobs" :key="j.id" class="jobrow">
+            <span>{{ j.srcName }} → {{ j.tgtName }}</span>
+            <span class="note">{{ j.done }}/{{ j.total }} {{ L('表', 'tables') }} · {{ j.copied.toLocaleString() }} {{ L('行', 'rows') }} · {{ fmtTime(j.updatedAt) }}</span>
+            <button :disabled="migrating || !canMigrate" @click="resumeJob(j.id)">{{ L('恢复', 'Restore') }}</button>
+            <button @click="dropJob(j.id)">{{ L('删除', 'Delete') }}</button>
+          </div>
+        </div>
         <div class="bar">
           <button class="primary" :disabled="migPreparing || !canMigrate" @click="prepareMigration">
             {{ migPreparing ? '…' : L('准备表清单', 'Prepare tables') }}
@@ -1009,4 +1092,8 @@ td.gA, td.gB, td.gC, td.gD { font-weight: 700; }
 .mstat.done { background: #e8f6ec; color: #1e7e34; }
 .mstat.error { background: #fdecea; color: #c0392b; }
 .mdetail { display: block; font-size: 10px; color: #c0392b; max-width: 320px; }
+.jobs { border: 1px solid var(--border, #e3e3e3); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+.jobs h4 { margin: 0 0 6px; font-size: 12px; }
+.jobrow { display: flex; align-items: center; gap: 10px; font-size: 12px; padding: 3px 0; }
+.jobrow .note { margin-right: auto; }
 </style>
