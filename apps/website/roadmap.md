@@ -128,6 +128,7 @@ description: SkylerX 数据库扩列 + 功能规划,按季度迭代更新。
 |---|---|---|
 | ✅ | DDL 生成 · Schema diff · Mock 数据 | 已上线 |
 | ✅ | Oracle → DM 迁移向导 | 已上线 |
+| ✅ | **信创迁移评估** | 已上线 — 源库画像(17 类对象 + 风险指标)+ A/B/C/D 评级 + AI 转 PL/SQL + Word/PDF/Excel 导出;hub-and-spoke IR 架构 |
 | 🟢 | **ER 图自动布局** | 反向工程出图,foreign-key 自动连线,可导出 SVG / PNG |
 | 🔵 | **正向工程** | 在 ER 图改完 → 生成 migration SQL |
 | 🔵 | **跨库迁移 v2** | 扩 MySQL → PG / PG → DM 等组合,带类型 / 索引 / 视图全套 |

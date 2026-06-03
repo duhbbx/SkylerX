@@ -365,6 +365,53 @@ After the AI responds, `extractSql(text)` automatically pulls the first SQL bloc
 
 > About index recommendations: Schema Reverse gives "suggestions" only (rule-of-thumb), it doesn't auto-create indexes. For index recommendations based on real query history + existing indexes → see [Advanced → Index recommender](./advanced.md).
 
+## 11. Migration assessment (MigrationAssessWizard)
+
+Turns an Oracle / DM source database into a feasibility report for migrating onto an openGauss-kernel domestic DB (Vastbase / openGauss) or DM. Built for de-Oracle ("去O") pre-sales / DBAs: see how much, how big and how hard the source is *before* committing to the migration effort.
+
+**Entry**: command palette `act:mig-assess` (search "Migration assessment"), or right-click an Oracle / DM connection → `🧭 Migration assessment…` (pre-fills it as the source). Code in `packages/ui/src/components/MigrationAssessWizard.vue`; all assessment logic lives in `packages/ui/src/migrate/`.
+
+### 5-step wizard
+
+| Step | What it does |
+|---|---|
+| 1 Connect | Pick source (a profileable dialect) + target (a dialect with a conversion path) |
+| 2 Profile | List databases / schemas (system filtered), tick the ones to migrate, get a full object inventory + risk metrics |
+| 3 Assess | Pull the selected schemas' objects, grade each A/B/C/D + an overall "readiness" score |
+| 4 AI convert | Hand grade-C objects (PL/SQL bodies / complex SQL) to AI to translate into the target dialect (review-only) |
+| 5 Report | Aggregate, export to Excel / Word / PDF / Markdown |
+
+### Hub-and-spoke conversion
+
+Instead of pairwise source→target translators (an N×M explosion), an intermediate logical model (Logical IR) sits in the middle:
+
+```
+source ──parse──▶ Logical IR ──emit──▶ target
+```
+
+Each dialect only needs one parser or one emitter, so adding a database is N+M, not N×M. Code: `migrate/ir.ts` (model), `migrate/convert.ts` (orchestration), `migrate/dialects/{oracle,postgres,dameng}.ts`. **Boundary**: structural objects (tables / columns / types / constraints) go through the deterministic IR; procedural objects (procedures / functions / packages / triggers / views) keep their raw DDL and are translated by AI (`migrate/aiConvert.ts`) where regex transpilation can't do semantic rewrites.
+
+### Source profiling
+
+`migrate/profile.ts` + `migrate/profilers/{oracle,postgres}.ts`, one catalog-query set per source family. It inventories 17 object categories, and **unsupported objects render as `—` (null) rather than a fake 0**:
+
+> tables · views · materialized views · partitioned tables · indexes · primary keys · foreign keys · unique constraints · check constraints · sequences · functions · procedures · packages · triggers · types · synonyms · db links
+
+Plus migration-risk metrics: **no-PK tables** (the #1 CDC pitfall), **LOB columns** (the bulk of data-migration time), **tables with triggers**, **tables with comments**; plus row buckets (≥1M / ≥10M / ≥100M), tablespace size and the largest tables. Row counts use catalog estimates (`reltuples` / `num_rows`) — no precise `COUNT(*)`, so even billion-row tables return in seconds. When `dba_segments` is unreadable (no DBA privilege) it degrades gracefully (size 0 + a notice).
+
+### Document export
+
+Four buttons on the report page, all reusing existing deps (`xlsx` / `marked`), no new libraries, CJK-safe:
+
+| Format | How |
+|---|---|
+| Excel `.xlsx` | Multi-sheet: overview / inventory / large tables / assessment detail / AI conversions |
+| Word `.doc` | Markdown rendered to styled HTML, opens natively in Word |
+| PDF | Same HTML opened in a window that auto-prints → Chromium "Save as PDF" |
+| Markdown `.md` | Plain-text report |
+
+> Grading: **A Auto** (deterministic, use as-is) · **B Assisted** (type / semantic differences, spot-check) · **C Manual** (PL/SQL body or proprietary syntax, needs AI + human) · **D Blocked** (no equivalent — spatial / external packages — needs architectural review). Readiness = weighted mean of object grades (A=100 / B=80 / C=40 / D=0).
+
 ## Compatibility matrix
 
 Each tool's supported dialects. `▣` = full support, `◐` = partial, `-` = N/A.

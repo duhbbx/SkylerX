@@ -59,6 +59,7 @@ const filtered = computed(() => {
 | `act:ndjson-viewer` | NDJSON 查看器 | 工具栏 |
 | `act:contracts` | 数据契约 | 工具 → 数据契约 |
 | `act:o2dm` | Oracle → DM 迁移向导 | 工具栏 |
+| `act:mig-assess` | 信创迁移评估(源库画像 + 等级 + AI 转换 + 导出) | 右键 Oracle/DM 连接 |
 | `act:translate` | SQL 翻译(跨方言) | 工具栏 |
 | `act:notif` | 通知 webhook 配置 | `Settings → 通知` |
 | `act:keybind` | 自定义快捷键 | `Settings → 键绑定` |

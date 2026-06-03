@@ -103,6 +103,7 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 |---|---|
 | ✅ | DDL generation · Schema diff · Mock data v1 |
 | ✅ | Oracle → DM migration wizard |
+| ✅ | **Migration assessment** — source profiling (17 object categories + risk metrics) + A/B/C/D grading + AI PL/SQL conversion + Word/PDF/Excel export; hub-and-spoke IR design |
 | 🟢 | **ER diagram auto-layout** — reverse engineering with SVG/PNG export |
 | 🔵 | **Forward engineering** — edit ER diagram → emit migration |
 | 🔵 | **Cross-DB migration v2** — extend MySQL ↔ PG ↔ DM combos |

@@ -59,6 +59,7 @@ The table below is the full `paletteItems` computed in `Workspace.vue` (actions 
 | `act:ndjson-viewer` | NDJSON viewer | Toolbar |
 | `act:contracts` | Data contracts | Tools → Data contracts |
 | `act:o2dm` | Oracle → DM migration wizard | Toolbar |
+| `act:mig-assess` | Migration assessment (source profiling + grades + AI convert + export) | Right-click an Oracle/DM connection |
 | `act:translate` | SQL translation (cross-dialect) | Toolbar |
 | `act:notif` | Notification webhook config | `Settings → Notifications` |
 | `act:keybind` | Custom shortcuts | `Settings → Key bindings` |
