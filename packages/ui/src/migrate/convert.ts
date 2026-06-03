@@ -15,7 +15,17 @@ import { familyOf } from '../ddl'
 import { damengEmitter } from './dialects/dameng'
 import { oracleParser } from './dialects/oracle'
 import { postgresEmitter } from './dialects/postgres'
-import { type ConvertNote, type DialectEmitter, type DialectParser, type LogicalTable } from './ir'
+import {
+  type ConvertNote,
+  type DialectEmitter,
+  type DialectParser,
+  type LogicalCheck,
+  type LogicalForeignKey,
+  type LogicalIndex,
+  type LogicalSequence,
+  type LogicalTable,
+  type LogicalUnique,
+} from './ir'
 
 // ── 方言插件注册表(按 family,一套插件服务整个协议家族) ────────────
 const PARSERS: Partial<Record<ReturnType<typeof familyOf>, DialectParser>> = {
@@ -72,7 +82,12 @@ export function buildTable(
   name: string,
   cols: RawColumn[],
   source: DbDialect,
-  opts: { primaryKey?: string[]; comment?: string } = {},
+  opts: {
+    primaryKey?: string[]
+    comment?: string
+    uniques?: LogicalUnique[]
+    checks?: LogicalCheck[]
+  } = {},
 ): { table: LogicalTable; notes: ConvertNote[] } {
   const parser = parserFor(source)
   const notes: ConvertNote[] = []
@@ -98,6 +113,8 @@ export function buildTable(
       name,
       columns,
       primaryKey: opts.primaryKey,
+      uniques: opts.uniques,
+      checks: opts.checks,
       comment: opts.comment,
     },
     notes,
@@ -141,25 +158,209 @@ export function emitTable(
   if (table.primaryKey?.length) {
     lines.push(`  PRIMARY KEY (${table.primaryKey.map(q).join(', ')})`)
   }
+  for (const u of table.uniques ?? []) {
+    const nm = u.name ? `CONSTRAINT ${q(u.name)} ` : ''
+    lines.push(`  ${nm}UNIQUE (${u.columns.map(q).join(', ')})`)
+  }
+  for (const c of table.checks ?? []) {
+    const nm = c.name ? `CONSTRAINT ${q(c.name)} ` : ''
+    lines.push(`  ${nm}CHECK (${c.expr})`)
+    notes.push({
+      level: 'review',
+      msg: `检查约束 ${c.name ?? ''} 的表达式 "${c.expr}" 需核对目标库函数兼容性`,
+    })
+  }
 
   const ref = `${q(table.schema)}.${q(table.name)}`
   const sql = `CREATE TABLE ${ref} (\n${lines.join(',\n')}\n);`
   return { sql, notes }
 }
 
-/** 表的一站式转换:列元数据 → 目标库 CREATE TABLE + 全部告警。 */
+/** COMMENT ON 语句(PG / Oracle / DM 通用语法)。 */
+export function emitTableComments(table: LogicalTable, target: DbDialect): string[] {
+  const emitter = emitterFor(target)
+  if (!emitter) return []
+  const q = emitter.quoteId.bind(emitter)
+  const ref = `${q(table.schema)}.${q(table.name)}`
+  const out: string[] = []
+  if (table.comment) out.push(`COMMENT ON TABLE ${ref} IS ${sqlStr(table.comment)};`)
+  for (const c of table.columns) {
+    if (c.comment) out.push(`COMMENT ON COLUMN ${ref}.${q(c.name)} IS ${sqlStr(c.comment)};`)
+  }
+  return out
+}
+
+/** CREATE [UNIQUE] INDEX。 */
+export function emitIndex(
+  ix: LogicalIndex,
+  target: DbDialect,
+): { sql: string; notes: ConvertNote[] } {
+  const emitter = emitterFor(target)
+  if (!emitter) return { sql: '', notes: [] }
+  const q = emitter.quoteId.bind(emitter)
+  const uniq = ix.unique ? 'UNIQUE ' : ''
+  const ref = ix.schema ? `${q(ix.schema)}.${q(ix.table)}` : q(ix.table)
+  if (ix.expr) {
+    return {
+      sql: `CREATE ${uniq}INDEX ${q(ix.name)} ON ${ref} (${ix.expr});`,
+      notes: [
+        { level: 'review', msg: `函数索引 ${ix.name} 表达式 "${ix.expr}" 需核对目标库函数兼容性` },
+      ],
+    }
+  }
+  return {
+    sql: `CREATE ${uniq}INDEX ${q(ix.name)} ON ${ref} (${ix.columns.map(q).join(', ')});`,
+    notes: [],
+  }
+}
+
+/** ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY(放到所有建表之后,避免表序依赖)。 */
+export function emitForeignKey(fk: LogicalForeignKey, target: DbDialect): string {
+  const emitter = emitterFor(target)
+  if (!emitter) return ''
+  const q = emitter.quoteId.bind(emitter)
+  const nm = fk.name ? `CONSTRAINT ${q(fk.name)} ` : ''
+  const onDel = fk.onDelete ? ` ON DELETE ${fk.onDelete}` : ''
+  const tbl = fk.schema ? `${q(fk.schema)}.${q(fk.table)}` : q(fk.table)
+  const refSchema = fk.refSchema ?? fk.schema
+  const refTbl = refSchema ? `${q(refSchema)}.${q(fk.refTable)}` : q(fk.refTable)
+  return (
+    `ALTER TABLE ${tbl} ADD ${nm}FOREIGN KEY (${fk.columns.map(q).join(', ')}) ` +
+    `REFERENCES ${refTbl} (${fk.refColumns.map(q).join(', ')})${onDel};`
+  )
+}
+
+/**
+ * CREATE SEQUENCE。PG 与 Oracle/DM 的 START WITH / INCREMENT BY / MINVALUE /
+ * MAXVALUE / CACHE / CYCLE 关键字一致,这里统一拼;个别方言要改写可实现 emitter.emitSequence。
+ */
+export function emitSequenceDdl(seq: LogicalSequence, target: DbDialect): string {
+  const emitter = emitterFor(target)
+  if (!emitter) return ''
+  if (emitter.emitSequence) return emitter.emitSequence(seq)
+  const q = emitter.quoteId.bind(emitter)
+  const parts = [`CREATE SEQUENCE ${q(seq.schema)}.${q(seq.name)}`]
+  if (seq.increment != null) parts.push(`INCREMENT BY ${seq.increment}`)
+  if (seq.minValue != null) parts.push(`MINVALUE ${seq.minValue}`)
+  if (seq.maxValue != null) parts.push(`MAXVALUE ${seq.maxValue}`)
+  if (seq.start != null) parts.push(`START WITH ${seq.start}`)
+  if (seq.cache != null) parts.push(`CACHE ${seq.cache}`)
+  if (seq.cycle) parts.push('CYCLE')
+  return `${parts.join(' ')};`
+}
+
+function sqlStr(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`
+}
+
+/** 表的一站式转换:列元数据 → 目标库 CREATE TABLE + COMMENT + 全部告警。 */
 export function convertTable(
   schema: string,
   name: string,
   cols: RawColumn[],
   source: DbDialect,
   target: DbDialect,
-  opts: { primaryKey?: string[]; comment?: string } = {},
+  opts: {
+    primaryKey?: string[]
+    comment?: string
+    uniques?: LogicalUnique[]
+    checks?: LogicalCheck[]
+  } = {},
 ): { sql: string; notes: ConvertNote[] } {
   const built = buildTable(schema, name, cols, source, opts)
   const emitted = emitTable(built.table, target)
+  const comments = emitTableComments(built.table, target)
+  const sql = comments.length ? `${emitted.sql}\n${comments.join('\n')}` : emitted.sql
   // buildTable 的 notes 已是 parse 期 per-column;emitTable 的是 emit 期。合并去重。
-  return { sql: emitted.sql, notes: dedupeNotes([...built.notes, ...emitted.notes]) }
+  return { sql, notes: dedupeNotes([...built.notes, ...emitted.notes]) }
+}
+
+// ── 整库脚本(依赖排序:序列 → 表 → 注释 → 索引 → 外键) ───────────
+
+/** 一个待转换表的结构化输入。 */
+export interface SchemaTableInput {
+  schema: string
+  name: string
+  columns: RawColumn[]
+  primaryKey?: string[]
+  uniques?: LogicalUnique[]
+  checks?: LogicalCheck[]
+  comment?: string
+}
+
+export interface SchemaInput {
+  tables: SchemaTableInput[]
+  sequences?: LogicalSequence[]
+  indexes?: LogicalIndex[]
+  foreignKeys?: LogicalForeignKey[]
+}
+
+/**
+ * 生成依赖正确的整库 DDL 脚本。
+ * 顺序:CREATE SEQUENCE → CREATE TABLE(含内联 PK/UNIQUE/CHECK)→ COMMENT → CREATE INDEX
+ * → ALTER TABLE ADD FOREIGN KEY。外键统一放最后,免去建表先后顺序的拓扑排序。
+ */
+export function convertSchema(
+  input: SchemaInput,
+  source: DbDialect,
+  target: DbDialect,
+): { sql: string; notes: ConvertNote[] } {
+  const notes: ConvertNote[] = []
+  const sections: string[] = []
+  const push = (title: string, stmts: string[]): void => {
+    if (stmts.length) sections.push(`-- ── ${title} ──\n${stmts.join('\n')}`)
+  }
+
+  push(
+    '序列 Sequences',
+    (input.sequences ?? []).map((s) => emitSequenceDdl(s, target)).filter(Boolean),
+  )
+
+  const tableStmts: string[] = []
+  const commentStmts: string[] = []
+  for (const t of input.tables) {
+    const built = buildTable(t.schema, t.name, t.columns, source, {
+      primaryKey: t.primaryKey,
+      uniques: t.uniques,
+      checks: t.checks,
+      comment: t.comment,
+    })
+    const emitted = emitTable(built.table, target)
+    notes.push(...built.notes, ...emitted.notes)
+    tableStmts.push(emitted.sql)
+    commentStmts.push(...emitTableComments(built.table, target))
+  }
+  push('表 Tables', tableStmts)
+  push('注释 Comments', commentStmts)
+
+  // 表名 → schema,给索引/外键自动补限定名(避免 search_path 依赖)。
+  const schemaOf = new Map(input.tables.map((t) => [t.name, t.schema]))
+
+  const ixStmts: string[] = []
+  for (const ix of input.indexes ?? []) {
+    const e = emitIndex({ ...ix, schema: ix.schema ?? schemaOf.get(ix.table) }, target)
+    if (e.sql) ixStmts.push(e.sql)
+    notes.push(...e.notes)
+  }
+  push('索引 Indexes', ixStmts)
+
+  push(
+    '外键 Foreign keys',
+    (input.foreignKeys ?? [])
+      .map((fk) =>
+        emitForeignKey(
+          {
+            ...fk,
+            schema: fk.schema ?? schemaOf.get(fk.table),
+            refSchema: fk.refSchema ?? schemaOf.get(fk.refTable),
+          },
+          target,
+        ),
+      )
+      .filter(Boolean),
+  )
+
+  return { sql: sections.join('\n\n'), notes: dedupeNotes(notes) }
 }
 
 function prefix(col: string, n: ConvertNote): ConvertNote {

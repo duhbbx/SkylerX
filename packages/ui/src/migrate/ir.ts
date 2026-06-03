@@ -97,12 +97,53 @@ export interface LogicalColumn {
   notes?: ConvertNote[]
 }
 
+/** 唯一约束(列级 UNIQUE)。 */
+export interface LogicalUnique {
+  name?: string
+  columns: string[]
+}
+
+/** 检查约束;expr 原文(可能含源库专有函数,emit 时若识别不了标 review)。 */
+export interface LogicalCheck {
+  name?: string
+  expr: string
+}
+
+/** 索引(schema 级,引用所属表)。 */
+export interface LogicalIndex {
+  name: string
+  table: string
+  /** 表所在 schema;设了就生成限定名(避免 search_path 依赖)。 */
+  schema?: string
+  columns: string[]
+  unique?: boolean
+  /** 函数/表达式索引的原文;有则 columns 可能为空,emit 时标 review。 */
+  expr?: string
+}
+
+/** 外键(schema 级,引用两张表)。 */
+export interface LogicalForeignKey {
+  name?: string
+  table: string
+  /** 子表所在 schema。 */
+  schema?: string
+  columns: string[]
+  refTable: string
+  /** 父表所在 schema(可跨 schema);缺省同 schema。 */
+  refSchema?: string
+  refColumns: string[]
+  /** ON DELETE 行为(CASCADE / SET NULL / RESTRICT / NO ACTION)。 */
+  onDelete?: string
+}
+
 export interface LogicalTable {
   kind: 'table'
   schema: string
   name: string
   columns: LogicalColumn[]
   primaryKey?: string[]
+  uniques?: LogicalUnique[]
+  checks?: LogicalCheck[]
   comment?: string
 }
 
@@ -151,4 +192,6 @@ export interface DialectEmitter {
   quoteId(id: string): string
   /** 改写列默认值表达式;改不动返回 null 让上层标 review。 */
   emitDefault?(expr: string): { sql: string; notes: ConvertNote[] } | null
+  /** 生成 CREATE SEQUENCE(各库 START WITH vs START 等关键字不同)。 */
+  emitSequence?(seq: LogicalSequence): string
 }
