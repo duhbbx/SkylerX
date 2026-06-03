@@ -21,13 +21,15 @@ import { type ConnectionConfig, MetaNodeKind, type MetadataNode } from '@db-tool
 import { computed, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { formatBytes, objectDdlQuery } from '../ddl'
-import { toast } from '../dialog'
+import { confirm, toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
 import { convertObjectValidated } from '../migrate/aiConvert'
+import { type ApplyResult, applyScript } from '../migrate/apply'
 import { assessBatch } from '../migrate/assess'
-import { hasStructuralPath } from '../migrate/convert'
+import { convertSchema, hasStructuralPath } from '../migrate/convert'
 import { buildExcel, buildHtmlDoc, openPrintWindow } from '../migrate/export'
+import { canIntrospect, readSchema } from '../migrate/introspect'
 import {
   CATEGORY_LABEL,
   type DatabaseInfo,
@@ -383,6 +385,86 @@ function exportPdf(): void {
   }
 }
 
+// ── 整库迁移脚本(确定性结构)+ 一键建库 ─────────────────────────
+const canScript = computed(() => !!srcDialect.value && canIntrospect(srcDialect.value))
+const scripting = ref(false)
+const fullScript = ref('')
+
+/** 读所选 schema 的完整结构 → convertSchema → 拼成整库迁移脚本。 */
+async function generateScript(): Promise<void> {
+  if (!srcDialect.value || !tgtDialect.value) return
+  scripting.value = true
+  try {
+    const parts: string[] = []
+    for (const schema of pickedSchemas.value) {
+      const si = await readSchema(execRows, srcDialect.value, schema)
+      if (!si.tables.length && !si.sequences?.length) continue
+      const { sql } = convertSchema(si, srcDialect.value, tgtDialect.value)
+      if (sql.trim()) parts.push(`-- ════ schema: ${schema} ════\n${sql}`)
+    }
+    fullScript.value = parts.join('\n\n')
+    if (!fullScript.value) toast.info(L('没有可生成的结构', 'Nothing to generate'))
+  } catch (e) {
+    reportError(e, { tag: 'mig.generateScript' })
+  } finally {
+    scripting.value = false
+  }
+}
+
+async function exportScript(): Promise<void> {
+  await saveFileWithDialog({
+    defaultName: `migration-schema-${stamp()}.sql`,
+    content: fullScript.value,
+    filters: [{ name: 'SQL', extensions: ['sql'] }],
+  })
+}
+
+const applying = ref(false)
+const applyOutcome = ref<ApplyResult | null>(null)
+
+/** 一键建库:先 dry-run(PG 系事务内试跑),通过再确认提交。 */
+async function applyToTarget(): Promise<void> {
+  if (!tgtDialect.value || !fullScript.value) return
+  const run: StmtRunner = async (sql) => {
+    try {
+      await client.connections.execute(tgtConnId.value, sql)
+      return {}
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+  applying.value = true
+  applyOutcome.value = null
+  try {
+    // 1) dry-run(仅 PG 系支持;非事务库直接进确认)
+    if (supportsTxnValidation(tgtDialect.value)) {
+      const dry = await applyScript(run, fullScript.value, tgtDialect.value, { commit: false })
+      if (!dry.ok) {
+        applyOutcome.value = dry
+        toast.info(L('试跑未通过,未建库', 'Dry-run failed — nothing applied'))
+        return
+      }
+    }
+    const proceed = await confirm({
+      message: L(
+        `将在目标库执行 ${fullScript.value.split(';').length - 1} 条语句建库。继续?`,
+        'This will run the migration script on the target database. Continue?',
+      ),
+      confirmText: L('建库', 'Apply'),
+    })
+    if (!proceed) return
+    applyOutcome.value = await applyScript(run, fullScript.value, tgtDialect.value, {
+      commit: true,
+    })
+    if (applyOutcome.value.ok) toast.success(L('建库完成', 'Schema applied'))
+    else toast.info(L('建库中断,请看结果', 'Apply stopped — see result'))
+  } catch (e) {
+    reportError(e, { tag: 'mig.applyToTarget' })
+  } finally {
+    applying.value = false
+  }
+}
+
 // ── 导航 ────────────────────────────────────────────────────────
 function next(): void {
   const i = stepIdx(step.value)
@@ -633,6 +715,26 @@ defineExpose({ open: openWizard })
           <button @click="exportPdf">PDF</button>
           <span class="note">{{ L('PDF 在新窗口用浏览器「另存为 PDF」', 'PDF via browser Save-as-PDF in new window') }}</span>
         </div>
+
+        <!-- 完整迁移脚本 + 一键建库(确定性结构) -->
+        <div class="scriptbox">
+          <div class="bar">
+            <button class="primary" :disabled="scripting || !canScript" @click="generateScript">
+              {{ scripting ? '…' : L('生成完整迁移脚本', 'Generate migration script') }}
+            </button>
+            <button :disabled="!fullScript" @click="exportScript">{{ L('导出 .sql', 'Export .sql') }}</button>
+            <button class="danger" :disabled="applying || !fullScript" @click="applyToTarget">
+              {{ applying ? L('建库中…', 'applying…') : L('一键建库到目标', 'Apply to target') }}
+            </button>
+            <span v-if="!canScript" class="note">{{ L('该源方言的结构读取器开发中(目前支持 PG 系)', 'introspection for this source dialect is in progress (PG-family now)') }}</span>
+          </div>
+          <p v-if="applyOutcome" :class="['apply-res', applyOutcome.ok ? 'ok' : 'bad']">
+            <template v-if="applyOutcome.ok">✅ {{ applyOutcome.committed ? L('建库完成', 'applied') : L('试跑通过', 'dry-run ok') }} · {{ applyOutcome.succeeded }}/{{ applyOutcome.total }}</template>
+            <template v-else>❌ {{ L('第', '#') }}{{ applyOutcome.succeeded + 1 }} {{ L('句失败', 'failed') }}:{{ applyOutcome.error }}<br /><code>{{ applyOutcome.failedStatement }}</code></template>
+          </p>
+          <pre v-if="fullScript" class="sql">{{ fullScript }}</pre>
+        </div>
+
         <pre class="report">{{ reportMd }}</pre>
       </section>
     </div>
@@ -703,4 +805,11 @@ td.gA, td.gB, td.gC, td.gD { font-weight: 700; }
 .sp { flex: 1; }
 .primary { background: var(--accent, #2d7ff9); color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
 .primary:disabled { opacity: .5; cursor: default; }
+.danger { background: #c0392b; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+.danger:disabled { opacity: .5; cursor: default; }
+.scriptbox { border-top: 1px dashed var(--border, #ddd); margin-top: 14px; padding-top: 12px; }
+.apply-res { font-size: 12px; padding: 6px 10px; border-radius: 6px; }
+.apply-res.ok { background: #e8f6ec; color: #1e7e34; }
+.apply-res.bad { background: #fdecea; color: #c0392b; }
+.apply-res code { display: block; margin-top: 4px; font-size: 11px; }
 </style>
