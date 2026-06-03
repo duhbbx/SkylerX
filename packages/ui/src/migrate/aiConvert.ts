@@ -15,6 +15,7 @@
 import type { DbDialect } from '@db-tool/shared-types'
 import { askAiChat, extractAllSql } from '../ai'
 import { familyOf } from '../ddl'
+import { translateSql } from './sqlTranslate'
 import type { AssessItem, ConvertResult } from './types'
 import { type StmtRunner, supportsTxnValidation, validateDdl } from './validate'
 
@@ -159,6 +160,23 @@ export async function convertObjectValidated(
   opts: { run?: StmtRunner; maxAttempts?: number; signal?: AbortSignal } = {},
 ): Promise<ConvertResult> {
   const max = opts.maxAttempts ?? 3
+
+  // 视图先试确定性翻译:简单视图(无 Oracle 专有构造)直接出结果,不调用 AI。
+  if (item.kind === 'view' && item.ddl) {
+    const det = translateSql(item.ddl, source, target)
+    if (!det.needsAi && det.sql.trim()) {
+      const extra = det.notes.length ? `\n${det.notes.map((n) => `- ${n.msg}`).join('\n')}` : ''
+      return {
+        schema: item.schema,
+        name: item.name,
+        kind: item.kind,
+        sql: det.sql,
+        notes: `✅ 确定性翻译(未调用 AI)${extra}`,
+        attempts: 0,
+      }
+    }
+  }
+
   let result = await convertObject(item, source, target, opts.signal)
   if (result.error || !result.sql) return { ...result, attempts: 1 }
   if (!opts.run || !supportsTxnValidation(target)) return { ...result, attempts: 1 }
