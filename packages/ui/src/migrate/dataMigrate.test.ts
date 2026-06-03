@@ -7,9 +7,12 @@ import { describe, expect, it } from 'vitest'
 import {
   type RowReader,
   type RowWriter,
+  buildColumnStats,
   buildInsert,
   buildPagedSelect,
+  compareColumnStats,
   copyTable,
+  parseColumnStats,
   reconcile,
   valueLiteral,
 } from './dataMigrate'
@@ -117,5 +120,35 @@ describe('SQL builders', () => {
   it('reconcile', () => {
     expect(reconcile(100, 100)).toEqual({ source: 100, target: 100, ok: true, diff: 0 })
     expect(reconcile(100, 98)).toEqual({ source: 100, target: 98, ok: false, diff: -2 })
+  })
+})
+
+describe('column-level reconcile', () => {
+  it('buildColumnStats: per-column nonNull/min/max as text (PG)', () => {
+    expect(buildColumnStats(V, 'hr', 'emp', ['id', 'name'])).toBe(
+      'SELECT COUNT("id") AS "id__nn", (MIN("id"))::text AS "id__mn", (MAX("id"))::text AS "id__mx", ' +
+        'COUNT("name") AS "name__nn", (MIN("name"))::text AS "name__mn", (MAX("name"))::text AS "name__mx" ' +
+        'FROM "hr"."emp"',
+    )
+  })
+  it('castText differs by family', () => {
+    expect(buildColumnStats(O, 'HR', 'EMP', ['ID'])).toContain('TO_CHAR(MIN("ID"))')
+    expect(buildColumnStats(MY, 'hr', 'emp', ['id'])).toContain('CAST(MIN(`id`) AS CHAR)')
+  })
+  it('parseColumnStats + compareColumnStats', () => {
+    const src = parseColumnStats(
+      { id__nn: 100, id__mn: '1', id__mx: '100', name__nn: 98, name__mn: 'a', name__mx: 'z' },
+      ['id', 'name'],
+    )
+    const same = compareColumnStats(src, [...src])
+    expect(same.ok).toBe(true)
+    const tgt = parseColumnStats(
+      { id__nn: 100, id__mn: '1', id__mx: '99', name__nn: 97, name__mn: 'a', name__mx: 'z' },
+      ['id', 'name'],
+    )
+    const diff = compareColumnStats(src, tgt)
+    expect(diff.ok).toBe(false)
+    expect(diff.diffs.find((d) => d.column === 'id')?.detail).toMatch(/max 100→99/)
+    expect(diff.diffs.find((d) => d.column === 'name')?.detail).toMatch(/非空数 98→97/)
   })
 })

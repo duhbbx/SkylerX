@@ -158,6 +158,82 @@ export function buildCount(dialect: DbDialect, schema: string, table: string): s
   return `SELECT COUNT(*) AS n FROM ${ref(schema, table, fam)}`
 }
 
+// ── 列级对账(行数之上:每列 非空数 / 最小 / 最大) ─────────────────
+
+/** min/max 转文本(跨库可比、避开驱动类型差异);各方言转换函数不同。 */
+function castText(expr: string, fam: ReturnType<typeof familyOf>): string {
+  if (fam === 'oracle') return `TO_CHAR(${expr})`
+  if (fam === 'mysql') return `CAST(${expr} AS CHAR)`
+  return `(${expr})::text` // pg
+}
+
+export interface ColumnStat {
+  column: string
+  nonNull: number
+  min: string | null
+  max: string | null
+}
+
+/**
+ * 一条查询拿一张表所选列的统计:每列 非空数 / 最小 / 最大(转文本)。
+ * 调用方应只传可比较的列(跳过 BLOB/CLOB/JSON)。
+ */
+export function buildColumnStats(
+  dialect: DbDialect,
+  schema: string,
+  table: string,
+  columns: string[],
+): string {
+  const fam = familyOf(dialect)
+  const sel = columns.flatMap((c) => {
+    const q = qid(c, fam)
+    return [
+      `COUNT(${q}) AS ${qid(`${c}__nn`, fam)}`,
+      `${castText(`MIN(${q})`, fam)} AS ${qid(`${c}__mn`, fam)}`,
+      `${castText(`MAX(${q})`, fam)} AS ${qid(`${c}__mx`, fam)}`,
+    ]
+  })
+  return `SELECT ${sel.join(', ')} FROM ${ref(schema, table, fam)}`
+}
+
+/** 解析 buildColumnStats 的单行结果为每列统计。 */
+export function parseColumnStats(row: Record<string, unknown>, columns: string[]): ColumnStat[] {
+  const get = (k: string): unknown => row[k] ?? row[k.toUpperCase()]
+  return columns.map((c) => ({
+    column: c,
+    nonNull: Number(get(`${c}__nn`) ?? 0),
+    min: get(`${c}__mn`) == null ? null : String(get(`${c}__mn`)),
+    max: get(`${c}__mx`) == null ? null : String(get(`${c}__mx`)),
+  }))
+}
+
+export interface StatDiff {
+  column: string
+  ok: boolean
+  detail?: string
+}
+
+/** 比对源/目标的列统计,逐列给一致性结论。 */
+export function compareColumnStats(
+  src: ColumnStat[],
+  tgt: ColumnStat[],
+): {
+  ok: boolean
+  diffs: StatDiff[]
+} {
+  const tgtByCol = new Map(tgt.map((s) => [s.column, s]))
+  const diffs: StatDiff[] = src.map((s) => {
+    const t = tgtByCol.get(s.column)
+    if (!t) return { column: s.column, ok: false, detail: '目标缺该列' }
+    const probs: string[] = []
+    if (s.nonNull !== t.nonNull) probs.push(`非空数 ${s.nonNull}→${t.nonNull}`)
+    if (s.min !== t.min) probs.push(`min ${s.min}→${t.min}`)
+    if (s.max !== t.max) probs.push(`max ${s.max}→${t.max}`)
+    return { column: s.column, ok: probs.length === 0, detail: probs.join('; ') || undefined }
+  })
+  return { ok: diffs.every((d) => d.ok), diffs }
+}
+
 /** 便于上层判断:这对方言是否有现成的数据搬运 SQL 构造(目前都覆盖)。 */
 export function canMigrateData(source: DbDialect, target: DbDialect): boolean {
   return [source, target].every(
