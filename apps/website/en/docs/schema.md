@@ -412,6 +412,32 @@ Four buttons on the report page, all reusing existing deps (`xlsx` / `marked`), 
 
 > Grading: **A Auto** (deterministic, use as-is) · **B Assisted** (type / semantic differences, spot-check) · **C Manual** (PL/SQL body or proprietary syntax, needs AI + human) · **D Blocked** (no equivalent — spatial / external packages — needs architectural review). Readiness = weighted mean of object grades (A=100 / B=80 / C=40 / D=0).
 
+### v0.5.8: the full assess-to-execute loop
+
+The wizard grew from 5 steps to 6 (a **Data migration** step), and the engine
+gained what actually performing a migration needs:
+
+- **Conversion fidelity** — beyond types, it now emits primary/foreign/unique/
+  check constraints, indexes, sequences and comments, in dependency order
+  (sequences → tables → comments → indexes → FKs) as one runnable script.
+- **Generate full script + one-click apply** — read the source structure →
+  `convertSchema` → run on the target; PG-family is atomic (dry-run inside a
+  transaction, then commit; any failure rolls back), non-transactional targets
+  run sequentially and stop at the first error.
+- **AI self-repair loop** — AI-converted DDL is dry-run on the target inside a
+  transaction (`BEGIN…ROLLBACK`, no residue); errors are fed back to the AI to
+  fix, up to 3 attempts; passing results are marked ✅.
+- **Data migration** — chunked per-table copy (cancellable + table-level
+  resume) with row-count reconcile and PK column-level reconcile (non-null /
+  min / max), ✅/❌ per table.
+- **More source dialects** — besides Oracle/DM, **PG-family / MySQL / SQL
+  Server** can be sources (de-PG / de-MySQL / de-SQL-Server); targets gain the
+  **MySQL family** (OceanBase / TiDB / GBase …). Adding a database is still N+M.
+
+> The critical paths (conversion, profiling, validation, apply, data copy,
+> whole-schema round-trip) were verified against a live openGauss-kernel
+> database (Vastbase).
+
 ## Compatibility matrix
 
 Each tool's supported dialects. `▣` = full support, `◐` = partial, `-` = N/A.

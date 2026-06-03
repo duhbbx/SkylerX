@@ -412,6 +412,36 @@ Quatre boutons sur la page du rapport, tous réutilisant des dépendances exista
 
 > Notation : **A Auto** (déterministe, tel quel) · **B Assisté** (différences de type / sémantique, à vérifier) · **C Manuel** (corps PL/SQL ou syntaxe propriétaire, nécessite IA + humain) · **D Bloqué** (sans équivalent — spatial / packages externes — nécessite une revue d'architecture). Préparation = moyenne pondérée des niveaux d'objet (A=100 / B=80 / C=40 / D=0).
 
+### v0.5.8 : la boucle complète, de l'évaluation à l'exécution
+
+L'assistant est passé de 5 à 6 étapes (une étape **Migration des données**) et le
+moteur a gagné ce qu'il faut pour réaliser réellement une migration :
+
+- **Fidélité de conversion** — au-delà des types, il émet désormais les clés
+  primaires/étrangères/uniques/check, index, séquences et commentaires, dans
+  l'ordre des dépendances (séquences → tables → commentaires → index → FK) en un
+  seul script exécutable.
+- **Générer le script complet + appliquer en un clic** — lire la structure
+  source → `convertSchema` → exécuter sur la cible ; la famille PG est atomique
+  (dry-run dans une transaction puis commit ; tout échec déclenche un rollback),
+  les cibles non transactionnelles s'exécutent en séquence et s'arrêtent à la
+  première erreur.
+- **Boucle d'auto-réparation IA** — le DDL converti par l'IA est testé sur la
+  cible dans une transaction (`BEGIN…ROLLBACK`, sans résidu) ; les erreurs sont
+  renvoyées à l'IA pour correction, jusqu'à 3 tentatives ; ce qui passe est
+  marqué ✅.
+- **Migration des données** — copie par lots et par table (annulable + reprise au
+  niveau table) avec réconciliation du nombre de lignes et réconciliation au
+  niveau colonne de la PK (non-null / min / max), ✅/❌ par table.
+- **Plus de dialectes source** — outre Oracle/DM, **famille PG / MySQL / SQL
+  Server** peuvent être sources (dé-PG / dé-MySQL / dé-SQL-Server) ; les cibles
+  gagnent la **famille MySQL** (OceanBase / TiDB / GBase …). Ajouter une base
+  reste N+M.
+
+> Les chemins critiques (conversion, profilage, validation, application, copie de
+> données, round-trip de schéma complet) ont été vérifiés sur une base à noyau
+> openGauss en direct (Vastbase).
+
 ## Matrice de compatibilité
 
 Tableau récapitulatif des dialectes supportés par outil. `▣` = support complet, `◐` = support partiel, `-` = non applicable / sauté.

@@ -412,6 +412,34 @@ Quatro botões na página do relatório, todos reutilizando dependências existe
 
 > Classificação: **A Auto** (determinístico, usar como está) · **B Assistido** (diferenças de tipo / semântica, revisar) · **C Manual** (corpo PL/SQL ou sintaxe proprietária, requer IA + humano) · **D Bloqueado** (sem equivalente — espacial / pacotes externos — requer revisão arquitetural). Prontidão = média ponderada dos graus de objeto (A=100 / B=80 / C=40 / D=0).
 
+### v0.5.8: o ciclo completo, da avaliação à execução
+
+O assistente passou de 5 para 6 passos (um passo de **Migração de dados**) e o
+motor ganhou o necessário para realmente executar uma migração:
+
+- **Fidelidade de conversão** — além dos tipos, agora emite chaves
+  primárias/estrangeiras/únicas/check, índices, sequências e comentários, em
+  ordem de dependências (sequências → tabelas → comentários → índices → FK) como
+  um único script executável.
+- **Gerar script completo + aplicar com um clique** — ler a estrutura de origem →
+  `convertSchema` → executar no destino; a família PG é atômica (dry-run numa
+  transação e depois commit; qualquer falha faz rollback), destinos não
+  transacionais executam em sequência e param no primeiro erro.
+- **Loop de auto-reparo com IA** — o DDL convertido por IA é testado no destino
+  dentro de uma transação (`BEGIN…ROLLBACK`, sem resíduos); os erros voltam à IA
+  para correção, até 3 tentativas; o que passa é marcado ✅.
+- **Migração de dados** — cópia em lotes por tabela (cancelável + retomável por
+  tabela) com reconciliação de contagem de linhas e reconciliação a nível de
+  coluna da PK (não nulos / mín / máx), ✅/❌ por tabela.
+- **Mais dialetos de origem** — além de Oracle/DM, **família PG / MySQL / SQL
+  Server** podem ser origem (de-PG / de-MySQL / de-SQL-Server); os destinos
+  ganham a **família MySQL** (OceanBase / TiDB / GBase …). Adicionar um banco
+  continua sendo N+M.
+
+> Os caminhos críticos (conversão, perfilamento, validação, aplicação, cópia de
+> dados, round-trip de schema completo) foram verificados contra um banco com
+> núcleo openGauss ao vivo (Vastbase).
+
 ## Matriz de compatibilidade
 
 A tabela resume os dialetos suportados por ferramenta. `▣` = suporte completo, `◐` = parcial, `-` = não aplicável.

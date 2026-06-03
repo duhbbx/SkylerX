@@ -412,6 +412,34 @@ Cuatro botones en la página del informe, todos reutilizando dependencias existe
 
 > Calificación: **A Auto** (determinista, usar tal cual) · **B Asistido** (diferencias de tipo / semántica, revisar) · **C Manual** (cuerpo PL/SQL o sintaxis propietaria, requiere IA + humano) · **D Bloqueado** (sin equivalente — espacial / paquetes externos — requiere revisión arquitectónica). Preparación = media ponderada de los grados de objeto (A=100 / B=80 / C=40 / D=0).
 
+### v0.5.8: el ciclo completo de evaluación a ejecución
+
+El asistente pasó de 5 a 6 pasos (un paso de **Migración de datos**) y el motor
+ganó lo necesario para realizar realmente una migración:
+
+- **Fidelidad de conversión** — además de los tipos, ahora emite claves
+  primarias/foráneas/únicas/check, índices, secuencias y comentarios, en orden
+  de dependencias (secuencias → tablas → comentarios → índices → FK) como un
+  único script ejecutable.
+- **Generar script completo + aplicar con un clic** — leer la estructura de
+  origen → `convertSchema` → ejecutar en el destino; PG-family es atómico
+  (dry-run en una transacción y luego commit; cualquier fallo hace rollback),
+  los destinos no transaccionales se ejecutan en secuencia y paran al primer error.
+- **Bucle de auto-reparación con IA** — el DDL convertido por IA se prueba en el
+  destino dentro de una transacción (`BEGIN…ROLLBACK`, sin residuos); los errores
+  se devuelven a la IA para corregir, hasta 3 intentos; lo que pasa se marca ✅.
+- **Migración de datos** — copia por lotes por tabla (cancelable + reanudable a
+  nivel de tabla) con conciliación de recuento de filas y conciliación a nivel de
+  columna de la PK (no nulos / mín / máx), ✅/❌ por tabla.
+- **Más dialectos de origen** — además de Oracle/DM, **PG-family / MySQL / SQL
+  Server** pueden ser origen (de-PG / de-MySQL / de-SQL-Server); los destinos
+  ganan la **familia MySQL** (OceanBase / TiDB / GBase …). Añadir una base sigue
+  siendo N+M.
+
+> Las rutas críticas (conversión, perfilado, validación, aplicación, copia de
+> datos, round-trip de esquema completo) se verificaron contra una base con
+> núcleo openGauss en vivo (Vastbase).
+
 ## Matriz de compatibilidad
 
 Resumen del soporte por dialecto. `▣` = soporte completo, `◐` = parcial, `-` = no aplica / se omite.
