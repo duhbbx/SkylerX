@@ -365,6 +365,53 @@ Après réponse de l'IA, `extractSql(text)` extrait le premier bloc SQL et l'inj
 
 > Note sur les recommandations d'index : dans Schema Reverse, l'IA ne donne que des « suggestions » (par expérience), sans créer d'index. Pour recommander des index basés sur l'historique SQL réel + index existants → voir [Avancé et ingénierie → Recommandeur d'index](./advanced.md).
 
+## 11. Évaluation de migration (MigrationAssessWizard)
+
+Transforme une base source Oracle / DM en un rapport de faisabilité pour migrer vers une base nationale à noyau openGauss (Vastbase / openGauss) ou DM. Conçu pour les avant-ventes / DBA de projets de-Oracle (« 去O ») : voir combien, quelle taille et quelle difficulté présente la source *avant* de s'engager dans l'effort.
+
+**Accès** : palette de commandes `act:mig-assess` (cherchez « Évaluation de migration »), ou clic droit sur une connexion Oracle / DM → `🧭 Évaluation de migration… ` (la pré-remplit comme source). Code dans `packages/ui/src/components/MigrationAssessWizard.vue` ; toute la logique est dans `packages/ui/src/migrate/`.
+
+### Assistant en 5 étapes
+
+| Étape | Rôle |
+|---|---|
+| 1 Connexion | Choisir la source (dialecte profilable) + la cible (dialecte avec chemin de conversion) |
+| 2 Profilage | Lister bases / schémas (système filtré), cocher ceux à migrer, obtenir un inventaire complet d'objets + métriques de risque |
+| 3 Évaluation | Récupérer les objets des schémas choisis, noter chacun A/B/C/D + un score global de « préparation » |
+| 4 Conversion IA | Confier les objets de niveau C (corps PL/SQL / SQL complexe) à l'IA pour les traduire vers le dialecte cible (lecture seule) |
+| 5 Rapport | Agréger et exporter en Excel / Word / PDF / Markdown |
+
+### Architecture hub-and-spoke
+
+Plutôt que des traducteurs source→cible par paires (une explosion N×M), un modèle logique intermédiaire (Logical IR) se place au centre :
+
+```
+source ──parse──▶ Logical IR ──emit──▶ cible
+```
+
+Chaque dialecte n'a besoin que d'un parser ou d'un emitter ; ajouter une base est donc N+M, pas N×M. Code : `migrate/ir.ts` (modèle), `migrate/convert.ts` (orchestration), `migrate/dialects/{oracle,postgres,dameng}.ts`. **Frontière** : les objets structurels (tables / colonnes / types / contraintes) passent par l'IR déterministe ; les objets procéduraux (procédures / fonctions / packages / triggers / vues) conservent leur DDL d'origine et sont traduits par l'IA (`migrate/aiConvert.ts`), là où la traduction par regex ne peut pas faire de réécriture sémantique.
+
+### Profilage de la source
+
+`migrate/profile.ts` + `migrate/profilers/{oracle,postgres}.ts`, un jeu de requêtes catalogue par famille source. Il inventorie 17 catégories d'objets, et **les objets non pris en charge s'affichent en `—` (null), pas en faux 0** :
+
+> tables · vues · vues matérialisées · tables partitionnées · index · clés primaires · clés étrangères · contraintes uniques · contraintes check · séquences · fonctions · procédures · packages · triggers · types · synonymes · db links
+
+Plus des métriques de risque : **tables sans PK** (l'écueil n°1 du CDC), **colonnes LOB** (l'essentiel du temps de migration des données), **tables avec triggers**, **tables avec commentaires** ; plus les tranches de lignes (≥1M / ≥10M / ≥100M), la taille de tablespace et les plus grosses tables. Les comptes de lignes utilisent les estimations du catalogue (`reltuples` / `num_rows`), sans `COUNT(*)` exact, donc même des tables de milliards de lignes répondent en quelques secondes. Quand `dba_segments` est illisible (sans privilège DBA), dégradation propre (taille 0 + avis).
+
+### Export de documents
+
+Quatre boutons sur la page du rapport, tous réutilisant des dépendances existantes (`xlsx` / `marked`), sans nouvelle librairie :
+
+| Format | Comment |
+|---|---|
+| Excel `.xlsx` | Multi-feuilles : aperçu / inventaire / grandes tables / détail d'évaluation / conversions IA |
+| Word `.doc` | Markdown rendu en HTML stylé, s'ouvre nativement dans Word |
+| PDF | Le même HTML dans une fenêtre qui s'imprime seule → « Enregistrer en PDF » de Chromium |
+| Markdown `.md` | Rapport en texte brut |
+
+> Notation : **A Auto** (déterministe, tel quel) · **B Assisté** (différences de type / sémantique, à vérifier) · **C Manuel** (corps PL/SQL ou syntaxe propriétaire, nécessite IA + humain) · **D Bloqué** (sans équivalent — spatial / packages externes — nécessite une revue d'architecture). Préparation = moyenne pondérée des niveaux d'objet (A=100 / B=80 / C=40 / D=0).
+
 ## Matrice de compatibilité
 
 Tableau récapitulatif des dialectes supportés par outil. `▣` = support complet, `◐` = support partiel, `-` = non applicable / sauté.

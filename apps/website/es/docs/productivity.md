@@ -59,6 +59,7 @@ Lo siguiente es lo que produce el computed `paletteItems` en `Workspace.vue` (ac
 | `act:ndjson-viewer` | Visor NDJSON | Barra |
 | `act:contracts` | Contratos de datos | Herramientas → Contratos de datos |
 | `act:o2dm` | Asistente de migración Oracle → DM | Barra |
+| `act:mig-assess` | Evaluación de migración (perfilado del origen + grados + conversión IA + exportación) | Clic derecho en conexión Oracle/DM |
 | `act:translate` | Traducción SQL (entre dialectos) | Barra |
 | `act:notif` | Configurar webhooks de notificación | `Settings → Notificaciones` |
 | `act:keybind` | Atajos personalizados | `Settings → Atajos` |

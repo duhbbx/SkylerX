@@ -59,6 +59,7 @@ const filtered = computed(() => {
 | `act:ndjson-viewer` | NDJSON 뷰어 | 툴바 |
 | `act:contracts` | 데이터 계약 | 도구 → 데이터 계약 |
 | `act:o2dm` | Oracle → DM 마이그레이션 마법사 | 툴바 |
+| `act:mig-assess` | 마이그레이션 평가(소스 DB 프로파일링 + 등급 + AI 변환 + 내보내기) | Oracle/DM 연결 우클릭 |
 | `act:translate` | SQL 번역(방언 간) | 툴바 |
 | `act:notif` | 알림 webhook 설정 | `Settings → 알림` |
 | `act:keybind` | 커스텀 단축키 | `Settings → 키 바인딩` |

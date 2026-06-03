@@ -59,6 +59,7 @@ const filtered = computed(() => {
 | `act:ndjson-viewer` | NDJSON ビューア | ツールバー |
 | `act:contracts` | データコントラクト | ツール → データコントラクト |
 | `act:o2dm` | Oracle → DM マイグレーションウィザード | ツールバー |
+| `act:mig-assess` | 移行評価(ソース DB プロファイリング + 等級 + AI 変換 + エクスポート) | Oracle/DM 接続を右クリック |
 | `act:translate` | SQL 翻訳(ダイアレクト横断) | ツールバー |
 | `act:notif` | 通知 webhook 設定 | `Settings → 通知` |
 | `act:keybind` | カスタムショートカット | `Settings → キーバインド` |

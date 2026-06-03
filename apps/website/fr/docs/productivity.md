@@ -59,6 +59,7 @@ Voici l'intégralité du computed `paletteItems` de `Workspace.vue` (actions + a
 | `act:ndjson-viewer` | Visualiseur NDJSON | Barre |
 | `act:contracts` | Data contracts | Outils → Data contracts |
 | `act:o2dm` | Assistant Oracle → DM | Barre |
+| `act:mig-assess` | Évaluation de migration (profilage de la source + notes + conversion IA + export) | Clic droit sur une connexion Oracle/DM |
 | `act:translate` | Traduction SQL (inter-dialectes) | Barre |
 | `act:notif` | Notifications webhook | `Settings → Notifications` |
 | `act:keybind` | Raccourcis personnalisés | `Settings → Raccourcis` |
