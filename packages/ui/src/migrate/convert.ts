@@ -13,6 +13,7 @@
 import { type DbDialect } from '@db-tool/shared-types'
 import { familyOf } from '../ddl'
 import { damengEmitter } from './dialects/dameng'
+import { mysqlEmitter } from './dialects/mysql'
 import { oracleParser } from './dialects/oracle'
 import { postgresEmitter } from './dialects/postgres'
 import {
@@ -35,6 +36,7 @@ const PARSERS: Partial<Record<ReturnType<typeof familyOf>, DialectParser>> = {
 const EMITTERS: Partial<Record<ReturnType<typeof familyOf>, DialectEmitter>> = {
   pg: postgresEmitter, // openGauss / Vastbase / MogDB / Panweidb / PostgreSQL …
   oracle: damengEmitter, // DM / Oracle
+  mysql: mysqlEmitter, // OceanBase / GBase8a / TiDB / Doris / StarRocks …
 }
 
 export function parserFor(source: DbDialect): DialectParser | null {
@@ -152,6 +154,7 @@ export function emitTable(
       }
     }
     if (!col.nullable) line += ' NOT NULL'
+    if (emitter.commentStyle === 'inline' && col.comment) line += ` COMMENT ${sqlStr(col.comment)}`
     lines.push(line)
   }
 
@@ -172,14 +175,17 @@ export function emitTable(
   }
 
   const ref = `${q(table.schema)}.${q(table.name)}`
-  const sql = `CREATE TABLE ${ref} (\n${lines.join(',\n')}\n);`
+  const inlineTblComment =
+    emitter.commentStyle === 'inline' && table.comment ? ` COMMENT=${sqlStr(table.comment)}` : ''
+  const suffix = `${emitter.tableSuffix ?? ''}${inlineTblComment}`
+  const sql = `CREATE TABLE ${ref} (\n${lines.join(',\n')}\n)${suffix};`
   return { sql, notes }
 }
 
-/** COMMENT ON 语句(PG / Oracle / DM 通用语法)。 */
+/** COMMENT ON 语句(PG / Oracle / DM);MySQL 等 inline 风格在 emitTable 内联,这里返回空。 */
 export function emitTableComments(table: LogicalTable, target: DbDialect): string[] {
   const emitter = emitterFor(target)
-  if (!emitter) return []
+  if (!emitter || emitter.commentStyle === 'inline') return []
   const q = emitter.quoteId.bind(emitter)
   const ref = `${q(table.schema)}.${q(table.name)}`
   const out: string[] = []

@@ -194,4 +194,8 @@ export interface DialectEmitter {
   emitDefault?(expr: string): { sql: string; notes: ConvertNote[] } | null
   /** 生成 CREATE SEQUENCE(各库 START WITH vs START 等关键字不同)。 */
   emitSequence?(seq: LogicalSequence): string
+  /** 注释风格:'on'=独立 COMMENT ON 语句(PG/Oracle/DM);'inline'=写进 CREATE TABLE(MySQL)。缺省 'on'。 */
+  commentStyle?: 'on' | 'inline'
+  /** CREATE TABLE 结尾追加(如 MySQL 的 ` ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)。 */
+  tableSuffix?: string
 }

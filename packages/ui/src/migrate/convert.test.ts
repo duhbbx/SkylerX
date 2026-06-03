@@ -43,7 +43,7 @@ describe('convertType — Oracle types through IR', () => {
   it('hasStructuralPath reflects registry coverage', () => {
     expect(hasStructuralPath(O, V)).toBe(true)
     expect(hasStructuralPath(O, DM)).toBe(true)
-    expect(hasStructuralPath(O, DbDialect.MySQL)).toBe(false) // no mysql emitter yet
+    expect(hasStructuralPath(O, DbDialect.SqlServer)).toBe(false) // no sqlserver emitter yet
   })
 })
 
@@ -186,5 +186,48 @@ describe('fidelity: constraints / comments / indexes / FK / sequences', () => {
     expect(iSeq).toBeLessThan(iTab)
     expect(iTab).toBeLessThan(iIdx)
     expect(iIdx).toBeLessThan(iFk) // FK last → no table-order topo sort needed
+  })
+})
+
+describe('MySQL-family emitter (Oracle → OceanBase/TiDB/GBase…)', () => {
+  const MY = DbDialect.MySQL
+  const OB = DbDialect.OceanBase
+
+  it('hasStructuralPath now true for mysql targets', () => {
+    expect(hasStructuralPath(O, MY)).toBe(true)
+    expect(hasStructuralPath(O, OB)).toBe(true)
+  })
+  it('maps Oracle types to MySQL', () => {
+    expect(convertType('VARCHAR2(50)', O, MY).sql).toBe('VARCHAR(50)')
+    expect(convertType('NUMBER(10,2)', O, MY).sql).toBe('DECIMAL(10,2)')
+    expect(convertType('NUMBER(8)', O, MY).sql).toBe('INT')
+    expect(convertType('NUMBER(3)', O, MY).sql).toBe('SMALLINT')
+    expect(convertType('DATE', O, MY).sql).toBe('DATETIME')
+    expect(convertType('CLOB', O, MY).sql).toBe('TEXT')
+    expect(convertType('BLOB', O, MY).sql).toBe('BLOB')
+    expect(convertType('BINARY_DOUBLE', O, MY).sql).toBe('DOUBLE')
+  })
+  it('CREATE TABLE uses backticks, inline comments, ENGINE suffix', () => {
+    const { sql } = convertTable(
+      'app',
+      'order',
+      [
+        { name: 'id', dataType: 'NUMBER(10)', nullable: false },
+        { name: 'select', dataType: 'VARCHAR2(20)', comment: '保留字列' },
+      ],
+      O,
+      MY,
+      { primaryKey: ['id'], comment: '订单表' },
+    )
+    expect(sql).toContain('CREATE TABLE app.`order`') // reserved table name → backticked, plain `app` bare
+    expect(sql).toContain('`select` VARCHAR(20)') // reserved column → backticked
+    expect(sql).toContain("COMMENT '保留字列'") // inline column comment
+    expect(sql).toContain("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表'") // suffix + table comment
+    expect(sql).not.toContain('COMMENT ON') // no COMMENT ON for MySQL
+  })
+  it('sequence emits an AUTO_INCREMENT advisory comment', () => {
+    expect(emitSequenceDdl({ kind: 'sequence', schema: 'app', name: 's' }, MY)).toContain(
+      'AUTO_INCREMENT',
+    )
   })
 })
