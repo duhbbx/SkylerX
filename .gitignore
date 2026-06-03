@@ -41,3 +41,7 @@ docs/superpowers/
 
 # Private deploy workflow (sensitive routing, kept local-only)
 .github/workflows/deploy-website.yml
+
+# Playwright e2e artifacts
+test-results/
+playwright-report/
