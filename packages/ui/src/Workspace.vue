@@ -2887,9 +2887,22 @@ let lastShiftAt = 0
 const DOUBLE_SHIFT_WINDOW_MS = 350
 
 function onKeydown(e: KeyboardEvent): void {
-  // 双击 Shift → 全文搜索(任何 focus 都生效;编辑器里也行)
-  // 只在 Shift 键单独按时触发(不带 Ctrl/Meta/Alt + 不带其它字符键)
+  // 双击 Shift → 全文搜索。只在 Shift 单独按时触发(不带 Ctrl/Meta/Alt + 非重复)。
   if (e.key === 'Shift' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
+    // 正在输入(输入框/文本域/下拉/Monaco 编辑器/contenteditable)或 IME 组合中 → 不触发,
+    // 否则打中文切换输入法、敲大写时频繁按 Shift 会老是把全文搜索弹出来(用户反馈)。
+    const el = document.activeElement as HTMLElement | null
+    const typing =
+      !!el &&
+      (el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' ||
+        el.isContentEditable ||
+        el.closest('.monaco-editor') != null)
+    if (typing || e.isComposing) {
+      lastShiftAt = 0
+      return
+    }
     const now = performance.now()
     if (now - lastShiftAt < DOUBLE_SHIFT_WINDOW_MS) {
       lastShiftAt = 0
