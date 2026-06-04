@@ -8,8 +8,11 @@
  */
 import { embedTexts } from '../ai'
 import { type RagChunk, fingerprint } from './corpus'
-import { type Scored, lexicalSearch, vectorSearch } from './retrieve'
+import { type Scored, applyFloor, lexicalSearch, rrfFuse, vectorSearch } from './retrieve'
 import { type RagIndex, decodeVec, encodeVec, saveIndex } from './store'
+
+/** 实际用的检索方式:hybrid(向量+词法 RRF 融合)/ lexical(纯词法兜底)。 */
+export type RetrievalMode = 'hybrid' | 'lexical'
 
 /** 一次 embedding 请求的最大 input 条数,避免大库单请求超 provider batch/token 上限。 */
 const EMBED_BATCH = 64
@@ -72,26 +75,35 @@ export function isStale(idx: RagIndex, currentChunks: RagChunk[]): boolean {
   return idx.fingerprint !== fingerprint(currentChunks)
 }
 
-/** 检索 top-K:向量索引先 embed 查询再余弦;失败或词法索引走词法。 */
+/**
+ * 检索 top-K。向量索引可用时走**混合检索**:向量(语义)+ 词法(精确名/ID)各取候选池,
+ * RRF 融合再排名;否则纯词法。两路都先过相关度地板,丢掉明显不相关的命中。
+ */
 export async function searchIndex(
   idx: RagIndex,
   query: string,
   k: number,
-  opts: { signal?: AbortSignal } = {},
-): Promise<{ hits: Scored[]; mode: RagIndex['mode'] }> {
+  opts: { signal?: AbortSignal; floor?: number } = {},
+): Promise<{ hits: Scored[]; mode: RetrievalMode }> {
+  const pool = Math.max(k * 3, 20) // 融合前每路的候选池
   if (idx.mode === 'vector' && idx.vectors?.length === idx.chunks.length) {
     try {
       const [qv] = await embedTexts([query], opts.signal)
       if (qv) {
         const vecs = idx.vectors
         const items = idx.chunks.map((chunk, i) => ({ chunk, vec: decodeVec(vecs[i]) }))
-        return { hits: vectorSearch(qv, items, k), mode: 'vector' }
+        const fused = rrfFuse(
+          [vectorSearch(qv, items, pool), lexicalSearch(query, idx.chunks, pool)],
+          60,
+          k,
+        )
+        return { hits: applyFloor(fused, opts.floor), mode: 'hybrid' }
       }
     } catch {
       /* 退化词法 */
     }
   }
-  return { hits: lexicalSearch(query, idx.chunks, k), mode: 'lexical' }
+  return { hits: applyFloor(lexicalSearch(query, idx.chunks, k), opts.floor), mode: 'lexical' }
 }
 
 /** 把命中 chunk 拼成给 AI 的上下文。 */

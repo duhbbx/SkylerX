@@ -13,10 +13,27 @@ import type { SchemaInput } from '../migrate/convert'
 
 export interface RagChunk {
   id: string
-  kind: 'table' | 'doc'
+  kind: 'table' | 'doc' | 'view' | 'routine'
   title: string
   text: string
   ref?: { schema?: string; table?: string }
+}
+
+/** 视图 / 物化视图(带定义 SQL)。 */
+export interface RagView {
+  schema: string
+  name: string
+  definition: string
+  materialized?: boolean
+}
+
+/** 函数 / 存储过程(签名,不含函数体)。 */
+export interface RagRoutine {
+  schema: string
+  name: string
+  kind: 'function' | 'procedure'
+  /** 形如 `(a int, b text) RETURNS numeric` 的签名串。 */
+  signature: string
 }
 
 /** 由一个 schema 的结构构建表级 chunk。 */
@@ -49,6 +66,42 @@ export function chunksFromSchema(input: SchemaInput): RagChunk[] {
     })
   }
   return out
+}
+
+/** 单条文本截断,避免超宽视图定义撑爆单个 chunk(超 embedding token 限 / 稀释相关度)。 */
+const MAX_CHUNK_TEXT = 2000
+
+/** 由视图(含物化视图)构建 chunk:标题 + 定义 SQL(截断)。 */
+export function chunksFromViews(views: RagView[]): RagChunk[] {
+  return views.map((v) => {
+    const kw = v.materialized ? 'Materialized view' : 'View'
+    const def = v.definition.trim().slice(0, MAX_CHUNK_TEXT)
+    return {
+      id: `view:${v.schema}.${v.name}`,
+      kind: 'view' as const,
+      title: `${v.schema}.${v.name}`,
+      text: `${kw} ${v.schema}.${v.name}\n${def}`,
+      ref: { schema: v.schema, table: v.name },
+    }
+  })
+}
+
+/** 由函数 / 存储过程构建 chunk:签名(同名重载用序号区分 id)。 */
+export function chunksFromRoutines(routines: RagRoutine[]): RagChunk[] {
+  const seen = new Map<string, number>()
+  return routines.map((r) => {
+    const base = `${r.schema}.${r.name}`
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    const kw = r.kind === 'procedure' ? 'Procedure' : 'Function'
+    return {
+      id: `routine:${base}:${n}`,
+      kind: 'routine' as const,
+      title: base,
+      text: `${kw} ${base}${r.signature}`.slice(0, MAX_CHUNK_TEXT),
+      ref: { schema: r.schema, table: r.name },
+    }
+  })
 }
 
 /**

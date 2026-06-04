@@ -39,6 +39,31 @@ export function vectorSearch(
     .slice(0, k)
 }
 
+/**
+ * Reciprocal Rank Fusion:把多路检索(向量 / 词法)的排名融合成一份。
+ * score = Σ 1/(k0 + rank);只看名次不看原始分,天然把量纲不同的两路拉到一起。
+ * 向量管语义、词法管精确名字/ID,融合后两边的强项都保留。
+ */
+export function rrfFuse(lists: Scored[][], k0 = 60, topK = 10): Scored[] {
+  const acc = new Map<string, Scored>()
+  for (const list of lists) {
+    list.forEach((s, rank) => {
+      const add = 1 / (k0 + rank + 1)
+      const prev = acc.get(s.chunk.id)
+      if (prev) prev.score += add
+      else acc.set(s.chunk.id, { chunk: s.chunk, score: add })
+    })
+  }
+  return [...acc.values()].sort((a, b) => b.score - a.score).slice(0, topK)
+}
+
+/** 相关度地板:丢掉低于「最高分 × ratio」的命中(至少留 1 个),少塞噪音、省 token。 */
+export function applyFloor(hits: Scored[], ratio = 0.35): Scored[] {
+  if (hits.length <= 1) return hits
+  const floor = hits[0].score * ratio
+  return hits.filter((h, i) => i === 0 || h.score >= floor)
+}
+
 /** 分词:小写,按非字母数字切;CJK 逐字。 */
 export function tokenize(s: string): string[] {
   const lower = (s ?? '').toLowerCase()

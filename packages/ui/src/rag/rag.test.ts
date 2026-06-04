@@ -4,9 +4,15 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { SchemaInput } from '../migrate/convert'
-import { chunksFromMarkdown, chunksFromSchema, fingerprint } from './corpus'
-import { cosine, lexicalSearch, tokenize, vectorSearch } from './retrieve'
-import { buildIndex, formatContext, isStale } from './service'
+import {
+  chunksFromMarkdown,
+  chunksFromRoutines,
+  chunksFromSchema,
+  chunksFromViews,
+  fingerprint,
+} from './corpus'
+import { applyFloor, cosine, lexicalSearch, rrfFuse, tokenize, vectorSearch } from './retrieve'
+import { buildIndex, formatContext, isStale, searchIndex } from './service'
 import { type RagIndex, decodeVec, encodeVec, loadIndex, saveIndex } from './store'
 
 vi.mock('../ai', () => ({
@@ -54,6 +60,36 @@ describe('corpus', () => {
     const c = chunksFromMarkdown('# A\nbody a\n## B\nbody b')
     expect(c.map((x) => x.title)).toEqual(['A', 'B'])
   })
+  it('view chunks carry definition; matview labelled; long defs truncated', () => {
+    const c = chunksFromViews([
+      { schema: 's', name: 'v_sales', definition: 'SELECT * FROM orders JOIN customer' },
+      { schema: 's', name: 'mv_daily', definition: 'x'.repeat(5000), materialized: true },
+    ])
+    expect(c[0].kind).toBe('view')
+    expect(c[0].text).toContain('SELECT * FROM orders JOIN customer')
+    expect(c[1].text).toContain('Materialized view')
+    expect(c[1].text.length).toBeLessThan(2100) // 截断
+  })
+  it('routine chunks carry signature; same-name overloads get distinct ids', () => {
+    const c = chunksFromRoutines([
+      {
+        schema: 's',
+        name: 'calc_tax',
+        kind: 'function',
+        signature: '(amount numeric) RETURNS numeric',
+      },
+      {
+        schema: 's',
+        name: 'calc_tax',
+        kind: 'function',
+        signature: '(amount numeric, rate numeric) RETURNS numeric',
+      },
+      { schema: 's', name: 'do_import', kind: 'procedure', signature: '(path text)' },
+    ])
+    expect(new Set(c.map((x) => x.id)).size).toBe(3) // 重载 id 不撞
+    expect(c[0].text).toContain('Function s.calc_tax(amount numeric) RETURNS numeric')
+    expect(c[2].text).toContain('Procedure s.do_import(path text)')
+  })
 })
 
 describe('retrieve', () => {
@@ -86,6 +122,30 @@ describe('retrieve', () => {
     ]
     const hits = vectorSearch([0.9, 0.1, 0], items, 2)
     expect(hits[0].chunk).toBe(chunks[0])
+  })
+  it('rrfFuse rewards agreement across lists', () => {
+    const chunks = chunksFromSchema(schema)
+    const a = chunks[0]
+    const b = chunks[1]
+    // a is #2 in both lists, b is #1 in one and absent in the other.
+    // RRF: a = 1/62 + 1/62 ≈ .0323; b = 1/61 ≈ .0164 → a wins on agreement.
+    const fused = rrfFuse([
+      [
+        { chunk: b, score: 9 },
+        { chunk: a, score: 1 },
+      ],
+      [{ chunk: a, score: 5 }],
+    ])
+    expect(fused[0].chunk).toBe(a)
+  })
+  it('applyFloor drops weak tail but always keeps the top hit', () => {
+    const chunks = chunksFromSchema(schema)
+    const hits = [
+      { chunk: chunks[0], score: 10 },
+      { chunk: chunks[1], score: 1 }, // 10% of top → below 0.35 floor
+    ]
+    expect(applyFloor(hits, 0.35).map((h) => h.chunk)).toEqual([chunks[0]])
+    expect(applyFloor([hits[0]], 0.35)).toHaveLength(1) // 单条不丢
   })
 })
 
@@ -155,6 +215,38 @@ describe('buildIndex', () => {
     expect(idx.mode).toBe('lexical')
     expect(idx.vectors).toBeUndefined()
     expect(idx.fingerprint).toBeTruthy()
+  })
+})
+
+describe('searchIndex', () => {
+  it('vector index → hybrid retrieval (fuses vector + lexical)', async () => {
+    const chunks = chunksFromSchema(schema)
+    // employee → vec [1,0]; department → vec [0,1]
+    const idx: RagIndex = {
+      key: 'k',
+      builtAt: 1,
+      mode: 'vector',
+      chunks,
+      vectors: [encodeVec([1, 0]), encodeVec([0, 1])],
+      fingerprint: 'x',
+    }
+    // query embeds near department's vector, but lexical text mentions employee
+    vi.mocked(embedTexts).mockResolvedValue([[0, 1]])
+    const { hits, mode } = await searchIndex(idx, '员工 employee', 5)
+    expect(mode).toBe('hybrid')
+    expect(hits.map((h) => h.chunk.ref?.table).sort()).toEqual(['department', 'employee'])
+  })
+  it('lexical index → lexical mode, no embedding call', async () => {
+    vi.mocked(embedTexts).mockClear()
+    const idx: RagIndex = {
+      key: 'k',
+      builtAt: 1,
+      mode: 'lexical',
+      chunks: chunksFromSchema(schema),
+    }
+    const { mode } = await searchIndex(idx, '部门', 5)
+    expect(mode).toBe('lexical')
+    expect(embedTexts).not.toHaveBeenCalled()
   })
 })
 

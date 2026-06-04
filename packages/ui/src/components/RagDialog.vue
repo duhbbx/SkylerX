@@ -19,7 +19,14 @@ import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import { canIntrospect, readSchema } from '../migrate/introspect'
-import { type RagChunk, chunksFromMarkdown, chunksFromSchema } from '../rag/corpus'
+import {
+  type RagChunk,
+  chunksFromMarkdown,
+  chunksFromRoutines,
+  chunksFromSchema,
+  chunksFromViews,
+} from '../rag/corpus'
+import { readRoutines, readViews } from '../rag/objects'
 import { buildIndex, formatContext, isStale, searchIndex } from '../rag/service'
 import { type RagIndex, loadIndex } from '../rag/store'
 import Modal from './Modal.vue'
@@ -42,7 +49,7 @@ const question = ref('')
 const asking = ref(false)
 const answer = ref('')
 const sources = ref<Array<{ title: string; score: number }>>([])
-const usedMode = ref<'vector' | 'lexical' | ''>('')
+const usedMode = ref<'hybrid' | 'lexical' | ''>('')
 
 const dialectOf = (): ConnectionConfig['dialect'] | undefined =>
   conns.value.find((c) => c.id === connId.value)?.dialect
@@ -53,14 +60,23 @@ function loadExisting(): void {
   stale.value = false
 }
 
-/** 读结构 + 粘贴的文档 → 合并 chunk(表级 + 文档段)。 */
+/** 读结构 + 视图/函数 + 粘贴文档 → 合并 chunk(表 + 视图 + 函数/过程 + 文档段)。 */
 async function gatherChunks(): Promise<RagChunk[]> {
   const dialect = dialectOf()
   if (!dialect) return []
   const exec = (sql: string): Promise<Array<Record<string, unknown>>> =>
     client.connections.execute(connId.value, sql).then((r) => r.rows)
-  const si = await readSchema(exec, dialect, schemaName.value)
-  return [...chunksFromSchema(si), ...chunksFromMarkdown(docsText.value)]
+  const [si, views, routines] = await Promise.all([
+    readSchema(exec, dialect, schemaName.value),
+    readViews(exec, dialect, schemaName.value).catch(() => []),
+    readRoutines(exec, dialect, schemaName.value).catch(() => []),
+  ])
+  return [
+    ...chunksFromSchema(si),
+    ...chunksFromViews(views),
+    ...chunksFromRoutines(routines),
+    ...chunksFromMarkdown(docsText.value),
+  ]
 }
 
 async function build(): Promise<void> {
@@ -85,12 +101,19 @@ async function build(): Promise<void> {
       },
     })
     stale.value = false
-    const tbl = chunks.filter((c) => c.kind === 'table').length
-    const doc = chunks.length - tbl
+    const n = (kind: RagChunk['kind']): number => chunks.filter((c) => c.kind === kind).length
+    const zh = [
+      `${n('table')} 表`,
+      n('view') && `${n('view')} 视图`,
+      n('routine') && `${n('routine')} 函数/过程`,
+      n('doc') && `${n('doc')} 文档段`,
+    ]
+      .filter(Boolean)
+      .join(' + ')
     toast.success(
       L(
-        `索引完成:${tbl} 表${doc ? ` + ${doc} 文档段` : ''},${idx.value.mode === 'vector' ? '向量' : '词法'}模式`,
-        `Indexed ${tbl} tables${doc ? ` + ${doc} doc sections` : ''} (${idx.value.mode})`,
+        `索引完成:${zh},${idx.value.mode === 'vector' ? '向量(混合检索)' : '词法'}模式`,
+        `Indexed ${chunks.length} chunks (${idx.value.mode === 'vector' ? 'vector/hybrid' : 'lexical'})`,
       ),
     )
   } catch (e) {
@@ -164,7 +187,7 @@ onMounted(async () => {
         <button class="primary" :disabled="building || !connId || !schemaName" @click="build">
           {{ building ? (progress || '…') : L('构建索引', 'Build index') }}
         </button>
-        <span v-if="idx" class="badge" :class="idx.mode">{{ idx.chunks.length }} {{ L('块', 'chunks') }} · {{ idx.mode === 'vector' ? L('向量', 'vector') : L('词法', 'lexical') }}</span>
+        <span v-if="idx" class="badge" :class="idx.mode">{{ idx.chunks.length }} {{ L('块', 'chunks') }} · {{ idx.mode === 'vector' ? L('向量·混合', 'vector·hybrid') : L('词法', 'lexical') }}</span>
         <button v-if="idx" class="ghost" :disabled="building" @click="checkStale">{{ L('检测变化', 'Check stale') }}</button>
         <span v-if="stale" class="badge stale">{{ L('结构已变,建议重建', 'stale — rebuild') }}</span>
         <span v-if="!canEmbed()" class="note">{{ L('当前 provider 无向量化 → 用词法检索', 'no embeddings on this provider → lexical') }}</span>
@@ -183,7 +206,7 @@ onMounted(async () => {
       <p v-if="!idx" class="note hint">{{ L('先选连接 + schema,点「构建索引」。索引存本地,下次直接用。', 'Pick a connection + schema and build an index; it is stored locally for reuse.') }}</p>
 
       <div v-if="sources.length" class="sources">
-        <span class="note">{{ L('引用', 'cited') }} ({{ usedMode === 'vector' ? L('向量', 'vector') : L('词法', 'lexical') }}):</span>
+        <span class="note">{{ L('引用', 'cited') }} ({{ usedMode === 'hybrid' ? L('混合', 'hybrid') : L('词法', 'lexical') }}):</span>
         <span v-for="(s, i) in sources" :key="i" class="src">{{ s.title }}</span>
       </div>
 
