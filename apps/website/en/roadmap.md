@@ -5,7 +5,7 @@ description: SkylerX upcoming databases and feature plans, refreshed each quarte
 
 # Roadmap
 
-> Last updated: 2026-05-31
+> Last updated: 2026-06-04
 > Directional plan — not a commitment. Actual cadence depends on feedback and resources.
 > Full source: [ROADMAP.md on GitHub](https://github.com/duhbbx/SkylerX/blob/main/ROADMAP.md)
 
@@ -79,11 +79,11 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 |---|---|
 | ✅ | SQL Linter + AI inline completion |
 | ✅ | Query history with tags + pinning |
-| 🟢 | **Notebook mode** — mixed SQL / Markdown / charts cells |
+| ✅ | **Notebook mode** — multi-cell SQL / Markdown, locally persisted; Jupyter-like |
 | 🟢 | **Visual Query Builder** — drag-to-join, auto-JOIN, GUI aggregation |
 | 🔵 | **Speech-to-SQL** — Whisper offline → AI translation |
 | 🔵 | **Cross-dialect SP translator** — Oracle PL/SQL ↔ PG PL/pgSQL ↔ DM |
-| ⚪ | Custom linter rule editor |
+| ✅ | **Custom linter rule editor** — user-defined disallow patterns / style rules (regex match + severity level) |
 | ⚪ | Snippet library + cross-device sync |
 
 ### 2.2 Result grid UX
@@ -91,6 +91,8 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 | Status | Feature |
 |---|---|
 | ✅ | Inline edit + DML commit, "Ask AI" on errors, cell viewer |
+| ✅ | **Query result diff** — diff two result sets by row / cell, marking added / removed / changed |
+| ✅ | **Masking on export** — when masking is on, copy / export (CSV/JSON/SQL/…) masks whole columns per the rules, consistent with the grid — no more "shows masked, exports plaintext" |
 | 🟢 | **Form view** — vertical single-row editor for wide tables |
 | 🟢 | **Excel-style multi-value filter** |
 | 🔵 | **Master/Detail linkage** — pick a row, auto-load related tables |
@@ -104,9 +106,10 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 | ✅ | DDL generation · Schema diff · Mock data v1 |
 | ✅ | Oracle → DM migration wizard |
 | ✅ | **Migration assessment** — source profiling (17 object categories + risk metrics) + A/B/C/D grading + AI PL/SQL conversion + Word/PDF/Excel export; hub-and-spoke IR design |
-| 🟢 | **ER diagram auto-layout** — reverse engineering with SVG/PNG export |
+| ✅ | **ER diagram auto-layout** — reverse-engineer from live schema, foreign-key auto-links (child → parent), node size by column count, PK tables highlighted, focus a table + neighbors, export PNG / SVG |
 | 🔵 | **Forward engineering** — edit ER diagram → emit migration |
-| 🔵 | **Cross-DB migration v2** — extend MySQL ↔ PG ↔ DM combos |
+| ✅ | **Cross-DB migration v2** — hub-and-spoke IR: parse MySQL/Oracle/DM/SQL Server → emit PG/Oracle/DM/MySQL with full types / indexes / views / FKs; data migration (chunked parameterized + incremental + validation) |
+| ✅ | **Data lineage graph** — parse SQL → table-level lineage (column-level on the roadmap) |
 | ⚪ | dbt integration · Column-level lineage |
 
 ### 2.4 DBA / operations
@@ -118,7 +121,8 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 | 🟢 | **Dead index detection** + size stats |
 | 🟢 | **Slow query → auto rewrite + index suggestion** |
 | 🔵 | Replication lag dashboard |
-| ⚪ | Storage growth forecasting · Connection pool tuning · Signed audit log · Backup scheduler |
+| ✅ | **Storage growth trend prediction** — snapshot db/table sizes, fit 7/30/90-day capacity curve + cap warning |
+| ⚪ | Connection pool tuning · Signed audit log · Backup scheduler |
 
 ### 2.5 AI
 
@@ -128,7 +132,7 @@ Apache HBase · Impala · DynamoDB Streams · Cassandra CDC · LMDB / RocksDB vi
 | 🟢 | **Mock data v2** — FK-aware across tables + semantic fields (names, addresses, phones) |
 | 🟢 | **Health check v2** — anti-pattern library expanded to 50+ checks |
 | 🔵 | **Streaming completion (Cursor-style)** — type-as-you-go suggestions |
-| 🔵 | **RAG over schema + docs** — project READMEs + schema into AI context |
+| ✅ | **RAG over schema + docs** — schema (tables / views / functions) + docs chunked → vector (OpenAI-compatible /v1/embeddings) + BM25 hybrid retrieval (RRF fusion) + relevance floor; injects only the relevant tables into AI context; graceful lexical fallback when no embeddings |
 | ⚪ | AI-suggested masking rules · SQL → ER diagram |
 
 ### 2.6 Collaboration / multi-device
@@ -170,6 +174,10 @@ NavTree is the entry point for 95% of daily work — a wave of polish that just 
 | ✅ | **Local tree search (Ctrl/⌘+F)** — live filter on loaded nodes, force-expand branches with matches |
 | ✅ | **Full-catalog object index + cross-tree search** — per-connection flat catalog cache (~5MB / 100k objects / 10ms scan); silent background build on first search; matches surface above the tree; covers tables / views / functions / procedures / sequences / triggers / indexes; kind-pill filtering |
 | ✅ | **Redis key click-to-link** — single-click a Redis key in nav focuses the matching RedisPane tab and selects the key; doesn't spawn a new tab. Refs #19 |
+| ✅ | **Object-type completeness across dialects** — Oracle/DM (incl. fixing DM's `CLASS` object_type for types), Vastbase/openGauss + the whole PG family (materialized views / procedures / types; openGauss also packages / synonyms), SQL Server (functions / procedures / triggers / sequences / types / synonyms) |
+| ✅ | **One-click exclude system DBs/schemas** — in the visible-DBs/schemas config, one click unchecks system DBs/schemas (mysql / pg_catalog / SYS / SYSAUDITOR …), user objects untouched; single-level dialects (MySQL etc.) no longer show a pointless schema dropdown |
+| ✅ | **Copy connection info** — right-click a connection → "Copy connection info" submenu: JDBC URL / JSON / multi-line / single-line (;) — never includes the password |
+| ✅ | **Move to group (combobox)** — bulk move to group: pick an existing group from the dropdown or type a new name (trimmed, created if absent); empty = remove from group |
 | 🟢 | **Cmd+Shift+P global object finder** — cross-connection fuzzy modal, complements in-tree search |
 | 🔵 | **Persist index to IndexedDB** — cold-start results in milliseconds (with staleness marker) |
 | 🔵 | **revealObject for all kinds** — currently reveals tables/views in the tree; expand to functions / procedures / sequences |
@@ -206,6 +214,7 @@ NavTree is the entry point for 95% of daily work — a wave of polish that just 
 
 | Date | Highlight |
 |---|---|
+| 2026-06 | RAG over schema (vector + BM25 hybrid) · ER diagram + PNG/SVG export · query result diff · masking on export · nav object-type completeness across dialects · cross-dialect reader live-verification (DM/Oracle/MySQL/Vastbase) |
 | 2026-05 | AI settings → encrypted SQLite · 7-language SEO · Self-hosted Umami |
 | 2026-04 | ClickHouse / Snowflake / Doris / StarRocks / Redshift / H2 driver wave |
 | 2026-03 | NoSQL channel (MongoDB / Redis / Elasticsearch) · SQL Linter · AI inline |
