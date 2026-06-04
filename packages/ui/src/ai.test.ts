@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { describe, expect, it } from 'vitest'
-import { extractSql, fmtOracleType } from './ai'
+import { canEmbed, extractSql, fmtOracleType } from './ai'
+import { settings } from './settings'
 
 describe('extractSql', () => {
   it('pulls the first ```sql fenced block', () => {
@@ -15,6 +16,18 @@ describe('extractSql', () => {
   })
   it('returns the trimmed input when no fence', () => {
     expect(extractSql('  SELECT now();  ')).toBe('SELECT now();')
+  })
+})
+
+describe('canEmbed', () => {
+  it('reflects the dedicated embedding config, not the chat provider', () => {
+    settings.aiEmbeddingApiKey = ''
+    settings.aiEmbeddingBaseUrl = ''
+    expect(canEmbed()).toBe(false)
+    settings.aiEmbeddingApiKey = 'sk-x'
+    expect(canEmbed()).toBe(false) // 缺 baseUrl
+    settings.aiEmbeddingBaseUrl = 'https://api.openai.com'
+    expect(canEmbed()).toBe(true) // key + baseUrl 齐 → 可向量/混合检索
   })
 })
 

@@ -360,21 +360,21 @@ export function currentProvider(): AiProvider {
 }
 
 /**
- * 文本向量化(RAG 用)。走 OpenAI 兼容的 /v1/embeddings;
- * Anthropic 无该端点 → 抛错让上层退化到词法检索。embedModel 可在 provider 配置里覆盖。
+ * 文本向量化(RAG 用)。走 OpenAI 兼容的 /v1/embeddings。
+ *
+ * 用**专用的嵌入配置**(settings.aiEmbedding*),跟向量记忆共用、跟聊天 provider 解耦——
+ * 因为嵌入端点常和聊天不是同一家(典型:Anthropic 聊天 + OpenAI 嵌入)。
+ * 没配 key/baseUrl → 抛 NO_EMBEDDINGS,上层退化到词法检索。input 传数组一次嵌多条(OpenAI 支持)。
  */
 export async function embedTexts(texts: string[], signal?: AbortSignal): Promise<number[][]> {
   if (!texts.length) return []
-  const provider = settings.aiProvider
-  const cfg = settings.aiProviders[provider]
-  if (!cfg?.apiKey?.trim()) throw new Error('NO_API_KEY')
-  if (provider === 'anthropic') throw new Error('NO_EMBEDDINGS') // Anthropic 无 embeddings
-  const base = (cfg.baseUrl || '').replace(/\/$/, '')
-  if (!base) throw new Error('NO_BASE_URL')
-  const model = (cfg as { embedModel?: string }).embedModel || 'text-embedding-3-small'
+  const key = settings.aiEmbeddingApiKey.trim()
+  const base = settings.aiEmbeddingBaseUrl.trim().replace(/\/$/, '')
+  const model = settings.aiEmbeddingModel.trim() || 'text-embedding-3-small'
+  if (!key || !base) throw new Error('NO_EMBEDDINGS')
   const res = await aiHttp(`${base}/v1/embeddings`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey.trim()}` },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
     body: JSON.stringify({ model, input: texts }),
     signal,
   })
@@ -383,10 +383,9 @@ export async function embedTexts(texts: string[], signal?: AbortSignal): Promise
   return (data.data ?? []).map((d) => d.embedding)
 }
 
-/** 当前 provider 是否可能支持向量化(非 anthropic + 有 key)。 */
+/** 是否配好了嵌入端点(专用 key + baseUrl);决定 RAG 能否走向量/混合检索。 */
 export function canEmbed(): boolean {
-  const cfg = settings.aiProviders[settings.aiProvider]
-  return settings.aiProvider !== 'anthropic' && !!cfg?.apiKey?.trim()
+  return !!settings.aiEmbeddingApiKey.trim() && !!settings.aiEmbeddingBaseUrl.trim()
 }
 
 // ── Connectivity test (#28) ──────────────────────────────────────────

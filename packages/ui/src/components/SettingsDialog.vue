@@ -468,7 +468,25 @@ function watermarkPreviewSvg(): string {
             </ul>
           </div>
 
-          <!-- C 档：向量记忆 -->
+          <!-- 嵌入端点：向量记忆 + RAG 共用，始终可配（不再藏在向量记忆开关后） -->
+          <div class="mem-section">
+            <div class="lbl" style="margin-bottom: 6px">{{ t('settings.mem.cEmbedHead') }}</div>
+            <label class="row">
+              <span class="lbl">{{ t('settings.mem.cBaseUrl') }}</span>
+              <input v-model="settings.aiEmbeddingBaseUrl" class="grow" type="text" />
+            </label>
+            <label class="row">
+              <span class="lbl">{{ t('settings.mem.cApiKey') }}</span>
+              <input v-model="settings.aiEmbeddingApiKey" class="grow" type="password" :placeholder="t('settings.mem.cApiKeyPh')" />
+            </label>
+            <label class="row">
+              <span class="lbl">{{ t('settings.mem.cModel') }}</span>
+              <input v-model="settings.aiEmbeddingModel" class="grow" type="text" />
+            </label>
+            <p class="note">{{ t('settings.mem.cEmbedShared') }}</p>
+          </div>
+
+          <!-- C 档：向量记忆（仅控制记忆行为；嵌入端点见上） -->
           <div class="mem-section">
             <label class="row">
               <span class="lbl">{{ t('settings.mem.cToggle') }}</span>
@@ -476,18 +494,6 @@ function watermarkPreviewSvg(): string {
               <span class="muted">{{ t('settings.mem.cToggleHint', { n: settings.aiVectorMemories.length }) }}</span>
             </label>
             <template v-if="settings.aiVectorMemory">
-              <label class="row">
-                <span class="lbl">{{ t('settings.mem.cBaseUrl') }}</span>
-                <input v-model="settings.aiEmbeddingBaseUrl" class="grow" type="text" />
-              </label>
-              <label class="row">
-                <span class="lbl">{{ t('settings.mem.cApiKey') }}</span>
-                <input v-model="settings.aiEmbeddingApiKey" class="grow" type="password" :placeholder="t('settings.mem.cApiKeyPh')" />
-              </label>
-              <label class="row">
-                <span class="lbl">{{ t('settings.mem.cModel') }}</span>
-                <input v-model="settings.aiEmbeddingModel" class="grow" type="text" />
-              </label>
               <label class="row">
                 <span class="lbl">{{ t('settings.mem.cTopK') }}</span>
                 <input v-model.number="settings.aiVectorTopK" type="number" min="1" max="20" />

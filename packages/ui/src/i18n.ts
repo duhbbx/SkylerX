@@ -191,6 +191,14 @@ const DICT: Record<string, [string, string]> = {
     '确定清空所有事实？此操作不可撤销。',
     'Clear all facts? This cannot be undone.',
   ],
+  'settings.mem.cEmbedHead': [
+    '嵌入端点(向量记忆 + AI 知识库 RAG 共用)',
+    'Embedding endpoint (shared by vector memory + RAG)',
+  ],
+  'settings.mem.cEmbedShared': [
+    '配好后:向量记忆做语义召回、AI 知识库(RAG)走向量/混合检索。留空则二者都退化为词法。',
+    'Once set: vector memory does semantic recall and the RAG knowledge base uses vector/hybrid retrieval. Left blank, both fall back to lexical.',
+  ],
   'settings.mem.cToggle': ['C · 向量记忆', 'C · Vector memory'],
   'settings.mem.cToggleHint': ['当前已存 {n} 条', '{n} memories stored'],
   'settings.mem.cBaseUrl': ['Embedding Base URL', 'Embedding base URL'],
