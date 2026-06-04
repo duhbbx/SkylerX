@@ -525,14 +525,25 @@ async function readSqlServer(exec: ProfileExec, schema: string): Promise<SchemaI
     return t
   }
 
+  // 基表名(排除视图):INFORMATION_SCHEMA.COLUMNS 含视图列,按列建表会把视图也拉成表(同
+  // MySQL/Oracle 的 #live)。以 TABLE_TYPE='BASE TABLE' 为准。
+  const baseTables = new Set<string>()
+  for (const r of await exec(
+    `SELECT TABLE_NAME AS tbl FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = ${sc} AND TABLE_TYPE = 'BASE TABLE'`,
+  ))
+    baseTables.add(str(g(r, 'tbl')))
+
   for (const r of await exec(
     `SELECT TABLE_NAME AS tbl, COLUMN_NAME AS col, DATA_TYPE AS data_type,
             CHARACTER_MAXIMUM_LENGTH AS character_maximum_length, NUMERIC_PRECISION AS numeric_precision,
             NUMERIC_SCALE AS numeric_scale, IS_NULLABLE AS nullable, COLUMN_DEFAULT AS dflt
      FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ${sc} ORDER BY TABLE_NAME, ORDINAL_POSITION`,
   )) {
+    const tbl = str(g(r, 'tbl'))
+    if (!baseTables.has(tbl)) continue // 跳过视图等非基表的列
     const def = g(r, 'dflt')
-    tableFor(str(g(r, 'tbl'))).columns.push({
+    tableFor(tbl).columns.push({
       name: str(g(r, 'col')),
       dataType: sqlServerColType(r),
       nullable: str(g(r, 'nullable')).toUpperCase() !== 'NO',
@@ -581,7 +592,13 @@ async function readSqlServer(exec: ProfileExec, schema: string): Promise<SchemaI
       tableFor(str(g(r, 'tbl'))).uniques?.push({ name: cn, columns: colsByCon.get(cn) ?? [] })
   }
 
-  return { tables: [...tableMap.values()], sequences: [], indexes: [], foreignKeys }
+  // 防御性收尾:约束循环的 tableFor 可能给非基表凭空建条目,按 baseTables 统一过滤。
+  return {
+    tables: [...tableMap.values()].filter((t) => baseTables.has(t.name)),
+    sequences: [],
+    indexes: [],
+    foreignKeys: foreignKeys.filter((f) => baseTables.has(f.table)),
+  }
 }
 
 export const sqlServerReader: SchemaReader = { dialect: D.SqlServer, readSchema: readSqlServer }

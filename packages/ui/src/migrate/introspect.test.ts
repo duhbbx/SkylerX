@@ -318,13 +318,17 @@ describe('SQL Server reader (mock INFORMATION_SCHEMA)', () => {
             numeric_scale: 2,
             nullable: 'YES',
           },
+          { tbl: 'V_Emp', col: 'Id', data_type: 'int', nullable: 'YES' }, // 视图列,应排除
         ],
       ],
+      // 只有 Emp 是 BASE TABLE;V_Emp 是视图
+      [/INFORMATION_SCHEMA\.TABLES/, [{ tbl: 'Emp' }]],
       [/KEY_COLUMN_USAGE/, [{ cn: 'PK_Emp', tbl: 'Emp', col: 'Id', pos: 1 }]],
       [/REFERENTIAL_CONSTRAINTS/, []],
       [/TABLE_CONSTRAINTS/, [{ cn: 'PK_Emp', tbl: 'Emp', ct: 'PRIMARY KEY' }]],
     ])
     const si = await readSchema(exec, DbDialect.SqlServer, 'dbo')
+    expect(si.tables.map((t) => t.name)).toEqual(['Emp']) // V_Emp view excluded
     const emp = si.tables[0]
     expect(emp.columns.map((c) => c.dataType)).toEqual([
       'int',
