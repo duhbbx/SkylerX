@@ -58,3 +58,39 @@ export function erModel(input: SchemaInput): ErModel {
   }))
   return { nodes, edges, externalRefs }
 }
+
+/**
+ * 聚焦:只保留名字命中 query(大小写不敏感子串)的表 + 它们的 N 跳外键邻居(双向)。
+ * 大库 ER 图一团乱时,输个表名只看它周边。query 为空 → 原样返回。
+ * externalRefs 重算为「命中集合连到集合外的边数」(= 被隐藏的关联数,UI 提示用)。
+ */
+export function focusModel(model: ErModel, query: string, hops = 1): ErModel {
+  const q = query.trim().toLowerCase()
+  if (!q) return model
+  const adj = new Map<string, Set<string>>()
+  for (const e of model.edges) {
+    if (!adj.has(e.from)) adj.set(e.from, new Set())
+    if (!adj.has(e.to)) adj.set(e.to, new Set())
+    adj.get(e.from)?.add(e.to)
+    adj.get(e.to)?.add(e.from)
+  }
+  const keep = new Set<string>()
+  let frontier = model.nodes.filter((n) => n.id.toLowerCase().includes(q)).map((n) => n.id)
+  for (const id of frontier) keep.add(id)
+  for (let h = 0; h < hops; h++) {
+    const next: string[] = []
+    for (const id of frontier)
+      for (const nb of adj.get(id) ?? [])
+        if (!keep.has(nb)) {
+          keep.add(nb)
+          next.push(nb)
+        }
+    frontier = next
+  }
+  const nodes = model.nodes.filter((n) => keep.has(n.id))
+  const edges = model.edges.filter((e) => keep.has(e.from) && keep.has(e.to))
+  const externalRefs = model.edges.filter(
+    (e) => keep.has(e.from) !== keep.has(e.to), // 一端在集合内、一端在外
+  ).length
+  return { nodes, edges, externalRefs }
+}

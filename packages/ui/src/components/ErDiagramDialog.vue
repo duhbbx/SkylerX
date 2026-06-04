@@ -15,7 +15,7 @@ import { CanvasRenderer, SVGRenderer } from 'echarts/renderers'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
-import { type ErModel, erModel } from '../er/model'
+import { type ErModel, erModel, focusModel } from '../er/model'
 import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
 import { canIntrospect, readSchema } from '../migrate/introspect'
@@ -33,7 +33,9 @@ const conns = ref<ConnectionConfig[]>([])
 const connId = ref('')
 const schemaName = ref('')
 const loading = ref(false)
-const model = ref<ErModel | null>(null)
+const model = ref<ErModel | null>(null) // 完整模型
+const focus = ref('') // 聚焦表名(子串)
+const shown = ref<ErModel | null>(null) // 实际渲染的(可能是聚焦子集)
 const chartEl = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
 let lastOption: unknown = null // 最近一次的 echarts option,导出时复用
@@ -61,12 +63,19 @@ async function render(): Promise<void> {
     }
     await nextTick()
     if (chartEl.value && !chart) chart = echarts.init(chartEl.value)
-    draw(m)
+    applyFocus()
   } catch (e) {
     reportError(e, { tag: 'er.render' })
   } finally {
     loading.value = false
   }
+}
+
+/** 按 focus 过滤完整模型并重绘(focus 空 = 全部)。 */
+function applyFocus(): void {
+  if (!model.value) return
+  shown.value = focusModel(model.value, focus.value, 1)
+  draw(shown.value)
 }
 
 function draw(m: ErModel): void {
@@ -184,7 +193,8 @@ onBeforeUnmount(() => {
         <button class="primary" :disabled="loading || !connId || !schemaName" @click="render">
           {{ loading ? '…' : L('生成 ER 图', 'Generate') }}
         </button>
-        <span v-if="model" class="note">{{ model.nodes.length }} {{ L('表', 'tables') }} · {{ model.edges.length }} {{ L('外键', 'FKs') }}<template v-if="model.externalRefs"> · {{ model.externalRefs }} {{ L('跨库引用(未连线)', 'external refs (not drawn)') }}</template></span>
+        <input v-if="model" v-model="focus" :placeholder="L('聚焦表名(+邻居)', 'focus table (+neighbors)')" style="width: 150px" @input="applyFocus" />
+        <span v-if="shown" class="note">{{ shown.nodes.length }}<template v-if="model && shown.nodes.length !== model.nodes.length">/{{ model.nodes.length }}</template> {{ L('表', 'tables') }} · {{ shown.edges.length }} {{ L('外键', 'FKs') }}<template v-if="shown.externalRefs"> · {{ shown.externalRefs }} {{ L('隐藏关联', 'hidden links') }}</template></span>
         <span class="legend"><i class="dot" style="background:#2d7ff9" />{{ L('有主键', 'has PK') }}</span>
         <span class="legend"><i class="dot" style="background:#9aa7b5" />{{ L('无主键', 'no PK') }}</span>
         <span v-if="model" class="exports">
