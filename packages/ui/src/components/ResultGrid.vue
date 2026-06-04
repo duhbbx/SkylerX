@@ -20,7 +20,7 @@ import {
   toSqlValuesList,
   toTSV,
 } from '../io'
-import { applyMask, ruleFor } from '../masking'
+import { applyMask, maskRows, ruleFor } from '../masking'
 import { settings } from '../settings'
 import ChartDialog from './ChartDialog.vue'
 import GeoMapDialog from './GeoMapDialog.vue'
@@ -235,14 +235,25 @@ function toggleCol(name: string): void {
 }
 
 type CopyFormat = 'csv' | 'json' | 'tsv' | 'markdown' | 'sqlValues'
+/**
+ * 导出/复制前脱敏:开了脱敏就按规则整列遮罩,跟网格显示一致。
+ * 不脱敏的话「看到的是打码、导出的却是明文」会造成虚假安全感(导出脱敏 #隐私)。
+ */
+function maskOut(cols: string[], rows: Row[]): Row[] {
+  return settings.maskingEnabled ? maskRows(cols, rows, settings.maskingRules) : rows
+}
+
 /** 复制选中行（无选中则全部当前视图行）为多种格式。 */
 function copyRows(format: CopyFormat): void {
   showCopyMenu.value = false
   const cols = columnNames.value
   const idx = [...selected.value].filter((k) => k[0] === 'r').map((k) => Number(k.slice(1)))
-  const rows = (
-    idx.length ? idx.sort((a, b) => a - b).map((i) => viewRows.value[i]) : viewRows.value
-  ).filter(Boolean) as Row[]
+  const rows = maskOut(
+    cols,
+    (idx.length ? idx.sort((a, b) => a - b).map((i) => viewRows.value[i]) : viewRows.value).filter(
+      Boolean,
+    ) as Row[],
+  )
   const text =
     format === 'csv'
       ? toCSV(cols, rows)
@@ -380,7 +391,10 @@ async function doExport(format: ExportFormat): Promise<void> {
     if (!n || !n.trim()) return
     tableRef = props.dialect != null ? quoteId(props.dialect, n.trim()) : n.trim()
   }
-  const content = exportRows(format, cols, rows, { dialect: props.dialect, tableRef })
+  const content = exportRows(format, cols, maskOut(cols, rows), {
+    dialect: props.dialect,
+    tableRef,
+  })
   const ext = format === 'markdown' ? 'md' : format
   await client.files.saveText({
     defaultName: `export.${ext}`,
@@ -431,7 +445,10 @@ async function doExportCsvGz(): Promise<void> {
   showExport.value = false
   const cols = columnNames.value
   if (!cols.length) return
-  const rows = ((props.editable ? localRows.value : props.result?.rows) ?? []) as Row[]
+  const rows = maskOut(
+    cols,
+    ((props.editable ? localRows.value : props.result?.rows) ?? []) as Row[],
+  )
   try {
     const csv = toCSV(cols, rows)
     if (typeof CompressionStream === 'undefined') {

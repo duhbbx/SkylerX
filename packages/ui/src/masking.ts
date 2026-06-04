@@ -117,3 +117,25 @@ function mask4(s: string): string {
   if (s.length <= 8) return s[0] + '*'.repeat(s.length - 2) + s.slice(-1)
   return s.slice(0, 2) + '*'.repeat(s.length - 4) + s.slice(-2)
 }
+
+/**
+ * 对一批结果行按列名规则脱敏(导出/复制前用)。命中规则的列整列遮罩,其余原样。
+ * 没有命中任何列时直接返回原数组(零拷贝)。纯函数,不改入参。
+ */
+export function maskRows<T extends Record<string, unknown>>(
+  columns: string[],
+  rows: T[],
+  rules: MaskRule[],
+): T[] {
+  const kindByCol = new Map<string, MaskKind>()
+  for (const c of columns) {
+    const rule = ruleFor(c, rules)
+    if (rule) kindByCol.set(c, rule.kind)
+  }
+  if (!kindByCol.size) return rows
+  return rows.map((r) => {
+    const out = { ...r } as Record<string, unknown>
+    for (const [c, kind] of kindByCol) out[c] = applyMask(out[c], kind)
+    return out as T
+  })
+}
