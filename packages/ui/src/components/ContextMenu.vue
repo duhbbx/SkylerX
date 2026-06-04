@@ -13,6 +13,13 @@ const emit = defineEmits<{ pick: [TreeAction]; close: [] }>()
 function isDivider(e: MenuEntry): e is { divider: true; id: string } {
   return (e as { divider?: boolean }).divider === true
 }
+function children(e: MenuEntry): TreeAction[] | undefined {
+  const ch = (e as TreeAction).children
+  return ch?.length ? ch : undefined
+}
+
+/** 当前展开二级菜单的项 id(hover 控制)。 */
+const openSub = ref<string | null>(null)
 
 // 实际渲染位置：避免菜单超出视口下/右边被裁切；若空间不够则相对鼠标向上/向左翻转，
 // 仍不够则贴边并附加 max-height + overflow-y 兜底。
@@ -61,6 +68,25 @@ onMounted(async () => {
       <li v-if="!entries.length" class="empty">{{ t('ctx.empty') }}</li>
       <template v-for="e in entries" :key="e.id">
         <li v-if="isDivider(e)" class="divider" />
+        <!-- 有二级菜单的项:hover 展开右侧子菜单 -->
+        <li
+          v-else-if="children(e)"
+          class="has-sub"
+          @mouseenter="openSub = e.id"
+          @mouseleave="openSub = null"
+        >
+          <span class="lbl">{{ t((e as TreeAction).label) }}</span><span class="caret">▸</span>
+          <ul v-if="openSub === e.id" class="cm submenu" @click.stop>
+            <li
+              v-for="c in children(e)"
+              :key="c.id"
+              :class="{ danger: c.danger }"
+              @click="emit('pick', c)"
+            >
+              {{ t(c.label) }}
+            </li>
+          </ul>
+        </li>
         <li
           v-else
           :class="{ danger: (e as TreeAction).danger }"
@@ -122,5 +148,23 @@ onMounted(async () => {
 }
 .cm li.divider:hover {
   background: var(--border);
+}
+.cm li.has-sub {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cm li.has-sub .caret {
+  color: var(--muted);
+  font-size: 11px;
+}
+.cm .submenu {
+  position: absolute;
+  left: 100%;
+  top: -5px;
+  margin-left: 2px;
+  min-width: 160px;
 }
 </style>

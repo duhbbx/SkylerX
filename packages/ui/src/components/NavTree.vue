@@ -151,6 +151,8 @@ const emit = defineEmits<{
   configureNavFilter: [connId: string]
   /** #D: 打开 "进程/会话列表" 对话框 */
   openProcessList: [connId: string]
+  /** 复制连接内容(jdbc/json/multiline/singleline;不含密码) */
+  copyConnInfo: [connId: string, format: 'jdbc' | 'json' | 'multiline' | 'singleline']
 }>()
 
 // 批量可选的对象类型(与可删除类型一致). Connection 单独走另一套(connection multi-set)
@@ -748,6 +750,7 @@ const controller: TreeController = {
   newConnection: () => emit('newConn'),
   deleteConnection: (connId) => emit('deleteConn', connId),
   duplicateConnection: (connId) => emit('duplicateConn', connId),
+  copyConnInfo: (connId, format) => emit('copyConnInfo', connId, format),
   runSql: (connId, sql) => emit('runSql', connId, sql),
   async refreshNode(node, connId, reveal = false) {
     // 折叠 / 叶子节点：默认只清缓存让下次展开重新拉取（深刷新整连接时别急着把每个

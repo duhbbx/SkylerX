@@ -1434,6 +1434,12 @@ const DICT: Record<string, [string, string]> = {
   'ctx.toggle-favorite': ['收藏 / 取消收藏', 'Favorite / Unfavorite'],
   'ctx.edit-conn': ['编辑连接', 'Edit connection'],
   'ctx.duplicate-conn': ['复制连接', 'Duplicate connection'],
+  'ctx.copy-conn': ['复制连接内容', 'Copy connection info'],
+  'ctx.copy-conn-jdbc': ['JDBC URL', 'JDBC URL'],
+  'ctx.copy-conn-json': ['JSON', 'JSON'],
+  'ctx.copy-conn-multiline': ['多行文本', 'Multi-line text'],
+  'ctx.copy-conn-singleline': ['单行(分号分隔)', 'Single line (;-separated)'],
+  'ctx.copyConnOk': ['已复制连接内容(不含密码)', 'Connection copied (no password)'],
   'ctx.toggle-prod': ['标记为生产环境 / 取消标记', 'Mark as production / Unmark'],
   'ctx.configure-nav-filter': [
     '配置可见库 / Schema...',

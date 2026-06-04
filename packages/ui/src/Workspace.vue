@@ -506,6 +506,21 @@ async function onDuplicateConn(id: string): Promise<void> {
   }
 }
 
+/** 复制连接内容到剪贴板(jdbc/json/multiline/singleline;格式化在 connExport,一律不含密码)。 */
+async function onCopyConnInfo(
+  connId: string,
+  format: 'jdbc' | 'json' | 'multiline' | 'singleline',
+): Promise<void> {
+  try {
+    const conn = await client.connections.get(connId)
+    const { formatConnection } = await import('./connExport')
+    await navigator.clipboard?.writeText(formatConnection(conn, format))
+    toast.success(t('ctx.copyConnOk'))
+  } catch (e) {
+    reportError(e, { tag: 'copy-conn-info' })
+  }
+}
+
 // 连接打不开 / 查询报连接级错误 → 自动弹出该连接的编辑弹窗（已开则不重复弹）
 function onConnError(connId: string, message: string): void {
   if (editing.value) return
@@ -3075,6 +3090,7 @@ onMounted(async () => {
     @new-query="onNewQuery"
     @delete-conn="onDeleteConn"
     @duplicate-conn="onDuplicateConn"
+    @copy-conn-info="onCopyConnInfo"
     @run-sql="onRunSql"
     @conn-error="onConnError"
     @new-object="onNewObject"

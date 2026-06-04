@@ -67,6 +67,8 @@ export interface TreeAction {
   /** 在这些方言中隐藏(黑名单)。比 onlyDialects 反向,典型: Oracle/DM "新建数据库"无意义。 */
   excludeDialects?: DbDialect[]
   run: (ctx: NodeActionContext) => void
+  /** 二级菜单:有 children 时本项展开为子菜单,点 children 里的项才执行(本项 run 不触发)。 */
+  children?: TreeAction[]
 }
 
 /**
@@ -873,6 +875,41 @@ export const TREE_ACTIONS: TreeAction[] = [
     section: 'conn',
     kinds: [MetaNodeKind.Connection],
     run: ({ connId, ctrl }) => ctrl.duplicateConnection(connId),
+  },
+  // 复制连接内容(二级菜单;一律不含密码)。子项覆盖常见用途:
+  // JDBC URL(贴 IDE/JDBC 工具)、JSON(脚本/备份)、多行(文档)、单行分号(粘贴框)。
+  {
+    id: 'copy-conn',
+    label: 'ctx.copy-conn',
+    section: 'conn',
+    kinds: [MetaNodeKind.Connection],
+    run: () => {}, // 有 children,本项只展开子菜单
+    children: [
+      {
+        id: 'copy-conn-jdbc',
+        label: 'ctx.copy-conn-jdbc',
+        kinds: [MetaNodeKind.Connection],
+        run: ({ connId, ctrl }) => ctrl.copyConnInfo(connId, 'jdbc'),
+      },
+      {
+        id: 'copy-conn-json',
+        label: 'ctx.copy-conn-json',
+        kinds: [MetaNodeKind.Connection],
+        run: ({ connId, ctrl }) => ctrl.copyConnInfo(connId, 'json'),
+      },
+      {
+        id: 'copy-conn-multiline',
+        label: 'ctx.copy-conn-multiline',
+        kinds: [MetaNodeKind.Connection],
+        run: ({ connId, ctrl }) => ctrl.copyConnInfo(connId, 'multiline'),
+      },
+      {
+        id: 'copy-conn-singleline',
+        label: 'ctx.copy-conn-singleline',
+        kinds: [MetaNodeKind.Connection],
+        run: ({ connId, ctrl }) => ctrl.copyConnInfo(connId, 'singleline'),
+      },
+    ],
   },
   {
     id: 'toggle-prod',
