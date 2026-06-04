@@ -36,6 +36,8 @@ interface DialogState {
   promptValidator: ((value: string) => string | null | undefined) | null
   /** prompt 用:当前 inline 错误文本 (由 validator 写入) */
   promptError: string | null
+  /** prompt 用:可选下拉候选(渲染为 datalist)→ 输入框变 combobox,可选已有项或手输新值 */
+  promptOptions: string[] | null
   /**
    * alert 专用:若提供则在 OK 按钮左侧渲染「✨ 问 AI」按钮,
    * 点击后 emit ChatErrorAskEvent + 关闭弹框。null/undefined = 不显示。
@@ -56,6 +58,7 @@ export const dialogState = reactive<DialogState>({
   promptPlaceholder: '',
   promptValidator: null,
   promptError: null,
+  promptOptions: null,
   askAi: null,
   resolve: () => {},
 })
@@ -72,6 +75,7 @@ function open(opts: Partial<DialogState>, kind: DialogState['kind']): Promise<un
       promptPlaceholder: '',
       promptValidator: null,
       promptError: null,
+      promptOptions: null,
       askAi: null,
       ...opts,
       open: true,
@@ -126,6 +130,8 @@ export function prompt(opts: {
   confirmText?: string
   cancelText?: string
   validator?: (value: string) => string | null | undefined
+  /** 下拉候选:输入框变 combobox(datalist),可选已有项或手输新值。 */
+  options?: string[]
 }): Promise<string | null> {
   return open(
     {
@@ -133,6 +139,7 @@ export function prompt(opts: {
       promptValue: opts.defaultValue ?? '',
       promptPlaceholder: opts.placeholder ?? '',
       promptValidator: opts.validator ?? null,
+      promptOptions: opts.options ?? null,
     },
     'prompt',
   ) as Promise<string | null>

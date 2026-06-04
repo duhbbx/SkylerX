@@ -198,10 +198,14 @@ function onKey(e: KeyboardEvent): void {
         class="dlg-input"
         :class="{ 'dlg-input-err': dialogState.promptError }"
         :placeholder="dialogState.promptPlaceholder"
+        :list="dialogState.promptOptions ? 'dlg-prompt-options' : undefined"
         @input="dialogState.promptError = null"
         @keydown.enter.prevent="onConfirm"
         @keydown.escape.prevent="onCancel"
       />
+      <datalist v-if="dialogState.kind === 'prompt' && dialogState.promptOptions" id="dlg-prompt-options">
+        <option v-for="o in dialogState.promptOptions" :key="o" :value="o" />
+      </datalist>
       <div v-if="dialogState.kind === 'prompt' && dialogState.promptError" class="dlg-input-err-msg">
         {{ dialogState.promptError }}
       </div>

@@ -1748,28 +1748,23 @@ async function onBulkDeleteConnections(connIds: string[]): Promise<void> {
 
 async function onBulkMoveToGroup(connIds: string[]): Promise<void> {
   if (!connIds.length) return
-  // Collect existing groups + offer "新分组..." sentinel.
+  // 收集已有分组 → 作为 combobox 下拉候选;也可手输新名(不存在则创建)。
   const all = await client.connections.list()
   const existingGroups = new Set<string>()
   for (const c of all) if (c.group) existingGroups.add(c.group)
   for (const g of settings.groupOrder) existingGroups.add(g)
   const choices = [...existingGroups].sort()
-  const NEW = '__NEW_GROUP__'
-  const UNGROUPED = '__UNGROUPED__'
-  // Use a simple prompt — pick from a comma-separated list or enter a new
-  // name. Reasonable until we add a dedicated picker dialog.
-  const hint = `可选分组: ${UNGROUPED}(取消分组) | ${choices.join(' | ')}\n输入新分组名直接创建.`
   const picked = await appPrompt({
-    title: '移动到分组',
-    message: hint,
-    defaultValue: choices[0] ?? '',
-    placeholder: '分组名 (或 __UNGROUPED__)',
+    title: `移动 ${connIds.length} 个连接到分组`,
+    message: '从下拉里选已有分组,或直接输入新分组名(不存在则创建)。留空 = 取消分组。',
+    defaultValue: '',
+    placeholder: '分组名(留空 = 取消分组)',
+    options: choices,
   })
-  if (picked == null) return
-  const trimmed = picked.trim()
-  const targetGroup: string | undefined =
-    trimmed === '' || trimmed === UNGROUPED ? undefined : trimmed
-  // Persist new group name in settings.groupOrder if it's brand new.
+  if (picked == null) return // 用户取消
+  const trimmed = picked.trim() // 前后去空白
+  const targetGroup: string | undefined = trimmed === '' ? undefined : trimmed
+  // 新分组名持久化到 groupOrder(保证空组也能显示、可排序)。
   if (targetGroup && !choices.includes(targetGroup)) {
     settings.groupOrder = [...settings.groupOrder, targetGroup]
   }
@@ -1788,9 +1783,12 @@ async function onBulkMoveToGroup(connIds: string[]): Promise<void> {
   if (errors.length) {
     reportError(new Error(`部分移动失败:\n${errors.join('\n')}`), { tag: 'bulk-move-group' })
   } else {
-    toast.success(`已移动 ${connIds.length} 个连接`)
+    toast.success(
+      targetGroup
+        ? `已移动 ${connIds.length} 个连接到「${targetGroup}」`
+        : `已把 ${connIds.length} 个连接移出分组`,
+    )
   }
-  void NEW // silence unused
 }
 
 async function onBulkTestConnections(connIds: string[]): Promise<void> {
