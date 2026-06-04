@@ -200,7 +200,7 @@ function onContext(e: MouseEvent): void {
       <span
         v-if="node.kind === 'connection' && env"
         class="env-dot"
-        :style="{ background: ENV_META[env].color }"
+        :style="{ borderColor: ENV_META[env].color }"
         :title="t('env.dotTitle', { label: t('env.' + env) })"
       />
       <span
@@ -303,11 +303,16 @@ function onContext(e: MouseEvent): void {
   align-items: center;
   justify-content: center;
 }
+/* 环境标记:空心环(○),跟实心的状态点(●)区分开 —— 否则「开发(绿)+ 已连上(绿)」
+   会是两个一模一样的绿点,看着像重复/故障。颜色走内联 borderColor。 */
 .env-dot {
   flex: none;
-  width: 7px;
-  height: 7px;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
+  background: transparent;
+  border: 2px solid;
 }
 /* 连接可达性小圆点：🟢 上次连上 / 🔴 上次出错（未尝试不显示）。 */
 .status-dot {
