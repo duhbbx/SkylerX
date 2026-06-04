@@ -284,7 +284,11 @@ export function objectDdlQuery(
                   : kind === 'package'
                     ? 'PACKAGE'
                     : kind === 'type'
-                      ? 'TYPE'
+                      ? // DM 的对象类型在数据字典里是 CLASS;dbms_metadata 也只认 'CLASS'
+                        // ('TYPE' 报 -20008)。Oracle 仍用 'TYPE'。
+                        dialect === DbDialect.DM
+                        ? 'CLASS'
+                        : 'TYPE'
                       : null
     if (!oraType) return null
     // 优先从 node.path 拿 schema/name(精确大小写);没有 node 时反解析 ref
@@ -304,7 +308,15 @@ export function objectDdlQuery(
     const getDdl = (t: string) =>
       `SELECT dbms_metadata.get_ddl('${t}', '${esc(name)}', '${esc(schema)}') AS "ddl" FROM dual`
     // 包 / 对象类型有 spec + body 两段；body 由消费方单独执行（可能不存在）。
-    const bodyType = kind === 'package' ? 'PACKAGE_BODY' : kind === 'type' ? 'TYPE_BODY' : null
+    // DM 的类型体在 dbms_metadata 里是 'CLASS_BODY'(注意是下划线,'CLASS BODY' 报 -20001)。
+    const bodyType =
+      kind === 'package'
+        ? 'PACKAGE_BODY'
+        : kind === 'type'
+          ? dialect === DbDialect.DM
+            ? 'CLASS_BODY'
+            : 'TYPE_BODY'
+          : null
     return {
       sql: getDdl(oraType),
       mode: 'oracle-ddl',

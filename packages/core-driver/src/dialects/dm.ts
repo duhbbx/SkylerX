@@ -208,7 +208,7 @@ class DmConnection implements DriverConnection {
         WHERE owner = :1
           AND object_type IN (
             'TABLE','VIEW','MATERIALIZED VIEW','SEQUENCE','TRIGGER',
-            'FUNCTION','PROCEDURE','PACKAGE','TYPE','SYNONYM'
+            'FUNCTION','PROCEDURE','PACKAGE','CLASS','SYNONYM'
           )
         GROUP BY object_type`,
       [schema],
@@ -233,7 +233,7 @@ class DmConnection implements DriverConnection {
       mk('包', 'packages', cnt('PACKAGE')),
       mk('序列', 'sequences', cnt('SEQUENCE')),
       mk('触发器', 'triggers', cnt('TRIGGER')),
-      mk('类型', 'types', cnt('TYPE')),
+      mk('类型', 'types', cnt('CLASS')), // DM 的对象类型在 all_objects 里是 'CLASS' 不是 'TYPE'
       mk('同义词', 'synonyms', cnt('SYNONYM')),
     ]
   }
@@ -421,7 +421,7 @@ class DmConnection implements DriverConnection {
             : group === 'packages'
               ? 'PACKAGE'
               : group === 'types'
-                ? 'TYPE'
+                ? 'CLASS' // DM:CREATE TYPE … AS OBJECT 在 all_objects 里 object_type='CLASS'
                 : 'SYNONYM'
       const rows = await this.q(
         `SELECT object_name AS "name" FROM all_objects

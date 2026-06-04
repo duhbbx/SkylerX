@@ -379,10 +379,18 @@ describe('objectDdlQuery — oracle family (Oracle/DM)', () => {
     expect(q?.bodySql).toContain("get_ddl('PACKAGE_BODY', 'PKG', 'HR')")
   })
 
-  it('type → spec sql + body bodySql', () => {
+  it('type → spec sql + body bodySql (Oracle: TYPE / TYPE_BODY)', () => {
     const q = objectDdlQuery(DbDialect.Oracle, 'type', '"HR"."T1"', n(MetaNodeKind.Type, 'T1'))
     expect(q?.sql).toContain("get_ddl('TYPE', 'T1', 'HR')")
     expect(q?.bodySql).toContain("get_ddl('TYPE_BODY', 'T1', 'HR')")
+  })
+
+  // 达梦的对象类型在数据字典里是 CLASS,dbms_metadata 也只认 CLASS / CLASS_BODY
+  // (用 'TYPE' 报 -20008,'CLASS BODY' 报 -20001)。live 在 DM8 上确认。
+  it('type on DM → get_ddl CLASS / CLASS_BODY (not TYPE)', () => {
+    const q = objectDdlQuery(DbDialect.DM, 'type', '"HR"."T1"', n(MetaNodeKind.Type, 'T1'))
+    expect(q?.sql).toContain("get_ddl('CLASS', 'T1', 'HR')")
+    expect(q?.bodySql).toContain("get_ddl('CLASS_BODY', 'T1', 'HR')")
   })
 
   it('escapes single quotes in names', () => {
