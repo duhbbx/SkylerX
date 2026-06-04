@@ -114,35 +114,49 @@ export function setupMenu(mainWindow?: BrowserWindow): void {
       ],
     },
 
-    // ── 工具（DBA 重活儿 + AI 入口）──
+    // ── 数据库（DBA / 运维）──
     {
-      label: '工具',
+      label: '数据库',
       submenu: [
         { label: '服务器活动…', click: send('activity') },
         { label: '服务器监控…', click: send('monitor') },
-        { label: '备份 / 还原…', click: send('backup-restore') },
-        { label: '数据传输…', click: send('data-transfer') },
         { label: '用户权限…', click: send('privileges') },
         { type: 'separator' },
-        { label: '结构对比…', click: send('schema-diff') },
-        { label: '数据对比…', click: send('data-diff') },
-        { label: 'Schema 快照…', click: send('snapshots') },
-        { label: 'ER 关系图…', click: send('er-diagram') },
-        { label: '迁移评估…', click: send('mig-assess') },
+        { label: '备份 / 还原…', click: send('backup-restore') },
+        { label: '数据传输…', click: send('data-transfer') },
         { type: 'separator' },
         { label: 'Dashboard…', click: send('dashboard') },
         { label: '跨表全文搜索…', click: send('search-value') },
         { label: '数据契约…', click: send('contracts') },
+      ],
+    },
+
+    // ── 迁移 / 对比 ──
+    {
+      label: '迁移 / 对比',
+      submenu: [
+        { label: '结构对比…', click: send('schema-diff') },
+        { label: '数据对比…', click: send('data-diff') },
+        { label: 'Schema 快照…', click: send('snapshots') },
         { type: 'separator' },
+        { label: 'ER 关系图…', click: send('er-diagram') },
+        { label: '迁移评估…', click: send('mig-assess') },
+      ],
+    },
+
+    // ── 智能 / SQL 工具 ──
+    {
+      label: 'AI',
+      submenu: [
+        { label: 'AI 助手…', click: send('ai-assistant') },
+        { label: 'AI 工具箱…', click: send('ai-toolbox') },
+        { label: 'AI 知识库 RAG…', click: send('rag') },
+        { type: 'separator' },
+        { label: 'SQL 翻译…', click: send('translate') },
         { label: 'Notebook…', click: send('notebook') },
         { label: '查询结果对比…', click: send('result-diff') },
         { label: 'SQL 血缘图…', click: send('sql-lineage') },
         { label: '自定义 Lint 规则…', click: send('lint-rules') },
-        { type: 'separator' },
-        { label: 'AI 工具箱…', click: send('ai-toolbox') },
-        { label: 'AI 助手…', click: send('ai-assistant') },
-        { label: 'AI 知识库 RAG…', click: send('rag') },
-        { label: 'SQL 翻译…', click: send('translate') },
       ],
     },
 
