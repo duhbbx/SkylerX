@@ -16,6 +16,8 @@ export interface RagIndex {
   chunks: RagChunk[]
   /** base64(Float32) 向量,与 chunks 同序;lexical 模式为空。 */
   vectors?: string[]
+  /** 建索引时语料的指纹,用于陈旧检测(见 corpus.fingerprint)。 */
+  fingerprint?: string
 }
 
 const PREFIX = 'skylerx.rag.'

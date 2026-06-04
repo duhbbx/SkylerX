@@ -19,8 +19,8 @@ import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import { canIntrospect, readSchema } from '../migrate/introspect'
-import { chunksFromSchema } from '../rag/corpus'
-import { buildIndex, formatContext, searchIndex } from '../rag/service'
+import { type RagChunk, chunksFromMarkdown, chunksFromSchema } from '../rag/corpus'
+import { buildIndex, formatContext, isStale, searchIndex } from '../rag/service'
 import { type RagIndex, loadIndex } from '../rag/store'
 import Modal from './Modal.vue'
 
@@ -32,8 +32,11 @@ const L = (zh: string, en: string): string => (locale.value === 'en' ? en : zh)
 const conns = ref<ConnectionConfig[]>([])
 const connId = ref('')
 const schemaName = ref('')
+const docsText = ref('')
 const building = ref(false)
+const progress = ref('')
 const idx = ref<RagIndex | null>(null)
+const stale = ref(false)
 
 const question = ref('')
 const asking = ref(false)
@@ -47,6 +50,17 @@ const keyOf = (): string => `${connId.value}:${schemaName.value}`
 
 function loadExisting(): void {
   idx.value = connId.value && schemaName.value ? loadIndex(keyOf()) : null
+  stale.value = false
+}
+
+/** 读结构 + 粘贴的文档 → 合并 chunk(表级 + 文档段)。 */
+async function gatherChunks(): Promise<RagChunk[]> {
+  const dialect = dialectOf()
+  if (!dialect) return []
+  const exec = (sql: string): Promise<Array<Record<string, unknown>>> =>
+    client.connections.execute(connId.value, sql).then((r) => r.rows)
+  const si = await readSchema(exec, dialect, schemaName.value)
+  return [...chunksFromSchema(si), ...chunksFromMarkdown(docsText.value)]
 }
 
 async function build(): Promise<void> {
@@ -57,26 +71,48 @@ async function build(): Promise<void> {
     return
   }
   building.value = true
+  progress.value = ''
   try {
-    const exec = (sql: string): Promise<Array<Record<string, unknown>>> =>
-      client.connections.execute(connId.value, sql).then((r) => r.rows)
-    const si = await readSchema(exec, dialect, schemaName.value)
-    const chunks = chunksFromSchema(si)
+    const chunks = await gatherChunks()
     if (!chunks.length) {
       toast.info(L('该 schema 没有可索引的表', 'no tables to index'))
       return
     }
-    idx.value = await buildIndex(keyOf(), chunks, { nowMs: Date.now() })
+    idx.value = await buildIndex(keyOf(), chunks, {
+      nowMs: Date.now(),
+      onProgress: (done, total) => {
+        progress.value = `${done}/${total}`
+      },
+    })
+    stale.value = false
+    const tbl = chunks.filter((c) => c.kind === 'table').length
+    const doc = chunks.length - tbl
     toast.success(
       L(
-        `索引完成:${chunks.length} 表,${idx.value.mode === 'vector' ? '向量' : '词法'}模式`,
-        `Indexed ${chunks.length} tables (${idx.value.mode})`,
+        `索引完成:${tbl} 表${doc ? ` + ${doc} 文档段` : ''},${idx.value.mode === 'vector' ? '向量' : '词法'}模式`,
+        `Indexed ${tbl} tables${doc ? ` + ${doc} doc sections` : ''} (${idx.value.mode})`,
       ),
     )
   } catch (e) {
     reportError(e, { tag: 'rag.build' })
   } finally {
     building.value = false
+    progress.value = ''
+  }
+}
+
+/** 重新读结构,与现有索引指纹比对,标记是否陈旧。 */
+async function checkStale(): Promise<void> {
+  if (!idx.value) return
+  try {
+    stale.value = isStale(idx.value, await gatherChunks())
+    toast.info(
+      stale.value
+        ? L('结构已变,建议重建', 'schema changed — rebuild')
+        : L('索引仍是最新', 'index up to date'),
+    )
+  } catch (e) {
+    reportError(e, { tag: 'rag.checkStale' })
   }
 }
 
@@ -126,11 +162,18 @@ onMounted(async () => {
         </select>
         <input v-model="schemaName" :placeholder="L('schema(如 public / HR / dbo)', 'schema')" style="width: 160px" @change="loadExisting" />
         <button class="primary" :disabled="building || !connId || !schemaName" @click="build">
-          {{ building ? '…' : L('构建索引', 'Build index') }}
+          {{ building ? (progress || '…') : L('构建索引', 'Build index') }}
         </button>
-        <span v-if="idx" class="badge" :class="idx.mode">{{ idx.chunks.length }} {{ L('表', 'tables') }} · {{ idx.mode === 'vector' ? L('向量', 'vector') : L('词法', 'lexical') }}</span>
+        <span v-if="idx" class="badge" :class="idx.mode">{{ idx.chunks.length }} {{ L('块', 'chunks') }} · {{ idx.mode === 'vector' ? L('向量', 'vector') : L('词法', 'lexical') }}</span>
+        <button v-if="idx" class="ghost" :disabled="building" @click="checkStale">{{ L('检测变化', 'Check stale') }}</button>
+        <span v-if="stale" class="badge stale">{{ L('结构已变,建议重建', 'stale — rebuild') }}</span>
         <span v-if="!canEmbed()" class="note">{{ L('当前 provider 无向量化 → 用词法检索', 'no embeddings on this provider → lexical') }}</span>
       </div>
+
+      <details class="docs">
+        <summary>{{ L('附加文档语料(可选,markdown,按 ## 标题分段)', 'Extra doc corpus (optional, markdown by ## headings)') }}</summary>
+        <textarea v-model="docsText" rows="4" :placeholder="L('粘贴数据字典 / 业务说明 / README…构建时一并索引', 'Paste a data dictionary / business notes / README — indexed alongside the schema')"></textarea>
+      </details>
 
       <div v-if="idx" class="ask">
         <textarea v-model="question" rows="2" class="q" :placeholder="L('问关于这个库的问题,如「订单和客户怎么关联?」', 'Ask about this database…')"></textarea>
@@ -155,6 +198,11 @@ onMounted(async () => {
 .badge { font-size: 11px; padding: 1px 8px; border-radius: 4px; }
 .badge.vector { background: #e8f0ff; color: #2d4fff; }
 .badge.lexical { background: #f0f0f0; color: #888; }
+.badge.stale { background: #fff3e0; color: #e67700; }
+.ghost { background: transparent; border: 1px solid var(--border, #ddd); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.ghost:disabled { opacity: .5; }
+.docs summary { font-size: 12px; color: var(--fg-muted, #888); cursor: pointer; }
+.docs textarea { width: 100%; margin-top: 6px; font-size: 12px; box-sizing: border-box; }
 .note { font-size: 12px; color: var(--fg-muted, #888); }
 .hint { background: var(--bg-subtle, #f7f7f7); padding: 8px 10px; border-radius: 6px; }
 .ask { display: flex; gap: 8px; align-items: flex-start; }

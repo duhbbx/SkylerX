@@ -2,12 +2,18 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SchemaInput } from '../migrate/convert'
-import { chunksFromMarkdown, chunksFromSchema } from './corpus'
+import { chunksFromMarkdown, chunksFromSchema, fingerprint } from './corpus'
 import { cosine, lexicalSearch, tokenize, vectorSearch } from './retrieve'
-import { formatContext } from './service'
+import { buildIndex, formatContext, isStale } from './service'
 import { type RagIndex, decodeVec, encodeVec, loadIndex, saveIndex } from './store'
+
+vi.mock('../ai', () => ({
+  embedTexts: vi.fn(),
+  canEmbed: () => true,
+}))
+import { embedTexts } from '../ai'
 
 const schema: SchemaInput = {
   tables: [
@@ -64,6 +70,14 @@ describe('retrieve', () => {
     expect(hits[0].chunk.ref?.table).toBe('employee') // title + 姓名 both hit
     expect(hits[0].score).toBeGreaterThan(0)
   })
+  it('BM25 IDF: discriminative terms outscore ubiquitous ones', () => {
+    const chunks = chunksFromSchema(schema)
+    // '部门' is unique to one table (high IDF); 'numeric' is in every table (low IDF)
+    const rare = lexicalSearch('部门', chunks, 5)
+    const common = lexicalSearch('numeric', chunks, 5)
+    expect(rare[0].chunk.ref?.table).toBe('department')
+    expect(rare[0].score).toBeGreaterThan(common[0].score) // 区分度高的词得分更高
+  })
   it('vectorSearch ranks by cosine', () => {
     const chunks = chunksFromSchema(schema)
     const items = [
@@ -103,5 +117,76 @@ describe('service', () => {
   it('formatContext renders titled sections', () => {
     const hits = chunksFromSchema(schema).map((chunk) => ({ chunk, score: 1 }))
     expect(formatContext(hits)).toContain('### hr.employee')
+  })
+})
+
+describe('buildIndex', () => {
+  const mem = () => {
+    const m = new Map<string, string>()
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, x: string) => void m.set(k, x),
+      removeItem: (k: string) => void m.delete(k),
+    }
+  }
+  it('batches embedding requests (≤64 inputs each) and builds a vector index', async () => {
+    vi.stubGlobal('localStorage', mem())
+    const calls: number[] = []
+    vi.mocked(embedTexts).mockImplementation(async (texts: string[]) => {
+      calls.push(texts.length)
+      return texts.map(() => [1, 0, 0])
+    })
+    const many = Array.from({ length: 150 }, (_, i) => ({
+      id: `t${i}`,
+      kind: 'table' as const,
+      title: `t${i}`,
+      text: `table ${i}`,
+    }))
+    const idx = await buildIndex('k', many, { nowMs: 1 })
+    expect(idx.mode).toBe('vector')
+    expect(idx.vectors).toHaveLength(150)
+    expect(calls).toEqual([64, 64, 22]) // 分批,每批 ≤64
+    expect(idx.fingerprint).toBeTruthy()
+  })
+  it('falls back to lexical when embedding throws', async () => {
+    vi.stubGlobal('localStorage', mem())
+    vi.mocked(embedTexts).mockRejectedValue(new Error('NO_EMBEDDINGS'))
+    const idx = await buildIndex('k', chunksFromSchema(schema), { nowMs: 1 })
+    expect(idx.mode).toBe('lexical')
+    expect(idx.vectors).toBeUndefined()
+    expect(idx.fingerprint).toBeTruthy()
+  })
+})
+
+describe('staleness', () => {
+  it('fingerprint is order-independent and content-sensitive', () => {
+    const a = chunksFromSchema(schema)
+    const b = [...a].reverse()
+    expect(fingerprint(a)).toBe(fingerprint(b)) // 顺序无关
+    const changed = chunksFromSchema({
+      ...schema,
+      tables: [{ ...schema.tables[0], comment: '改了注释' }, schema.tables[1]],
+    })
+    expect(fingerprint(changed)).not.toBe(fingerprint(a)) // 内容变 → 变
+  })
+  it('isStale: false on unchanged, true on changed, false on legacy (no fingerprint)', () => {
+    const chunks = chunksFromSchema(schema)
+    const idx: RagIndex = {
+      key: 'c',
+      builtAt: 1,
+      mode: 'lexical',
+      chunks,
+      fingerprint: fingerprint(chunks),
+    }
+    expect(isStale(idx, chunks)).toBe(false)
+    const changed = chunksFromSchema({
+      ...schema,
+      tables: [
+        ...schema.tables,
+        { schema: 'hr', name: 'extra', columns: [{ name: 'x', dataType: 'int' }] },
+      ],
+    })
+    expect(isStale(idx, changed)).toBe(true)
+    expect(isStale({ ...idx, fingerprint: undefined }, changed)).toBe(false) // 老索引不误报
   })
 })

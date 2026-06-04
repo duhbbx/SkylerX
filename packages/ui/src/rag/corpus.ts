@@ -51,6 +51,22 @@ export function chunksFromSchema(input: SchemaInput): RagChunk[] {
   return out
 }
 
+/**
+ * 语料指纹:对 chunk 的 id + 文本长度 + 文本做 FNV-1a 32-bit 哈希(顺序无关,排序后算)。
+ * 用于陈旧检测:重新 introspect 出新 chunk,指纹变了就说明结构改了、索引该重建。
+ */
+export function fingerprint(chunks: RagChunk[]): string {
+  const parts = chunks.map((c) => `${c.id}:${c.text.length}:${c.text}`).sort()
+  let h = 0x811c9dc5
+  for (const p of parts) {
+    for (let i = 0; i < p.length; i++) {
+      h ^= p.charCodeAt(i)
+      h = Math.imul(h, 0x01000193)
+    }
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
 /** 由 markdown 文档按 ## 标题分段成 doc chunk(无标题则整段一个)。 */
 export function chunksFromMarkdown(md: string, source = 'doc'): RagChunk[] {
   const text = (md ?? '').trim()

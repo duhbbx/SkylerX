@@ -47,21 +47,42 @@ export function tokenize(s: string): string[] {
   return out
 }
 
-/** 词法检索:query 词在 chunk(标题加权)里的命中量,取 top-K(score>0)。 */
-export function lexicalSearch(query: string, chunks: RagChunk[], k: number): Scored[] {
-  const qTokens = [...new Set(tokenize(query))]
-  if (!qTokens.length) return []
+/**
+ * 词法检索(BM25)。IDF 自动压低「每张表都有」的词(id/numeric/varchar…),只让区分度高的词加分;
+ * 标题(表名)token 复制一份做加权。取 top-K(score>0)。
+ */
+export function lexicalSearch(
+  query: string,
+  chunks: RagChunk[],
+  k: number,
+  opts: { k1?: number; b?: number } = {},
+): Scored[] {
+  const qTerms = [...new Set(tokenize(query))]
+  if (!qTerms.length || !chunks.length) return []
+  const k1 = opts.k1 ?? 1.5
+  const b = opts.b ?? 0.75
+
+  // 文档 = 标题 token 复制一份(加权)+ 正文 token
+  const docs = chunks.map((c) => [...tokenize(c.title), ...tokenize(c.title), ...tokenize(c.text)])
+  const N = docs.length
+  const df = new Map<string, number>()
+  for (const d of docs) for (const t of new Set(d)) df.set(t, (df.get(t) ?? 0) + 1)
+  const avgdl = docs.reduce((a, d) => a + d.length, 0) / Math.max(1, N)
+  const idf = (t: string): number => {
+    const n = df.get(t) ?? 0
+    return Math.log(1 + (N - n + 0.5) / (n + 0.5))
+  }
+
   return chunks
-    .map((chunk) => {
-      const title = tokenize(chunk.title)
-      const body = tokenize(chunk.text)
-      const titleSet = new Set(title)
-      const bodyCount = new Map<string, number>()
-      for (const t of body) bodyCount.set(t, (bodyCount.get(t) ?? 0) + 1)
+    .map((chunk, i) => {
+      const d = docs[i]
+      const tf = new Map<string, number>()
+      for (const t of d) tf.set(t, (tf.get(t) ?? 0) + 1)
       let score = 0
-      for (const q of qTokens) {
-        if (titleSet.has(q)) score += 3 // 表名/标题命中权重高
-        score += Math.min(3, bodyCount.get(q) ?? 0) // 正文 TF 封顶
+      for (const q of qTerms) {
+        const f = tf.get(q) ?? 0
+        if (!f) continue
+        score += idf(q) * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * d.length) / avgdl)))
       }
       return { chunk, score }
     })
