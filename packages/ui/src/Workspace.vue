@@ -74,6 +74,7 @@ import RedisScriptDialog from './components/RedisScriptDialog.vue'
 import RedisSearchDialog from './components/RedisSearchDialog.vue'
 import RedisServerInfoDialog from './components/RedisServerInfoDialog.vue'
 import ReplicationLagDialog from './components/ReplicationLagDialog.vue'
+import ResultDiffDialog from './components/ResultDiffDialog.vue'
 import RowHistoryDialog from './components/RowHistoryDialog.vue'
 import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
 import SchemaDriftDialog from './components/SchemaDriftDialog.vue'
@@ -2043,6 +2044,7 @@ const keybindOpen = ref(false)
 const lintRulesOpen = ref(false)
 const sqlLineageOpen = ref(false)
 const notebookOpen = ref(false)
+const resultDiffOpen = ref(false)
 /** D6 Schema 漂移检测（全局，对话框内自己选 2 个连接） */
 const driftOpen = ref(false)
 /** A3+B5+B6+B9+B10 数据检查器 */
@@ -2694,6 +2696,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:lint-rules', label: t('lintrules.title'), group: t('pal.groupActions') },
   { id: 'act:sql-lineage', label: t('sqllineage.title'), group: t('pal.groupActions') },
   { id: 'act:notebook', label: t('notebook.title'), group: t('pal.groupActions') },
+  { id: 'act:result-diff', label: t('resultdiff.title'), group: t('pal.groupActions') },
   // D6 Schema 漂移检测
   { id: 'act:drift', label: t('pal.drift'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
@@ -2776,6 +2779,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:lint-rules') lintRulesOpen.value = true
   else if (item.id === 'act:sql-lineage') sqlLineageOpen.value = true
   else if (item.id === 'act:notebook') notebookOpen.value = true
+  else if (item.id === 'act:result-diff') resultDiffOpen.value = true
   else if (item.id === 'act:drift') driftOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
@@ -3841,6 +3845,7 @@ onMounted(async () => {
   <LintRulesDialog v-if="lintRulesOpen" :open="true" @close="lintRulesOpen = false" />
   <SqlLineageDialog v-if="sqlLineageOpen" :open="true" @close="sqlLineageOpen = false" />
   <NotebookDialog v-if="notebookOpen" :open="true" @close="notebookOpen = false" />
+  <ResultDiffDialog v-if="resultDiffOpen" :open="true" @close="resultDiffOpen = false" />
 
   <!-- D6 Schema 漂移检测（内部自己选连接） -->
   <SchemaDriftDialog v-if="driftOpen" @close="driftOpen = false" />
