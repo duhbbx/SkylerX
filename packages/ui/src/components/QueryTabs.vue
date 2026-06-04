@@ -373,7 +373,14 @@ interface TabRefShape {
   isDirty?: () => boolean
   /** QueryPane 暴露：未提交事务 flush 用 */
   flushSession?: (decision: 'commit' | 'rollback') => Promise<void>
+  /** QueryPane 暴露：关 tab 前抓当前 SQL（重开标签恢复草稿用） */
+  getSql?: () => string
 }
+
+// 最近关闭的标签栈（⌘/Ctrl+Shift+T 重开）。只存可重建的字段，去掉 id；
+// query tab 顺带把关闭瞬间的 SQL 存进 draft，重开后填回编辑器。
+const closedStack: Omit<Tab, 'id'>[] = []
+const CLOSED_MAX = 10
 const dirtyRefs = new Map<number, TabRefShape>()
 function setDirtyRef(id: number, el: unknown): void {
   if (el && typeof (el as TabRefShape).isDirty === 'function') {
@@ -417,9 +424,33 @@ async function close(id: number): Promise<void> {
   }
   const i = tabs.value.findIndex((t) => t.id === id)
   if (i < 0) return
+  // 入「最近关闭」栈，供重开。query tab 抓当前 SQL 存进 draft。
+  rememberClosed(tab, ref)
   dirtyRefs.delete(id)
   tabs.value.splice(i, 1)
   if (activeId.value === id) activeId.value = tabs.value[Math.max(0, i - 1)]?.id ?? 0
+}
+
+/** 把刚关掉的 tab 存进最近关闭栈（去 id，query 顺带存 SQL 草稿）。NoSQL 不存。 */
+function rememberClosed(tab: Tab, ref?: TabRefShape): void {
+  if (tab.kind === 'mongoCollection' || tab.kind === 'redisDb' || tab.kind === 'esIndex') return
+  const { id: _id, ...rest } = tab
+  const snap: Omit<Tab, 'id'> = { ...rest }
+  if (tab.kind === 'query') {
+    const sql = ref?.getSql?.() ?? ''
+    snap.draft = sql || undefined
+    snap.pending = null
+    snap.pinned = false // 重开成普通 tab
+  }
+  closedStack.push(snap)
+  if (closedStack.length > CLOSED_MAX) closedStack.shift()
+}
+
+/** ⌘/Ctrl+Shift+T：重开最近关闭的标签。 */
+function reopenClosed(): void {
+  const snap = closedStack.pop()
+  if (!snap) return
+  push(snap)
 }
 
 function closeConnTabs(connId: string): void {
@@ -465,6 +496,7 @@ defineExpose({
   openEsIndex,
   closeConnTabs,
   closeActive,
+  reopenClosed,
   activeConnId,
 })
 

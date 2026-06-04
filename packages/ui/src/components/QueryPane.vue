@@ -1417,6 +1417,8 @@ async function notifyExecResult(
 defineExpose({
   isDirty: () => dirty.value && !!sessionId.value,
   commitMode: () => commitMode.value,
+  /** 关 tab 前抓当前 SQL，供「重开关闭的标签」恢复草稿 */
+  getSql: () => sql.value,
   /** 让 QueryTabs 在 close 前先决定是 commit / rollback / 取消 */
   flushSession: async (decision: 'commit' | 'rollback'): Promise<void> => {
     if (!sessionId.value) return

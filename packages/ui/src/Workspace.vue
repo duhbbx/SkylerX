@@ -2869,6 +2869,9 @@ function dispatchCommand(cmdId: string): boolean {
     case 'close-tab':
       tabsRef.value?.closeActive?.()
       return true
+    case 'reopen-tab':
+      tabsRef.value?.reopenClosed?.()
+      return true
     // 这些在编辑态时由 QueryPane 监听 window event 触发对应方法
     case 'run-sql':
     case 'find':
@@ -2968,10 +2971,26 @@ function onKeydown(e: KeyboardEvent): void {
     zoomReset()
   }
 }
+// Ctrl/⌘ + 滚轮缩放（跟键盘缩放共用 zoomIn/zoomOut）。捕获阶段 + preventDefault
+// 拦掉浏览器自身的页面缩放，保证用我们的 CSS zoom 档位。节流到一次一档避免飞滚。
+function onWheelZoom(e: WheelEvent): void {
+  if (!(e.ctrlKey || e.metaKey)) return
+  e.preventDefault()
+  if (e.deltaY < 0) zoomIn()
+  else if (e.deltaY > 0) zoomOut()
+}
+
 // capture 阶段注册,优先级高于 Monaco 编辑器自己注册的 keydown,
 // 让 Cmd+K / 双击 Shift 等全局快捷键不会被编辑器吃掉。
-onMounted(() => window.addEventListener('keydown', onKeydown, true))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown, true)
+  // passive:false 才能 preventDefault 阻止原生缩放
+  window.addEventListener('wheel', onWheelZoom, { capture: true, passive: false })
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown, true)
+  window.removeEventListener('wheel', onWheelZoom, true)
+})
 
 /**
  * 应用菜单命令路由：主进程菜单点击后 send('menu:command', key)，按 key 调对应方法。

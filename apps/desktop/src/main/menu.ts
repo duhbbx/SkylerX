@@ -60,6 +60,11 @@ export function setupMenu(mainWindow?: BrowserWindow): void {
         { label: '备份 / 还原…', click: send('backup-restore') },
         { type: 'separator' },
         { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', click: send('close-tab') },
+        {
+          label: '重开关闭的标签页',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: send('reopen-tab'),
+        },
         ...(isMac
           ? []
           : ([
