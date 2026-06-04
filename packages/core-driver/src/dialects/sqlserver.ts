@@ -6,9 +6,9 @@ import {
   type ConnectionConfig,
   type DbDialect,
   type ExecuteOptions,
-  type MetadataNode,
   MetaNodeKind,
   type MetaScope,
+  type MetadataNode,
   type QueryColumn,
   type QueryResult,
   type TestResult,
@@ -51,7 +51,8 @@ function buildConfig(config: ConnectionConfig): mssql.config {
   }
 }
 
-class MssqlConnection implements DriverConnection {
+// 导出供单测注入 mock pool(无本机 SQL Server 实例时验证导航分组/子节点的接线)。
+export class MssqlConnection implements DriverConnection {
   constructor(private readonly pool: mssql.ConnectionPool) {}
 
   async execute(
@@ -116,15 +117,64 @@ class MssqlConnection implements DriverConnection {
   }
 
   private async schemaGroups(db: string, schema: string): Promise<MetadataNode[]> {
-    const tablesSql = `SELECT COUNT(*) c FROM ${brq(db)}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=@s AND TABLE_TYPE=@t`
-    const [tables, views] = await Promise.all([
+    const b = brq(db)
+    const tablesSql = `SELECT COUNT(*) c FROM ${b}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=@s AND TABLE_TYPE=@t`
+    // ROUTINES 正确区分 FUNCTION / PROCEDURE(不像 openGauss 会混);触发器/序列/类型/同义词走 sys.*。
+    const routinesSql = `SELECT COUNT(*) c FROM ${b}.INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA=@s AND ROUTINE_TYPE=@t`
+    const [tables, views, funcs, procs, trgs, seqs, types, syns] = await Promise.all([
       this.scalar(tablesSql, { s: schema, t: 'BASE TABLE' }),
       this.scalar(tablesSql, { s: schema, t: 'VIEW' }),
+      this.scalar(routinesSql, { s: schema, t: 'FUNCTION' }),
+      this.scalar(routinesSql, { s: schema, t: 'PROCEDURE' }),
+      this.scalar(
+        `SELECT COUNT(*) c FROM ${b}.sys.triggers tr JOIN ${b}.sys.objects o ON tr.parent_id=o.object_id JOIN ${b}.sys.schemas sc ON o.schema_id=sc.schema_id WHERE sc.name=@s AND tr.is_ms_shipped=0`,
+        { s: schema },
+      ),
+      this.scalar(
+        `SELECT COUNT(*) c FROM ${b}.sys.sequences q JOIN ${b}.sys.schemas sc ON q.schema_id=sc.schema_id WHERE sc.name=@s`,
+        { s: schema },
+      ),
+      this.scalar(
+        `SELECT COUNT(*) c FROM ${b}.sys.types ty JOIN ${b}.sys.schemas sc ON ty.schema_id=sc.schema_id WHERE sc.name=@s AND ty.is_user_defined=1`,
+        { s: schema },
+      ),
+      this.scalar(
+        `SELECT COUNT(*) c FROM ${b}.sys.synonyms sy JOIN ${b}.sys.schemas sc ON sy.schema_id=sc.schema_id WHERE sc.name=@s`,
+        { s: schema },
+      ),
     ])
     const p = [db, schema]
+    const g = (name: string, group: string, count: number): MetadataNode => ({
+      kind: MetaNodeKind.Group,
+      name,
+      path: p,
+      group,
+      hasChildren: count > 0,
+      count,
+    })
     return [
-      { kind: MetaNodeKind.Group, name: '表', path: p, group: 'tables', hasChildren: true, count: tables },
-      { kind: MetaNodeKind.Group, name: '视图', path: p, group: 'views', hasChildren: true, count: views },
+      {
+        kind: MetaNodeKind.Group,
+        name: '表',
+        path: p,
+        group: 'tables',
+        hasChildren: true,
+        count: tables,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '视图',
+        path: p,
+        group: 'views',
+        hasChildren: true,
+        count: views,
+      },
+      g('函数', 'functions', funcs),
+      g('存储过程', 'procedures', procs),
+      g('触发器', 'triggers', trgs),
+      g('序列', 'sequences', seqs),
+      g('类型', 'types', types),
+      g('同义词', 'synonyms', syns),
     ]
   }
 
@@ -145,9 +195,30 @@ class MssqlConnection implements DriverConnection {
     ])
     const p = [db, schema, table]
     return [
-      { kind: MetaNodeKind.Group, name: '列', path: p, group: 'columns', hasChildren: true, count: cols },
-      { kind: MetaNodeKind.Group, name: '索引', path: p, group: 'indexes', hasChildren: true, count: idx },
-      { kind: MetaNodeKind.Group, name: '键', path: p, group: 'keys', hasChildren: true, count: keys },
+      {
+        kind: MetaNodeKind.Group,
+        name: '列',
+        path: p,
+        group: 'columns',
+        hasChildren: true,
+        count: cols,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '索引',
+        path: p,
+        group: 'indexes',
+        hasChildren: true,
+        count: idx,
+      },
+      {
+        kind: MetaNodeKind.Group,
+        name: '键',
+        path: p,
+        group: 'keys',
+        hasChildren: true,
+        count: keys,
+      },
     ]
   }
 
@@ -191,6 +262,84 @@ class MssqlConnection implements DriverConnection {
           name: row.name,
           path: [db, schema, row.name],
           hasChildren: true,
+          sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
+        }))
+      }
+      case 'functions':
+      case 'procedures': {
+        const rt = group === 'functions' ? 'FUNCTION' : 'PROCEDURE'
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .input('t', rt)
+          .query(
+            `SELECT ROUTINE_NAME AS name FROM ${brq(db)}.INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA=@s AND ROUTINE_TYPE=@t ORDER BY ROUTINE_NAME`,
+          )
+        return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
+          kind: group === 'functions' ? MetaNodeKind.Function : MetaNodeKind.Procedure,
+          name: row.name,
+          path: [db, schema, row.name],
+          hasChildren: false,
+          sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
+        }))
+      }
+      case 'triggers': {
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .query(
+            `SELECT tr.name AS name FROM ${brq(db)}.sys.triggers tr JOIN ${brq(db)}.sys.objects o ON tr.parent_id=o.object_id JOIN ${brq(db)}.sys.schemas sc ON o.schema_id=sc.schema_id WHERE sc.name=@s AND tr.is_ms_shipped=0 ORDER BY tr.name`,
+          )
+        return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
+          kind: MetaNodeKind.Trigger,
+          name: row.name,
+          path: [db, schema, row.name],
+          hasChildren: false,
+          sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
+        }))
+      }
+      case 'sequences': {
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .query(
+            `SELECT q.name AS name FROM ${brq(db)}.sys.sequences q JOIN ${brq(db)}.sys.schemas sc ON q.schema_id=sc.schema_id WHERE sc.name=@s ORDER BY q.name`,
+          )
+        return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
+          kind: MetaNodeKind.Sequence,
+          name: row.name,
+          path: [db, schema, row.name],
+          hasChildren: false,
+          sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
+        }))
+      }
+      case 'types': {
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .query(
+            `SELECT ty.name AS name FROM ${brq(db)}.sys.types ty JOIN ${brq(db)}.sys.schemas sc ON ty.schema_id=sc.schema_id WHERE sc.name=@s AND ty.is_user_defined=1 ORDER BY ty.name`,
+          )
+        return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
+          kind: MetaNodeKind.Type,
+          name: row.name,
+          path: [db, schema, row.name],
+          hasChildren: false,
+          sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
+        }))
+      }
+      case 'synonyms': {
+        const r = await this.pool
+          .request()
+          .input('s', schema)
+          .query(
+            `SELECT sy.name AS name FROM ${brq(db)}.sys.synonyms sy JOIN ${brq(db)}.sys.schemas sc ON sy.schema_id=sc.schema_id WHERE sc.name=@s ORDER BY sy.name`,
+          )
+        return (r.recordset as unknown as Array<{ name: string }>).map((row) => ({
+          kind: MetaNodeKind.Synonym,
+          name: row.name,
+          path: [db, schema, row.name],
+          hasChildren: false,
           sqlName: `${brq(db)}.${brq(schema)}.${brq(row.name)}`,
         }))
       }
