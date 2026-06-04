@@ -1161,6 +1161,7 @@ const DICT: Record<string, [string, string]> = {
     '服务器监控目前支持 MySQL / PostgreSQL 系连接',
     'Server monitoring currently supports MySQL / PostgreSQL connections',
   ],
+  'monitor.pickConn': ['请先在上方选择一个连接,选中后才开始监控', 'Pick a connection above to start monitoring'],
   'monitor.uptime': ['运行时长', 'Uptime'],
   'monitor.qps': ['每秒查询(QPS)', 'Queries/s (QPS)'],
   'monitor.tps': ['每秒事务(TPS)', 'Txns/s (TPS)'],

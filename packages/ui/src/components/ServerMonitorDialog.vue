@@ -6,7 +6,6 @@
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
-import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
@@ -127,7 +126,8 @@ async function poll(): Promise<void> {
     if (f === 'mysql') await pollMysql(c)
     else await pollPg(c)
   } catch (e) {
-    reportInlineError(error, e)
+    // 轮询错误只内联显示,不弹模态框 —— 否则每 2s 一次 poll 会把刚关掉的报错框又弹出来。
+    error.value = e instanceof Error ? e.message : String(e)
   }
 }
 
@@ -136,7 +136,9 @@ function restart(): void {
   prev = null
   rateHistory.value = []
   cards.value = []
-  if (!supported.value) return
+  error.value = null
+  // 未选连接 / 不支持的方言 → 不轮询(等用户主动选连接才开始,不在打开瞬间就取数)。
+  if (!connId.value || !supported.value) return
   void poll()
   timer = setInterval(() => void poll(), 2000)
 }
@@ -145,8 +147,7 @@ const maxRate = computed(() => Math.max(1, ...rateHistory.value))
 
 onMounted(async () => {
   conns.value = await client.connections.list()
-  connId.value = conns.value.find((c) => fam(c.dialect) !== 'other')?.id ?? conns.value[0]?.id ?? ''
-  restart()
+  // 不自动选连接、不自动轮询 —— 等用户在下拉里选了再开始。
 })
 watch(connId, restart)
 onUnmounted(() => clearInterval(timer))
@@ -156,10 +157,12 @@ onUnmounted(() => clearInterval(timer))
   <Modal :title="t('monitor.title')" width="wide" @close="emit('close')">
     <div class="mon">
       <select v-model="connId" class="sel">
+        <option value="" disabled>{{ t('diff.selectConn') }}</option>
         <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name || c.id }} · {{ c.dialect }}</option>
       </select>
 
-      <div v-if="!supported" class="hint warn">{{ t('monitor.unsupported') }}</div>
+      <div v-if="!connId" class="hint">{{ t('monitor.pickConn') }}</div>
+      <div v-else-if="!supported" class="hint warn">{{ t('monitor.unsupported') }}</div>
       <div v-else-if="error" class="hint err">{{ error }}</div>
       <template v-else>
         <div class="cards">
