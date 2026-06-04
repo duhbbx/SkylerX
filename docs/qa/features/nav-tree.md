@@ -76,3 +76,22 @@ Any prompt dialog (move-to-group, rename, new group):
 
 - [ ] A connection with an environment set shows a **hollow ring ○** (env: dev green / test orange / prod red) AND a **filled dot ●** (connection status), visually distinct — not two identical dots
 - [ ] A connection with no env shows only the status dot
+
+## Metadata correctness (regression cases distilled from upstream issues)
+
+> These are edge cases that dbgate / dbeaver got reported as bugs — verify SkylerX
+> reads them correctly. Touch `packages/ui/src/migrate/introspect.ts`,
+> `packages/ui/src/erd.ts`, and the per-dialect drivers.
+
+- [ ] **Non-unique index is NOT shown as UNIQUE** (dbgate #563): create a plain
+      btree index and a unique index on a table → the plain one shows unique=false,
+      the unique one shows unique=true (check the 索引 group + generated DDL)
+- [ ] **Table + column comments are read and shown** (dbgate #1210): a table with
+      `COMMENT ON TABLE`/`COMMENT ON COLUMN` (PG) or `COMMENT='…'` (MySQL) → comments
+      appear in the DDL / column detail (don't silently drop them)
+- [ ] **Composite foreign key (≥2 columns) pairs correctly** (dbgate #385): a FK on
+      `(a, b) REFERENCES parent(x, y)` → ER edges + DDL show both column pairs in the
+      right order, not just the first column
+- [ ] **Large schema lists without hanging** (dbgate #377 / #1221): a schema with
+      hundreds–thousands of tables (or a server with many schemas) expands and the
+      object-index search builds without freezing the UI; note the time

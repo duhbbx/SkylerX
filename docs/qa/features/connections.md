@@ -88,6 +88,16 @@ Covers: new connection, edit, test, delete, duplicate, prod-flag, settings encry
 - [ ] Linux: libsecret backend (will fallback to `plain:` prefix if unavailable, with console warning) — verify no crash
 - [ ] Evidence:
 
+## Network disconnect recovery (distilled from dbeaver #6903; user-hit ECONNRESET)
+
+- [ ] Open a connection, run a query, then drop the network / restart the DB
+      server → the next query shows a **clear, specific error** (not a silent hang
+      or a cryptic stack), and the app stays responsive
+- [ ] After the DB comes back, running a query **reconnects** (or a single retry
+      succeeds) without deleting + recreating the connection
+- [ ] An idle connection the server closed (timeout) → next action transparently
+      reconnects or errors clearly, doesn't loop a re-popping error dialog
+
 ## Known limitations (don't file as bugs)
 
 - Cloud drivers (Snowflake / Redshift) may take 5-15s on first Test connection due to handshake

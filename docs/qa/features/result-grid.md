@@ -112,6 +112,20 @@ Covers: virtual scrolling, inline edit, JSON / BLOB / image cell viewers, numeri
 - [ ] Linux: Ctrl+C → pasteable into LibreOffice
 - [ ] Evidence:
 
+## Parameterized queries use real binds (distilled from dbeaver #15310)
+
+> Values must go through driver bind parameters, not be string-interpolated into the
+> SQL (injection-safe + correct typing). Already covered for data migration; verify
+> the inline-edit / DML-commit path too.
+
+- [ ] Inline-edit a string cell to a value containing a single quote (`O'Brien`),
+      a backslash, and CJK → commit → re-query shows it intact (no SQL error, no
+      truncation, no broken quoting)
+- [ ] Inline-edit a BLOB/binary cell → bytes round-trip exactly (parameter bind, not
+      a literal)
+- [ ] Inline-edit a NULL ↔ value → stored as real NULL / value, not the string
+      `'NULL'`
+
 ## Known limitations
 
 - BIGINT > Number.MAX_SAFE_INTEGER (SQL Server, Oracle) display as string with annotation; in-grid edit may truncate — known, separate fix TBD
