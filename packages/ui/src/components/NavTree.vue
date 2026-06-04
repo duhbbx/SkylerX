@@ -485,6 +485,17 @@ const groupList = computed(() => {
 const ungrouped = computed(() => applyConnSearch(sortRoots(roots.value.filter((r) => !r.group))))
 
 /**
+ * 某连接在「显示顺序」里的同组兄弟(分组内 sortRoots / 未分组列表)。
+ * Shift 连选连接时用它 —— 必须按显示顺序、且只在同一分组内,否则按 roots 原始数组下标
+ * 取区间会把另一个分组里很远的连接也选上(用户报告的 bug)。
+ */
+function connSiblings(connId: string): ConnRoot[] {
+  const grp = roots.value.find((r) => r.id === connId)?.group
+  if (!grp) return ungrouped.value
+  return groupList.value.find((g) => g.name === grp)?.conns ?? []
+}
+
+/**
  * Visible flat list of expandable / selectable object-nodes inside connections,
  * in DOM order. Used by Shift+click range select (#25) — controller.rangeSelect
  * walks the visible nodes between the anchor and the clicked one, adding each
@@ -658,17 +669,15 @@ const controller: TreeController = {
     lastClickedKey.value = me
   },
   rangeSelectConn(connId) {
-    if (!lastClickedKey.value) {
-      controller.toggleMultiConn(connId)
-      return
-    }
-    if (lastClickedKey.value.startsWith('conn:')) {
+    if (lastClickedKey.value?.startsWith('conn:')) {
       const anchor = lastClickedKey.value.slice('conn:'.length)
-      const a = roots.value.findIndex((r) => r.id === anchor)
-      const b = roots.value.findIndex((r) => r.id === connId)
+      // 按显示顺序、在锚点所在分组内取区间(目标若在别的分组 → 下面退化为单选,不跨组泄漏)。
+      const sibs = connSiblings(anchor)
+      const a = sibs.findIndex((r) => r.id === anchor)
+      const b = sibs.findIndex((r) => r.id === connId)
       if (a >= 0 && b >= 0) {
         const [lo, hi] = a <= b ? [a, b] : [b, a]
-        for (let i = lo; i <= hi; i++) multiSelConn.add(roots.value[i].id)
+        for (let i = lo; i <= hi; i++) multiSelConn.add(sibs[i].id)
         lastClickedKey.value = `conn:${connId}`
         return
       }
