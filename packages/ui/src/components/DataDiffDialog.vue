@@ -7,19 +7,18 @@ import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/sha
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { type DataDiff, diffRows, generateDataSync } from '../data-diff'
-import { quoteId } from '../ddl'
+import { familyOf, quoteId } from '../ddl'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
+import ConnTargetPicker, { type PickedTarget } from './ConnTargetPicker.vue'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
 const emit = defineEmits<{ close: []; openSql: [string, string] }>()
 
 const conns = ref<ConnectionConfig[]>([])
-const srcId = ref('')
-const tgtId = ref('')
-const srcSchema = ref('')
-const tgtSchema = ref('')
+const srcPick = ref<PickedTarget>({ connId: '', database: '', schema: '' })
+const tgtPick = ref<PickedTarget>({ connId: '', database: '', schema: '' })
 const srcTable = ref('')
 const tgtTable = ref('')
 const limit = ref(2000)
@@ -31,31 +30,15 @@ const diff = ref<DataDiff | null>(null)
 const keyInfo = ref('')
 
 const connOf = (id: string) => conns.value.find((c) => c.id === id)
+/** 数据对比走 information_schema + 标准 SQL —— MySQL 系 / PG 系都支持。 */
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
-  if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.GBase8a].includes(d))
-    return 'mysql'
-  if (
-    d &&
-    [
-      DbDialect.PostgreSQL,
-      DbDialect.KingbaseES,
-      DbDialect.Vastbase,
-      DbDialect.MogDB,
-      DbDialect.HighGo,
-    ].includes(d)
-  )
-    return 'pg'
-  return 'other'
+  if (!d) return 'other'
+  const f = familyOf(d)
+  return f === 'mysql' || f === 'pg' ? f : 'other'
 }
-function defaultSchema(c: ConnectionConfig | undefined): string {
-  if (!c) return ''
-  return fam(c.dialect) === 'pg' ? 'public' : (c.database ?? '')
-}
-const supported = computed(() => {
-  const s = connOf(srcId.value)
-  const t = connOf(tgtId.value)
-  return !!s && !!t && fam(s.dialect) !== 'other' && fam(t.dialect) !== 'other'
-})
+const supported = computed(
+  () => fam(srcPick.value.dialect) !== 'other' && fam(tgtPick.value.dialect) !== 'other',
+)
 const summary = computed(() =>
   diff.value
     ? {
@@ -69,12 +52,6 @@ const summary = computed(() =>
 onMounted(async () => {
   conns.value = await client.connections.list()
 })
-function onPickSrc(): void {
-  srcSchema.value = defaultSchema(connOf(srcId.value))
-}
-function onPickTgt(): void {
-  tgtSchema.value = defaultSchema(connOf(tgtId.value))
-}
 
 const esc = (s: string) => s.replace(/'/g, "''")
 
@@ -106,9 +83,11 @@ async function fetchRows(
 }
 
 async function runDiff(): Promise<void> {
-  const s = connOf(srcId.value)
-  const tc = connOf(tgtId.value)
+  const s = connOf(srcPick.value.connId)
+  const tc = connOf(tgtPick.value.connId)
   if (!s || !tc || !srcTable.value.trim() || !tgtTable.value.trim()) return
+  const srcSchema = srcPick.value.schema.trim()
+  const tgtSchema = tgtPick.value.schema.trim()
   busy.value = true
   error.value = null
   sql.value = null
@@ -119,9 +98,7 @@ async function runDiff(): Promise<void> {
       .split(',')
       .map((x) => x.trim())
       .filter(Boolean)
-    const pk = manual.length
-      ? manual
-      : await primaryKey(s.id, srcSchema.value.trim(), srcTable.value.trim())
+    const pk = manual.length ? manual : await primaryKey(s.id, srcSchema, srcTable.value.trim())
     if (!pk.length) {
       error.value = t('ddiff.needKey')
       return
@@ -129,13 +106,13 @@ async function runDiff(): Promise<void> {
     keyColsInput.value = pk.join(', ') // 回填，便于查看/调整
     keyInfo.value = pk.join(', ')
     const [src, tgt] = await Promise.all([
-      fetchRows(s, srcSchema.value.trim(), srcTable.value.trim(), pk),
-      fetchRows(tc, tgtSchema.value.trim(), tgtTable.value.trim(), pk),
+      fetchRows(s, srcSchema, srcTable.value.trim(), pk),
+      fetchRows(tc, tgtSchema, tgtTable.value.trim(), pk),
     ])
     const cols = src.cols
     const d = diffRows(src.rows, tgt.rows, pk, cols)
     diff.value = d
-    const tgtRef = `${quoteId(tc.dialect, tgtSchema.value.trim())}.${quoteId(tc.dialect, tgtTable.value.trim())}`
+    const tgtRef = `${quoteId(tc.dialect, tgtSchema)}.${quoteId(tc.dialect, tgtTable.value.trim())}`
     sql.value = generateDataSync(d, tc.dialect, tgtRef, pk, cols) || t('ddiff.consistent')
   } catch (e) {
     reportInlineError(error, e)
@@ -148,8 +125,8 @@ function copySql(): void {
   if (sql.value) void navigator.clipboard?.writeText(sql.value)
 }
 function openInQuery(): void {
-  if (sql.value && tgtId.value) {
-    emit('openSql', tgtId.value, sql.value)
+  if (sql.value && tgtPick.value.connId) {
+    emit('openSql', tgtPick.value.connId, sql.value)
     emit('close')
   }
 }
@@ -159,23 +136,13 @@ function openInQuery(): void {
   <Modal :title="t('ddiff.title')" width="wide" @close="emit('close')">
     <div class="ddiff">
       <div class="pickers">
-        <div class="side">
-          <label>{{ t('ddiff.srcConn') }}</label>
-          <select v-model="srcId" @change="onPickSrc">
-            <option value="" disabled>{{ t('diff.selectConn') }}</option>
-            <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
-          </select>
-          <input v-model="srcSchema" :placeholder="t('diff.schemaPh')" />
+        <div class="sidecol">
+          <ConnTargetPicker :conns="conns" :label="t('ddiff.srcConn')" @change="srcPick = $event" />
           <input v-model="srcTable" :placeholder="t('ddiff.tablePh')" />
         </div>
         <span class="arrow">→</span>
-        <div class="side">
-          <label>{{ t('ddiff.tgtConn') }}</label>
-          <select v-model="tgtId" @change="onPickTgt">
-            <option value="" disabled>{{ t('diff.selectConn') }}</option>
-            <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
-          </select>
-          <input v-model="tgtSchema" :placeholder="t('diff.schemaPh')" />
+        <div class="sidecol">
+          <ConnTargetPicker :conns="conns" :label="t('ddiff.tgtConn')" @change="tgtPick = $event" />
           <input v-model="tgtTable" :placeholder="t('ddiff.tablePh')" />
         </div>
       </div>
@@ -190,7 +157,7 @@ function openInQuery(): void {
         >
           {{ busy ? t('diff.comparing') : t('diff.compare') }}
         </button>
-        <span v-if="srcId && tgtId && !supported" class="warn">{{ t('diff.onlyMyPgShort') }}</span>
+        <span v-if="srcPick.connId && tgtPick.connId && !supported" class="warn">{{ t('diff.onlyMyPgShort') }}</span>
       </div>
 
       <div v-if="error" class="banner err">✗ {{ error }}</div>
@@ -223,21 +190,17 @@ function openInQuery(): void {
 }
 .pickers {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 12px;
 }
-.side {
+.sidecol {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
-.side label {
-  font-size: 12px;
-  color: var(--muted);
-}
-.side select,
-.side input {
+.sidecol input {
   padding: 6px 10px;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -245,7 +208,7 @@ function openInQuery(): void {
   color: var(--text);
 }
 .arrow {
-  padding-bottom: 8px;
+  padding-top: 24px;
   color: var(--muted);
 }
 .actions {

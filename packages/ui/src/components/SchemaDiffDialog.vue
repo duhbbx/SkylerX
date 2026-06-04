@@ -6,52 +6,37 @@
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
+import { familyOf } from '../ddl'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { type TableSnapshot, diffSchemas, generateMigration } from '../schema-diff'
+import ConnTargetPicker, { type PickedTarget } from './ConnTargetPicker.vue'
 import Modal from './Modal.vue'
 
 const client = useDataClient()
 const emit = defineEmits<{ close: []; openSql: [string, string] }>()
 
 const conns = ref<ConnectionConfig[]>([])
-const srcId = ref('')
-const tgtId = ref('')
-const srcSchema = ref('')
-const tgtSchema = ref('')
+const src = ref<PickedTarget>({ connId: '', database: '', schema: '' })
+const tgt = ref<PickedTarget>({ connId: '', database: '', schema: '' })
 const busy = ref(false)
 const error = ref<string | null>(null)
 const migration = ref<string | null>(null)
 const diffs = ref<ReturnType<typeof diffSchemas>>([])
 
-const connOf = (id: string) => conns.value.find((c) => c.id === id)
-
+/** 结构对比走 information_schema —— MySQL 系 / PG 系都支持(含 openGauss/Vastbase/金仓/GaussDB 等)。 */
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'other' {
-  if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.GBase8a].includes(d))
-    return 'mysql'
-  if (
-    d &&
-    [
-      DbDialect.PostgreSQL,
-      DbDialect.KingbaseES,
-      DbDialect.Vastbase,
-      DbDialect.MogDB,
-      DbDialect.HighGo,
-    ].includes(d)
-  )
-    return 'pg'
-  return 'other'
-}
-function defaultSchema(c: ConnectionConfig | undefined): string {
-  if (!c) return ''
-  return fam(c.dialect) === 'pg' ? 'public' : (c.database ?? '')
+  if (!d) return 'other'
+  const f = familyOf(d)
+  return f === 'mysql' || f === 'pg' ? f : 'other'
 }
 
-const supported = computed(() => {
-  const s = connOf(srcId.value)
-  const t = connOf(tgtId.value)
-  return s && t && fam(s.dialect) !== 'other' && fam(t.dialect) !== 'other'
-})
+const supported = computed(
+  () => fam(src.value.dialect) !== 'other' && fam(tgt.value.dialect) !== 'other',
+)
+const ready = computed(
+  () => !!src.value.connId && !!tgt.value.connId && !!src.value.schema && !!tgt.value.schema,
+)
 
 const summary = computed(() => ({
   added: diffs.value.filter((d) => d.status === 'added').length,
@@ -62,13 +47,6 @@ const summary = computed(() => ({
 onMounted(async () => {
   conns.value = await client.connections.list()
 })
-
-function onPickSrc(): void {
-  srcSchema.value = defaultSchema(connOf(srcId.value))
-}
-function onPickTgt(): void {
-  tgtSchema.value = defaultSchema(connOf(tgtId.value))
-}
 
 /** 用 information_schema 一次性取某连接某 schema 下的表+列。 */
 async function fetchSnapshot(
@@ -106,17 +84,17 @@ async function fetchSnapshot(
 }
 
 async function runDiff(): Promise<void> {
-  const s = connOf(srcId.value)
-  const t = connOf(tgtId.value)
-  if (!s || !t) return
+  const s = src.value
+  const t = tgt.value
+  if (!s.connId || !t.connId || !s.dialect || !t.dialect) return
   busy.value = true
   error.value = null
   migration.value = null
   diffs.value = []
   try {
     const [srcSnap, tgtSnap] = await Promise.all([
-      fetchSnapshot(s.id, s.dialect, srcSchema.value.trim()),
-      fetchSnapshot(t.id, t.dialect, tgtSchema.value.trim()),
+      fetchSnapshot(s.connId, s.dialect, s.schema.trim()),
+      fetchSnapshot(t.connId, t.dialect, t.schema.trim()),
     ])
     diffs.value = diffSchemas(srcSnap, tgtSnap)
     migration.value = generateMigration(diffs.value, t.dialect, srcSnap)
@@ -131,8 +109,8 @@ function copySql(): void {
   if (migration.value) void navigator.clipboard?.writeText(migration.value)
 }
 function openInQuery(): void {
-  if (migration.value && tgtId.value) {
-    emit('openSql', tgtId.value, migration.value)
+  if (migration.value && tgt.value.connId) {
+    emit('openSql', tgt.value.connId, migration.value)
     emit('close')
   }
 }
@@ -142,30 +120,16 @@ function openInQuery(): void {
   <Modal :title="t('sdiff.title')" width="xl" fixed-height storage-key="schema-diff" @close="emit('close')">
     <div class="diff">
       <div class="pickers">
-        <div class="side">
-          <label>{{ t('sdiff.srcConn') }}</label>
-          <select v-model="srcId" @change="onPickSrc">
-            <option value="" disabled>{{ t('diff.selectConn') }}</option>
-            <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
-          </select>
-          <input v-model="srcSchema" :placeholder="t('diff.schemaPh')" />
-        </div>
+        <ConnTargetPicker :conns="conns" :label="t('sdiff.srcConn')" @change="src = $event" />
         <span class="arrow">→</span>
-        <div class="side">
-          <label>{{ t('sdiff.tgtConn') }}</label>
-          <select v-model="tgtId" @change="onPickTgt">
-            <option value="" disabled>{{ t('diff.selectConn') }}</option>
-            <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} · {{ c.dialect }}</option>
-          </select>
-          <input v-model="tgtSchema" :placeholder="t('diff.schemaPh')" />
-        </div>
+        <ConnTargetPicker :conns="conns" :label="t('sdiff.tgtConn')" @change="tgt = $event" />
       </div>
 
       <div class="actions">
-        <button class="primary" :disabled="busy || !supported || !srcId || !tgtId" @click="runDiff">
+        <button class="primary" :disabled="busy || !supported || !ready" @click="runDiff">
           {{ busy ? t('diff.comparing') : t('diff.compare') }}
         </button>
-        <span v-if="srcId && tgtId && !supported" class="warn">{{ t('diff.onlyMyPg') }}</span>
+        <span v-if="src.connId && tgt.connId && !supported" class="warn">{{ t('diff.onlyMyPg') }}</span>
       </div>
 
       <div v-if="error" class="banner err">✗ {{ error }}</div>
