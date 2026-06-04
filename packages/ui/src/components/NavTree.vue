@@ -582,6 +582,11 @@ const controller: TreeController = {
   },
   select(node, connId) {
     selectedKey.value = nodeKey(node, connId)
+    // 普通单击也确立 Shift 范围选择的锚点 —— 否则「单击第一个 → 首次 Shift+click 后面」时
+    // 没有锚点,rangeSelect 退化成单选,中间节点选不上(之前锚点只在 Ctrl 多选时设)。
+    // 连接节点的锚点格式是 `conn:<id>`(rangeSelectConn 用),对象节点用 nodeKey。
+    lastClickedKey.value =
+      node.kind === MetaNodeKind.Connection ? `conn:${connId}` : nodeKey(node, connId)
     // #19: 单击 Redis key 节点 → 若已有匹配的 RedisPane tab,联动激活并选中该 key.
     // node.group === 'redis-key' 是 redis 驱动写入的标记(同 openNode 路径用的判别).
     // 不主动开新 tab — 那是双击 (openNode → openRedisKey) 的语义.
