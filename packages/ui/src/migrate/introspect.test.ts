@@ -44,6 +44,8 @@ describe('canIntrospect', () => {
 describe('Oracle reader (mock catalog)', () => {
   it('builds SchemaInput with types, PK, FK, check, index, sequence', async () => {
     const exec = mockExec([
+      // 只有 DEPT/EMP 是基表;V_X 是视图(在 all_tab_columns 里有列但不在 all_tables)
+      [/FROM all_tables /, [{ TBL: 'DEPT' }, { TBL: 'EMP' }]],
       [
         /all_tab_columns/,
         [
@@ -56,6 +58,7 @@ describe('Oracle reader (mock catalog)', () => {
             NULLABLE: 'N',
           },
           { TBL: 'DEPT', COL: 'NAME', DATA_TYPE: 'VARCHAR2', CHAR_LENGTH: 50, NULLABLE: 'Y' },
+          { TBL: 'V_X', COL: 'ID', DATA_TYPE: 'NUMBER', NULLABLE: 'Y' }, // 视图列,应排除
           {
             TBL: 'EMP',
             COL: 'ID',
@@ -101,6 +104,7 @@ describe('Oracle reader (mock catalog)', () => {
           { CN: 'CK_SAL', CT: 'C', TBL: 'EMP', SC: 'SALARY >= 0' },
           { CN: 'NN_ID', CT: 'C', TBL: 'EMP', SC: '"ID" IS NOT NULL' }, // auto NOT NULL → skipped
           { CN: 'FK_EMP_DEPT', CT: 'R', TBL: 'EMP', RCN: 'PK_DEPT', RTBL: 'DEPT', DR: 'CASCADE' },
+          { CN: 'BIN$PK', CT: 'P', TBL: 'BIN$OLD==$0' }, // 回收站对象的约束,不应造出 phantom 表
         ],
       ],
       [/all_ind_columns/, [{ IDX: 'IX_EMP_DEPT', COL: 'DEPT_ID', POS: 1 }]],
@@ -120,6 +124,7 @@ describe('Oracle reader (mock catalog)', () => {
 
     const dept = si.tables.find((t) => t.name === 'DEPT')!
     const emp = si.tables.find((t) => t.name === 'EMP')!
+    expect(si.tables.map((t) => t.name).sort()).toEqual(['DEPT', 'EMP']) // V_X view excluded
     expect(dept.columns.map((c) => c.dataType)).toEqual(['NUMBER(10)', 'VARCHAR2(50)'])
     expect(dept.primaryKey).toEqual(['ID'])
     expect(dept.comment).toBe('部门表')

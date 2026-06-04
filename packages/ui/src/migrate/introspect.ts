@@ -211,12 +211,6 @@ async function readOracle(exec: ProfileExec, schema: string): Promise<SchemaInpu
   const owner = lit(schema)
   const g = (r: Record<string, unknown>, k: string): unknown => r[k] ?? r[k.toUpperCase()]
 
-  // 1) 列
-  const colRows = await exec(
-    `SELECT table_name AS tbl, column_name AS col, data_type, data_length, data_precision,
-            data_scale, char_length, nullable, data_default
-     FROM all_tab_columns WHERE owner = ${owner} ORDER BY table_name, column_id`,
-  )
   const tableMap = new Map<string, SchemaTableInput>()
   const tableFor = (name: string): SchemaTableInput => {
     let t = tableMap.get(name)
@@ -226,9 +220,26 @@ async function readOracle(exec: ProfileExec, schema: string): Promise<SchemaInpu
     }
     return t
   }
+
+  // 0) 基表名(排除视图 + 回收站):all_tab_columns 含视图列,直接按列建表会把视图也拉成表;
+  //    all_tables 还含回收站里 DROP 掉的 BIN$… 对象,用 dropped='NO' 滤掉(#live)。
+  const baseTables = new Set<string>()
+  for (const r of await exec(
+    `SELECT table_name AS tbl FROM all_tables WHERE owner = ${owner} AND dropped = 'NO'`,
+  ))
+    baseTables.add(str(g(r, 'tbl')))
+
+  // 1) 列(仅基表)
+  const colRows = await exec(
+    `SELECT table_name AS tbl, column_name AS col, data_type, data_length, data_precision,
+            data_scale, char_length, nullable, data_default
+     FROM all_tab_columns WHERE owner = ${owner} ORDER BY table_name, column_id`,
+  )
   for (const r of colRows) {
+    const tbl = str(g(r, 'tbl'))
+    if (!baseTables.has(tbl)) continue // 跳过视图等非基表的列
     const def = g(r, 'data_default')
-    tableFor(str(g(r, 'tbl'))).columns.push({
+    tableFor(tbl).columns.push({
       name: str(g(r, 'col')),
       dataType: oracleColType(r),
       nullable: str(g(r, 'nullable')).toUpperCase() !== 'N',
@@ -342,7 +353,14 @@ async function readOracle(exec: ProfileExec, schema: string): Promise<SchemaInpu
     })
   }
 
-  return { tables: [...tableMap.values()], sequences, indexes, foreignKeys }
+  // 防御性收尾:约束/索引循环里的 tableFor(tbl) 会给非基表(视图、回收站 BIN$… 对象)
+  // 凭空建条目,故按 baseTables 统一过滤 tables/FK/索引,只留真正的基表(#live)。
+  return {
+    tables: [...tableMap.values()].filter((t) => baseTables.has(t.name)),
+    sequences,
+    indexes: indexes.filter((i) => baseTables.has(i.table)),
+    foreignKeys: foreignKeys.filter((f) => baseTables.has(f.table)),
+  }
 }
 
 export const oracleReader: SchemaReader = { dialect: D.Oracle, readSchema: readOracle }
@@ -463,7 +481,8 @@ async function readMysql(exec: ProfileExec, schema: string): Promise<SchemaInput
     const tbl = str(g(r, 'tbl'))
     if (idx === 'PRIMARY' || conNames.has(ck(tbl, idx))) continue
     const ixKey = ck(tbl, idx)
-    if (!ixMap.has(ixKey)) ixMap.set(ixKey, { name: idx, tbl, uniq: Number(g(r, 'nu')) === 0, cols: [] })
+    if (!ixMap.has(ixKey))
+      ixMap.set(ixKey, { name: idx, tbl, uniq: Number(g(r, 'nu')) === 0, cols: [] })
     ixMap.get(ixKey)?.cols.push(str(g(r, 'col')))
   }
   for (const v of ixMap.values()) {
