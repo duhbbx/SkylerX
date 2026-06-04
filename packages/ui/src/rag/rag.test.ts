@@ -2,6 +2,7 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
+import { DbDialect } from '@db-tool/shared-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { SchemaInput } from '../migrate/convert'
 import {
@@ -11,6 +12,7 @@ import {
   chunksFromViews,
   fingerprint,
 } from './corpus'
+import { readRoutines, readViews } from './objects'
 import { applyFloor, cosine, lexicalSearch, rrfFuse, tokenize, vectorSearch } from './retrieve'
 import { buildIndex, formatContext, isStale, searchIndex } from './service'
 import { type RagIndex, decodeVec, encodeVec, loadIndex, saveIndex } from './store'
@@ -89,6 +91,63 @@ describe('corpus', () => {
     expect(new Set(c.map((x) => x.id)).size).toBe(3) // 重载 id 不撞
     expect(c[0].text).toContain('Function s.calc_tax(amount numeric) RETURNS numeric')
     expect(c[2].text).toContain('Procedure s.do_import(path text)')
+  })
+})
+
+describe('objects (views + routines)', () => {
+  const mockExec = (routes: Array<[RegExp, Array<Record<string, unknown>>]>) => (sql: string) =>
+    Promise.resolve(routes.find(([re]) => re.test(sql))?.[1] ?? [])
+
+  it('pg: reads views (+ matview) and prokind-aware routines', async () => {
+    const exec = mockExec([
+      [/pg_views/, [{ name: 'v_a', definition: 'SELECT 1' }]],
+      [/pg_matviews/, [{ name: 'mv_b', definition: 'SELECT 2' }]],
+      [/pg_proc/, [{ kind: 'p', name: 'do_x', args: 'a integer', result: '' }]],
+    ])
+    const views = await readViews(exec, DbDialect.PostgreSQL, 'public')
+    expect(views.map((v) => `${v.name}:${v.materialized}`)).toEqual(['v_a:false', 'mv_b:true'])
+    const routines = await readRoutines(exec, DbDialect.PostgreSQL, 'public')
+    expect(routines[0]).toMatchObject({ name: 'do_x', kind: 'procedure', signature: '(a integer)' })
+  })
+
+  it('mysql: reads information_schema VIEWS + ROUTINES/PARAMETERS', async () => {
+    const exec = mockExec([
+      [/information_schema\.VIEWS/, [{ name: 'v_big', def: 'select id from orders' }]],
+      [
+        /information_schema\.ROUTINES/,
+        [
+          { name: 'add_tax', type: 'FUNCTION', ret: 'decimal(12,2)' },
+          { name: 'do_purge', type: 'PROCEDURE', ret: '' },
+        ],
+      ],
+      [
+        /information_schema\.PARAMETERS/,
+        [
+          { rname: 'add_tax', pname: '', ptype: 'decimal(12,2)', pos: 0 }, // 返回值,跳过
+          { rname: 'add_tax', pname: 'amt', ptype: 'decimal(12,2)', pos: 1 },
+          { rname: 'do_purge', pname: 'days', ptype: 'int', pos: 1 },
+        ],
+      ],
+    ])
+    const views = await readViews(exec, DbDialect.MySQL, 'app')
+    expect(views).toEqual([
+      { schema: 'app', name: 'v_big', definition: 'select id from orders', materialized: false },
+    ])
+    const routines = await readRoutines(exec, DbDialect.MySQL, 'app')
+    expect(routines.find((r) => r.name === 'add_tax')).toMatchObject({
+      kind: 'function',
+      signature: '(amt decimal(12,2)) RETURNS decimal(12,2)',
+    })
+    expect(routines.find((r) => r.name === 'do_purge')).toMatchObject({
+      kind: 'procedure',
+      signature: '(days int)', // 过程无 RETURNS
+    })
+  })
+
+  it('oracle/sqlserver: return [] (no unverified SQL)', async () => {
+    const exec = mockExec([])
+    expect(await readViews(exec, DbDialect.Oracle, 's')).toEqual([])
+    expect(await readRoutines(exec, DbDialect.SqlServer, 's')).toEqual([])
   })
 })
 
