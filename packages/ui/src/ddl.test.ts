@@ -10,6 +10,7 @@ import {
   buildCreateTable,
   buildDrop,
   buildSqlTemplate,
+  databaseHasSchemas,
   dependencyQueries,
   emptyColumn,
   emptyTableSpec,
@@ -37,6 +38,23 @@ function node(
     children: null,
   }
 }
+
+describe('databaseHasSchemas (库→schema 两层?)', () => {
+  it('true only for PG-family and SQL Server', () => {
+    for (const d of [DbDialect.PostgreSQL, DbDialect.Vastbase, DbDialect.SqlServer])
+      expect(databaseHasSchemas(d)).toBe(true)
+  })
+  it('false for MySQL-family, ClickHouse, Oracle/DM (single-level / no db nodes)', () => {
+    for (const d of [
+      DbDialect.MySQL,
+      DbDialect.MariaDB,
+      DbDialect.ClickHouse,
+      DbDialect.Oracle,
+      DbDialect.DM,
+    ])
+      expect(databaseHasSchemas(d)).toBe(false)
+  })
+})
 
 describe('quoteId', () => {
   it('quotes per dialect family', () => {

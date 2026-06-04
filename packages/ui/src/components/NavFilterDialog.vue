@@ -19,6 +19,7 @@
 import type { ConnectionConfig, MetadataNode } from '@db-tool/shared-types'
 import { computed, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
+import { databaseHasSchemas } from '../ddl'
 import { toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
@@ -50,6 +51,9 @@ const schemaItems = ref<Record<string, MetadataNode[]>>({})
 const schemaChecked = ref<Record<string, Set<string>>>({})
 const schemaLoading = ref<Set<string>>(new Set())
 const schemaError = ref<Record<string, string>>({})
+
+/** 该连接的方言是否库→schema 两层(单层方言不显示库的展开 ▸,避免空下拉 / 多余请求)。 */
+const twoLevel = computed(() => (props.conn ? databaseHasSchemas(props.conn.dialect) : false))
 
 const totalCount = computed(() => items.value.length)
 const checkedCount = computed(() => checked.value.size)
@@ -264,8 +268,8 @@ async function save(): Promise<void> {
     <div class="hint">
       勾选要在导航树中显示的项. 未勾选的将被隐藏 (数据本身不删, 任何时候来这里改回即可).
       <br />
-      <strong>展开</strong> 库的 ▸ 可进一步配置该库下哪些 schema 可见
-      (仅对 PG / MSSQL / ClickHouse 等库→schema 两层结构方言有意义).
+      <strong v-if="twoLevel">展开</strong><template v-if="twoLevel"> 库的 ▸ 可进一步配置该库下哪些 schema 可见
+      (仅 PG / SQL Server 等库→schema 两层结构方言才有此层).</template>
     </div>
 
     <div v-if="loading" class="msg">加载中...</div>
@@ -289,7 +293,7 @@ async function save(): Promise<void> {
         <li v-for="n in items" :key="n.name" class="row">
           <div class="row-line">
             <button
-              v-if="n.kind === 'database'"
+              v-if="n.kind === 'database' && twoLevel"
               class="exp"
               :title="expanded.has(n.name) ? '收起' : '展开 schemas'"
               @click="toggleExpand(n.name)"
@@ -306,7 +310,7 @@ async function save(): Promise<void> {
             </label>
           </div>
           <!-- schema 子级 (v2) -->
-          <div v-if="n.kind === 'database' && expanded.has(n.name)" class="sub">
+          <div v-if="n.kind === 'database' && twoLevel && expanded.has(n.name)" class="sub">
             <div v-if="schemaLoading.has(n.name)" class="msg">加载 schemas...</div>
             <div v-else-if="schemaError[n.name]" class="msg err">
               {{ schemaError[n.name] }}

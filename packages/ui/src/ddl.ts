@@ -149,6 +149,17 @@ type Family = 'mysql' | 'pg' | 'sqlserver' | 'oracle'
  * 出于实用兼容，遇到 NoSQL 也回退到 'mysql'（语法最常见），避免崩；
  * 实际不应该走到这里。
  */
+/**
+ * 该方言的 database 下面是否还有 schema 一层(两层结构)。
+ * PG 系 / SQL Server 是 database → schema 两层;MySQL 系、ClickHouse 等是 database → 表 单层
+ * (database 即命名空间);Oracle/DM 顶层直接是 schema、根本没有 database 节点。
+ * 用于「配置可见库/Schema」对话框:单层方言不显示库的展开 ▸。
+ */
+export function databaseHasSchemas(dialect: DbDialect): boolean {
+  const fam = familyOf(dialect)
+  return fam === 'pg' || fam === 'sqlserver'
+}
+
 export function familyOf(dialect: DbDialect): Family {
   switch (dialect) {
     case DbDialect.MySQL:
