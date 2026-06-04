@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { SchemaInput } from '../migrate/convert'
-import { erModel, focusModel } from './model'
+import { erModel, focusModel, toMermaid } from './model'
 
 const schema: SchemaInput = {
   tables: [
@@ -47,6 +47,34 @@ describe('erModel', () => {
   })
   it('empty schema → empty model', () => {
     expect(erModel({ tables: [] })).toEqual({ nodes: [], edges: [], externalRefs: 0 })
+  })
+})
+
+describe('toMermaid', () => {
+  it('emits erDiagram with entity blocks (PK cols) and parent||--o{child edges', () => {
+    const out = toMermaid(erModel(schema))
+    expect(out.startsWith('erDiagram\n')).toBe(true)
+    expect(out).toContain('"customer" {')
+    expect(out).toContain('col id PK')
+    // 父(被引用)在左,子(持有外键)在右
+    expect(out).toContain('"customer" ||--o{ "orders" : "customer_id"')
+    // 跨 schema 外键不连线
+    expect(out).not.toContain('region')
+  })
+  it('table without PK gets an empty block so it still renders', () => {
+    const out = toMermaid(
+      erModel({ tables: [{ schema: 's', name: 'log', columns: [{ name: 'msg', dataType: 'text' }] }] }),
+    )
+    expect(out).toContain('"log" {')
+    expect(out).not.toContain('PK')
+  })
+  it('sanitizes quotes in names/labels', () => {
+    const out = toMermaid({
+      nodes: [{ id: 'we"ird', columns: 1, pk: [], fkOut: 0 }],
+      edges: [],
+      externalRefs: 0,
+    })
+    expect(out).toContain('"weird" {')
   })
 })
 

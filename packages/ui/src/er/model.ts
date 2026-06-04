@@ -60,6 +60,33 @@ export function erModel(input: SchemaInput): ErModel {
 }
 
 /**
+ * 把 ER 模型转成 Mermaid `erDiagram` 文本（可直接贴到 GitHub / mermaid.live 渲染）。
+ * 外键边：父表(被引用) `||--o{` 子表(持有方)，标签是外键列。
+ * 实体块只列出主键列（模型里没有完整列类型，给个占位类型 `col`），
+ * 没有主键的表给空块，保证孤立表也出现在图里。
+ * 实体名与标签里的双引号去掉，避免破坏 Mermaid 语法。
+ */
+export function toMermaid(model: ErModel): string {
+  const q = (s: string): string => `"${s.replace(/"/g, '')}"`
+  const lines: string[] = ['erDiagram']
+  for (const n of model.nodes) {
+    if (n.pk.length) {
+      lines.push(`    ${q(n.id)} {`)
+      for (const c of n.pk) lines.push(`        col ${c.replace(/[^\w]/g, '_')} PK`)
+      lines.push('    }')
+    } else {
+      lines.push(`    ${q(n.id)} {`)
+      lines.push('    }')
+    }
+  }
+  for (const e of model.edges) {
+    const label = e.columns.join(', ').replace(/"/g, '') || 'fk'
+    lines.push(`    ${q(e.to)} ||--o{ ${q(e.from)} : ${q(label)}`)
+  }
+  return `${lines.join('\n')}\n`
+}
+
+/**
  * 聚焦:只保留名字命中 query(大小写不敏感子串)的表 + 它们的 N 跳外键邻居(双向)。
  * 大库 ER 图一团乱时,输个表名只看它周边。query 为空 → 原样返回。
  * externalRefs 重算为「命中集合连到集合外的边数」(= 被隐藏的关联数,UI 提示用)。

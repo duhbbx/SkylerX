@@ -15,7 +15,7 @@ import { CanvasRenderer, SVGRenderer } from 'echarts/renderers'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
-import { type ErModel, erModel, focusModel } from '../er/model'
+import { type ErModel, erModel, focusModel, toMermaid } from '../er/model'
 import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
 import { canIntrospect, readSchema } from '../migrate/introspect'
@@ -162,6 +162,22 @@ async function exportSvg(): Promise<void> {
   }
 }
 
+async function exportMermaid(): Promise<void> {
+  // 导出当前渲染的模型(含聚焦子集);没有就用完整模型
+  const m = shown.value ?? model.value
+  if (!m) return
+  try {
+    await saveFileWithDialog({
+      defaultName: `er-${schemaName.value || 'schema'}-${Date.now()}.mmd`,
+      content: toMermaid(m),
+      filters: [{ name: 'Mermaid', extensions: ['mmd', 'md', 'txt'] }],
+    })
+    toast.success(L('已导出 Mermaid', 'Exported Mermaid'))
+  } catch (e) {
+    reportError(e, { tag: 'er.exportMermaid' })
+  }
+}
+
 function onResize(): void {
   chart?.resize()
 }
@@ -200,6 +216,7 @@ onBeforeUnmount(() => {
         <span v-if="model" class="exports">
           <button class="ghost" @click="exportPng">{{ L('导出 PNG', 'PNG') }}</button>
           <button class="ghost" @click="exportSvg">{{ L('导出 SVG', 'SVG') }}</button>
+          <button class="ghost" @click="exportMermaid">{{ L('导出 Mermaid', 'Mermaid') }}</button>
         </span>
       </div>
       <p v-if="!model" class="note hint">{{ L('选连接 + schema → 生成。子表 → 父表的箭头即外键;可拖拽/缩放。', 'Pick a connection + schema. Arrows go child → parent (FK); drag and zoom freely.') }}</p>
