@@ -120,6 +120,22 @@ watch(
   },
 )
 
+/**
+ * 输入框回车:输入法(中文/日文等)组合输入时,回车是「确认候选词」,不该提交弹框。
+ * isComposing / keyCode 229 都判一下(后者是部分环境组合中的兜底标志)。
+ * 修复:输中文按回车直接把弹框提交了 / 候选词只到一半就提交。
+ */
+function onPromptEnter(e: KeyboardEvent): void {
+  if (e.isComposing || e.keyCode === 229) return
+  e.preventDefault()
+  onConfirm()
+}
+function onPromptEscape(e: KeyboardEvent): void {
+  if (e.isComposing || e.keyCode === 229) return // 组合中按 Esc 是取消候选,不关弹框
+  e.preventDefault()
+  onCancel()
+}
+
 function onConfirm(): void {
   const resolve = dialogState.resolve
   if (dialogState.kind === 'prompt') {
@@ -200,8 +216,8 @@ function onKey(e: KeyboardEvent): void {
         :placeholder="dialogState.promptPlaceholder"
         :list="dialogState.promptOptions ? 'dlg-prompt-options' : undefined"
         @input="dialogState.promptError = null"
-        @keydown.enter.prevent="onConfirm"
-        @keydown.escape.prevent="onCancel"
+        @keydown.enter="onPromptEnter"
+        @keydown.escape="onPromptEscape"
       />
       <datalist v-if="dialogState.kind === 'prompt' && dialogState.promptOptions" id="dlg-prompt-options">
         <option v-for="o in dialogState.promptOptions" :key="o" :value="o" />
