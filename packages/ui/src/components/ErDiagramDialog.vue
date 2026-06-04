@@ -11,7 +11,7 @@ import type { ConnectionConfig } from '@db-tool/shared-types'
 import { GraphChart } from 'echarts/charts'
 import { TooltipComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
@@ -19,9 +19,10 @@ import { type ErModel, erModel } from '../er/model'
 import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
 import { canIntrospect, readSchema } from '../migrate/introspect'
+import { saveFileWithDialog } from '../saveFile'
 import Modal from './Modal.vue'
 
-echarts.use([GraphChart, TooltipComponent, CanvasRenderer])
+echarts.use([GraphChart, TooltipComponent, CanvasRenderer, SVGRenderer])
 
 defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -35,6 +36,7 @@ const loading = ref(false)
 const model = ref<ErModel | null>(null)
 const chartEl = ref<HTMLDivElement>()
 let chart: echarts.ECharts | null = null
+let lastOption: unknown = null // 最近一次的 echarts option,导出时复用
 
 const dialectOf = (): ConnectionConfig['dialect'] | undefined =>
   conns.value.find((c) => c.id === connId.value)?.dialect
@@ -69,40 +71,86 @@ async function render(): Promise<void> {
 
 function draw(m: ErModel): void {
   if (!chart) return
-  chart.setOption(
-    {
-      tooltip: {},
-      series: [
-        {
-          type: 'graph',
-          layout: 'force',
-          roam: true,
-          draggable: true,
-          label: { show: true, fontSize: 11, position: 'right' },
-          edgeSymbol: ['none', 'arrow'],
-          edgeSymbolSize: 9,
-          force: { repulsion: 260, edgeLength: 150, gravity: 0.04 },
-          lineStyle: { color: '#bbb', curveness: 0.12 },
-          emphasis: { focus: 'adjacency' },
-          data: m.nodes.map((n) => ({
-            name: n.id,
-            symbolSize: Math.min(56, 18 + n.columns * 2.5),
-            itemStyle: { color: n.pk.length ? '#2d7ff9' : '#9aa7b5' },
-            tooltip: {
-              formatter: `<b>${n.id}</b>${n.comment ? ` — ${n.comment}` : ''}<br/>${n.columns} ${L('列', 'cols')}${n.pk.length ? `<br/>PK: ${n.pk.join(', ')}` : ''}`,
-            },
-          })),
-          links: m.edges.map((e) => ({
-            source: e.from,
-            target: e.to,
-            tooltip: { formatter: `${e.from} → ${e.to}<br/>FK: ${e.columns.join(', ')}` },
-          })),
-        },
-      ],
-    },
-    { notMerge: true },
-  )
+  const option = {
+    tooltip: {},
+    series: [
+      {
+        type: 'graph',
+        layout: 'force',
+        roam: true,
+        draggable: true,
+        label: { show: true, fontSize: 11, position: 'right' },
+        edgeSymbol: ['none', 'arrow'],
+        edgeSymbolSize: 9,
+        force: { repulsion: 260, edgeLength: 150, gravity: 0.04 },
+        lineStyle: { color: '#bbb', curveness: 0.12 },
+        emphasis: { focus: 'adjacency' },
+        data: m.nodes.map((n) => ({
+          name: n.id,
+          symbolSize: Math.min(56, 18 + n.columns * 2.5),
+          itemStyle: { color: n.pk.length ? '#2d7ff9' : '#9aa7b5' },
+          tooltip: {
+            formatter: `<b>${n.id}</b>${n.comment ? ` — ${n.comment}` : ''}<br/>${n.columns} ${L('列', 'cols')}${n.pk.length ? `<br/>PK: ${n.pk.join(', ')}` : ''}`,
+          },
+        })),
+        links: m.edges.map((e) => ({
+          source: e.from,
+          target: e.to,
+          tooltip: { formatter: `${e.from} → ${e.to}<br/>FK: ${e.columns.join(', ')}` },
+        })),
+      },
+    ],
+  }
+  lastOption = option
+  chart.setOption(option, { notMerge: true })
   chart.resize()
+}
+
+/** dataURL → 字节数组(保存 PNG 用)。 */
+function dataUrlToBytes(url: string): Uint8Array {
+  const bin = atob(url.split(',')[1] ?? '')
+  const a = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i)
+  return a
+}
+
+async function exportPng(): Promise<void> {
+  if (!chart) return
+  try {
+    const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' })
+    await saveFileWithDialog({
+      defaultName: `er-${schemaName.value || 'schema'}-${Date.now()}.png`,
+      content: dataUrlToBytes(url),
+      filters: [{ name: 'PNG', extensions: ['png'] }],
+    })
+    toast.success(L('已导出 PNG', 'Exported PNG'))
+  } catch (e) {
+    reportError(e, { tag: 'er.exportPng' })
+  }
+}
+
+async function exportSvg(): Promise<void> {
+  if (!lastOption || !chartEl.value) return
+  // ER 主图用 canvas 渲染;SVG 导出另起一个临时 svg-renderer 图渲一遍同样的 option。
+  const tmp = document.createElement('div')
+  tmp.style.cssText = `position:fixed;left:-99999px;width:${chartEl.value.clientWidth || 900}px;height:${chartEl.value.clientHeight || 460}px`
+  document.body.appendChild(tmp)
+  const t = echarts.init(tmp, undefined, { renderer: 'svg' })
+  try {
+    t.setOption(lastOption as Parameters<typeof t.setOption>[0])
+    const svg = t.renderToSVGString()
+    await saveFileWithDialog({
+      defaultName: `er-${schemaName.value || 'schema'}-${Date.now()}.svg`,
+      content: svg,
+      filters: [{ name: 'SVG', extensions: ['svg'] }],
+    })
+    toast.success(L('已导出 SVG', 'Exported SVG'))
+  } catch (e) {
+    reportError(e, { tag: 'er.exportSvg' })
+  } finally {
+    t.dispose()
+    tmp.remove()
+  }
 }
 
 function onResize(): void {
@@ -139,6 +187,10 @@ onBeforeUnmount(() => {
         <span v-if="model" class="note">{{ model.nodes.length }} {{ L('表', 'tables') }} · {{ model.edges.length }} {{ L('外键', 'FKs') }}<template v-if="model.externalRefs"> · {{ model.externalRefs }} {{ L('跨库引用(未连线)', 'external refs (not drawn)') }}</template></span>
         <span class="legend"><i class="dot" style="background:#2d7ff9" />{{ L('有主键', 'has PK') }}</span>
         <span class="legend"><i class="dot" style="background:#9aa7b5" />{{ L('无主键', 'no PK') }}</span>
+        <span v-if="model" class="exports">
+          <button class="ghost" @click="exportPng">{{ L('导出 PNG', 'PNG') }}</button>
+          <button class="ghost" @click="exportSvg">{{ L('导出 SVG', 'SVG') }}</button>
+        </span>
       </div>
       <p v-if="!model" class="note hint">{{ L('选连接 + schema → 生成。子表 → 父表的箭头即外键;可拖拽/缩放。', 'Pick a connection + schema. Arrows go child → parent (FK); drag and zoom freely.') }}</p>
       <div ref="chartEl" class="graph"></div>
@@ -156,4 +208,6 @@ onBeforeUnmount(() => {
 .graph { width: 100%; height: 460px; }
 .primary { background: var(--accent, #2d7ff9); color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
 .primary:disabled { opacity: .5; }
+.exports { display: inline-flex; gap: 6px; margin-left: auto; }
+.ghost { background: transparent; border: 1px solid var(--border, #ddd); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 </style>
