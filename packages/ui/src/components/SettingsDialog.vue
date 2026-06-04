@@ -218,6 +218,7 @@ function watermarkPreviewSvg(): string {
           <label class="row">
             <span class="lbl">{{ t('settings.theme') }}</span>
             <select v-model="settings.theme">
+              <option value="system">{{ t('settings.theme.system') }}</option>
               <option value="dark">{{ t('settings.theme.dark') }}</option>
               <option value="light">{{ t('settings.theme.light') }}</option>
             </select>

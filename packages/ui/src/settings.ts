@@ -2,7 +2,7 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { DEFAULT_MASK_RULES, type MaskRule } from './masking'
 
 /** AI 后端 provider 标识；anthropic 用 Messages API，其余走 OpenAI 兼容的 chat/completions。 */
@@ -40,7 +40,7 @@ export interface Settings {
   /** SQL 格式化关键字大小写 */
   keywordCase: 'upper' | 'lower' | 'preserve'
   /** 主题 */
-  theme: 'dark' | 'light'
+  theme: 'dark' | 'light' | 'system'
   /** 全局界面缩放（CSS zoom，1 = 100%） */
   uiZoom: number
   /**
@@ -146,7 +146,7 @@ const DEFAULTS: Settings = {
   pageSize: 200,
   fontSize: 13,
   keywordCase: 'upper',
-  theme: 'dark',
+  theme: 'system',
   uiZoom: 1,
   commitMode: 'auto',
   aiProvider: 'anthropic',
@@ -330,12 +330,26 @@ watch(
 
 const hasDom = typeof document !== 'undefined'
 
-// 主题：应用到根元素的 data-theme（styles.css 据此切换变量）
+// 主题：应用到根元素的 data-theme（styles.css 据此切换变量）。
+// theme='system' 时跟随操作系统 prefers-color-scheme,并监听 OS 切换实时更新。
+const prefersDark = hasDom ? window.matchMedia('(prefers-color-scheme: dark)') : null
+function effectiveTheme(): 'dark' | 'light' {
+  if (settings.theme === 'system') return prefersDark?.matches ? 'dark' : 'light'
+  return settings.theme
+}
+// 解析后的实际主题（dark/light）；组件（如 Monaco 编辑器）可 watch 它跟随切换
+export const resolvedTheme = ref<'dark' | 'light'>('dark')
 function applyTheme(): void {
-  if (hasDom) document.documentElement.setAttribute('data-theme', settings.theme)
+  const t = effectiveTheme()
+  resolvedTheme.value = t
+  if (hasDom) document.documentElement.setAttribute('data-theme', t)
 }
 applyTheme()
 watch(() => settings.theme, applyTheme)
+// OS 主题变化 → 仅在「跟随系统」时跟着切
+prefersDark?.addEventListener('change', () => {
+  if (settings.theme === 'system') applyTheme()
+})
 
 // 全局缩放：CSS zoom 作用于根元素（Chromium/Electron 渲染层支持）
 const ZOOM_MIN = 0.6

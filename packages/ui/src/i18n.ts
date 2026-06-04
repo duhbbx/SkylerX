@@ -90,6 +90,7 @@ const DICT: Record<string, [string, string]> = {
   'settings.theme': ['主题', 'Theme'],
   'settings.theme.dark': ['深色', 'Dark'],
   'settings.theme.light': ['浅色', 'Light'],
+  'settings.theme.system': ['跟随系统', 'Follow system'],
   'settings.pageSize': ['默认每页条数', 'Default rows per page'],
   'settings.fontSize': ['编辑器字号', 'Editor font size'],
   'settings.zoom': ['界面缩放', 'UI zoom'],

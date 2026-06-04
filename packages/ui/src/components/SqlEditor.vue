@@ -11,7 +11,7 @@ import {
   monaco,
   setCompletionSource,
 } from '../monaco-setup'
-import { settings } from '../settings'
+import { resolvedTheme, settings } from '../settings'
 
 const props = defineProps<{
   modelValue: string
@@ -41,7 +41,7 @@ onMounted(() => {
   editor = monaco.editor.create(host.value!, {
     value: props.modelValue,
     language: 'sql',
-    theme: 'vs-dark',
+    theme: resolvedTheme.value === 'light' ? 'vs' : 'vs-dark',
     automaticLayout: true,
     minimap: { enabled: false },
     fontSize: settings.fontSize,
@@ -171,6 +171,8 @@ watch(
   () => settings.wordWrap,
   (w) => editor?.updateOptions({ wordWrap: w ? 'on' : 'off' }),
 )
+// 主题（含跟随系统）切换 → 编辑器配色实时跟随。setTheme 是 Monaco 全局 API。
+watch(resolvedTheme, (t) => monaco.editor.setTheme(t === 'light' ? 'vs' : 'vs-dark'))
 watch(
   () => settings.enableCompletion,
   (on) => {
