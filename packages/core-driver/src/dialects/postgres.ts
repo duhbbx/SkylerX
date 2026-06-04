@@ -218,7 +218,11 @@ class PgConnection implements DriverConnection {
   private async schemaGroups(path: string[]): Promise<MetadataNode[]> {
     const [, schema] = path
     const og = OPENGAUSS_KERNEL.has(this.dialect)
-    const [tables, views, funcs, seqs, pkgs] = await Promise.all([
+    const zero = Promise.resolve(0)
+    // openGauss/Vastbase 内核额外有:存储过程(routines PROCEDURE)、自定义类型(pg_type)、
+    // 同义词(pg_synonym)、物化视图(relkind='m')。标准 PG / 金仓跳过这些查询(直接 0),
+    // 避免 pg_synonym 不存在报错;均已在真 Vastbase 上验证查询可用。
+    const [tables, views, funcs, seqs, pkgs, mviews, procs, types, syns] = await Promise.all([
       this.scalar(
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='BASE TABLE'",
         [schema],
@@ -227,20 +231,50 @@ class PgConnection implements DriverConnection {
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='VIEW'",
         [schema],
       ),
-      this.scalar(
-        "SELECT COUNT(*) c FROM information_schema.routines WHERE routine_schema=$1 AND routine_type='FUNCTION'",
-        [schema],
-      ),
+      // openGauss 把存储过程也算进 information_schema.routines 的 FUNCTION,得用 pg_proc.prokind
+      // 区分(prokind='p' 是过程)。标准 PG 旧版没有 prokind,继续走 routines。
+      og
+        ? this.scalar(
+            "SELECT COUNT(*) c FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind<>'p'",
+            [schema],
+          )
+        : this.scalar(
+            "SELECT COUNT(*) c FROM information_schema.routines WHERE routine_schema=$1 AND routine_type='FUNCTION'",
+            [schema],
+          ),
       this.scalar('SELECT COUNT(*) c FROM information_schema.sequences WHERE sequence_schema=$1', [
         schema,
       ]),
-      // openGauss 内核才有「包」(gs_package)；标准 PG / 金仓等无此表，跳过查询直接 0。
       og
         ? this.scalar(
             'SELECT COUNT(*) c FROM gs_package gp JOIN pg_namespace n ON n.oid = gp.pkgnamespace WHERE n.nspname=$1',
             [schema],
           )
-        : Promise.resolve(0),
+        : zero,
+      og
+        ? this.scalar(
+            "SELECT COUNT(*) c FROM pg_class k JOIN pg_namespace n ON n.oid=k.relnamespace WHERE k.relkind='m' AND n.nspname=$1",
+            [schema],
+          )
+        : zero,
+      og
+        ? this.scalar(
+            "SELECT COUNT(*) c FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind='p'",
+            [schema],
+          )
+        : zero,
+      og
+        ? this.scalar(
+            "SELECT COUNT(*) c FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND (t.typtype IN ('e','d') OR (t.typtype='c' AND NOT EXISTS (SELECT 1 FROM pg_class k WHERE k.reltype=t.oid AND k.relkind<>'c')))",
+            [schema],
+          )
+        : zero,
+      og
+        ? this.scalar(
+            'SELECT COUNT(*) c FROM pg_synonym s JOIN pg_namespace n ON n.oid=s.synnamespace WHERE n.nspname=$1',
+            [schema],
+          )
+        : zero,
     ])
     const groups: MetadataNode[] = [
       {
@@ -277,14 +311,21 @@ class PgConnection implements DriverConnection {
       },
     ]
     if (og) {
-      groups.push({
+      const g = (name: string, group: string, count: number): MetadataNode => ({
         kind: MetaNodeKind.Group,
-        name: '包',
+        name,
         path,
-        group: 'packages',
-        hasChildren: pkgs > 0,
-        count: pkgs,
+        group,
+        hasChildren: count > 0,
+        count,
       })
+      groups.push(
+        g('物化视图', 'mviews', mviews),
+        g('存储过程', 'procedures', procs),
+        g('包', 'packages', pkgs),
+        g('类型', 'types', types),
+        g('同义词', 'synonyms', syns),
+      )
     }
     return groups
   }
@@ -378,10 +419,16 @@ class PgConnection implements DriverConnection {
         }))
       }
       case 'functions': {
-        const res = await this.pool.query(
-          "SELECT routine_name AS name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION' ORDER BY routine_name",
-          [schema],
-        )
+        // openGauss:用 prokind 排除过程(prokind='p'),否则过程会重复出现在「函数」组。
+        const res = OPENGAUSS_KERNEL.has(this.dialect)
+          ? await this.pool.query(
+              "SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind<>'p' ORDER BY p.proname",
+              [schema],
+            )
+          : await this.pool.query(
+              "SELECT routine_name AS name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION' ORDER BY routine_name",
+              [schema],
+            )
         return (res.rows as Array<Record<string, unknown>>).map((r) => ({
           kind: MetaNodeKind.Function,
           name: String(r.name),
@@ -409,6 +456,59 @@ class PgConnection implements DriverConnection {
         )
         return (res.rows as Array<Record<string, unknown>>).map((r) => ({
           kind: MetaNodeKind.Package,
+          name: String(r.name),
+          path: [db, schema, String(r.name)],
+          hasChildren: false,
+          sqlName: `${q(schema)}.${q(String(r.name))}`,
+        }))
+      }
+      case 'mviews': {
+        // openGauss/Vastbase 物化视图(relkind='m')。
+        const res = await this.pool.query(
+          "SELECT k.relname AS name FROM pg_class k JOIN pg_namespace n ON n.oid=k.relnamespace WHERE k.relkind='m' AND n.nspname=$1 ORDER BY k.relname",
+          [schema],
+        )
+        return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+          kind: MetaNodeKind.MaterializedView,
+          name: String(r.name),
+          path: [db, schema, String(r.name)],
+          hasChildren: false,
+          sqlName: `${q(schema)}.${q(String(r.name))}`,
+        }))
+      }
+      case 'procedures': {
+        const res = await this.pool.query(
+          "SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind='p' ORDER BY p.proname",
+          [schema],
+        )
+        return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+          kind: MetaNodeKind.Procedure,
+          name: String(r.name),
+          path: [db, schema, String(r.name)],
+          hasChildren: false,
+          sqlName: `${q(schema)}.${q(String(r.name))}`,
+        }))
+      }
+      case 'types': {
+        const res = await this.pool.query(
+          "SELECT t.typname AS name FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND (t.typtype IN ('e','d') OR (t.typtype='c' AND NOT EXISTS (SELECT 1 FROM pg_class k WHERE k.reltype=t.oid AND k.relkind<>'c'))) ORDER BY t.typname",
+          [schema],
+        )
+        return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+          kind: MetaNodeKind.Type,
+          name: String(r.name),
+          path: [db, schema, String(r.name)],
+          hasChildren: false,
+          sqlName: `${q(schema)}.${q(String(r.name))}`,
+        }))
+      }
+      case 'synonyms': {
+        const res = await this.pool.query(
+          'SELECT synname AS name FROM pg_synonym s JOIN pg_namespace n ON n.oid=s.synnamespace WHERE n.nspname=$1 ORDER BY synname',
+          [schema],
+        )
+        return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+          kind: MetaNodeKind.Synonym,
           name: String(r.name),
           path: [db, schema, String(r.name)],
           hasChildren: false,

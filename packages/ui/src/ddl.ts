@@ -259,11 +259,14 @@ export function objectDdlQuery(
     return kw ? { sql: `SHOW CREATE ${kw} ${ref}`, mode: 'showCreate' } : null
   }
   if (fam === 'pg') {
-    if (kind === 'view')
+    if (kind === 'view' || kind === 'materialized_view')
       return {
         sql: `SELECT pg_get_viewdef('${ref}'::regclass, true) AS ddl`,
         mode: 'viewdef',
-        prefix: `CREATE OR REPLACE VIEW ${ref} AS\n`,
+        prefix:
+          kind === 'materialized_view'
+            ? `CREATE MATERIALIZED VIEW ${ref} AS\n`
+            : `CREATE OR REPLACE VIEW ${ref} AS\n`,
       }
     if (kind === 'function' || kind === 'procedure')
       return { sql: `SELECT pg_get_functiondef('${ref}'::regproc) AS ddl`, mode: 'funcdef' }
@@ -656,6 +659,7 @@ export function erdContext(dialect: DbDialect, node: TreeNode): TableContext {
 export type ObjectKind =
   | 'table'
   | 'view'
+  | 'materialized_view'
   | 'function'
   | 'procedure'
   | 'trigger'
@@ -667,6 +671,7 @@ export type ObjectKind =
 export const OBJECT_LABEL: Record<ObjectKind, string> = {
   table: '新建表',
   view: '新建视图',
+  materialized_view: '新建物化视图',
   function: '新建函数',
   procedure: '新建存储过程',
   trigger: '新建触发器',
@@ -1028,6 +1033,8 @@ export function buildDrop(
       return { sql: `DROP TABLE ${node.sqlName ?? q(name)}${cs}`, ctx }
     case 'view':
       return { sql: `DROP VIEW ${node.sqlName ?? q(name)}${cs}`, ctx }
+    case 'materialized_view':
+      return { sql: `DROP MATERIALIZED VIEW ${node.sqlName ?? q(name)}${cs}`, ctx }
     case 'function':
       return { sql: `DROP FUNCTION ${q(name)}${cs}`, ctx }
     case 'procedure':

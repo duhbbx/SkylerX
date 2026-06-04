@@ -1052,6 +1052,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     kinds: [
       MetaNodeKind.Table,
       MetaNodeKind.View,
+      MetaNodeKind.MaterializedView,
       MetaNodeKind.Function,
       MetaNodeKind.Procedure,
       MetaNodeKind.Sequence,

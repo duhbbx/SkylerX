@@ -381,6 +381,8 @@ export enum MetaNodeKind {
   Group = 'group',
   Table = 'table',
   View = 'view',
+  /** 物化视图（PG/openGauss MATERIALIZED VIEW；relkind='m'） */
+  MaterializedView = 'materialized_view',
   Column = 'column',
   Function = 'function',
   Procedure = 'procedure',

@@ -68,6 +68,8 @@ export function iconFor(node: TreeNode): string {
       return '▦'
     case MetaNodeKind.View:
       return '◫'
+    case MetaNodeKind.MaterializedView:
+      return '⊡'
     case MetaNodeKind.Function:
       return 'ƒ'
     case MetaNodeKind.Procedure:
