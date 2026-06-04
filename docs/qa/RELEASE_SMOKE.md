@@ -50,12 +50,23 @@ Run before tagging any release. Target: ~15 minutes on one OS, repeat on each pl
 - [ ] Inline edit → commit → database actually updated (verify with re-query)
 - [ ] Manual-commit mode: BEGIN → edit → COMMIT only after explicit confirm; ROLLBACK works
 - [ ] "Ask AI" on error row enters chat with full SQL + error context
+- [ ] **Query result diff**: run two queries, diff them → added / removed / changed rows marked
+- [ ] **Masking on export**: enable masking → a masked column copies/exports masked (not plaintext)
 
 ## DDL / Schema (~2 min)
 
 - [ ] Generate `CREATE TABLE` DDL from existing table (current dialect)
 - [ ] Schema diff between two connections produces aligned migration SQL
 - [ ] Mock data v1 inserts rows that satisfy column types + NOT NULL
+- [ ] **ER diagram**: pick a connection + schema → graph renders (FK arrows child→parent); focus filter works; export PNG + SVG produce files
+- [ ] **Nav object types**: expand a schema on PG/openGauss/Oracle/DM/SQL Server → expected object-type groups appear (see `features/nav-tree.md`)
+
+## AI / RAG (~2 min)
+
+- [ ] **RAG knowledge base**: build an index for a schema → ask a question → answer cites the relevant tables; mode badge shows vector/hybrid (with an embedding endpoint) or lexical (without)
+- [ ] **Notebook**: create cells (SQL + Markdown), run a SQL cell, reopen → cells persisted
+- [ ] **Custom lint rules**: add a rule → matching SQL gets flagged at the chosen severity
+- [ ] **Storage capacity**: open the capacity dialog → size snapshot + trend projection render
 
 ## Multi-platform & windowing (~1 min)
 

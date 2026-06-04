@@ -121,8 +121,30 @@ For each shipped dialect, right-click a table → "Generate DDL" → verify:
 - [ ] Long DDL in preview pane scrolls, not truncated
 - [ ] Evidence:
 
+## ER diagram
+
+> `packages/ui/src/components/ErDiagramDialog.vue`, `packages/ui/src/er/model.ts`.
+
+- [ ] Command palette → "ER 关系图" → pick a connection + schema → "生成 ER 图" renders a graph
+- [ ] Tables are nodes (size scales with column count), PK tables highlighted; FK edges point child → parent
+- [ ] Hover a node → tooltip shows columns / PK; hover an edge → FK columns
+- [ ] Drag / zoom (roam) works
+- [ ] **Focus filter**: type a table name → only that table + its 1-hop FK neighbors show; count shows shown/total + hidden-link count; clearing restores the full graph
+- [ ] **Export PNG** → save dialog, file is a valid 2× image
+- [ ] **Export SVG** → file is valid SVG (opens in a browser)
+- [ ] Reflects the hardened readers (views NOT shown as tables)
+- [ ] Evidence:
+
+## Data lineage (table-level)
+
+> `packages/ui/src/components/SqlLineageDialog.vue`, `packages/ui/src/lineage/parse.ts`.
+
+- [ ] Command palette → "SQL 血缘图" → paste multi-statement SQL → graph shows source → target tables, chained across statements
+- [ ] Evidence:
+
 ## Known limitations
 
 - Mock data v1 is NOT FK-aware — v2 in roadmap
 - DDL generation for Snowflake / Redshift may not capture all engine-specific clauses (e.g. CLUSTER BY) — verify in PR
 - Schema diff between very large schemas (>500 tables) may take >30s — known, no progress bar yet
+- Lineage is table-level (regex-heuristic); column-level needs a real parser — roadmap

@@ -122,8 +122,22 @@ For each:
 - [ ] All 3 OS: copy code button works (uses Electron clipboard)
 - [ ] Evidence:
 
+## RAG over schema
+
+> `packages/ui/src/components/RagDialog.vue`, `packages/ui/src/rag/*`, `packages/ui/src/ai.ts` (embedTexts/canEmbed). Embedding config: Settings → AI → vector memory section (shared with RAG).
+
+- [ ] Command palette → "AI 知识库(RAG)" → pick a connection + schema → "构建索引" indexes the tables (toast reports N tables; badge shows mode)
+- [ ] **Without an embedding endpoint configured**: badge = 词法/lexical; asking a question still works (BM25), answer cites tables
+- [ ] **With an OpenAI-compatible embedding endpoint** (Settings → AI → embedding base URL + API key + model): rebuild index → badge = 向量·混合 (vector/hybrid); retrieval uses RRF fusion of vector + lexical
+- [ ] Optional doc corpus (paste markdown) is indexed alongside the schema
+- [ ] "Check stale" flags when the schema changed since the index was built
+- [ ] Large schema: embedding is batched (no single huge request); progress shows during build
+- [ ] Cited sources list the actual tables; answer references them
+- [ ] Evidence:
+
 ## Known limitations
 
 - Anthropic SDK browser mode is disabled — main process proxies all requests (avoids renderer CORS issues)
 - Streaming for non-SSE providers degrades to "wait for full response" — known
 - Local LLM (Ollama) support is in roadmap, not yet shipped
+- RAG vector path needs an OpenAI-compatible `/v1/embeddings` endpoint; Anthropic has none → falls back to lexical (BM25)

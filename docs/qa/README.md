@@ -23,6 +23,7 @@ Hand-runnable test cases for SkylerX. These cover what unit tests can't reach: r
 
 ### Per-feature (`features/`) — depth check, one file per major feature area
 - [`connections.md`](./features/connections.md) — new / edit / test / delete / duplicate / prod-flag / encryption
+- [`nav-tree.md`](./features/nav-tree.md) — object-type coverage per dialect, multi-select / bulk ops, copy-connection-info, exclude-system, move-to-group, visible-DBs config, IME-safe prompts
 - [`sql-editor.md`](./features/sql-editor.md) — Monaco, run, format, AI inline completion, params, snippets, multi-tab
 - [`result-grid.md`](./features/result-grid.md) — virtual scroll, edit, JSON/BLOB viewer, sparkline, filter, sort, ask-AI on error
 - [`transactions.md`](./features/transactions.md) — manual-commit mode, session lifecycle, BEGIN/COMMIT/ROLLBACK
