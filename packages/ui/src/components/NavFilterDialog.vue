@@ -22,6 +22,7 @@ import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import Modal from './Modal.vue'
+import { isSystemMetaNode } from './tree-actions'
 
 const props = defineProps<{ conn: ConnectionConfig | null }>()
 const emit = defineEmits<{
@@ -108,6 +109,53 @@ function selectAll(): void {
 }
 function selectNone(): void {
   checked.value = new Set()
+}
+
+/** 顶层有多少系统库/Schema(给按钮显隐/计数用)。 */
+const systemTopCount = computed(() => items.value.filter((n) => isSystemMetaNode(n)).length)
+
+/**
+ * 一键排除系统库/Schema:取消勾选顶层的系统项,以及所有已展开加载的库下系统 schema。
+ * 用户对象不动;系统名单见 tree-actions.ts(各方言内置库/schema + PG 的 pg_* 前缀)。
+ */
+function excludeSystem(): void {
+  let removed = 0
+  const next = new Set(checked.value)
+  for (const n of items.value) {
+    if (isSystemMetaNode(n) && next.has(n.name)) {
+      next.delete(n.name)
+      removed++
+    }
+  }
+  checked.value = next
+  for (const [db, list] of Object.entries(schemaItems.value)) {
+    const set = new Set(schemaChecked.value[db] ?? new Set<string>())
+    let changed = false
+    for (const s of list) {
+      if (isSystemMetaNode(s) && set.has(s.name)) {
+        set.delete(s.name)
+        removed++
+        changed = true
+      }
+    }
+    if (changed) schemaChecked.value = { ...schemaChecked.value, [db]: set }
+  }
+  toast.success(removed ? `已排除 ${removed} 个系统库/Schema` : '没有匹配到系统库/Schema')
+}
+
+/** 某库下「排除系统 schema」。 */
+function schemaExcludeSystem(dbName: string): void {
+  const list = schemaItems.value[dbName] ?? []
+  const set = new Set(schemaChecked.value[dbName] ?? new Set<string>())
+  let removed = 0
+  for (const s of list) {
+    if (isSystemMetaNode(s) && set.has(s.name)) {
+      set.delete(s.name)
+      removed++
+    }
+  }
+  schemaChecked.value = { ...schemaChecked.value, [dbName]: set }
+  toast.success(removed ? `已排除 ${removed} 个系统 schema` : '该库下没有系统 schema')
 }
 
 async function toggleExpand(dbName: string): Promise<void> {
@@ -227,6 +275,12 @@ async function save(): Promise<void> {
       <div class="bar">
         <span class="count">已选 {{ checkedCount }} / {{ totalCount }}</span>
         <div class="bar-r">
+          <button
+            class="link"
+            :disabled="systemTopCount === 0"
+            title="取消勾选系统库/Schema(mysql / pg_catalog / SYS / SYSAUDITOR / 物化系统 schema 等),用户对象不动"
+            @click="excludeSystem"
+          >排除系统库/Schema</button>
           <button class="link" :disabled="allChecked" @click="selectAll">全选</button>
           <button class="link" :disabled="noneChecked" @click="selectNone">全不选</button>
         </div>
@@ -264,6 +318,7 @@ async function save(): Promise<void> {
                   {{ schemaItems[n.name]?.length ?? 0 }}
                 </span>
                 <div class="bar-r">
+                  <button class="link" @click="schemaExcludeSystem(n.name)">排除系统</button>
                   <button class="link" @click="schemaSelectAll(n.name)">全选</button>
                   <button class="link" @click="schemaSelectNone(n.name)">全不选</button>
                 </div>

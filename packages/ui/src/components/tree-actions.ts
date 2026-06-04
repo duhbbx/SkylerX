@@ -132,11 +132,52 @@ const SYSTEM_SCHEMA_NAMES = new Set<string>([
   'SI_INFORMTN_SCHEMA',
   'FLOWS_FILES',
   'APEX_PUBLIC_USER',
+  // 达梦 DM 内置（SYSDBA 是 DBA 用户、常放业务对象，不算系统）
+  'SYSAUDITOR',
+  'SYSSSO',
+  // openGauss / Vastbase 内置 schema
+  'dbe_perf',
+  'cstore',
+  'snapshot',
+  'blockchain',
+  'sqladvisor',
+  'pkg_service',
+  'dbe_pldebugger',
+  'dbe_pldeveloper',
+  'dbe_sql_util',
+  'db4ai',
+  'pkg_util',
+  // SQL Server 内置角色 schema
+  'db_owner',
+  'db_accessadmin',
+  'db_securityadmin',
+  'db_ddladmin',
+  'db_backupoperator',
+  'db_datareader',
+  'db_datawriter',
+  'db_denydatareader',
+  'db_denydatawriter',
 ])
 
 /** 名称是否属于内置系统 schema（Oracle/DM/PG/SQL Server）。供 AI 库结构上下文等复用。 */
 export function isSystemSchemaName(name: string): boolean {
-  return SYSTEM_SCHEMA_NAMES.has(name)
+  return SYSTEM_SCHEMA_NAMES.has(name) || /^pg_/.test(name) // pg_catalog / pg_toast / pg_temp_N …
+}
+
+/**
+ * 元数据节点是否是系统库/Schema(供「一键排除系统库/Schema」等复用)。
+ * 优先信 backend 标的 detail.system(如 Oracle oracle_maintained='Y'),否则按名单兜底。
+ */
+export function isSystemMetaNode(node: {
+  kind: MetaNodeKind | string
+  name: string
+  detail?: unknown
+}): boolean {
+  // detail.system 由 backend 标(如 Oracle oracle_maintained='Y'),不在公开类型里,故 cast 读。
+  if ((node.detail as { system?: boolean } | undefined)?.system) return true
+  if (node.kind === MetaNodeKind.Database) return SYSTEM_DATABASE_NAMES.has(node.name)
+  if (node.kind === MetaNodeKind.Schema) return isSystemSchemaName(node.name)
+  return false
 }
 
 function isSystemSchemaOrDb(node: TreeNode): boolean {
