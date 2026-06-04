@@ -2990,6 +2990,17 @@ const PALETTE_KEY_MAP: Record<string, string> = {
   'new-window': 'act:new-window',
   'import-conns': 'act:import-conns',
   'export-conns': 'act:export-conns',
+  // 这一程新增功能的菜单入口(都是全局动作,直接复用 act:)
+  monitor: 'act:monitor',
+  privileges: 'act:privileges',
+  'er-diagram': 'act:er-diagram',
+  'mig-assess': 'act:mig-assess',
+  notebook: 'act:notebook',
+  'result-diff': 'act:result-diff',
+  'sql-lineage': 'act:sql-lineage',
+  'lint-rules': 'act:lint-rules',
+  rag: 'act:rag',
+  translate: 'act:translate',
 }
 
 function onMenuCommand(key: string): void {
