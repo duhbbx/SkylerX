@@ -361,14 +361,29 @@ async function readMysql(exec: ProfileExec, schema: string): Promise<SchemaInput
     return t
   }
 
+  // 先取基表名(排除视图):information_schema.COLUMNS 不分基表/视图,
+  // 若直接按列建表会把视图也拉成表(#live)。以 TABLE_TYPE='BASE TABLE' 为准。
+  const baseTables = new Set<string>()
+  for (const r of await exec(
+    `SELECT TABLE_NAME AS tbl, TABLE_COMMENT AS cmt FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = ${db} AND TABLE_TYPE = 'BASE TABLE'`,
+  )) {
+    const name = str(g(r, 'tbl'))
+    baseTables.add(name)
+    const cmt = str(g(r, 'cmt'))
+    if (cmt) tableFor(name).comment = cmt
+  }
+
   for (const r of await exec(
     `SELECT TABLE_NAME AS tbl, COLUMN_NAME AS col, COLUMN_TYPE AS typ, IS_NULLABLE AS nullable,
             COLUMN_DEFAULT AS dflt, COLUMN_COMMENT AS cmt
      FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ${db} ORDER BY TABLE_NAME, ORDINAL_POSITION`,
   )) {
+    const tbl = str(g(r, 'tbl'))
+    if (!baseTables.has(tbl)) continue // 跳过视图等非基表的列
     const cmt = str(g(r, 'cmt'))
     const def = g(r, 'dflt')
-    tableFor(str(g(r, 'tbl'))).columns.push({
+    tableFor(tbl).columns.push({
       name: str(g(r, 'col')),
       dataType: str(g(r, 'typ')),
       nullable: str(g(r, 'nullable')).toUpperCase() !== 'NO',
@@ -376,15 +391,11 @@ async function readMysql(exec: ProfileExec, schema: string): Promise<SchemaInput
       comment: cmt || undefined,
     })
   }
-  for (const r of await exec(
-    `SELECT TABLE_NAME AS tbl, TABLE_COMMENT AS cmt FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = ${db} AND TABLE_TYPE = 'BASE TABLE'`,
-  )) {
-    const cmt = str(g(r, 'cmt'))
-    if (cmt && tableMap.has(str(g(r, 'tbl')))) tableFor(str(g(r, 'tbl'))).comment = cmt
-  }
 
-  // 约束列 + 类型
+  // 约束列 + 类型。MySQL 约束名只在表内唯一(每个表的主键都叫 PRIMARY、FK 名也可跨表重名),
+  // 故所有按约束聚合的 Map 一律用 `表\0约束名` 复合键,避免跨表同名约束串列(#live:两表主键都叫
+  // PRIMARY、列都叫 id 时主键会变成 ['id','id'])。
+  const ck = (t: string, c: string): string => `${t} ${c}`
   const kcu = await exec(
     `SELECT CONSTRAINT_NAME AS cn, TABLE_NAME AS tbl, COLUMN_NAME AS col, ORDINAL_POSITION AS pos,
             REFERENCED_TABLE_NAME AS rtbl, REFERENCED_COLUMN_NAME AS rcol
@@ -394,20 +405,20 @@ async function readMysql(exec: ProfileExec, schema: string): Promise<SchemaInput
   const colsByCon = new Map<string, string[]>()
   const refByCon = new Map<string, { tbl: string; cols: string[] }>()
   for (const r of kcu) {
-    const cn = str(g(r, 'cn'))
-    if (!colsByCon.has(cn)) colsByCon.set(cn, [])
-    colsByCon.get(cn)?.push(str(g(r, 'col')))
+    const key = ck(str(g(r, 'tbl')), str(g(r, 'cn')))
+    if (!colsByCon.has(key)) colsByCon.set(key, [])
+    colsByCon.get(key)?.push(str(g(r, 'col')))
     const rtbl = g(r, 'rtbl')
     if (rtbl != null) {
-      if (!refByCon.has(cn)) refByCon.set(cn, { tbl: str(rtbl), cols: [] })
-      refByCon.get(cn)?.cols.push(str(g(r, 'rcol')))
+      if (!refByCon.has(key)) refByCon.set(key, { tbl: str(rtbl), cols: [] })
+      refByCon.get(key)?.cols.push(str(g(r, 'rcol')))
     }
   }
   const delRule = new Map<string, string>()
   for (const r of await exec(
-    `SELECT CONSTRAINT_NAME AS cn, DELETE_RULE AS dr FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ${db}`,
+    `SELECT CONSTRAINT_NAME AS cn, TABLE_NAME AS tbl, DELETE_RULE AS dr FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ${db}`,
   ).catch(() => [])) {
-    delRule.set(str(g(r, 'cn')), str(g(r, 'dr')).toUpperCase())
+    delRule.set(ck(str(g(r, 'tbl')), str(g(r, 'cn'))), str(g(r, 'dr')).toUpperCase())
   }
   const foreignKeys: LogicalForeignKey[] = []
   for (const r of await exec(
@@ -416,11 +427,12 @@ async function readMysql(exec: ProfileExec, schema: string): Promise<SchemaInput
     const cn = str(g(r, 'cn'))
     const ct = str(g(r, 'ct')).toUpperCase()
     const tbl = str(g(r, 'tbl'))
-    const cols = colsByCon.get(cn) ?? []
+    const key = ck(tbl, cn)
+    const cols = colsByCon.get(key) ?? []
     if (ct === 'PRIMARY KEY') tableFor(tbl).primaryKey = cols
     else if (ct === 'UNIQUE') tableFor(tbl).uniques?.push({ name: cn, columns: cols })
     else if (ct === 'FOREIGN KEY') {
-      const ref0 = refByCon.get(cn)
+      const ref0 = refByCon.get(key)
       foreignKeys.push({
         name: cn,
         table: tbl,
@@ -430,31 +442,32 @@ async function readMysql(exec: ProfileExec, schema: string): Promise<SchemaInput
         refSchema: schema,
         refColumns: ref0?.cols ?? [],
         onDelete:
-          delRule.get(cn) === 'CASCADE'
+          delRule.get(key) === 'CASCADE'
             ? 'CASCADE'
-            : delRule.get(cn) === 'SET NULL'
+            : delRule.get(key) === 'SET NULL'
               ? 'SET NULL'
               : undefined,
       })
     }
   }
 
-  // 索引(排除 PRIMARY 与约束背后的)
+  // 索引(排除 PRIMARY 与约束背后的索引)。约束名按表内唯一,故按 `表\0索引名` 比对。
   const conNames = new Set([...colsByCon.keys()])
   const indexes: LogicalIndex[] = []
-  const ixMap = new Map<string, { tbl: string; uniq: boolean; cols: string[] }>()
+  const ixMap = new Map<string, { name: string; tbl: string; uniq: boolean; cols: string[] }>()
   for (const r of await exec(
     `SELECT INDEX_NAME AS idx, TABLE_NAME AS tbl, COLUMN_NAME AS col, NON_UNIQUE AS nu, SEQ_IN_INDEX AS pos
      FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ${db} ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
   )) {
     const idx = str(g(r, 'idx'))
-    if (idx === 'PRIMARY' || conNames.has(idx)) continue
-    if (!ixMap.has(idx))
-      ixMap.set(idx, { tbl: str(g(r, 'tbl')), uniq: Number(g(r, 'nu')) === 0, cols: [] })
-    ixMap.get(idx)?.cols.push(str(g(r, 'col')))
+    const tbl = str(g(r, 'tbl'))
+    if (idx === 'PRIMARY' || conNames.has(ck(tbl, idx))) continue
+    const ixKey = ck(tbl, idx)
+    if (!ixMap.has(ixKey)) ixMap.set(ixKey, { name: idx, tbl, uniq: Number(g(r, 'nu')) === 0, cols: [] })
+    ixMap.get(ixKey)?.cols.push(str(g(r, 'col')))
   }
-  for (const [name, v] of ixMap) {
-    indexes.push({ name, table: v.tbl, schema, columns: v.cols, unique: v.uniq })
+  for (const v of ixMap.values()) {
+    indexes.push({ name: v.name, table: v.tbl, schema, columns: v.cols, unique: v.uniq })
   }
 
   return { tables: [...tableMap.values()], sequences: [], indexes, foreignKeys }

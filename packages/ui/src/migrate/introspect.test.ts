@@ -214,7 +214,7 @@ describe('MySQL reader (mock information_schema)', () => {
           { cn: 'fk_dept', tbl: 'emp', col: 'dept_id', pos: 1, rtbl: 'dept', rcol: 'id' },
         ],
       ],
-      [/REFERENTIAL_CONSTRAINTS/, [{ cn: 'fk_dept', dr: 'CASCADE' }]],
+      [/REFERENTIAL_CONSTRAINTS/, [{ cn: 'fk_dept', tbl: 'emp', dr: 'CASCADE' }]],
       [
         /TABLE_CONSTRAINTS/,
         [
@@ -243,6 +243,44 @@ describe('MySQL reader (mock information_schema)', () => {
       columns: ['name'],
       unique: false,
     })
+  })
+
+  // 回归(live 在 MySQL 8 上发现):
+  //  1) information_schema.COLUMNS 不分基表/视图 → 视图列不能当成表;
+  //  2) 约束名只在表内唯一(两表主键都叫 PRIMARY、列都叫 id)→ 复合键避免串列。
+  it('excludes views and keeps same-named PK constraints per-table', async () => {
+    const exec = mockExec([
+      [
+        /FROM information_schema\.COLUMNS/,
+        [
+          { tbl: 'a', col: 'id', typ: 'int', nullable: 'NO' },
+          { tbl: 'b', col: 'id', typ: 'int', nullable: 'NO' },
+          { tbl: 'v_ab', col: 'id', typ: 'int', nullable: 'YES' }, // 视图列,应被排除
+        ],
+      ],
+      // 只有 a、b 是 BASE TABLE;v_ab 是视图,不在此列表
+      [/FROM information_schema\.TABLES/, [{ tbl: 'a' }, { tbl: 'b' }]],
+      [
+        /KEY_COLUMN_USAGE/,
+        [
+          { cn: 'PRIMARY', tbl: 'a', col: 'id', pos: 1 },
+          { cn: 'PRIMARY', tbl: 'b', col: 'id', pos: 1 },
+        ],
+      ],
+      [/REFERENTIAL_CONSTRAINTS/, []],
+      [
+        /TABLE_CONSTRAINTS/,
+        [
+          { cn: 'PRIMARY', tbl: 'a', ct: 'PRIMARY KEY' },
+          { cn: 'PRIMARY', tbl: 'b', ct: 'PRIMARY KEY' },
+        ],
+      ],
+      [/FROM information_schema\.STATISTICS/, []],
+    ])
+    const si = await readSchema(exec, DbDialect.MySQL, 'app')
+    expect(si.tables.map((t) => t.name).sort()).toEqual(['a', 'b']) // 无 v_ab
+    expect(si.tables.find((t) => t.name === 'a')?.primaryKey).toEqual(['id']) // 不是 ['id','id']
+    expect(si.tables.find((t) => t.name === 'b')?.primaryKey).toEqual(['id'])
   })
 })
 
