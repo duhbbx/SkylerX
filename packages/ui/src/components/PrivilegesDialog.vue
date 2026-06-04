@@ -198,8 +198,9 @@ function openInQuery(): void {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 680px;
-  max-width: 90vw;
+  /* 填满 xl 弹框宽度 —— 之前固定 680px,在更宽的 xl 弹框里右边留一大块空白(用户反馈)。 */
+  width: 100%;
+  height: 100%;
 }
 .bar {
   display: flex;
