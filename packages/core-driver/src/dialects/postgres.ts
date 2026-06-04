@@ -219,10 +219,12 @@ class PgConnection implements DriverConnection {
     const [, schema] = path
     const og = OPENGAUSS_KERNEL.has(this.dialect)
     const zero = Promise.resolve(0)
-    // openGauss/Vastbase 内核额外有:存储过程(routines PROCEDURE)、自定义类型(pg_type)、
-    // 同义词(pg_synonym)、物化视图(relkind='m')。标准 PG / 金仓跳过这些查询(直接 0),
-    // 避免 pg_synonym 不存在报错;均已在真 Vastbase 上验证查询可用。
-    const [tables, views, funcs, seqs, pkgs, mviews, procs, types, syns] = await Promise.all([
+    // 物化视图(relkind='m')、自定义类型(pg_type)对整个 PG 家族都查。
+    // 存储过程:openGauss 把过程也算进 routines 的 FUNCTION → 用 pg_proc.prokind 区分;
+    //          标准 PG 的 routines 正确区分 PROCEDURE(PG11+),旧版无过程返回 0。
+    // 函数:openGauss 排除 prokind='p',标准 PG 走 routines FUNCTION(本就不含过程)。
+    // 包(gs_package)、同义词(pg_synonym)是 openGauss 专属,标准 PG 跳过(避免表不存在报错)。
+    const [tables, views, funcs, procs, seqs, mviews, types, pkgs, syns] = await Promise.all([
       this.scalar(
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='BASE TABLE'",
         [schema],
@@ -231,8 +233,6 @@ class PgConnection implements DriverConnection {
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='VIEW'",
         [schema],
       ),
-      // openGauss 把存储过程也算进 information_schema.routines 的 FUNCTION,得用 pg_proc.prokind
-      // 区分(prokind='p' 是过程)。标准 PG 旧版没有 prokind,继续走 routines。
       og
         ? this.scalar(
             "SELECT COUNT(*) c FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind<>'p'",
@@ -242,30 +242,29 @@ class PgConnection implements DriverConnection {
             "SELECT COUNT(*) c FROM information_schema.routines WHERE routine_schema=$1 AND routine_type='FUNCTION'",
             [schema],
           ),
-      this.scalar('SELECT COUNT(*) c FROM information_schema.sequences WHERE sequence_schema=$1', [
-        schema,
-      ]),
-      og
-        ? this.scalar(
-            'SELECT COUNT(*) c FROM gs_package gp JOIN pg_namespace n ON n.oid = gp.pkgnamespace WHERE n.nspname=$1',
-            [schema],
-          )
-        : zero,
-      og
-        ? this.scalar(
-            "SELECT COUNT(*) c FROM pg_class k JOIN pg_namespace n ON n.oid=k.relnamespace WHERE k.relkind='m' AND n.nspname=$1",
-            [schema],
-          )
-        : zero,
       og
         ? this.scalar(
             "SELECT COUNT(*) c FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind='p'",
             [schema],
           )
-        : zero,
+        : this.scalar(
+            "SELECT COUNT(*) c FROM information_schema.routines WHERE routine_schema=$1 AND routine_type='PROCEDURE'",
+            [schema],
+          ),
+      this.scalar('SELECT COUNT(*) c FROM information_schema.sequences WHERE sequence_schema=$1', [
+        schema,
+      ]),
+      this.scalar(
+        "SELECT COUNT(*) c FROM pg_class k JOIN pg_namespace n ON n.oid=k.relnamespace WHERE k.relkind='m' AND n.nspname=$1",
+        [schema],
+      ),
+      this.scalar(
+        "SELECT COUNT(*) c FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND (t.typtype IN ('e','d') OR (t.typtype='c' AND NOT EXISTS (SELECT 1 FROM pg_class k WHERE k.reltype=t.oid AND k.relkind<>'c')))",
+        [schema],
+      ),
       og
         ? this.scalar(
-            "SELECT COUNT(*) c FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND (t.typtype IN ('e','d') OR (t.typtype='c' AND NOT EXISTS (SELECT 1 FROM pg_class k WHERE k.reltype=t.oid AND k.relkind<>'c')))",
+            'SELECT COUNT(*) c FROM gs_package gp JOIN pg_namespace n ON n.oid = gp.pkgnamespace WHERE n.nspname=$1',
             [schema],
           )
         : zero,
@@ -276,55 +275,27 @@ class PgConnection implements DriverConnection {
           )
         : zero,
     ])
+    const always = (name: string, group: string, count: number, expandable = true): MetadataNode => ({
+      kind: MetaNodeKind.Group,
+      name,
+      path,
+      group,
+      hasChildren: expandable ? true : count > 0,
+      count,
+    })
     const groups: MetadataNode[] = [
-      {
-        kind: MetaNodeKind.Group,
-        name: '表',
-        path,
-        group: 'tables',
-        hasChildren: true,
-        count: tables,
-      },
-      {
-        kind: MetaNodeKind.Group,
-        name: '视图',
-        path,
-        group: 'views',
-        hasChildren: true,
-        count: views,
-      },
-      {
-        kind: MetaNodeKind.Group,
-        name: '函数',
-        path,
-        group: 'functions',
-        hasChildren: true,
-        count: funcs,
-      },
-      {
-        kind: MetaNodeKind.Group,
-        name: '序列',
-        path,
-        group: 'sequences',
-        hasChildren: true,
-        count: seqs,
-      },
+      always('表', 'tables', tables),
+      always('视图', 'views', views),
+      always('物化视图', 'mviews', mviews, false),
+      always('函数', 'functions', funcs),
+      always('存储过程', 'procedures', procs, false),
+      always('序列', 'sequences', seqs),
+      always('类型', 'types', types, false),
     ]
     if (og) {
-      const g = (name: string, group: string, count: number): MetadataNode => ({
-        kind: MetaNodeKind.Group,
-        name,
-        path,
-        group,
-        hasChildren: count > 0,
-        count,
-      })
       groups.push(
-        g('物化视图', 'mviews', mviews),
-        g('存储过程', 'procedures', procs),
-        g('包', 'packages', pkgs),
-        g('类型', 'types', types),
-        g('同义词', 'synonyms', syns),
+        always('包', 'packages', pkgs, false),
+        always('同义词', 'synonyms', syns, false),
       )
     }
     return groups
@@ -477,10 +448,16 @@ class PgConnection implements DriverConnection {
         }))
       }
       case 'procedures': {
-        const res = await this.pool.query(
-          "SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind='p' ORDER BY p.proname",
-          [schema],
-        )
+        // openGauss:过程在 routines 里报成 FUNCTION,用 prokind='p';标准 PG 走 routines PROCEDURE。
+        const res = OPENGAUSS_KERNEL.has(this.dialect)
+          ? await this.pool.query(
+              "SELECT p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind='p' ORDER BY p.proname",
+              [schema],
+            )
+          : await this.pool.query(
+              "SELECT routine_name AS name FROM information_schema.routines WHERE routine_schema=$1 AND routine_type='PROCEDURE' ORDER BY routine_name",
+              [schema],
+            )
         return (res.rows as Array<Record<string, unknown>>).map((r) => ({
           kind: MetaNodeKind.Procedure,
           name: String(r.name),
