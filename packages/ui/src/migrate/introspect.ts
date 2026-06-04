@@ -222,10 +222,12 @@ async function readOracle(exec: ProfileExec, schema: string): Promise<SchemaInpu
   }
 
   // 0) 基表名(排除视图 + 回收站):all_tab_columns 含视图列,直接按列建表会把视图也拉成表;
-  //    all_tables 还含回收站里 DROP 掉的 BIN$… 对象,用 dropped='NO' 滤掉(#live)。
+  //    all_tables 还含回收站里 DROP 掉的 BIN$… 对象。Oracle 的 dropped 是 'YES'/'NO',
+  //    达梦(DM)无回收站、dropped 为 NULL —— 故用 (dropped IS NULL OR dropped <> 'YES'),
+  //    既滤掉 Oracle 回收站对象,又不会把 DM 的正常表全滤光(#live:DM dropped=NULL)。
   const baseTables = new Set<string>()
   for (const r of await exec(
-    `SELECT table_name AS tbl FROM all_tables WHERE owner = ${owner} AND dropped = 'NO'`,
+    `SELECT table_name AS tbl FROM all_tables WHERE owner = ${owner} AND (dropped IS NULL OR dropped <> 'YES')`,
   ))
     baseTables.add(str(g(r, 'tbl')))
 
