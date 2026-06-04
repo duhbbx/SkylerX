@@ -359,6 +359,36 @@ export function currentProvider(): AiProvider {
   return settings.aiProvider
 }
 
+/**
+ * 文本向量化(RAG 用)。走 OpenAI 兼容的 /v1/embeddings;
+ * Anthropic 无该端点 → 抛错让上层退化到词法检索。embedModel 可在 provider 配置里覆盖。
+ */
+export async function embedTexts(texts: string[], signal?: AbortSignal): Promise<number[][]> {
+  if (!texts.length) return []
+  const provider = settings.aiProvider
+  const cfg = settings.aiProviders[provider]
+  if (!cfg?.apiKey?.trim()) throw new Error('NO_API_KEY')
+  if (provider === 'anthropic') throw new Error('NO_EMBEDDINGS') // Anthropic 无 embeddings
+  const base = (cfg.baseUrl || '').replace(/\/$/, '')
+  if (!base) throw new Error('NO_BASE_URL')
+  const model = (cfg as { embedModel?: string }).embedModel || 'text-embedding-3-small'
+  const res = await aiHttp(`${base}/v1/embeddings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey.trim()}` },
+    body: JSON.stringify({ model, input: texts }),
+    signal,
+  })
+  if (!res.ok) throw new Error(`embeddings HTTP ${res.status}`)
+  const data = (await res.json()) as { data?: Array<{ embedding: number[] }> }
+  return (data.data ?? []).map((d) => d.embedding)
+}
+
+/** 当前 provider 是否可能支持向量化(非 anthropic + 有 key)。 */
+export function canEmbed(): boolean {
+  const cfg = settings.aiProviders[settings.aiProvider]
+  return settings.aiProvider !== 'anthropic' && !!cfg?.apiKey?.trim()
+}
+
 // ── Connectivity test (#28) ──────────────────────────────────────────
 // Settings → AI → 「测试连通」按钮触发. 用最轻量的请求确认 API Key 有效 +
 // Base URL 可达 + 至少返回 200. 优先打 /v1/models (不烧 token, 只列模型);

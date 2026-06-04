@@ -66,6 +66,7 @@ import PiiScannerDialog from './components/PiiScannerDialog.vue'
 import PrivilegesDialog from './components/PrivilegesDialog.vue'
 import ProcessListDialog from './components/ProcessListDialog.vue'
 import QueryTabs from './components/QueryTabs.vue'
+import RagDialog from './components/RagDialog.vue'
 import RedisBigKeysDialog from './components/RedisBigKeysDialog.vue'
 import RedisImportExportDialog from './components/RedisImportExportDialog.vue'
 import RedisMonitorDialog from './components/RedisMonitorDialog.vue'
@@ -2045,6 +2046,7 @@ const lintRulesOpen = ref(false)
 const sqlLineageOpen = ref(false)
 const notebookOpen = ref(false)
 const resultDiffOpen = ref(false)
+const ragOpen = ref(false)
 /** D6 Schema 漂移检测（全局，对话框内自己选 2 个连接） */
 const driftOpen = ref(false)
 /** A3+B5+B6+B9+B10 数据检查器 */
@@ -2697,6 +2699,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:sql-lineage', label: t('sqllineage.title'), group: t('pal.groupActions') },
   { id: 'act:notebook', label: t('notebook.title'), group: t('pal.groupActions') },
   { id: 'act:result-diff', label: t('resultdiff.title'), group: t('pal.groupActions') },
+  { id: 'act:rag', label: t('rag.title'), group: t('pal.groupActions') },
   // D6 Schema 漂移检测
   { id: 'act:drift', label: t('pal.drift'), group: t('pal.groupActions') },
   { id: 'act:ai-chat', label: t('pal.aiChat'), group: t('pal.groupActions') },
@@ -2780,6 +2783,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:sql-lineage') sqlLineageOpen.value = true
   else if (item.id === 'act:notebook') notebookOpen.value = true
   else if (item.id === 'act:result-diff') resultDiffOpen.value = true
+  else if (item.id === 'act:rag') ragOpen.value = true
   else if (item.id === 'act:drift') driftOpen.value = true
   else if (item.id === 'act:about') aboutOpen.value = true
   else if (item.id === 'act:shortcuts') shortcutsOpen.value = true
@@ -3846,6 +3850,7 @@ onMounted(async () => {
   <SqlLineageDialog v-if="sqlLineageOpen" :open="true" @close="sqlLineageOpen = false" />
   <NotebookDialog v-if="notebookOpen" :open="true" @close="notebookOpen = false" />
   <ResultDiffDialog v-if="resultDiffOpen" :open="true" @close="resultDiffOpen = false" />
+  <RagDialog v-if="ragOpen" :open="true" @close="ragOpen = false" />
 
   <!-- D6 Schema 漂移检测（内部自己选连接） -->
   <SchemaDriftDialog v-if="driftOpen" @close="driftOpen = false" />

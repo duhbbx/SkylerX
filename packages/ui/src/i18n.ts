@@ -1675,6 +1675,7 @@ const DICT: Record<string, [string, string]> = {
   'sqllineage.title': ['SQL 血缘图', 'SQL lineage graph'],
   'notebook.title': ['Notebook 笔记本', 'Notebook'],
   'resultdiff.title': ['查询结果对比', 'Query result diff'],
+  'rag.title': ['AI 知识库(RAG)', 'AI knowledge base (RAG)'],
   'ctx.migrate-assess': ['🧭 信创迁移评估…', '🧭 Migration assessment…'],
   'o2dm.step.conn': ['连接', 'Connections'],
   'o2dm.step.pick': ['对象', 'Objects'],
