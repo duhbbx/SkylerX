@@ -270,6 +270,55 @@ export function objectDdlQuery(
       }
     if (kind === 'function' || kind === 'procedure')
       return { sql: `SELECT pg_get_functiondef('${ref}'::regproc) AS ddl`, mode: 'funcdef' }
+    // 触发器 / 类型 / 同义词 / 包 —— PG 没有现成的 get_ddl，按系统目录重建。
+    // schema/name 优先取 node.path（与 sequence/trigger 的取法一致），否则反解析 ref。
+    const escPg = (s: string) => s.replace(/'/g, "''")
+    const p = node?.path ?? []
+    if (kind === 'trigger') {
+      // 触发器挂在表下：path = [..., schema, table, name]
+      const schema = p[p.length - 3] ?? 'public'
+      const table = p[p.length - 2] ?? ''
+      const name = p[p.length - 1] ?? ''
+      return {
+        sql: `SELECT pg_get_triggerdef(t.oid) AS ddl FROM pg_trigger t JOIN pg_class c ON t.tgrelid=c.oid JOIN pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname='${escPg(schema)}' AND c.relname='${escPg(table)}' AND t.tgname='${escPg(name)}'`,
+        mode: 'funcdef',
+      }
+    }
+    // 以下为 schema 级对象：path = [..., schema, name]
+    const schema = p.length >= 2 ? p[p.length - 2] : 'public'
+    const name = p.length >= 1 ? p[p.length - 1] : ''
+    if (kind === 'type') {
+      // 复合类型按列重建；枚举类型按 ENUM 重建
+      return {
+        sql: `SELECT CASE WHEN t.typtype='e' THEN
+  'CREATE TYPE '||quote_ident(n.nspname)||'.'||quote_ident(t.typname)||' AS ENUM ('||(SELECT string_agg(quote_literal(enumlabel), ', ' ORDER BY enumsortorder) FROM pg_enum WHERE enumtypid=t.oid)||');'
+ELSE
+  'CREATE TYPE '||quote_ident(n.nspname)||'.'||quote_ident(t.typname)||' AS ('||(SELECT string_agg(quote_ident(a.attname)||' '||format_type(a.atttypid,a.atttypmod), E',\\n  ' ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=t.typrelid AND a.attnum>0 AND NOT a.attisdropped)||E'\\n);'
+END AS ddl
+FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+WHERE n.nspname='${escPg(schema)}' AND t.typname='${escPg(name)}'`,
+        mode: 'funcdef',
+      }
+    }
+    if (kind === 'synonym') {
+      // openGauss pg_synonym：重建 CREATE SYNONYM
+      return {
+        sql: `SELECT 'CREATE OR REPLACE SYNONYM '||quote_ident(n.nspname)||'.'||quote_ident(s.synname)||' FOR '||CASE WHEN s.synobjschema<>'' THEN quote_ident(s.synobjschema)||'.' ELSE '' END||quote_ident(s.synobjname)||';' AS ddl
+FROM pg_synonym s JOIN pg_namespace n ON n.oid=s.synnamespace
+WHERE n.nspname='${escPg(schema)}' AND s.synname='${escPg(name)}'`,
+        mode: 'funcdef',
+      }
+    }
+    if (kind === 'package') {
+      // openGauss gs_package：pkgspecsrc/pkgbodydeclsrc 是存储(已解析)形式,不是可直接重跑的源码。
+      // 原样带注释展示,至少看到 spec/body 结构,不再「未取到定义」。
+      return {
+        sql: `SELECT E'-- openGauss 包源码（gs_package；为存储形式，可能需手工整理成 CREATE PACKAGE）\\n\\n-- ==== PACKAGE SPEC ====\\n'||COALESCE(gp.pkgspecsrc,'(empty)')||E'\\n\\n-- ==== PACKAGE BODY ====\\n'||COALESCE(gp.pkgbodydeclsrc,'(empty)') AS ddl
+FROM gs_package gp JOIN pg_namespace n ON n.oid=gp.pkgnamespace
+WHERE n.nspname='${escPg(schema)}' AND gp.pkgname='${escPg(name)}'`,
+        mode: 'funcdef',
+      }
+    }
     return null
   }
   if (fam === 'oracle') {

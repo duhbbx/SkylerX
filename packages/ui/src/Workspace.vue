@@ -1229,8 +1229,9 @@ async function onViewDefinition(connId: string, node: TreeNode): Promise<void> {
   const conn = await client.connections.get(connId)
   const f = definitionQuery(conn.dialect, node)
   if (!f) {
-    // Oracle/DM: definitionQuery 不覆盖 → 走 dbms_metadata.get_ddl（含 spec+body）。
-    if (familyOf(conn.dialect) === 'oracle') {
+    // definitionQuery 不覆盖的对象（Oracle/DM 全部；PG 的 类型/包/同义词）→ 走 objectDdlQuery。
+    const fam = familyOf(conn.dialect)
+    if (fam === 'oracle' || fam === 'pg') {
       await onCopyToDraftViaDdl(connId, node, conn)
       return
     }
