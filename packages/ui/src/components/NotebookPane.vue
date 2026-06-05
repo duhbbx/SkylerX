@@ -4,14 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /**
- * Notebook 模式 —— 多 cell 混排 SQL / Markdown,类 Jupyter。
+ * Notebook 面板（tab 形态）—— 多 cell 混排 SQL / Markdown,类 Jupyter。
  *
- * 每个 SQL cell 独立运行(在选定连接上),结果内联成表;Markdown cell 渲染成富文本。
+ * 每个 SQL cell 独立运行(在选定连接 + 库/schema 上),结果内联成表;Markdown cell 渲染成富文本。
  * 笔记本存 localStorage(../notebook/store,已单测),只存内容、不存结果。
+ * 作为常驻 tab,不再是弹框;打开时自动恢复最近一次编辑的笔记本。
  */
-import type { ConnectionConfig } from '@db-tool/shared-types'
-import { onMounted, ref } from 'vue'
+import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
+import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
+import { databaseHasSchemas } from '../ddl'
 import { toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import { locale } from '../i18n'
@@ -26,10 +28,7 @@ import {
   newId,
   saveNotebook,
 } from '../notebook/store'
-import Modal from './Modal.vue'
 
-defineProps<{ open: boolean }>()
-const emit = defineEmits<{ close: [] }>()
 const client = useDataClient()
 const L = (zh: string, en: string): string => (locale.value === 'en' ? en : zh)
 
@@ -43,6 +42,13 @@ type CellResult = {
   affected?: number
 }
 const results = ref<Record<string, CellResult>>({})
+
+// 库 / schema 候选（跟着选中的连接级联加载）
+const databases = ref<string[]>([])
+const schemas = ref<string[]>([])
+const dialect = computed(() => conns.value.find((c) => c.id === nb.value.connId)?.dialect)
+const twoLevel = computed(() => (dialect.value ? databaseHasSchemas(dialect.value) : false))
+const topIsSchema = ref(false)
 
 function blank(): Notebook {
   const now = Date.now()
@@ -65,21 +71,100 @@ function save(): void {
   saveNotebook(nb.value)
   refreshList()
 }
+function saveExplicit(): void {
+  save()
+  toast.success(L('已保存', 'Saved'))
+}
 function newNotebook(): void {
   nb.value = blank()
   results.value = {}
+  databases.value = []
+  schemas.value = []
+  topIsSchema.value = false
 }
 function openSaved(id: string): void {
   const n = loadNotebook(id)
   if (n) {
     nb.value = n
     results.value = {}
+    void loadDbOptions()
   }
 }
 function dropSaved(id: string): void {
   deleteNotebook(id)
   if (nb.value.id === id) newNotebook()
   refreshList()
+}
+
+// ── 连接 → 库 → schema 级联（修复运行 cell 时「No database selected」）──
+async function onPickConn(): Promise<void> {
+  nb.value.database = ''
+  nb.value.schema = ''
+  databases.value = []
+  schemas.value = []
+  topIsSchema.value = false
+  save()
+  await loadDbOptions()
+}
+
+async function loadDbOptions(): Promise<void> {
+  if (!nb.value.connId) return
+  try {
+    const top = await client.connections.metadata(nb.value.connId, {
+      parentKind: MetaNodeKind.Connection,
+      path: [],
+    })
+    const dbs = top.filter((n) => n.kind === MetaNodeKind.Database)
+    const scs = top.filter((n) => n.kind === MetaNodeKind.Schema)
+    if (dbs.length) {
+      databases.value = dbs.map((n) => n.name)
+      const conn = conns.value.find((c) => c.id === nb.value.connId)
+      if (!nb.value.database)
+        nb.value.database = databases.value.includes(conn?.database ?? '')
+          ? (conn?.database as string)
+          : (databases.value[0] ?? '')
+      await onPickDb()
+    } else if (scs.length) {
+      // Oracle / DM：顶层直接是 schema
+      topIsSchema.value = true
+      schemas.value = scs.map((n) => n.name)
+      if (!nb.value.schema) nb.value.schema = schemas.value[0] ?? ''
+      save()
+    }
+  } catch {
+    /* 拉不到候选静默，用户仍可手动重选连接 */
+  }
+}
+
+async function onPickDb(): Promise<void> {
+  schemas.value = []
+  if (!twoLevel.value) {
+    save()
+    return
+  }
+  if (!nb.value.database) return
+  try {
+    const list = await client.connections.metadata(nb.value.connId, {
+      parentKind: MetaNodeKind.Database,
+      path: [nb.value.database],
+    })
+    schemas.value = list.filter((n) => n.kind === MetaNodeKind.Schema).map((n) => n.name)
+    if (!nb.value.schema)
+      nb.value.schema = schemas.value.includes('public') ? 'public' : (schemas.value[0] ?? '')
+  } catch {
+    /* ignore */
+  } finally {
+    save()
+  }
+}
+
+/** 运行某 cell 用的 execute options：库即 schema 的单层方言传 database，两层方言传 schema。 */
+function execOpts(): { database?: string; schema?: string; maxRows: number } {
+  return {
+    database: nb.value.database || undefined,
+    schema: (twoLevel.value || topIsSchema.value ? nb.value.schema : undefined) || undefined,
+    maxRows: 500,
+  }
 }
 
 function addCell(kind: CellKind, afterIdx: number): void {
@@ -113,7 +198,7 @@ async function runCell(cellId: string, sql: string): Promise<void> {
   if (!sql.trim()) return
   results.value[cellId] = { running: true }
   try {
-    const r = await client.connections.execute(nb.value.connId, sql, [], { maxRows: 500 })
+    const r = await client.connections.execute(nb.value.connId, sql, [], execOpts())
     results.value[cellId] = {
       columns: r.columns?.map((c) => c.name) ?? [],
       rows: r.rows ?? [],
@@ -136,28 +221,43 @@ onMounted(async () => {
     /* ignore */
   }
   refreshList()
+  // 自动恢复最近编辑的笔记本（tab 形态下让「保存」感知得到，不再每次空白）
+  const last = savedList.value[0]
+  if (last) {
+    const n = loadNotebook(last.id)
+    if (n) {
+      nb.value = n
+      await loadDbOptions()
+    }
+  }
 })
 </script>
 
 <template>
-  <Modal v-if="open" :title="L('Notebook', 'Notebook')" width="xl" @close="emit('close')">
-    <div class="nb">
-      <div class="top">
-        <input v-model="nb.title" class="title" @change="save" />
-        <select v-model="nb.connId" @change="save">
-          <option value="">{{ L('选连接', 'connection') }}</option>
-          <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} ({{ c.dialect }})</option>
-        </select>
-        <button class="primary" @click="runAll">{{ L('运行全部', 'Run all') }}</button>
-        <button @click="save">{{ L('保存', 'Save') }}</button>
-        <button @click="newNotebook">{{ L('新建', 'New') }}</button>
-        <select v-if="savedList.length" @change="(e) => { const v = (e.target as HTMLSelectElement).value; if (v) openSaved(v); (e.target as HTMLSelectElement).value = '' }">
-          <option value="">{{ L('打开…', 'Open…') }}</option>
-          <option v-for="s in savedList" :key="s.id" :value="s.id">{{ s.title }} ({{ s.cells }})</option>
-        </select>
-        <button v-if="savedList.some((s) => s.id === nb.id)" class="del" @click="dropSaved(nb.id)">{{ L('删除本笔记本', 'Delete') }}</button>
-      </div>
+  <div class="nb">
+    <div class="top">
+      <input v-model="nb.title" class="title" @change="save" />
+      <select v-model="nb.connId" @change="onPickConn">
+        <option value="">{{ L('选连接', 'connection') }}</option>
+        <option v-for="c in conns" :key="c.id" :value="c.id">{{ c.name }} ({{ c.dialect }})</option>
+      </select>
+      <select v-if="databases.length" v-model="nb.database" @change="onPickDb">
+        <option v-for="d in databases" :key="d" :value="d">{{ d }}</option>
+      </select>
+      <select v-if="(twoLevel || topIsSchema) && schemas.length" v-model="nb.schema" @change="save">
+        <option v-for="s in schemas" :key="s" :value="s">{{ s }}</option>
+      </select>
+      <button class="primary" @click="runAll">{{ L('运行全部', 'Run all') }}</button>
+      <button @click="saveExplicit">{{ L('保存', 'Save') }}</button>
+      <button @click="newNotebook">{{ L('新建', 'New') }}</button>
+      <select v-if="savedList.length" @change="(e) => { const v = (e.target as HTMLSelectElement).value; if (v) openSaved(v); (e.target as HTMLSelectElement).value = '' }">
+        <option value="">{{ L('打开…', 'Open…') }}</option>
+        <option v-for="s in savedList" :key="s.id" :value="s.id">{{ s.title }} ({{ s.cells }})</option>
+      </select>
+      <button v-if="savedList.some((s) => s.id === nb.id)" class="del" @click="dropSaved(nb.id)">{{ L('删除本笔记本', 'Delete') }}</button>
+    </div>
 
+    <div class="cells">
       <div v-for="(c, i) in nb.cells" :key="c.id" class="cell">
         <div class="cmeta">
           <span class="kind" :class="c.kind">{{ c.kind === 'sql' ? 'SQL' : 'MD' }}</span>
@@ -204,13 +304,15 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-  </Modal>
+  </div>
 </template>
 
 <style scoped>
-.nb { display: flex; flex-direction: column; gap: 10px; min-width: 820px; }
+.nb { display: flex; flex-direction: column; gap: 10px; height: 100%; overflow: auto; padding: 10px 12px; }
 .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; position: sticky; top: 0; background: var(--bg, #fff); padding-bottom: 6px; z-index: 1; }
+.top select { padding: 5px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
 .title { flex: 1 1 200px; font-weight: 600; }
+.cells { display: flex; flex-direction: column; gap: 10px; }
 .cell { border: 1px solid var(--border, #e3e3e3); border-radius: 8px; padding: 8px; }
 .cmeta { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .cmeta .sp { flex: 1; }

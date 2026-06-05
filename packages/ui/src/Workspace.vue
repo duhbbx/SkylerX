@@ -55,7 +55,6 @@ import NavTree from './components/NavTree.vue'
 import NdjsonViewerDialog from './components/NdjsonViewerDialog.vue'
 import NewDatabaseDialog from './components/NewDatabaseDialog.vue'
 import NewSchemaDialog from './components/NewSchemaDialog.vue'
-import NotebookDialog from './components/NotebookDialog.vue'
 import NotificationSettingsDialog from './components/NotificationSettingsDialog.vue'
 import ObjectSearchDialog from './components/ObjectSearchDialog.vue'
 import OceanBaseTopologyDialog from './components/OceanBaseTopologyDialog.vue'
@@ -2048,7 +2047,6 @@ const notifOpen = ref(false)
 const keybindOpen = ref(false)
 const lintRulesOpen = ref(false)
 const sqlLineageOpen = ref(false)
-const notebookOpen = ref(false)
 const resultDiffOpen = ref(false)
 const ragOpen = ref(false)
 const erOpen = ref(false)
@@ -2762,7 +2760,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:keybind') keybindOpen.value = true
   else if (item.id === 'act:lint-rules') lintRulesOpen.value = true
   else if (item.id === 'act:sql-lineage') sqlLineageOpen.value = true
-  else if (item.id === 'act:notebook') notebookOpen.value = true
+  else if (item.id === 'act:notebook') tabsRef.value?.openNotebook?.()
   else if (item.id === 'act:result-diff') resultDiffOpen.value = true
   else if (item.id === 'act:rag') ragOpen.value = true
   else if (item.id === 'act:er-diagram') erOpen.value = true
@@ -3857,7 +3855,6 @@ onMounted(async () => {
   <KeyBindingsDialog v-if="keybindOpen" @close="keybindOpen = false" />
   <LintRulesDialog v-if="lintRulesOpen" :open="true" @close="lintRulesOpen = false" />
   <SqlLineageDialog v-if="sqlLineageOpen" :open="true" @close="sqlLineageOpen = false" />
-  <NotebookDialog v-if="notebookOpen" :open="true" @close="notebookOpen = false" />
   <ResultDiffDialog v-if="resultDiffOpen" :open="true" @close="resultDiffOpen = false" />
   <RagDialog v-if="ragOpen" :open="true" @close="ragOpen = false" />
   <ErDiagramDialog v-if="erOpen" :open="true" @close="erOpen = false" />

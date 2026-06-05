@@ -20,6 +20,7 @@ import DialectIcon from './DialectIcon.vue'
 import ElasticPane from './ElasticPane.vue'
 import ErdView from './ErdView.vue'
 import MongoPane from './MongoPane.vue'
+import NotebookPane from './NotebookPane.vue'
 import ObjectDependencyView from './ObjectDependencyView.vue'
 import QueryPane from './QueryPane.vue'
 import RedisPane from './RedisPane.vue'
@@ -34,11 +35,13 @@ interface Tab {
     | 'structure'
     | 'objdeps'
     | 'erd'
+    | 'notebook'
     | ObjectKind
     | 'mongoCollection'
     | 'redisDb'
     | 'esIndex'
-  conn: ConnectionConfig
+  /** Notebook tab 不绑定单一连接（自带连接选择），故 conn 可空 */
+  conn?: ConnectionConfig
   title: string
   pending: { sql: string; seq: number } | null // query
   ctx?: TableContext // designer
@@ -120,7 +123,7 @@ function openConnection(conn: ConnectionConfig): void {
     toast.warn(hint)
     return
   }
-  const existing = tabs.value.find((t) => t.kind === 'query' && t.conn.id === conn.id)
+  const existing = tabs.value.find((t) => t.kind === 'query' && t.conn?.id === conn.id)
   if (existing) activeId.value = existing.id
   else
     push({
@@ -155,7 +158,7 @@ function runSql(conn: ConnectionConfig, sql: string): void {
     return
   }
   const cur = active.value
-  if (cur && cur.kind === 'query' && cur.conn.id === conn.id) cur.pending = { sql, seq: ++pendSeq }
+  if (cur && cur.kind === 'query' && cur.conn?.id === conn.id) cur.pending = { sql, seq: ++pendSeq }
   else
     push({
       kind: 'query',
@@ -165,7 +168,7 @@ function runSql(conn: ConnectionConfig, sql: string): void {
     })
 }
 function newForCurrent(): void {
-  if (active.value) newQuery(active.value.conn)
+  if (active.value?.conn) newQuery(active.value.conn)
 }
 
 /** 打开一个带初始 SQL 的查询页(不执行,如"查看定义")。NoSQL 连接拦截 */
@@ -243,12 +246,22 @@ function openErd(conn: ConnectionConfig, ctx: TableContext, node: TreeNode): voi
   push({ kind: 'erd', conn, title: `ER · ${label}`, pending: null, ctx })
 }
 
+/** 打开 Notebook 页（单例：已开则聚焦）。不绑定连接，面板内自带连接/库选择。 */
+function openNotebook(): void {
+  const existing = tabs.value.find((t) => t.kind === 'notebook')
+  if (existing) {
+    activeId.value = existing.id
+    return
+  }
+  push({ kind: 'notebook', title: 'Notebook', pending: null })
+}
+
 /** 打开 Mongo 集合浏览器页（同库.集合已开则聚焦）。 */
 function openMongoCollection(conn: ConnectionConfig, database: string, collection: string): void {
   const existing = tabs.value.find(
     (t) =>
       t.kind === 'mongoCollection' &&
-      t.conn.id === conn.id &&
+      t.conn?.id === conn.id &&
       t.mongo?.database === database &&
       t.mongo?.collection === collection,
   )
@@ -268,7 +281,7 @@ function openMongoCollection(conn: ConnectionConfig, database: string, collectio
 /** 打开 Elasticsearch index 浏览器页（同连接.index 已开则聚焦）。 */
 function openEsIndex(conn: ConnectionConfig, index: string): void {
   const existing = tabs.value.find(
-    (t) => t.kind === 'esIndex' && t.conn.id === conn.id && t.es?.index === index,
+    (t) => t.kind === 'esIndex' && t.conn?.id === conn.id && t.es?.index === index,
   )
   if (existing) {
     activeId.value = existing.id
@@ -289,7 +302,7 @@ function openEsIndex(conn: ConnectionConfig, index: string): void {
  */
 function openRedisDb(conn: ConnectionConfig, dbIndex: number, pendingKey?: string): void {
   const existing = tabs.value.find(
-    (t) => t.kind === 'redisDb' && t.conn.id === conn.id && t.redis?.dbIndex === dbIndex,
+    (t) => t.kind === 'redisDb' && t.conn?.id === conn.id && t.redis?.dbIndex === dbIndex,
   )
   if (existing) {
     activeId.value = existing.id
@@ -316,7 +329,7 @@ function openRedisDb(conn: ConnectionConfig, dbIndex: number, pendingKey?: strin
  */
 function focusRedisDb(connId: string, dbIndex: number, pendingKey: string): boolean {
   const existing = tabs.value.find(
-    (t) => t.kind === 'redisDb' && t.conn.id === connId && t.redis?.dbIndex === dbIndex,
+    (t) => t.kind === 'redisDb' && t.conn?.id === connId && t.redis?.dbIndex === dbIndex,
   )
   if (!existing) return false
   activeId.value = existing.id
@@ -433,7 +446,13 @@ async function close(id: number): Promise<void> {
 
 /** 把刚关掉的 tab 存进最近关闭栈（去 id，query 顺带存 SQL 草稿）。NoSQL 不存。 */
 function rememberClosed(tab: Tab, ref?: TabRefShape): void {
-  if (tab.kind === 'mongoCollection' || tab.kind === 'redisDb' || tab.kind === 'esIndex') return
+  if (
+    tab.kind === 'mongoCollection' ||
+    tab.kind === 'redisDb' ||
+    tab.kind === 'esIndex' ||
+    tab.kind === 'notebook'
+  )
+    return
   const { id: _id, ...rest } = tab
   const snap: Omit<Tab, 'id'> = { ...rest }
   if (tab.kind === 'query') {
@@ -454,7 +473,7 @@ function reopenClosed(): void {
 }
 
 function closeConnTabs(connId: string): void {
-  tabs.value = tabs.value.filter((t) => t.conn.id !== connId)
+  tabs.value = tabs.value.filter((t) => t.conn?.id !== connId)
   if (!tabs.value.some((t) => t.id === activeId.value)) activeId.value = tabs.value[0]?.id ?? 0
 }
 
@@ -466,12 +485,12 @@ function closeConnTabs(connId: string): void {
  * `keepOpen=false`(改表 / DDL 编辑器保存等): 沿用旧行为,关掉 tab。
  */
 function onCreated(tab: Tab, opts?: { keepOpen?: boolean }): void {
-  if (tab.refreshTarget) emit('refresh', tab.refreshTarget, tab.conn.id)
+  if (tab.refreshTarget && tab.conn) emit('refresh', tab.refreshTarget, tab.conn.id)
   if (!opts?.keepOpen) close(tab.id)
 }
 
 /** 暴露给父组件用：当前激活 tab 的连接 id（用于右侧 AI 聊天默认连接跟随）；computed 自带响应式 */
-const activeConnId = computed(() => active.value?.conn.id ?? '')
+const activeConnId = computed(() => active.value?.conn?.id ?? '')
 
 /** K1：关当前活跃 tab（菜单 / 快捷键 close-tab 触发） */
 function closeActive(): void {
@@ -489,6 +508,7 @@ defineExpose({
   editTable,
   editObject,
   openErd,
+  openNotebook,
   openDraft,
   openMongoCollection,
   openRedisDb,
@@ -512,8 +532,8 @@ let restored = false
 function saveLayout(): void {
   if (!restored) return
   const items: SavedTab[] = tabs.value
-    .filter((t) => t.kind === 'query')
-    .map((t) => ({ connId: t.conn.id, pinned: t.pinned }))
+    .filter((t) => t.kind === 'query' && t.conn)
+    .map((t) => ({ connId: t.conn!.id, pinned: t.pinned }))
   try {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(items))
   } catch {
@@ -568,8 +588,9 @@ watch(tabs, saveLayout, { deep: true })
           @dblclick="togglePin(t.id)"
         >
           <span v-if="t.pinned" class="t-pin">📌</span>
-          <!-- 数据库品牌 logo：用户切换 tab 时一眼分清是哪个 dialect -->
-          <DialectIcon :dialect="t.conn.dialect" :size="13" class="t-dialect" />
+          <!-- 数据库品牌 logo：用户切换 tab 时一眼分清是哪个 dialect；Notebook 无连接，用本子图标 -->
+          <span v-if="t.kind === 'notebook'" class="t-dialect" style="font-size: 13px">📓</span>
+          <DialectIcon v-else-if="t.conn" :dialect="t.conn.dialect" :size="13" class="t-dialect" />
           <span class="t-title">{{ t.title }}</span>
           <button
             class="t-act"
@@ -584,7 +605,7 @@ watch(tabs, saveLayout, { deep: true })
         <div v-for="t in tabs" v-show="t.id === activeId" :key="t.id" class="pane-wrap">
           <QueryPane
             v-if="t.kind === 'query'"
-            :conn="t.conn"
+            :conn="t.conn!"
             :pending="t.pending"
             :initial-sql="t.draft"
             :initial-ctx="t.ctx"
@@ -592,42 +613,43 @@ watch(tabs, saveLayout, { deep: true })
             :ref="(el) => setDirtyRef(t.id, el)"
             @conn-error="(id, msg) => emit('connError', id, msg)"
             @ai="(sql, cid, errMsg) => emit('ai', sql, cid, errMsg)"
-            @new-draft="(sql, title) => openDraft(t.conn, sql, title)"
+            @new-draft="(sql, title) => openDraft(t.conn!, sql, title)"
             @ask-ai-about-error="(p) => emit('askAiAboutError', p)"
             @search-value="(p) => emit('searchValue', p)"
             @open-chart="(r) => emit('openChart', r)"
           />
+          <NotebookPane v-else-if="t.kind === 'notebook'" />
           <MongoPane
             v-else-if="t.kind === 'mongoCollection' && t.mongo"
-            :conn="t.conn"
+            :conn="t.conn!"
             :database="t.mongo.database"
             :collection="t.mongo.collection"
-            @open-info="emit('mongoOpenInfo', t.conn, t.mongo.database, t.mongo.collection)"
-            @open-agg="emit('mongoOpenAgg', t.conn, t.mongo.database, t.mongo.collection)"
+            @open-info="emit('mongoOpenInfo', t.conn!, t.mongo.database, t.mongo.collection)"
+            @open-agg="emit('mongoOpenAgg', t.conn!, t.mongo.database, t.mongo.collection)"
           />
           <RedisPane
             v-else-if="t.kind === 'redisDb' && t.redis"
-            :conn="t.conn"
+            :conn="t.conn!"
             :db-index="t.redis.dbIndex"
             :pending-key="t.redis.pendingKey"
-            @open-search="emit('redisOpenSearch', t.conn)"
-            @open-import="emit('redisOpenImport', t.conn, t.redis.dbIndex)"
-            @open-export="emit('redisOpenExport', t.conn, t.redis.dbIndex)"
-            @open-server-info="emit('redisOpenServerInfo', t.conn)"
-            @open-big-keys="emit('redisOpenBigKeys', t.conn, t.redis.dbIndex)"
-            @open-script="emit('redisOpenScript', t.conn, t.redis.dbIndex)"
-            @open-monitor="emit('redisOpenMonitor', t.conn)"
+            @open-search="emit('redisOpenSearch', t.conn!)"
+            @open-import="emit('redisOpenImport', t.conn!, t.redis.dbIndex)"
+            @open-export="emit('redisOpenExport', t.conn!, t.redis.dbIndex)"
+            @open-server-info="emit('redisOpenServerInfo', t.conn!)"
+            @open-big-keys="emit('redisOpenBigKeys', t.conn!, t.redis.dbIndex)"
+            @open-script="emit('redisOpenScript', t.conn!, t.redis.dbIndex)"
+            @open-monitor="emit('redisOpenMonitor', t.conn!)"
           />
           <ElasticPane
             v-else-if="t.kind === 'esIndex' && t.es"
-            :conn="t.conn"
+            :conn="t.conn!"
             :index="t.es.index"
           />
           <TableDesigner
             v-else-if="t.kind === 'table'"
             :ref="(el) => setDirtyRef(t.id, el)"
-            :conn-id="t.conn.id"
-            :dialect="t.conn.dialect"
+            :conn-id="t.conn!.id"
+            :dialect="t.conn!.dialect"
             :ctx="t.ctx!"
             :mode="t.mode === 'alter' ? 'alter' : 'create'"
             :node="t.node"
@@ -636,27 +658,27 @@ watch(tabs, saveLayout, { deep: true })
           />
           <TableStructure
             v-else-if="t.kind === 'structure'"
-            :conn-id="t.conn.id"
+            :conn-id="t.conn!.id"
             :node="t.node!"
-            :dialect="t.conn.dialect"
+            :dialect="t.conn!.dialect"
           />
           <ObjectDependencyView
             v-else-if="t.kind === 'objdeps'"
-            :conn-id="t.conn.id"
+            :conn-id="t.conn!.id"
             :node="t.node!"
-            :dialect="t.conn.dialect"
+            :dialect="t.conn!.dialect"
           />
           <ErdView
             v-else-if="t.kind === 'erd'"
-            :conn-id="t.conn.id"
-            :dialect="t.conn.dialect"
+            :conn-id="t.conn!.id"
+            :dialect="t.conn!.dialect"
             :ctx="t.ctx!"
           />
           <DdlEditor
             v-else
             :ref="(el) => setDirtyRef(t.id, el)"
-            :conn-id="t.conn.id"
-            :dialect="t.conn.dialect"
+            :conn-id="t.conn!.id"
+            :dialect="t.conn!.dialect"
             :object-kind="(t.kind as ObjectKind)"
             :ctx="t.ctx!"
             :mode="t.mode === 'edit' ? 'edit' : 'create'"

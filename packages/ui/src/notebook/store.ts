@@ -19,6 +19,9 @@ export interface Notebook {
   id: string
   title: string
   connId: string
+  /** 选中的库 / schema —— 跟着笔记本持久化，运行 cell 时传给 execute（修复 MySQL「No database selected」） */
+  database?: string
+  schema?: string
   cells: NbCell[]
   createdAt: number
   updatedAt: number
