@@ -7,6 +7,28 @@ import { pluginTreeActions } from '../plugins'
 import type { TreeController } from './tree-controller'
 import type { TreeNode } from './treeNode'
 
+// PG 协议系：支持 CREATE TRIGGER / CREATE TYPE（信创 + 标准 PG）。
+const PG_FAMILY_DIALECTS: DbDialect[] = [
+  DbDialect.PostgreSQL,
+  DbDialect.KingbaseES,
+  DbDialect.OpenGauss,
+  DbDialect.Vastbase,
+  DbDialect.MogDB,
+  DbDialect.Panweidb,
+  DbDialect.HighGo,
+  DbDialect.GaussDB,
+  DbDialect.Greenplum,
+  DbDialect.CockroachDB,
+]
+// openGauss 内核：额外支持「包(gs_package)」「同义词(pg_synonym)」。
+const OPENGAUSS_DIALECTS: DbDialect[] = [
+  DbDialect.OpenGauss,
+  DbDialect.GaussDB,
+  DbDialect.Vastbase,
+  DbDialect.MogDB,
+  DbDialect.Panweidb,
+]
+
 /** 动作执行上下文：当前节点 + 所属连接 + 控制器。 */
 export interface NodeActionContext {
   node: TreeNode
@@ -295,7 +317,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-trigger',
     label: 'ctx.new-trigger',
     section: 'create',
-    onlyDialects: [DbDialect.Oracle, DbDialect.DM],
+    onlyDialects: [DbDialect.Oracle, DbDialect.DM, ...PG_FAMILY_DIALECTS],
     kinds: [MetaNodeKind.Group, MetaNodeKind.Trigger],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'triggers',
     run: ({ node, connId, ctrl }) => ctrl.createTemplateDraft('trigger', node, connId),
@@ -304,7 +326,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-package',
     label: 'ctx.new-package',
     section: 'create',
-    onlyDialects: [DbDialect.Oracle, DbDialect.DM],
+    onlyDialects: [DbDialect.Oracle, DbDialect.DM, ...OPENGAUSS_DIALECTS],
     kinds: [MetaNodeKind.Group, MetaNodeKind.Package],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'packages',
     run: ({ node, connId, ctrl }) => ctrl.createTemplateDraft('package', node, connId),
@@ -313,7 +335,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-type',
     label: 'ctx.new-type',
     section: 'create',
-    onlyDialects: [DbDialect.Oracle, DbDialect.DM],
+    onlyDialects: [DbDialect.Oracle, DbDialect.DM, ...PG_FAMILY_DIALECTS],
     kinds: [MetaNodeKind.Group, MetaNodeKind.Type],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'types',
     run: ({ node, connId, ctrl }) => ctrl.createTemplateDraft('type', node, connId),
@@ -322,7 +344,7 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-synonym',
     label: 'ctx.new-synonym',
     section: 'create',
-    onlyDialects: [DbDialect.Oracle, DbDialect.DM],
+    onlyDialects: [DbDialect.Oracle, DbDialect.DM, ...OPENGAUSS_DIALECTS],
     kinds: [MetaNodeKind.Group, MetaNodeKind.Synonym],
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'synonyms',
     run: ({ node, connId, ctrl }) => ctrl.createTemplateDraft('synonym', node, connId),

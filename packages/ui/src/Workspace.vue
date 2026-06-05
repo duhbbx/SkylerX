@@ -1153,6 +1153,51 @@ END;`
       await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
       return
     }
+  } else if (familyOf(conn.dialect) === 'pg') {
+    // PG 协议系（标准 PG + 信创 openGauss 内核）：触发器/类型；包/同义词为 openGauss 专属。
+    const schema = ctx.schema ?? 'public'
+    const s = (n: string) => `${q(schema)}.${q(n)}`
+    if (kind === 'trigger') {
+      // PG 触发器需先有触发函数
+      sql = `CREATE OR REPLACE FUNCTION ${s('new_trigger_fn')}() RETURNS trigger AS $$
+BEGIN
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER ${q('new_trigger')}
+  BEFORE INSERT ON ${s('target_table')}
+  FOR EACH ROW EXECUTE FUNCTION ${s('new_trigger_fn')}();`
+      title = t('ws.tabNewTrigger')
+    } else if (kind === 'type') {
+      sql = `CREATE TYPE ${s('new_type')} AS (
+  id integer,
+  name text
+);`
+      title = t('ws.tabNewType')
+    } else if (kind === 'package') {
+      // openGauss 内核：Oracle 风格的包（gs_package）
+      sql = `CREATE OR REPLACE PACKAGE ${s('new_package')} AS
+  PROCEDURE hello;
+END ${q('new_package')};
+/
+
+CREATE OR REPLACE PACKAGE BODY ${s('new_package')} AS
+  PROCEDURE hello IS
+  BEGIN
+    NULL;
+  END;
+END ${q('new_package')};
+/`
+      title = t('ws.tabNewPackage')
+    } else if (kind === 'synonym') {
+      // openGauss 内核：同义词（pg_synonym）
+      sql = `CREATE OR REPLACE SYNONYM ${s('new_synonym')} FOR ${q('target_schema')}.${q('target_object')};`
+      title = t('ws.tabNewSynonym')
+    } else {
+      await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
+      return
+    }
   } else {
     await appAlert({ message: t('ws.defUnsupported'), variant: 'warn' })
     return
