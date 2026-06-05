@@ -25,20 +25,29 @@ export function estimateSkew(n: PlanNode): number | null {
   return Math.max(n.rows, n.actualRows) / Math.max(1, Math.min(n.rows, n.actualRows))
 }
 
-function family(d: DbDialect): 'mysql' | 'pg' | 'other' {
+function family(d: DbDialect): 'mysql' | 'pg' | 'oracle' | 'other' {
   if (['mysql', 'mariadb', 'oceanbase', 'gbase8a'].includes(d)) return 'mysql'
   if (['postgresql', 'kingbase', 'vastbase', 'mogdb', 'panweidb', 'highgo'].includes(d)) return 'pg'
+  if (['oracle', 'dm'].includes(d)) return 'oracle'
   return 'other'
 }
 
-/** 取可视化执行计划的查询；PG 用 JSON 解析成树，MySQL 用 TREE 文本。其余返回 null（回退表格 EXPLAIN）。
- *  options.analyze=true 会真正执行查询（PG 加 ANALYZE，MySQL 用 EXPLAIN ANALYZE FORMAT=JSON），
- *  得到实际行数和耗时；DML 务必先确认。 */
+export type PlanFormat = 'pg-json' | 'mysql-json' | 'mysql-tree' | 'oracle-rows'
+
+/**
+ * 取可视化执行计划的查询。
+ *  - PG     : EXPLAIN (FORMAT JSON) → 解析成热力树（ANALYZE 时带实际行/耗时）
+ *  - MySQL  : 默认 EXPLAIN FORMAT=JSON → 热力树；analyze 时 EXPLAIN ANALYZE（树形文本）
+ *  - Oracle/DM: 先 `EXPLAIN PLAN FOR`（prep），再读 PLAN_TABLE → 按 id/parent_id 建树
+ *  其余返回 null（上层回退普通表格 EXPLAIN）。
+ *  返回里带 prep 的（Oracle）必须跟 sql 跑在同一连接上（PLAN_TABLE 是会话级 GTT）。
+ *  analyze=true 会真正执行查询；DML 务必先确认。
+ */
 export function planQuery(
   dialect: DbDialect,
   sql: string,
   options?: { analyze?: boolean },
-): { sql: string; format: 'pg-json' | 'mysql-tree' } | null {
+): { prep?: string; sql: string; format: PlanFormat } | null {
   const s = sql.trim().replace(/;\s*$/, '')
   if (!s) return null
   const f = family(dialect)
@@ -50,10 +59,18 @@ export function planQuery(
     }
   }
   if (f === 'mysql') {
-    // MySQL 8.0.18+ 支持 EXPLAIN ANALYZE，输出树形文本（FORMAT=JSON 不能跟 ANALYZE）
+    // EXPLAIN ANALYZE 只能输出树形文本（不能跟 FORMAT=JSON）；不 analyze 时用 JSON 建热力树。
+    return analyze
+      ? { sql: `EXPLAIN ANALYZE ${s}`, format: 'mysql-tree' }
+      : { sql: `EXPLAIN FORMAT=JSON ${s}`, format: 'mysql-json' }
+  }
+  if (f === 'oracle') {
+    // EXPLAIN PLAN 没有 ANALYZE 概念；两步：写 PLAN_TABLE → 读出来按层级建树。
     return {
-      sql: analyze ? `EXPLAIN ANALYZE ${s}` : `EXPLAIN FORMAT=TREE ${s}`,
-      format: 'mysql-tree',
+      prep: `EXPLAIN PLAN FOR ${s}`,
+      sql: `SELECT id, parent_id, operation, options, object_name, cost, cardinality, bytes
+            FROM plan_table ORDER BY id`,
+      format: 'oracle-rows',
     }
   }
   return null
@@ -90,6 +107,133 @@ export function parsePgPlan(jsonText: string): PlanNode | null {
     return root ? toNode(root) : null
   } catch {
     return null
+  }
+}
+
+const numOf = (v: unknown): number => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+// ── MySQL EXPLAIN FORMAT=JSON → 树 ──
+// 结构不规则：query_block 下可能是 nested_loop[] / table / ordering_operation / grouping_operation …
+// 递归识别已知算子键，cost 取 cost_info（prefix_cost 累积 / query_cost），rows 取产出行数。
+interface MyObj {
+  [k: string]: unknown
+}
+function myCostInfo(o: MyObj): MyObj {
+  return (o.cost_info as MyObj) ?? {}
+}
+function myTableNode(t: MyObj): PlanNode {
+  const ci = myCostInfo(t)
+  const access = String(t.access_type ?? 'table')
+  const key = t.key ? ` (${String(t.key)})` : ''
+  return {
+    label: `${access}${key}`,
+    detail: t.table_name ? `on ${String(t.table_name)}` : '',
+    cost: numOf(ci.prefix_cost ?? ci.read_cost ?? ci.query_cost),
+    rows: numOf(t.rows_produced_per_join ?? t.rows_examined_per_scan),
+    relation: t.table_name ? String(t.table_name) : undefined,
+    indexName: t.key ? String(t.key) : undefined,
+    children: [],
+  }
+}
+const MY_OP_KEYS = [
+  'ordering_operation',
+  'grouping_operation',
+  'duplicates_removal',
+  'materialized_from_subquery',
+  'union_result',
+]
+function myOp(obj: MyObj, fallback: string): PlanNode {
+  if (Array.isArray(obj.nested_loop)) {
+    const kids = (obj.nested_loop as MyObj[]).map((e) => myOp(e, 'table'))
+    return {
+      label: 'Nested loop',
+      detail: '',
+      cost: kids.reduce((m, k) => Math.max(m, k.cost), 0),
+      rows: kids.length ? kids[kids.length - 1].rows : 0,
+      children: kids,
+    }
+  }
+  if (obj.table) return myTableNode(obj.table as MyObj)
+  for (const opKey of MY_OP_KEYS) {
+    if (obj[opKey]) {
+      const child = myOp(obj[opKey] as MyObj, opKey)
+      return {
+        label: opKey.replace(/_/g, ' '),
+        detail: '',
+        cost: Math.max(child.cost, numOf(myCostInfo(obj).query_cost)),
+        rows: child.rows,
+        children: [child],
+      }
+    }
+  }
+  if (obj.query_block) return myOp(obj.query_block as MyObj, 'query_block')
+  return { label: fallback, detail: '', cost: numOf(myCostInfo(obj).query_cost), rows: 0, children: [] }
+}
+export function parseMysqlPlan(jsonText: string): PlanNode | null {
+  try {
+    const j = JSON.parse(jsonText) as MyObj
+    const qb = j.query_block as MyObj | undefined
+    if (!qb) return null
+    const node = myOp(qb, 'query_block')
+    const qcost = numOf(myCostInfo(qb).query_cost)
+    if (qcost > node.cost) node.cost = qcost
+    return node
+  } catch {
+    return null
+  }
+}
+
+// ── Oracle / DM PLAN_TABLE 行 → 树（按 id / parent_id 链）──
+type Row = Record<string, unknown>
+function col(r: Row, key: string): unknown {
+  return r[key] ?? r[key.toUpperCase()] ?? r[key.toLowerCase()]
+}
+export function parseOraclePlan(rows: Row[]): PlanNode | null {
+  if (!rows?.length) return null
+  const nodes = new Map<number, PlanNode & { _pid: number | null }>()
+  for (const r of rows) {
+    const id = numOf(col(r, 'id'))
+    const pidRaw = col(r, 'parent_id')
+    const op = String(col(r, 'operation') ?? '')
+    const opt = col(r, 'options')
+    const obj = col(r, 'object_name')
+    nodes.set(id, {
+      label: opt ? `${op} ${String(opt)}` : op,
+      detail: obj ? `on ${String(obj)}` : '',
+      cost: numOf(col(r, 'cost')),
+      rows: numOf(col(r, 'cardinality')),
+      relation: obj ? String(obj) : undefined,
+      children: [],
+      _pid: pidRaw == null || pidRaw === '' ? null : numOf(pidRaw),
+    })
+  }
+  let root: PlanNode | null = null
+  for (const n of nodes.values()) {
+    if (n._pid == null) root = n
+    else nodes.get(n._pid)?.children.push(n)
+  }
+  return root
+}
+
+/** 统一把一次 EXPLAIN 的结果转成 { tree, text }，供 QueryPane 直接喂给 PlanPanel。 */
+export function buildPlanData(
+  format: PlanFormat,
+  result: { rows: Row[] },
+): { tree: PlanNode | null; text: string | null } {
+  const firstCell = (): string =>
+    result.rows.map((r) => String(Object.values(r)[0] ?? '')).join('\n')
+  switch (format) {
+    case 'pg-json':
+      return { tree: parsePgPlan(firstCell()), text: null }
+    case 'mysql-json':
+      return { tree: parseMysqlPlan(firstCell()), text: null }
+    case 'oracle-rows':
+      return { tree: parseOraclePlan(result.rows), text: null }
+    default:
+      return { tree: null, text: firstCell() }
   }
 }
 

@@ -40,7 +40,7 @@ import { addQueryFavorite } from '../favorites'
 import { t } from '../i18n'
 import { type Suggestion, monaco } from '../monaco-setup'
 import { notify } from '../notifications'
-import { type PlanNode, parsePgPlan, planQuery } from '../plan'
+import { type PlanNode, buildPlanData, planQuery } from '../plan'
 import { pluginBuiltinSnippets } from '../plugins'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
@@ -1079,10 +1079,20 @@ async function explain(withAnalyze = false): Promise<void> {
   running.value = true
   try {
     if (pq) {
-      const r = await client.connections.execute(props.conn.id, pq.sql, [], execOptions())
-      const val = String(Object.values(r.rows[0] ?? {})[0] ?? '')
-      planData.value =
-        pq.format === 'pg-json' ? { tree: parsePgPlan(val), text: null } : { tree: null, text: val }
+      if (pq.prep) {
+        // Oracle/DM：prep(EXPLAIN PLAN) 与读 PLAN_TABLE 必须同连接（会话级 GTT），走 session。
+        const sid = await client.connections.beginSession(props.conn.id, execOptions())
+        try {
+          await client.connections.executeInSession(sid, pq.prep, [], execOptions())
+          const r = await client.connections.executeInSession(sid, pq.sql, [], execOptions())
+          planData.value = buildPlanData(pq.format, r)
+        } finally {
+          await client.connections.endSession(sid)
+        }
+      } else {
+        const r = await client.connections.execute(props.conn.id, pq.sql, [], execOptions())
+        planData.value = buildPlanData(pq.format, r)
+      }
       showHistory.value = false
       showSnippets.value = false
       showPlan.value = true
