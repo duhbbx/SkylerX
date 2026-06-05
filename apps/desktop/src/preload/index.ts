@@ -37,7 +37,14 @@ const api = {
     metadata: (connId: string, scope: MetaScope): Promise<MetadataNode[]> =>
       ipcRenderer.invoke('connections:metadata', connId, scope),
     executeBatch: (connId: string, statements: string[], options?: ExecuteOptions): Promise<void> =>
-      ipcRenderer.invoke('connections:executeBatch', connId, statements, options),
+      // 防御：调用方可能传进 Vue 响应式 Proxy（数组/对象），结构化克隆会抛
+      // "An object could not be cloned"。在 IPC 边界拍平成纯对象再发。
+      ipcRenderer.invoke(
+        'connections:executeBatch',
+        connId,
+        Array.from(statements, String),
+        options ? { ...options } : options,
+      ),
     cancel: (connId: string): Promise<void> => ipcRenderer.invoke('connections:cancel', connId),
     history: (connId: string, limit?: number): Promise<QueryHistoryEntry[]> =>
       ipcRenderer.invoke('connections:history', connId, limit),

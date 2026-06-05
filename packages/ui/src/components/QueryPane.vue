@@ -1209,7 +1209,9 @@ async function doCommit(): Promise<void> {
   if (!p || !tab) return
   editPreview.value = null
   try {
-    await client.connections.executeBatch(props.conn.id, p.stmts, execOptions())
+    // p.stmts 是 ref 里的 Vue 响应式 Proxy 数组；直接丢进 ipcRenderer.invoke 会被
+    // 结构化克隆拒绝 → "An object could not be cloned"。展开成纯数组再传。
+    await client.connections.executeBatch(props.conn.id, [...p.stmts], execOptions())
     await gotoPage(tab, tab.page) // 刷新当前页（结果变更会重置网格编辑态）
     await loadHistory()
   } catch (e) {
