@@ -432,6 +432,8 @@ const DICT: Record<string, [string, string]> = {
   'hist.slowOnlyTitle': ['只看超过阈值的慢查询；阈值持久化', 'Only slow queries above threshold'],
   // ── 服务器活动（进程 / 长事务 / 锁等待，#1 + #8）──
   'activity.title': ['服务器活动 · {conn}', 'Server Activity · {conn}'],
+  'activity.titleBare': ['服务器活动', 'Server Activity'],
+  'activity.pickConn': ['请先在上方选择一个连接', 'Pick a connection above to begin'],
   'activity.tabProcesses': ['进程列表', 'Processes'],
   'activity.tabLongTx': ['长事务', 'Long transactions'],
   'activity.tabLocks': ['锁等待', 'Lock waits'],
@@ -557,6 +559,8 @@ const DICT: Record<string, [string, string]> = {
   // ── #16 Schema 快照 ──
   'pal.snapshots': ['Schema 快照', 'Schema snapshots'],
   'snap.title': ['Schema 快照 · {conn}', 'Schema Snapshots · {conn}'],
+  'snap.titleBare': ['Schema 快照', 'Schema Snapshots'],
+  'snap.pickConn': ['请先在上方选择一个连接', 'Pick a connection above to begin'],
   'snap.take': ['拍一份快照', 'Take snapshot'],
   'snap.diff': ['对比所选两份', 'Diff selected'],
   'snap.hint': ['勾选两个快照后点对比', 'Pick 2 to diff'],
@@ -579,6 +583,8 @@ const DICT: Record<string, [string, string]> = {
   // ── #14 备份 / 还原 ──
   'pal.backup': ['备份 / 还原', 'Backup / Restore'],
   'backup.title': ['备份 / 还原 · {conn}', 'Backup / Restore · {conn}'],
+  'backup.titleBare': ['备份 / 还原', 'Backup / Restore'],
+  'backup.pickConn': ['请先在上方选择一个连接', 'Pick a connection above to begin'],
   'backup.tabBackup': ['备份', 'Backup'],
   'backup.tabRestore': ['还原', 'Restore'],
   'backup.howBackup1': [

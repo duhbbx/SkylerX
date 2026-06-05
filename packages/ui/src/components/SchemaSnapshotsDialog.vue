@@ -12,7 +12,7 @@
  */
 import type { ConnectionConfig, MetadataNode } from '@db-tool/shared-types'
 import { MetaNodeKind } from '@db-tool/shared-types'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf } from '../ddl'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
@@ -20,9 +20,13 @@ import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
-const props = defineProps<{ conn: ConnectionConfig }>()
 const emit = defineEmits<{ close: [] }>()
 const client = useDataClient()
+
+// 自带连接选择：打开后先选连接（不再为每条连接在 ⌘K 里塞一条）
+const conns = ref<ConnectionConfig[]>([])
+const connId = ref('')
+const conn = computed(() => conns.value.find((c) => c.id === connId.value))
 
 interface Snapshot {
   id: string // ts + random
@@ -56,20 +60,33 @@ function saveAll(arr: Snapshot[]): void {
 }
 
 function reload(): void {
+  if (!conn.value) {
+    snapshots.value = []
+    return
+  }
   snapshots.value = loadAll()
-    .filter((s) => s.connId === props.conn.id)
+    .filter((s) => s.connId === conn.value!.id)
     .sort((a, b) => b.takenAt - a.takenAt)
 }
 
-onMounted(reload)
+onMounted(async () => {
+  conns.value = await client.connections.list()
+})
+watch(connId, () => {
+  selectedIds.value = []
+  diffOf.value = null
+  reload()
+})
 
 /** 拍快照：拉默认 database/schema 下所有 table 的 DDL */
 async function takeSnapshot(): Promise<void> {
+  if (!conn.value) return
+  const c = conn.value
   taking.value = true
   try {
     // 拉根节点 → 第一层（db / schema）→ tables group → table
-    const fam = familyOf(props.conn.dialect)
-    const top: MetadataNode[] = await client.connections.metadata(props.conn.id, {
+    const fam = familyOf(c.dialect)
+    const top: MetadataNode[] = await client.connections.metadata(c.id, {
       parentKind: MetaNodeKind.Connection,
       path: [],
     })
@@ -80,7 +97,7 @@ async function takeSnapshot(): Promise<void> {
     // 简化：只对第一个 database/schema 拍照（覆盖单库场景；多库可后续扩）
     const first = top[0]
     const tablesGroup = await client.connections
-      .metadata(props.conn.id, {
+      .metadata(c.id, {
         parentKind: MetaNodeKind.Group,
         path: [...first.path],
         group: 'tables',
@@ -107,15 +124,15 @@ async function takeSnapshot(): Promise<void> {
 
     const snap: Snapshot = {
       id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      connId: props.conn.id,
+      connId: c.id,
       takenAt: Date.now(),
       note,
       tables,
     }
     // 维护 LRU：最多保留 MAX_PER_CONN 个
-    const all = loadAll().filter((s) => s.connId !== props.conn.id || true)
-    const mine = all.filter((s) => s.connId === props.conn.id)
-    const others = all.filter((s) => s.connId !== props.conn.id)
+    const all = loadAll()
+    const mine = all.filter((s) => s.connId === c.id)
+    const others = all.filter((s) => s.connId !== c.id)
     mine.unshift(snap)
     if (mine.length > MAX_PER_CONN) mine.length = MAX_PER_CONN
     saveAll([...others, ...mine])
@@ -130,15 +147,16 @@ async function fetchTableDdl(
   tableRef: string,
   fam: 'mysql' | 'pg' | 'sqlserver' | 'oracle' | 'nosql',
 ): Promise<string> {
+  if (!conn.value) return ''
   if (fam === 'mysql') {
-    const r = await client.connections.execute(props.conn.id, `SHOW CREATE TABLE ${tableRef}`)
+    const r = await client.connections.execute(conn.value.id, `SHOW CREATE TABLE ${tableRef}`)
     const row = r.rows[0] as Record<string, unknown> | undefined
     return String(row?.['Create Table'] ?? '')
   }
   if (fam === 'pg') {
     // PG 没有 SHOW CREATE TABLE，拼一份简化 DDL（列 + 类型 + NULL/PK）
     const r = await client.connections.execute(
-      props.conn.id,
+      conn.value.id,
       `SELECT column_name, data_type, is_nullable, column_default
        FROM information_schema.columns
        WHERE table_name = '${tableRef.replace(/^.*\./, '').replace(/['"\`]/g, '')}'
@@ -224,8 +242,19 @@ function fmtTime(ts: number): string {
 </script>
 
 <template>
-  <Modal :title="t('snap.title', { conn: conn.name || conn.dialect })" width="wide" @close="emit('close')">
+  <Modal :title="t('snap.titleBare')" width="wide" @close="emit('close')">
     <div class="snap">
+      <!-- 连接选择（自带，不再从 ⌘K 带连接） -->
+      <div class="conn-bar">
+        <select v-model="connId" class="conn-sel">
+          <option value="" disabled>{{ t('diff.selectConn') }}</option>
+          <option v-for="c in conns" :key="c.id" :value="c.id">
+            {{ c.name || c.id }} · {{ c.dialect }}
+          </option>
+        </select>
+      </div>
+      <div v-if="!conn" class="snap-empty">{{ t('snap.pickConn') }}</div>
+      <template v-else>
       <!-- 列表视图 -->
       <template v-if="!diffOf">
         <div class="snap-bar">
@@ -292,6 +321,7 @@ function fmtTime(ts: number): string {
           </div>
         </div>
       </template>
+      </template>
     </div>
   </Modal>
 </template>
@@ -303,6 +333,16 @@ function fmtTime(ts: number): string {
   max-height: 70vh;
   display: flex;
   flex-direction: column;
+}
+.conn-bar { padding: 0 0 8px; }
+.conn-sel {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
 }
 .snap-bar {
   display: flex;

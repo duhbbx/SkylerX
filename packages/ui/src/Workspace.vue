@@ -1908,20 +1908,10 @@ async function editFavTag(f: Favorite): Promise<void> {
 }
 const opLogOpen = ref(false)
 const monitorOpen = ref(false)
-/** 「服务器活动」（进程 / 长事务 / 锁等待）：右键连接 → 服务器活动 */
-const activityOpen = ref<{ conn: ConnectionConfig } | null>(null)
-/** #16 Schema 快照面板 */
-const snapshotsOpen = ref<{ conn: ConnectionConfig } | null>(null)
-async function openSnapshots(connId: string): Promise<void> {
-  const conn = await client.connections.get(connId)
-  snapshotsOpen.value = { conn }
-}
-/** #14 备份/还原面板 */
-const backupOpen = ref<{ conn: ConnectionConfig } | null>(null)
-async function openBackup(connId: string): Promise<void> {
-  const conn = await client.connections.get(connId)
-  backupOpen.value = { conn }
-}
+// 服务器活动 / Schema 快照 / 备份还原：对话框自带连接选择，单 bool 开关即可
+const activityOpen = ref(false)
+const snapshotsOpen = ref(false)
+const backupOpen = ref(false)
 /** G1 AI 数据库体检 */
 const healthOpen = ref<{ conn: ConnectionConfig } | null>(null)
 async function openHealth(connId: string): Promise<void> {
@@ -2101,11 +2091,6 @@ const aiToolboxOpen = ref<{
   connId?: string
   table?: string
 } | null>(null)
-async function openActivity(connId: string): Promise<void> {
-  const conn = await client.connections.get(connId)
-  activityOpen.value = { conn }
-}
-
 /** OceanBase 集群拓扑（信创差异化能力，仅 OceanBase 方言可入口）。 */
 const obTopoOpen = ref<{ conn: ConnectionConfig } | null>(null)
 async function openObTopology(connId: string): Promise<void> {
@@ -2608,12 +2593,10 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:favorites', label: t('pal.favorites'), group: t('pal.groupActions') },
   { id: 'act:oplog', label: t('pal.oplog'), group: t('pal.groupActions') },
   { id: 'act:monitor', label: t('pal.monitor'), group: t('pal.groupActions') },
-  // 服务器活动需要先选连接，所以为每条连接生成一条 act:activity:<id>
-  ...paletteConns.value.map((c) => ({
-    id: `act:activity:${c.id}`,
-    label: `${t('pal.activity')} · ${c.name || c.dialect}`,
-    group: t('pal.groupActions'),
-  })),
+  // 服务器活动 / schema 快照 / 备份还原：单条入口，对话框内自带连接选择（不再每条连接塞一条）
+  { id: 'act:activity', label: t('pal.activity'), group: t('pal.groupActions') },
+  { id: 'act:snapshots', label: t('pal.snapshots'), group: t('pal.groupActions') },
+  { id: 'act:backup', label: t('pal.backup'), group: t('pal.groupActions') },
   // OceanBase 集群拓扑（仅 OB 方言可见；其他方言显示无意义）
   ...paletteConns.value
     .filter((c) => c.dialect === DbDialect.OceanBase)
@@ -2622,18 +2605,6 @@ const paletteItems = computed<PaletteItem[]>(() => [
       label: `${t('pal.obTopology')} · ${c.name || c.dialect}`,
       group: t('pal.groupActions'),
     })),
-  // schema 快照 同上
-  ...paletteConns.value.map((c) => ({
-    id: `act:snapshots:${c.id}`,
-    label: `${t('pal.snapshots')} · ${c.name || c.dialect}`,
-    group: t('pal.groupActions'),
-  })),
-  // 备份/还原
-  ...paletteConns.value.map((c) => ({
-    id: `act:backup:${c.id}`,
-    label: `${t('pal.backup')} · ${c.name || c.dialect}`,
-    group: t('pal.groupActions'),
-  })),
   // G1 AI 数据库体检
   ...paletteConns.value.map((c) => ({
     id: `act:health:${c.id}`,
@@ -2748,18 +2719,12 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:favorites') favoritesOpen.value = true
   else if (item.id === 'act:oplog') opLogOpen.value = true
   else if (item.id === 'act:monitor') monitorOpen.value = true
-  else if (item.id.startsWith('act:activity:')) {
-    const cid = item.id.slice('act:activity:'.length)
-    void openActivity(cid)
-  } else if (item.id.startsWith('act:obtopo:')) {
+  else if (item.id === 'act:activity') activityOpen.value = true
+  else if (item.id === 'act:snapshots') snapshotsOpen.value = true
+  else if (item.id === 'act:backup') backupOpen.value = true
+  else if (item.id.startsWith('act:obtopo:')) {
     const cid = item.id.slice('act:obtopo:'.length)
     void openObTopology(cid)
-  } else if (item.id.startsWith('act:snapshots:')) {
-    const cid = item.id.slice('act:snapshots:'.length)
-    void openSnapshots(cid)
-  } else if (item.id.startsWith('act:backup:')) {
-    const cid = item.id.slice('act:backup:'.length)
-    void openBackup(cid)
   } else if (item.id.startsWith('act:health:')) {
     const cid = item.id.slice('act:health:'.length)
     void openHealth(cid)
@@ -3008,12 +2973,12 @@ const PALETTE_KEY_MAP: Record<string, string> = {
   'toggle-ai-chat': 'act:ai-chat',
   favorites: 'act:favorites',
   'op-log': 'act:oplog',
-  activity: 'act:activity-pick',
-  'backup-restore': 'act:backup-pick',
+  activity: 'act:activity',
+  'backup-restore': 'act:backup',
   'data-transfer': 'act:transfer-pick',
   'schema-diff': 'act:schema-diff',
   'data-diff': 'act:data-diff',
-  snapshots: 'act:snapshots-pick',
+  snapshots: 'act:snapshots',
   dashboard: 'act:dashboard',
   'search-value': 'act:search-value-pick',
   contracts: 'act:contracts',
@@ -3056,14 +3021,9 @@ function onMenuCommand(key: string): void {
     window.dispatchEvent(new CustomEvent(`editor:${key}`))
     return
   }
-  // 选连接才能跑的：弹一个简单 picker（这里走命令面板更省事）
-  if (
-    key === 'activity' ||
-    key === 'backup-restore' ||
-    key === 'data-transfer' ||
-    key === 'snapshots' ||
-    key === 'search-value'
-  ) {
+  // 仍需选连接才能跑的（按连接 picker 走命令面板更省事）。
+  // activity / snapshots / backup-restore 已改为对话框内自带连接选择，下面 PALETTE_KEY_MAP 直接开。
+  if (key === 'data-transfer' || key === 'search-value') {
     paletteOpen.value = true
     return
   }
@@ -3497,12 +3457,8 @@ onMounted(async () => {
 
   <ServerMonitorDialog v-if="monitorOpen" @close="monitorOpen = false" />
 
-  <!-- #1 + #8：服务器活动（进程 / 长事务 / 锁等待） -->
-  <ServerActivityDialog
-    v-if="activityOpen"
-    :conn="activityOpen.conn"
-    @close="activityOpen = null"
-  />
+  <!-- #1 + #8：服务器活动（进程 / 长事务 / 锁等待）；对话框内自带连接选择 -->
+  <ServerActivityDialog v-if="activityOpen" @close="activityOpen = false" />
 
   <!-- OceanBase 集群拓扑（信创差异化能力） -->
   <OceanBaseTopologyDialog
@@ -3569,19 +3525,11 @@ onMounted(async () => {
     @close="mockState = null"
   />
 
-  <!-- #16 Schema 快照（一键拍/对比） -->
-  <SchemaSnapshotsDialog
-    v-if="snapshotsOpen"
-    :conn="snapshotsOpen.conn"
-    @close="snapshotsOpen = null"
-  />
+  <!-- #16 Schema 快照（一键拍/对比）；对话框内自带连接选择 -->
+  <SchemaSnapshotsDialog v-if="snapshotsOpen" @close="snapshotsOpen = false" />
 
-  <!-- #14 备份 / 还原 -->
-  <BackupRestoreDialog
-    v-if="backupOpen"
-    :conn="backupOpen.conn"
-    @close="backupOpen = null"
-  />
+  <!-- #14 备份 / 还原；对话框内自带连接选择 -->
+  <BackupRestoreDialog v-if="backupOpen" @close="backupOpen = false" />
 
   <!-- G1 AI 数据库体检 -->
   <AiHealthCheckDialog

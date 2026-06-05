@@ -15,7 +15,7 @@
  * 后续在主进程加 IPC 调用 child_process.spawn 即可，这里 UI 不动。
  */
 import { type ConnectionConfig, MetaNodeKind } from '@db-tool/shared-types'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useDataClient } from '../data-client'
 import { quoteId } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
@@ -24,9 +24,13 @@ import { t } from '../i18n'
 import { splitStatements } from '../sqlSplit'
 import Modal from './Modal.vue'
 
-const props = defineProps<{ conn: ConnectionConfig }>()
 const emit = defineEmits<{ close: [] }>()
 const client = useDataClient()
+
+// 自带连接选择：打开后先选连接（不再为每条连接在 ⌘K 里塞一条）
+const conns = ref<ConnectionConfig[]>([])
+const connId = ref('')
+const conn = computed(() => conns.value.find((c) => c.id === connId.value))
 
 type Mode = 'backup' | 'restore'
 const mode = ref<Mode>('backup')
@@ -50,6 +54,8 @@ const restoreProgress = ref({ done: 0, total: 0, errors: [] as string[] })
 const stopRequested = ref(false)
 
 async function pickFileAndRestore(): Promise<void> {
+  const c = conn.value
+  if (!c) return
   if (!client.files) {
     reportError(new Error('files API not available'))
     return
@@ -77,7 +83,7 @@ async function pickFileAndRestore(): Promise<void> {
     for (let i = 0; i < stmts.length; i++) {
       if (stopRequested.value) break
       try {
-        await client.connections.execute(props.conn.id, stmts[i])
+        await client.connections.execute(c.id, stmts[i])
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         restoreProgress.value.errors.push(`#${i + 1}: ${msg.slice(0, 200)}`)
@@ -124,13 +130,15 @@ async function doBackup(): Promise<void> {
  * 当 base64-like 处理可能失真（Buffer → {type:'Buffer', data:[]}），这是 v1 已知限制。
  */
 async function doBackupNdjson(): Promise<void> {
+  const c = conn.value
+  if (!c) return
   if (!client.files) return
   backingUp.value = true
   ndjsonProgress.value = { phase: t('backup.ndjsonPhaseList'), done: 0, total: 0 }
   try {
     // 1. 取表列表
-    const dbPath = props.conn.database ? [props.conn.database] : []
-    const tables = await client.connections.metadata(props.conn.id, {
+    const dbPath = c.database ? [c.database] : []
+    const tables = await client.connections.metadata(c.id, {
       parentKind: MetaNodeKind.Group,
       path: dbPath,
       group: 'tables',
@@ -148,8 +156,8 @@ async function doBackupNdjson(): Promise<void> {
       const tab = tables[i]
       ndjsonProgress.value.phase = t('backup.ndjsonPhaseDump', { name: tab.name })
       try {
-        const sqlName = tab.sqlName ?? quoteId(props.conn.dialect, tab.name)
-        const r = await client.connections.execute(props.conn.id, `SELECT * FROM ${sqlName}`)
+        const sqlName = tab.sqlName ?? quoteId(c.dialect, tab.name)
+        const r = await client.connections.execute(c.id, `SELECT * FROM ${sqlName}`)
         for (const row of r.rows) {
           lines.push(JSON.stringify({ __table: tab.name, data: row }))
         }
@@ -169,7 +177,7 @@ async function doBackupNdjson(): Promise<void> {
     ndjsonProgress.value.phase = t('backup.ndjsonPhaseSave')
     const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
     const path = await client.files.saveText({
-      defaultName: `skylerx-${props.conn.name || props.conn.dialect}-${stamp}.ndjson`,
+      defaultName: `skylerx-${c.name || c.dialect}-${stamp}.ndjson`,
       content: lines.join('\n'),
       filters: [{ name: 'NDJSON', extensions: ['ndjson', 'jsonl'] }],
     })
@@ -193,6 +201,8 @@ async function doBackupNdjson(): Promise<void> {
  * 简化：跳过 __error 行；用 splitStatements 也兼容 SQL 混合写法（虽然这里不该有）。
  */
 async function pickFileAndRestoreNdjson(): Promise<void> {
+  const c = conn.value
+  if (!c) return
   if (!client.files) return
   const file = await client.files.openText([{ name: 'NDJSON', extensions: ['ndjson', 'jsonl'] }])
   if (!file) return
@@ -252,8 +262,8 @@ async function pickFileAndRestoreNdjson(): Promise<void> {
         // 每张表一次大 INSERT（按 chunk 切，避免单条过长）
         const cols = Object.keys(rows[0] ?? {})
         if (!cols.length) continue
-        const colList = cols.map((c) => quoteId(props.conn.dialect, c)).join(', ')
-        const tableRef = quoteId(props.conn.dialect, tableName)
+        const colList = cols.map((col) => quoteId(c.dialect, col)).join(', ')
+        const tableRef = quoteId(c.dialect, tableName)
         const chunkSize = 100
         for (let start = 0; start < rows.length; start += chunkSize) {
           const slice = rows.slice(start, start + chunkSize)
@@ -261,8 +271,8 @@ async function pickFileAndRestoreNdjson(): Promise<void> {
             .map(
               (row) =>
                 `(${cols
-                  .map((c) => {
-                    const v = row[c]
+                  .map((col) => {
+                    const v = row[col]
                     if (v == null) return 'NULL'
                     if (typeof v === 'number' || typeof v === 'boolean') return String(v)
                     if (typeof v === 'object') return `'${JSON.stringify(v).replace(/'/g, "''")}'`
@@ -272,7 +282,7 @@ async function pickFileAndRestoreNdjson(): Promise<void> {
             )
             .join(',\n  ')
           await client.connections.execute(
-            props.conn.id,
+            c.id,
             `INSERT INTO ${tableRef} (${colList}) VALUES\n  ${valuesSql}`,
           )
         }
@@ -292,14 +302,25 @@ async function pickFileAndRestoreNdjson(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  /* 留作未来 prebid */
+onMounted(async () => {
+  conns.value = await client.connections.list()
 })
 </script>
 
 <template>
-  <Modal :title="t('backup.title', { conn: conn.name || conn.dialect })" @close="emit('close')">
+  <Modal :title="t('backup.titleBare')" @close="emit('close')">
     <div class="backup">
+      <!-- 连接选择（自带，不再从 ⌘K 带连接） -->
+      <div class="conn-bar">
+        <select v-model="connId" class="conn-sel">
+          <option value="" disabled>{{ t('diff.selectConn') }}</option>
+          <option v-for="c in conns" :key="c.id" :value="c.id">
+            {{ c.name || c.id }} · {{ c.dialect }}
+          </option>
+        </select>
+      </div>
+      <div v-if="!conn" class="info">{{ t('backup.pickConn') }}</div>
+      <template v-else>
       <div class="mode-tabs">
         <button :class="{ on: mode === 'backup' }" @click="mode = 'backup'">📦 {{ t('backup.tabBackup') }}</button>
         <button :class="{ on: mode === 'restore' }" @click="mode = 'restore'">↺ {{ t('backup.tabRestore') }}</button>
@@ -375,12 +396,23 @@ onMounted(() => {
           </button>
         </div>
       </template>
+      </template>
     </div>
   </Modal>
 </template>
 
 <style scoped>
 .backup { min-width: 540px; display: flex; flex-direction: column; gap: 12px; }
+.conn-bar { padding-bottom: 0; }
+.conn-sel {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
 .mode-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .mode-tabs button {
   padding: 5px 14px;

@@ -13,7 +13,7 @@
  * 顶部有「刷新」按钮 + 可选自动刷新（2s/5s/10s）。
  */
 import { type ConnectionConfig, DbKind, type QueryResult, dialectKind } from '@db-tool/shared-types'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { familyOf } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
@@ -21,9 +21,13 @@ import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import Modal from './Modal.vue'
 
-const props = defineProps<{ conn: ConnectionConfig }>()
 const emit = defineEmits<{ close: [] }>()
 const client = useDataClient()
+
+// 自带连接选择：打开后先选连接再查活动（不再为每条连接在 ⌘K 里塞一条）
+const conns = ref<ConnectionConfig[]>([])
+const connId = ref('')
+const conn = computed(() => conns.value.find((c) => c.id === connId.value))
 
 type TabId = 'processes' | 'longtx' | 'locks'
 const active = ref<TabId>('processes')
@@ -36,10 +40,12 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 // 复用 ddl.ts 的 familyOf()：CockroachDB / Greenplum / OpenGauss / H2 已被归入 'pg' 家族，
 // 因此会自动走 PG 的 pg_stat_activity / pg_stat_statements 查询分支。
 function familyOfConn(): 'mysql' | 'pg' | 'mssql' | 'nosql' | 'other' {
+  const d = conn.value?.dialect
+  if (!d) return 'other'
   // NoSQL(Redis/Mongo/ES)这个面板完全不适用 — ddl.familyOf 兜底会回 'mysql',会导致
   // 用 SQL 去打 Redis 直接抛 SQL_CHANNEL_UNSUPPORTED。这里先按 dialectKind 短路。
-  if (dialectKind(props.conn.dialect) === DbKind.NoSql) return 'nosql'
-  const f = familyOf(props.conn.dialect)
+  if (dialectKind(d) === DbKind.NoSql) return 'nosql'
+  const f = familyOf(d)
   if (f === 'sqlserver') return 'mssql'
   if (f === 'mysql' || f === 'pg') return f
   return 'other'
@@ -143,6 +149,10 @@ function sqlFor(tab: TabId): string | null {
 }
 
 async function load(): Promise<void> {
+  if (!conn.value) {
+    result.value = null
+    return
+  }
   if (familyOfConn() === 'nosql') {
     error.value = 'NoSQL 方言不适用本面板。Redis 请用「⚙ 服务器」→ 客户端/慢日志;MongoDB/ES 同。'
     result.value = null
@@ -157,7 +167,7 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    result.value = await client.connections.execute(props.conn.id, sql)
+    result.value = await client.connections.execute(conn.value.id, sql)
   } catch (e) {
     reportInlineError(error, e)
   } finally {
@@ -167,6 +177,7 @@ async function load(): Promise<void> {
 
 // KILL 路由：mysql `KILL <id>` / pg `SELECT pg_terminate_backend(pid)` / mssql `KILL <spid>`
 async function killRow(row: Record<string, unknown>): Promise<void> {
+  if (!conn.value) return
   const id = row.id ?? row.session_id ?? row.thread_id
   if (id == null) {
     reportError(new Error(t('activity.noIdToKill')))
@@ -195,7 +206,7 @@ async function killRow(row: Record<string, unknown>): Promise<void> {
     return
   }
   try {
-    await client.connections.execute(props.conn.id, killSql)
+    await client.connections.execute(conn.value.id, killSql)
     toast.success(t('activity.killed', { id: String(idNum) }))
     await load()
   } catch (e) {
@@ -215,15 +226,34 @@ watch(active, () => {
   result.value = null
   void load()
 })
-onMounted(() => void load())
+watch(connId, () => {
+  result.value = null
+  error.value = null
+  void load()
+})
+onMounted(async () => {
+  conns.value = await client.connections.list()
+  // 不自动选连接 —— 等用户在下拉里选了再查
+})
 onBeforeUnmount(() => {
   if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 
 <template>
-  <Modal :title="t('activity.title', { conn: conn.name || conn.dialect })" width="wide" @close="emit('close')">
+  <Modal :title="t('activity.titleBare')" width="wide" @close="emit('close')">
     <div class="act">
+      <!-- 连接选择（自带，不再从 ⌘K 带连接） -->
+      <div class="conn-bar">
+        <select v-model="connId" class="conn-sel">
+          <option value="" disabled>{{ t('diff.selectConn') }}</option>
+          <option v-for="c in conns" :key="c.id" :value="c.id">
+            {{ c.name || c.id }} · {{ c.dialect }}
+          </option>
+        </select>
+      </div>
+      <div v-if="!conn" class="empty">{{ t('activity.pickConn') }}</div>
+      <template v-else>
       <!-- Tab 切换 -->
       <div class="tabs">
         <button :class="{ on: active === 'processes' }" @click="active = 'processes'">{{ t('activity.tabProcesses') }}</button>
@@ -264,6 +294,7 @@ onBeforeUnmount(() => {
           </tbody>
         </table>
       </div>
+      </template>
     </div>
   </Modal>
 </template>
@@ -275,6 +306,16 @@ onBeforeUnmount(() => {
   min-width: 820px;
   min-height: 480px;
   max-height: 70vh;
+}
+.conn-bar { padding: 0 0 8px; }
+.conn-sel {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
 }
 .tabs {
   display: flex;
