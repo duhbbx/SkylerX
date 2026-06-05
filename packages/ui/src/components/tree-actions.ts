@@ -319,7 +319,8 @@ export const TREE_ACTIONS: TreeAction[] = [
     section: 'create',
     onlyDialects: [DbDialect.Oracle, DbDialect.DM, ...PG_FAMILY_DIALECTS],
     kinds: [MetaNodeKind.Group, MetaNodeKind.Trigger],
-    enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'triggers',
+    enabled: (n) =>
+      n.kind !== MetaNodeKind.Group || n.group === 'triggers' || n.group === 'schematriggers',
     run: ({ node, connId, ctrl }) => ctrl.createTemplateDraft('trigger', node, connId),
   },
   {

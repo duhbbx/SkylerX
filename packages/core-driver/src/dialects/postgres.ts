@@ -224,7 +224,7 @@ class PgConnection implements DriverConnection {
     //          标准 PG 的 routines 正确区分 PROCEDURE(PG11+),旧版无过程返回 0。
     // 函数:openGauss 排除 prokind='p',标准 PG 走 routines FUNCTION(本就不含过程)。
     // 包(gs_package)、同义词(pg_synonym)是 openGauss 专属,标准 PG 跳过(避免表不存在报错)。
-    const [tables, views, funcs, procs, seqs, mviews, types, pkgs, syns] = await Promise.all([
+    const [tables, views, funcs, procs, seqs, mviews, types, pkgs, syns, trgs] = await Promise.all([
       this.scalar(
         "SELECT COUNT(*) c FROM information_schema.tables WHERE table_schema=$1 AND table_type='BASE TABLE'",
         [schema],
@@ -274,6 +274,11 @@ class PgConnection implements DriverConnection {
             [schema],
           )
         : zero,
+      // schema 级触发器汇总（PG 触发器本属于表，这里聚合整 schema；排除 FK/系统内部触发器）
+      this.scalar(
+        'SELECT COUNT(*) c FROM pg_trigger t JOIN pg_class k ON t.tgrelid=k.oid JOIN pg_namespace n ON k.relnamespace=n.oid WHERE n.nspname=$1 AND NOT t.tgisinternal',
+        [schema],
+      ),
     ])
     const always = (name: string, group: string, count: number, expandable = true): MetadataNode => ({
       kind: MetaNodeKind.Group,
@@ -291,6 +296,7 @@ class PgConnection implements DriverConnection {
       always('存储过程', 'procedures', procs, false),
       always('序列', 'sequences', seqs),
       always('类型', 'types', types, false),
+      always('触发器', 'schematriggers', trgs, false),
     ]
     if (og) {
       groups.push(
@@ -416,6 +422,21 @@ class PgConnection implements DriverConnection {
           kind: MetaNodeKind.Sequence,
           name: String(r.name),
           path: [db, schema, String(r.name)],
+          hasChildren: false,
+        }))
+      }
+      case 'schematriggers': {
+        // schema 级触发器汇总：列出 schema 下所有表的触发器（带表名消歧）。
+        // path 设成 [db, schema, table, name]，让 definitionQuery/objectDdlQuery 的
+        // pg 触发器分支（按 path 末三段取 schema/table/name）能正常拉 pg_get_triggerdef。
+        const res = await this.pool.query(
+          'SELECT t.tgname AS name, k.relname AS tbl FROM pg_trigger t JOIN pg_class k ON t.tgrelid=k.oid JOIN pg_namespace n ON k.relnamespace=n.oid WHERE n.nspname=$1 AND NOT t.tgisinternal ORDER BY k.relname, t.tgname',
+          [schema],
+        )
+        return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+          kind: MetaNodeKind.Trigger,
+          name: `${String(r.name)}  ·  ${String(r.tbl)}`,
+          path: [db, schema, String(r.tbl), String(r.name)],
           hasChildren: false,
         }))
       }
