@@ -552,9 +552,10 @@ export function currentProvider(): AiProvider {
  */
 export async function embedTexts(texts: string[], signal?: AbortSignal): Promise<number[][]> {
   if (!texts.length) return []
-  const key = settings.aiEmbeddingApiKey.trim()
   const base = settings.aiEmbeddingBaseUrl.trim().replace(/\/$/, '')
   const model = settings.aiEmbeddingModel.trim() || 'text-embedding-3-small'
+  // 本地端点（Ollama 等）不需要 key；留空给占位 Bearer（被忽略）。
+  const key = settings.aiEmbeddingApiKey.trim() || (isLocalEmbeddingBase(base) ? 'local' : '')
   if (!key || !base) throw new Error('NO_EMBEDDINGS')
   const res = await aiHttp(`${base}/v1/embeddings`, {
     method: 'POST',
@@ -567,9 +568,19 @@ export async function embedTexts(texts: string[], signal?: AbortSignal): Promise
   return (data.data ?? []).map((d) => d.embedding)
 }
 
-/** 是否配好了嵌入端点(专用 key + baseUrl);决定 RAG 能否走向量/混合检索。 */
+/** 嵌入端点是否指向本机（localhost / 127.0.0.1 / ::1）——本地推理无需 API Key。 */
+export function isLocalEmbeddingBase(base: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?(\/|$)/i.test(base.trim())
+}
+
+/**
+ * 是否配好了嵌入端点(决定 RAG 能否走向量/混合检索)。
+ * 需要 baseUrl；普通端点还需 key，本地端点(Ollama)免 key。
+ */
 export function canEmbed(): boolean {
-  return !!settings.aiEmbeddingApiKey.trim() && !!settings.aiEmbeddingBaseUrl.trim()
+  const base = settings.aiEmbeddingBaseUrl.trim()
+  if (!base) return false
+  return !!settings.aiEmbeddingApiKey.trim() || isLocalEmbeddingBase(base)
 }
 
 // ── Connectivity test (#28) ──────────────────────────────────────────

@@ -217,6 +217,11 @@ const DICT: Record<string, [string, string]> = {
     'sk-… (can differ from AI provider; OpenAI-compatible endpoint)',
   ],
   'settings.mem.cModel': ['模型', 'Model'],
+  'settings.mem.cUseOllama': ['用 Ollama 本地', 'Use local Ollama'],
+  'settings.mem.cOllamaHint': [
+    '本地嵌入：先 `ollama pull nomic-embed-text`（或 mxbai-embed-large），把模型填成该名即可。无需 API Key，向量数据不出本机——RAG / 向量记忆全程离线。',
+    'Local embeddings: `ollama pull nomic-embed-text` (or mxbai-embed-large), set Model to that name. No API key needed and vectors never leave your machine — RAG / vector memory run fully offline.',
+  ],
   'settings.mem.cTopK': ['检索 top-K', 'Top-K recall'],
   'settings.mem.cClear': ['清空（{n}）', 'Clear ({n})'],
   'settings.mem.cClearConfirm': [

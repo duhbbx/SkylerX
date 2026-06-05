@@ -3,8 +3,8 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { onMounted, ref } from 'vue'
-import { type AiTestResult, testAiProvider } from '../ai'
+import { computed, onMounted, ref } from 'vue'
+import { type AiTestResult, isLocalEmbeddingBase, testAiProvider } from '../ai'
 import { confirm as appConfirm, toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import { LOCALE_LABEL, type Locale, locale, setLocale, t } from '../i18n'
@@ -113,6 +113,16 @@ const active = ref<SectionId>(props.initialSection ?? 'general')
 const PAGE_SIZES = [50, 100, 200, 500, 1000]
 const LOCALES: Locale[] = ['zh', 'en']
 const aiTab = ref<AiProvider>(settings.aiProvider)
+
+// 嵌入端点是否本地（Ollama 等）→ 免 API Key 提示
+const embedIsLocal = computed(() => isLocalEmbeddingBase(settings.aiEmbeddingBaseUrl))
+/** 一键填好 Ollama 本地嵌入预设（baseUrl + 常用模型，清空 key）。 */
+function useOllamaEmbedding(): void {
+  settings.aiEmbeddingBaseUrl = 'http://localhost:11434'
+  settings.aiEmbeddingApiKey = ''
+  if (!settings.aiEmbeddingModel.trim() || /text-embedding-3/i.test(settings.aiEmbeddingModel))
+    settings.aiEmbeddingModel = 'nomic-embed-text'
+}
 
 // AI Provider 连通测试 (#28). Per-tab,
 // 切换 tab 时清掉旧结果, 避免显示对其他 provider 的过时结论.
@@ -484,20 +494,31 @@ function watermarkPreviewSvg(): string {
 
           <!-- 嵌入端点：向量记忆 + RAG 共用，始终可配（不再藏在向量记忆开关后） -->
           <div class="mem-section">
-            <div class="lbl" style="margin-bottom: 6px">{{ t('settings.mem.cEmbedHead') }}</div>
+            <div class="mem-head">
+              <span class="lbl">{{ t('settings.mem.cEmbedHead') }}</span>
+              <button class="ghost sm" @click="useOllamaEmbedding">
+                {{ t('settings.mem.cUseOllama') }}
+              </button>
+            </div>
             <label class="row">
               <span class="lbl">{{ t('settings.mem.cBaseUrl') }}</span>
               <input v-model="settings.aiEmbeddingBaseUrl" class="grow" type="text" />
             </label>
             <label class="row">
               <span class="lbl">{{ t('settings.mem.cApiKey') }}</span>
-              <input v-model="settings.aiEmbeddingApiKey" class="grow" type="password" :placeholder="t('settings.mem.cApiKeyPh')" />
+              <input
+                v-model="settings.aiEmbeddingApiKey"
+                class="grow"
+                type="password"
+                :placeholder="embedIsLocal ? t('settings.ai.localKeyPh') : t('settings.mem.cApiKeyPh')"
+              />
             </label>
             <label class="row">
               <span class="lbl">{{ t('settings.mem.cModel') }}</span>
               <input v-model="settings.aiEmbeddingModel" class="grow" type="text" />
             </label>
             <p class="note">{{ t('settings.mem.cEmbedShared') }}</p>
+            <p v-if="embedIsLocal" class="note local-hint">{{ t('settings.mem.cOllamaHint') }}</p>
           </div>
 
           <!-- C 档：向量记忆（仅控制记忆行为；嵌入端点见上） -->

@@ -3,7 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { askAiChatStream, canEmbed, extractSql, fmtOracleType } from './ai'
+import {
+  askAiChatStream,
+  canEmbed,
+  extractSql,
+  fmtOracleType,
+  isLocalEmbeddingBase,
+} from './ai'
 import { settings } from './settings'
 
 describe('extractSql', () => {
@@ -28,6 +34,23 @@ describe('canEmbed', () => {
     expect(canEmbed()).toBe(false) // 缺 baseUrl
     settings.aiEmbeddingBaseUrl = 'https://api.openai.com'
     expect(canEmbed()).toBe(true) // key + baseUrl 齐 → 可向量/混合检索
+  })
+  it('allows keyless embeddings against a local (Ollama) endpoint', () => {
+    settings.aiEmbeddingApiKey = ''
+    settings.aiEmbeddingBaseUrl = 'http://localhost:11434'
+    expect(canEmbed()).toBe(true) // 本地端点免 key
+    settings.aiEmbeddingBaseUrl = 'https://api.openai.com'
+    expect(canEmbed()).toBe(false) // 远端无 key → 不可
+  })
+})
+
+describe('isLocalEmbeddingBase', () => {
+  it('matches localhost / 127.0.0.1 / ::1 with optional port', () => {
+    expect(isLocalEmbeddingBase('http://localhost:11434')).toBe(true)
+    expect(isLocalEmbeddingBase('http://127.0.0.1')).toBe(true)
+    expect(isLocalEmbeddingBase('http://[::1]:8080/v1')).toBe(true)
+    expect(isLocalEmbeddingBase('https://api.openai.com')).toBe(false)
+    expect(isLocalEmbeddingBase('http://localhostx.com')).toBe(false)
   })
 })
 
