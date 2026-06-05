@@ -9,7 +9,7 @@ import { type AiMode, askAi, extractSql, fmtOracleType } from '../ai'
 import { useDataClient } from '../data-client'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
-import { settings } from '../settings'
+import { isActiveAiConfigured, settings } from '../settings'
 import Modal from './Modal.vue'
 
 const props = defineProps<{
@@ -125,7 +125,7 @@ function toggleSchema(): void {
 
 async function run(): Promise<void> {
   if (!input.value.trim()) return
-  if (!settings.aiProviders[settings.aiProvider]?.apiKey?.trim()) {
+  if (!isActiveAiConfigured()) {
     error.value = t('ai.noKey')
     return
   }

@@ -28,7 +28,7 @@ import { quoteId } from '../ddl'
 import { toast } from '../dialog'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
-import { settings } from '../settings'
+import { isActiveAiConfigured } from '../settings'
 import Modal from './Modal.vue'
 
 const props = defineProps<{ conn: ConnectionConfig; table: string }>()
@@ -216,7 +216,7 @@ function parseSuggestion(text: string): { col: string; comment: string }[] {
 
 async function askAi(): Promise<void> {
   if (!rows.value.length) return
-  if (!settings.aiProviders[settings.aiProvider]?.apiKey?.trim()) {
+  if (!isActiveAiConfigured()) {
     error.value = 'No API key configured for current AI provider.'
     return
   }
@@ -257,7 +257,7 @@ async function askAi(): Promise<void> {
 /** 为表本身写一句表注释（独立调用一次 AI，prompt 走 askAiChat 直拼，短小不必再加 ai-prompts 函数） */
 async function askForTable(): Promise<void> {
   if (!rows.value.length) return
-  if (!settings.aiProviders[settings.aiProvider]?.apiKey?.trim()) {
+  if (!isActiveAiConfigured()) {
     error.value = 'No API key configured for current AI provider.'
     return
   }

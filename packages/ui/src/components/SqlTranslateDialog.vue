@@ -26,7 +26,7 @@ import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import { monaco } from '../monaco-setup'
-import { settings } from '../settings'
+import { isActiveAiConfigured } from '../settings'
 import Modal from './Modal.vue'
 
 const props = defineProps<{ initialSql?: string }>()
@@ -93,7 +93,7 @@ async function run(): Promise<void> {
     answer.value = `\`\`\`sql\n${sql}\n\`\`\`\n\n### 警告\n- 源方言与目标方言相同，无需翻译\n\n### 建议\n- 直译已足够地道`
     return
   }
-  if (!settings.aiProviders[settings.aiProvider]?.apiKey?.trim()) {
+  if (!isActiveAiConfigured()) {
     error.value = t('ai.noKey')
     return
   }

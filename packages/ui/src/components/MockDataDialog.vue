@@ -29,7 +29,7 @@ import {
   detectSemantic,
   previewSample,
 } from '../mockgen'
-import { settings } from '../settings'
+import { isActiveAiConfigured } from '../settings'
 import { splitStatements } from '../sqlSplit'
 import Modal from './Modal.vue'
 import ThemedSelect from './ThemedSelect.vue'
@@ -191,11 +191,8 @@ function kindOf(colName: string): SemanticKind {
 // ─── AI 推断 ──────────────────────────────────────────────────────
 
 const aiBusy = ref(false)
-/** 检查当前 AI provider 是否配过 key（按钮 disabled 用） */
-const aiConfigured = computed(() => {
-  const cfg = settings.aiProviders[settings.aiProvider]
-  return !!cfg?.apiKey?.trim() && !!cfg?.baseUrl?.trim()
-})
+/** 检查当前 AI provider 是否可用（本地 provider 无需 key；按钮 disabled 用） */
+const aiConfigured = computed(() => isActiveAiConfigured())
 
 /**
  * 让 AI 看一遍所有列，按列名 + SQL 类型推断 SemanticKind。

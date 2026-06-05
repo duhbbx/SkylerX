@@ -4,7 +4,7 @@
  */
 import type { DbDialect } from '@db-tool/shared-types'
 import { locale } from './i18n'
-import { type AiProvider, settings } from './settings'
+import { type AiProvider, isLocalAiProvider, settings } from './settings'
 
 /**
  * Oracle/DM 列类型带上长度/精度渲染：VARCHAR2(50) / NUMBER(10,2)。
@@ -243,12 +243,23 @@ async function throwIfNotOk(res: BridgeResponse & { json(): Promise<unknown> }):
 export async function askAi(o: AskOptions): Promise<string> {
   const provider = settings.aiProvider
   const cfg = settings.aiProviders[provider]
-  if (!cfg?.apiKey?.trim()) throw new Error('NO_API_KEY')
-  const base = (cfg.baseUrl || '').replace(/\/$/, '')
+  const key = resolveKey(provider, cfg?.apiKey)
+  const base = (cfg?.baseUrl || '').replace(/\/$/, '')
   if (!base) throw new Error('NO_BASE_URL')
   const model = cfg.model || 'default'
-  if (provider === 'anthropic') return callAnthropic(o, cfg.apiKey.trim(), base, model)
-  return callOpenAiCompat(o, cfg.apiKey.trim(), base, model)
+  if (provider === 'anthropic') return callAnthropic(o, key, base, model)
+  return callOpenAiCompat(o, key, base, model)
+}
+
+/**
+ * 取请求用的 Bearer/key：本地 provider（Ollama）不强制 API Key，
+ * 留空就用占位串（Ollama 的 OpenAI 兼容端点忽略它）；其余 provider 必须有 key。
+ */
+function resolveKey(provider: AiProvider, apiKey: string | undefined): string {
+  const k = apiKey?.trim() || ''
+  if (k) return k
+  if (isLocalAiProvider(provider)) return 'local'
+  throw new Error('NO_API_KEY')
 }
 
 /** 旧导出名兼容（早期组件 import askClaude）。 */
@@ -292,8 +303,8 @@ function buildSystem(o: ChatOptions): string {
 export async function askAiChat(o: ChatOptions): Promise<string> {
   const provider = settings.aiProvider
   const cfg = settings.aiProviders[provider]
-  if (!cfg?.apiKey?.trim()) throw new Error('NO_API_KEY')
-  const base = (cfg.baseUrl || '').replace(/\/$/, '')
+  const key = resolveKey(provider, cfg?.apiKey)
+  const base = (cfg?.baseUrl || '').replace(/\/$/, '')
   if (!base) throw new Error('NO_BASE_URL')
   const model = cfg.model || 'default'
   const system = buildSystem(o)
@@ -302,7 +313,7 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': cfg.apiKey.trim(),
+        'x-api-key': key,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
@@ -322,7 +333,7 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${cfg.apiKey.trim()}`,
+      authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
       model,
@@ -406,7 +417,8 @@ export async function testAiProvider(
   provider: AiProvider,
   cfg: { apiKey: string; baseUrl: string; model: string },
 ): Promise<AiTestResult> {
-  const key = cfg.apiKey?.trim()
+  // 本地 provider（Ollama）无需 Key，留空用占位串
+  const key = cfg.apiKey?.trim() || (isLocalAiProvider(provider) ? 'local' : '')
   if (!key) return { ok: false, message: 'API Key 为空' }
   const base = (cfg.baseUrl || '').trim().replace(/\/$/, '')
   if (!base) return { ok: false, message: 'Base URL 为空' }

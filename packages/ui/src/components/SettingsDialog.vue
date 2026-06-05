@@ -14,6 +14,7 @@ import {
   AI_PROVIDER_LABEL,
   AI_PROVIDER_ORDER,
   type AiProvider,
+  isLocalAiProvider,
   resetSettings,
   settings,
   zoomIn,
@@ -398,8 +399,14 @@ function watermarkPreviewSvg(): string {
             </div>
             <label class="row">
               <span class="lbl">API Key</span>
-              <input v-model="settings.aiProviders[aiTab].apiKey" type="password" class="grow" :placeholder="t('settings.aiApiKeyPh')" />
+              <input
+                v-model="settings.aiProviders[aiTab].apiKey"
+                type="password"
+                class="grow"
+                :placeholder="isLocalAiProvider(aiTab) ? t('settings.ai.localKeyPh') : t('settings.aiApiKeyPh')"
+              />
             </label>
+            <p v-if="isLocalAiProvider(aiTab)" class="note local-hint">{{ t('settings.ai.ollamaHint') }}</p>
             <label class="row">
               <span class="lbl">{{ t('settings.aiModel') }}</span>
               <input v-model="settings.aiProviders[aiTab].model" type="text" class="grow" />

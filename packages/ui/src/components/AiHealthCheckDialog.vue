@@ -26,7 +26,7 @@ import { toast } from '../dialog'
 import { reportError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
-import { settings } from '../settings'
+import { isActiveAiConfigured } from '../settings'
 import Modal from './Modal.vue'
 
 const props = defineProps<{ conn: ConnectionConfig }>()
@@ -267,7 +267,7 @@ async function run(): Promise<void> {
   error.value = null
   answer.value = ''
   try {
-    if (!settings.aiProviders[settings.aiProvider]?.apiKey?.trim()) {
+    if (!isActiveAiConfigured()) {
       error.value = t('ai.noKey')
       phase.value = 'error'
       return

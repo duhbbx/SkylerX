@@ -14,7 +14,14 @@ import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
 import { monaco } from '../monaco-setup'
-import { AI_PROVIDER_LABEL, AI_PROVIDER_ORDER, type AiProvider, settings } from '../settings'
+import {
+  AI_PROVIDER_LABEL,
+  AI_PROVIDER_ORDER,
+  type AiProvider,
+  isActiveAiConfigured,
+  isLocalAiProvider,
+  settings,
+} from '../settings'
 import { isSystemSchemaName } from './tree-actions'
 
 /**
@@ -37,9 +44,14 @@ const emit = defineEmits<{
   openSettings: []
 }>()
 
-// 仅显示已配置 apiKey 的 provider，避免「切到一个没填 key 的就报 NO_API_KEY」
+// 仅显示已配置的 provider，避免「切到一个没填 key 的就报 NO_API_KEY」。
+// 本地 provider（Ollama）不需要 key，有 baseUrl 即算已配置。
 const configuredProviders = computed<AiProvider[]>(() =>
-  AI_PROVIDER_ORDER.filter((p) => settings.aiProviders[p]?.apiKey?.trim()),
+  AI_PROVIDER_ORDER.filter((p) => {
+    const cfg = settings.aiProviders[p]
+    if (!cfg) return false
+    return isLocalAiProvider(p) ? !!cfg.baseUrl?.trim() : !!cfg.apiKey?.trim()
+  }),
 )
 
 // SQL 代码块按内容哈希缓存高亮后的 HTML，避免每帧重复 colorize
@@ -430,7 +442,7 @@ function toggleSchema(): void {
 async function send(): Promise<void> {
   const text = input.value.trim()
   if (!text || running.value) return
-  if (!settings.aiProviders[settings.aiProvider]?.apiKey?.trim()) {
+  if (!isActiveAiConfigured()) {
     error.value = t('ai.noKey')
     return
   }

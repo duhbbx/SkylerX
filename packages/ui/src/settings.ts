@@ -6,7 +6,25 @@ import { reactive, ref, watch } from 'vue'
 import { DEFAULT_MASK_RULES, type MaskRule } from './masking'
 
 /** AI 后端 provider 标识；anthropic 用 Messages API，其余走 OpenAI 兼容的 chat/completions。 */
-export type AiProvider = 'anthropic' | 'openai' | 'deepseek' | 'codex' | 'grok'
+export type AiProvider = 'anthropic' | 'openai' | 'deepseek' | 'codex' | 'grok' | 'ollama'
+
+/** 本地 provider：不需要 API Key（Ollama 等本机推理服务，Bearer 随便填）。 */
+export const LOCAL_AI_PROVIDERS: ReadonlySet<AiProvider> = new Set<AiProvider>(['ollama'])
+export function isLocalAiProvider(p: AiProvider): boolean {
+  return LOCAL_AI_PROVIDERS.has(p)
+}
+
+/**
+ * 当前激活的 AI provider 是否已配好（足以发请求）。
+ * 普通 provider 需要 apiKey + baseUrl；本地 provider（Ollama）只需 baseUrl。
+ * UI 各处 AI 入口用它统一判断是否可用，避免本地模型被「没填 Key」误拦。
+ */
+export function isActiveAiConfigured(): boolean {
+  const p = settings.aiProvider
+  const cfg = settings.aiProviders[p]
+  if (!cfg?.baseUrl?.trim()) return false
+  return isLocalAiProvider(p) ? true : !!cfg.apiKey?.trim()
+}
 
 export interface AiProviderConfig {
   apiKey: string
@@ -20,9 +38,17 @@ export const AI_PROVIDER_LABEL: Record<AiProvider, string> = {
   deepseek: 'DeepSeek',
   codex: 'Codex (OpenAI 兼容)',
   grok: 'Grok (xAI)',
+  ollama: 'Ollama (本地 / Local)',
 }
 
-export const AI_PROVIDER_ORDER: AiProvider[] = ['anthropic', 'openai', 'deepseek', 'codex', 'grok']
+export const AI_PROVIDER_ORDER: AiProvider[] = [
+  'anthropic',
+  'openai',
+  'deepseek',
+  'codex',
+  'grok',
+  'ollama',
+]
 
 export const AI_PROVIDER_DEFAULTS: Record<AiProvider, AiProviderConfig> = {
   anthropic: { apiKey: '', model: 'claude-sonnet-4-6', baseUrl: 'https://api.anthropic.com' },
@@ -30,6 +56,8 @@ export const AI_PROVIDER_DEFAULTS: Record<AiProvider, AiProviderConfig> = {
   deepseek: { apiKey: '', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com' },
   codex: { apiKey: '', model: 'gpt-4o-mini', baseUrl: 'https://api.openai.com' },
   grok: { apiKey: '', model: 'grok-2-latest', baseUrl: 'https://api.x.ai' },
+  // Ollama：本机运行，OpenAI 兼容端点在 :11434/v1，无需 API Key
+  ollama: { apiKey: '', model: 'llama3.1', baseUrl: 'http://localhost:11434' },
 }
 
 export interface Settings {
@@ -215,9 +243,15 @@ function parseSettings(raw: string | null): Settings | null {
   }
 }
 
-/** 一份 settings 是否包含有意义的 AI 配置(至少一个 provider 有 apiKey)。 */
+/**
+ * 一份 settings 是否包含有意义的 AI 配置：
+ *  - 任一 provider 有 apiKey；或
+ *  - 当前激活的是本地 provider（Ollama，本就不需要 key）且配了 baseUrl。
+ * 用于 load() 在 主/备份 间挑「用户真的配过」的那份。
+ */
 function hasMeaningfulConfig(s: Settings): boolean {
-  return Object.values(s.aiProviders).some((p) => p?.apiKey?.trim())
+  if (Object.values(s.aiProviders).some((p) => p?.apiKey?.trim())) return true
+  return isLocalAiProvider(s.aiProvider) && !!s.aiProviders[s.aiProvider]?.baseUrl?.trim()
 }
 
 function safeGetItem(key: string): string | null {

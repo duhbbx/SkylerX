@@ -233,6 +233,11 @@ const DICT: Record<string, [string, string]> = {
     'You are editing {name} but it is not the active provider.',
   ],
   'settings.ai.setActive': ['设为当前激活', 'Set as active'],
+  'settings.ai.localKeyPh': ['本地模型无需 Key（留空即可）', 'Local model needs no key (leave blank)'],
+  'settings.ai.ollamaHint': [
+    '本地模型：先装好 Ollama 并运行 `ollama serve`，用 `ollama pull <模型名>`（如 llama3.1 / qwen2.5）拉模型，再把上面的「模型」填成该名。默认 Base URL 是 http://localhost:11434，无需 API Key。数据不出本机。',
+    'Local model: install Ollama, run `ollama serve`, pull a model with `ollama pull <name>` (e.g. llama3.1 / qwen2.5), then set "Model" above to that name. Default Base URL is http://localhost:11434, no API key needed. Nothing leaves your machine.',
+  ],
   'settings.watermark.note': [
     '为标记为「生产环境」的连接，在所有查询页平铺斜向水印（仅 UI，不影响 SQL）。',
     'For connections marked as production, tile a diagonal watermark across all query panes (UI-only).',
