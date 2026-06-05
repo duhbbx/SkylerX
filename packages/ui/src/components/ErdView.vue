@@ -6,11 +6,12 @@
 import type { DbDialect } from '@db-tool/shared-types'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useDataClient } from '../data-client'
-import { type TableContext, quoteId } from '../ddl'
+import { type TableContext, familyOf, quoteId } from '../ddl'
 import { alert as appAlert, confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { type ErdData, loadErd } from '../erd'
 import { reportError, reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
+import Modal from './Modal.vue'
 
 const props = defineProps<{ connId: string; dialect: DbDialect; ctx: TableContext }>()
 const client = useDataClient()
@@ -21,6 +22,9 @@ interface EditCol {
   name: string
   type: string
   pk: boolean
+  /** 不可空（生成 NOT NULL）。缺省 = 可空 */
+  notNull?: boolean
+  comment?: string
 }
 interface NewTable {
   id: string
@@ -259,6 +263,72 @@ function addColumn(t: NewTable): void {
 function removeColumn(t: NewTable, i: number): void {
   t.columns.splice(i, 1)
 }
+
+// ── 批量加列弹框：一次输入多行（列名/类型/长度/小数位/可空/主键/注释）──
+interface BatchRow {
+  name: string
+  type: string
+  len: string
+  scale: string
+  notNull: boolean
+  pk: boolean
+  comment: string
+}
+const batchDialog = ref<{ boxId: string; boxName: string; isNew: boolean; rows: BatchRow[] } | null>(
+  null,
+)
+function blankBatchRow(): BatchRow {
+  return { name: '', type: 'varchar', len: '', scale: '', notNull: false, pk: false, comment: '' }
+}
+function openBatchAdd(boxId: string, boxName: string, isNew: boolean): void {
+  batchDialog.value = {
+    boxId,
+    boxName,
+    isNew,
+    rows: [blankBatchRow(), blankBatchRow(), blankBatchRow()],
+  }
+}
+function addBatchRow(): void {
+  batchDialog.value?.rows.push(blankBatchRow())
+}
+function removeBatchRow(i: number): void {
+  batchDialog.value?.rows.splice(i, 1)
+}
+/** 把长度/小数位拼进类型：scale → type(len,scale)；只有 len → type(len)；否则裸 type。 */
+function composeType(r: BatchRow): string {
+  const base = r.type.trim() || 'varchar'
+  const len = r.len.trim()
+  const scale = r.scale.trim()
+  if (len && scale) return `${base}(${len},${scale})`
+  if (len) return `${base}(${len})`
+  return base
+}
+function confirmBatch(): void {
+  const d = batchDialog.value
+  if (!d) return
+  const cols: EditCol[] = d.rows
+    .filter((r) => r.name.trim())
+    .map((r) => ({
+      name: r.name.trim(),
+      type: composeType(r),
+      pk: r.pk,
+      notNull: r.notNull || undefined,
+      comment: r.comment.trim() || undefined,
+    }))
+  if (!cols.length) {
+    batchDialog.value = null
+    return
+  }
+  if (d.isNew) {
+    const t = newTables.value.find((x) => x.id === d.boxId)
+    if (t) t.columns.push(...cols)
+  } else {
+    // 现有表：进 alterAddCols（ALTER TABLE ADD COLUMN）
+    const list = alterAddCols.value[d.boxName] ?? []
+    alterAddCols.value = { ...alterAddCols.value, [d.boxName]: [...list, ...cols] }
+  }
+  batchDialog.value = null
+}
 function removeTable(id: string): void {
   newTables.value = newTables.value.filter((t) => t.id !== id)
   newFks.value = newFks.value.filter((f) => f.fromId !== id && f.toId !== id)
@@ -312,11 +382,27 @@ function buildDdl(onlyNew: boolean): string {
         ...(data.value?.tables ?? []),
         ...newTables.value.map((t) => ({ name: t.name, columns: t.columns })),
       ]
+  const isMysql = familyOf(props.dialect) === 'mysql'
+  const escC = (s: string) => s.replace(/'/g, "''")
+  // 列定义：类型 + NOT NULL + (MySQL 内联 COMMENT)
+  const colDef = (c: EditCol): string => {
+    let s = `  ${q(c.name)} ${c.type}`
+    if (c.notNull) s += ' NOT NULL'
+    if (isMysql && c.comment) s += ` COMMENT '${escC(c.comment)}'`
+    return s
+  }
   for (const t of tables) {
-    const lines = t.columns.map((c) => `  ${q(c.name)} ${c.type}`)
+    const lines = (t.columns as EditCol[]).map(colDef)
     const pks = t.columns.filter((c) => c.pk).map((c) => q(c.name))
     if (pks.length) lines.push(`  PRIMARY KEY (${pks.join(', ')})`)
     parts.push(`CREATE TABLE ${q(t.name)} (\n${lines.join(',\n')}\n);`)
+    // 非 MySQL：列注释用单独的 COMMENT ON COLUMN 语句
+    if (!isMysql) {
+      for (const c of t.columns as EditCol[]) {
+        if (c.comment)
+          parts.push(`COMMENT ON COLUMN ${q(t.name)}.${q(c.name)} IS '${escC(c.comment)}';`)
+      }
+    }
   }
   const fks = onlyNew
     ? newFks.value.map((f) => ({
@@ -347,7 +433,12 @@ function buildDdl(onlyNew: boolean): string {
   // D1:对现有表的 ALTER ADD COLUMN
   for (const [tableName, cols] of Object.entries(alterAddCols.value)) {
     for (const c of cols) {
-      parts.push(`ALTER TABLE ${q(tableName)} ADD COLUMN ${q(c.name)} ${c.type};`)
+      let s = `ALTER TABLE ${q(tableName)} ADD COLUMN ${q(c.name)} ${c.type}`
+      if (c.notNull) s += ' NOT NULL'
+      if (isMysql && c.comment) s += ` COMMENT '${escC(c.comment)}'`
+      parts.push(`${s};`)
+      if (!isMysql && c.comment)
+        parts.push(`COMMENT ON COLUMN ${q(tableName)}.${q(c.name)} IS '${escC(c.comment)}';`)
     }
   }
   return `${parts.join('\n\n')}\n`
@@ -520,13 +611,62 @@ async function applyChanges(): Promise<void> {
             <div v-if="b.editable && editMode" class="add-col" @mousedown.stop @click="addColumn(newTables[newTables.findIndex((t) => t.id === b.id)])">
               {{ t('erd.addCol') }}
             </div>
+            <div v-if="b.editable && editMode" class="add-col batch" @mousedown.stop @click="openBatchAdd(b.id, b.name, true)">
+              {{ t('erd.batchAddCol') }}
+            </div>
             <div v-else-if="!b.editable && editMode" class="add-col" @mousedown.stop @click="addAlterColumn(b.name)">
               + ALTER 加列…
+            </div>
+            <div v-if="!b.editable && editMode" class="add-col batch" @mousedown.stop @click="openBatchAdd(b.id, b.name, false)">
+              {{ t('erd.batchAddCol') }}
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- 批量加列弹框：一次输入多行 -->
+    <Modal
+      v-if="batchDialog"
+      :title="t('erd.batchAddTitle', { table: batchDialog.boxName })"
+      width="wide"
+      @close="batchDialog = null"
+    >
+      <div class="batch-cols">
+        <table class="bc-tbl">
+          <thead>
+            <tr>
+              <th>{{ t('erd.colName') }}</th>
+              <th>{{ t('erd.colType') }}</th>
+              <th>{{ t('erd.colLen') }}</th>
+              <th>{{ t('erd.colScale') }}</th>
+              <th class="ck">{{ t('erd.colNotNull') }}</th>
+              <th class="ck">PK</th>
+              <th>{{ t('erd.colComment') }}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(r, i) in batchDialog.rows" :key="i">
+              <td><input v-model="r.name" class="bc-in" :placeholder="t('erd.colName')" /></td>
+              <td><input v-model="r.type" class="bc-in" placeholder="varchar / int / numeric …" /></td>
+              <td><input v-model="r.len" class="bc-in bc-num" placeholder="255" /></td>
+              <td><input v-model="r.scale" class="bc-in bc-num" placeholder="2" /></td>
+              <td class="ck"><input v-model="r.notNull" type="checkbox" /></td>
+              <td class="ck"><input v-model="r.pk" type="checkbox" /></td>
+              <td><input v-model="r.comment" class="bc-in" /></td>
+              <td><button class="tx" @click="removeBatchRow(i)">×</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="bc-bar">
+          <button class="ghost sm" @click="addBatchRow">＋ {{ t('erd.addRow') }}</button>
+          <span class="sp" />
+          <button class="ghost" @click="batchDialog = null">{{ t('common.cancel') }}</button>
+          <button class="primary" @click="confirmBatch">{{ t('common.confirm') }}</button>
+        </div>
+      </div>
+    </Modal>
   </div>
 </template>
 
@@ -724,5 +864,59 @@ async function applyChanges(): Promise<void> {
 }
 .tx:hover {
   opacity: 1;
+}
+.add-col.batch {
+  color: var(--muted);
+}
+/* 批量加列弹框 */
+.batch-cols {
+  min-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bc-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.bc-tbl th {
+  text-align: left;
+  padding: 4px 6px;
+  color: var(--muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.bc-tbl th.ck,
+.bc-tbl td.ck {
+  text-align: center;
+  width: 44px;
+}
+.bc-tbl td {
+  padding: 3px 6px;
+}
+.bc-in {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+}
+.bc-in.bc-num {
+  width: 72px;
+}
+.bc-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.bc-bar .sp {
+  flex: 1;
 }
 </style>

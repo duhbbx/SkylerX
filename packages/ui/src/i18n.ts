@@ -1556,6 +1556,15 @@ const DICT: Record<string, [string, string]> = {
   'erd.delCol': ['删除列', 'Delete column'],
   'erd.fkDrag': ['拖到目标列建外键', 'Drag to a target column to create a FK'],
   'erd.addCol': ['+ 列', '+ Column'],
+  'erd.batchAddCol': ['批量加列…', 'Add columns…'],
+  'erd.batchAddTitle': ['批量加列 → {table}', 'Add columns → {table}'],
+  'erd.colName': ['列名', 'Name'],
+  'erd.colType': ['类型', 'Type'],
+  'erd.colLen': ['长度/精度', 'Length/Precision'],
+  'erd.colScale': ['小数位', 'Scale'],
+  'erd.colNotNull': ['非空', 'Not null'],
+  'erd.colComment': ['注释', 'Comment'],
+  'erd.addRow': ['加一行', 'Add row'],
 
   // ── 导入 ImportDialog ──
   'import.colN': ['列 {n}', 'Column {n}'],
