@@ -125,6 +125,7 @@ export function setupMenu(mainWindow?: BrowserWindow): void {
       submenu: [
         { label: '服务器活动…', click: send('activity') },
         { label: '服务器监控…', click: send('monitor') },
+        { label: '定时任务…', click: send('jobs') },
         { label: '用户权限…', click: send('privileges') },
         { type: 'separator' },
         { label: '备份 / 还原…', click: send('backup-restore') },

@@ -81,6 +81,7 @@ import SchemaDiffDialog from './components/SchemaDiffDialog.vue'
 import SchemaDriftDialog from './components/SchemaDriftDialog.vue'
 import SchemaSnapshotsDialog from './components/SchemaSnapshotsDialog.vue'
 import SearchValueDialog from './components/SearchValueDialog.vue'
+import ScheduledJobsDialog from './components/ScheduledJobsDialog.vue'
 import ServerActivityDialog from './components/ServerActivityDialog.vue'
 import ServerMonitorDialog from './components/ServerMonitorDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -1907,6 +1908,7 @@ async function editFavTag(f: Favorite): Promise<void> {
 }
 const opLogOpen = ref(false)
 const monitorOpen = ref(false)
+const jobsOpen = ref(false)
 // 服务器活动 / Schema 快照 / 备份还原：对话框自带连接选择，单 bool 开关即可
 const activityOpen = ref(false)
 const snapshotsOpen = ref(false)
@@ -2591,6 +2593,7 @@ const paletteItems = computed<PaletteItem[]>(() => [
   { id: 'act:favorites', label: t('pal.favorites'), group: t('pal.groupActions') },
   { id: 'act:oplog', label: t('pal.oplog'), group: t('pal.groupActions') },
   { id: 'act:monitor', label: t('pal.monitor'), group: t('pal.groupActions') },
+  { id: 'act:jobs', label: t('jobs.title'), group: t('pal.groupActions') },
   // 服务器活动 / schema 快照 / 备份还原：单条入口，对话框内自带连接选择（不再每条连接塞一条）
   { id: 'act:activity', label: t('pal.activity'), group: t('pal.groupActions') },
   { id: 'act:snapshots', label: t('pal.snapshots'), group: t('pal.groupActions') },
@@ -2717,6 +2720,7 @@ async function onPaletteSelect(item: PaletteItem): Promise<void> {
   else if (item.id === 'act:favorites') favoritesOpen.value = true
   else if (item.id === 'act:oplog') opLogOpen.value = true
   else if (item.id === 'act:monitor') monitorOpen.value = true
+  else if (item.id === 'act:jobs') jobsOpen.value = true
   else if (item.id === 'act:activity') activityOpen.value = true
   else if (item.id === 'act:snapshots') snapshotsOpen.value = true
   else if (item.id === 'act:backup') backupOpen.value = true
@@ -2987,6 +2991,7 @@ const PALETTE_KEY_MAP: Record<string, string> = {
   'export-conns': 'act:export-conns',
   // 这一程新增功能的菜单入口(都是全局动作,直接复用 act:)
   monitor: 'act:monitor',
+  jobs: 'act:jobs',
   privileges: 'act:privileges',
   'er-diagram': 'act:er-diagram',
   'mig-assess': 'act:mig-assess',
@@ -3457,6 +3462,9 @@ onMounted(async () => {
 
   <!-- #1 + #8：服务器活动（进程 / 长事务 / 锁等待）；对话框内自带连接选择 -->
   <ServerActivityDialog v-if="activityOpen" @close="activityOpen = false" />
+
+  <!-- DB 侧定时任务 / 调度作业（MySQL EVENT / pg_cron / DBMS_SCHEDULER / SQL Agent） -->
+  <ScheduledJobsDialog v-if="jobsOpen" @close="jobsOpen = false" />
 
   <!-- OceanBase 集群拓扑（信创差异化能力） -->
   <OceanBaseTopologyDialog

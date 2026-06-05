@@ -431,6 +431,13 @@ const DICT: Record<string, [string, string]> = {
   'hist.sortDuration': ['按耗时', 'By duration'],
   'hist.slowOnlyTitle': ['只看超过阈值的慢查询；阈值持久化', 'Only slow queries above threshold'],
   // ── 服务器活动（进程 / 长事务 / 锁等待，#1 + #8）──
+  'jobs.title': ['定时任务', 'Scheduled Jobs'],
+  'jobs.pickConn': ['请先在上方选择一个连接', 'Pick a connection above to begin'],
+  'jobs.none': ['没有定时任务', 'No scheduled jobs'],
+  'jobs.enable': ['启用', 'Enable'],
+  'jobs.disable': ['禁用', 'Disable'],
+  'jobs.drop': ['删除', 'Drop'],
+  'jobs.copyTemplate': ['复制 CREATE 模板', 'Copy CREATE template'],
   'activity.title': ['服务器活动 · {conn}', 'Server Activity · {conn}'],
   'activity.titleBare': ['服务器活动', 'Server Activity'],
   'activity.pickConn': ['请先在上方选择一个连接', 'Pick a connection above to begin'],
