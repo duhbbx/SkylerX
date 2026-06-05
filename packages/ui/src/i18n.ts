@@ -736,6 +736,12 @@ const DICT: Record<string, [string, string]> = {
   'search.emptyValue': ['请输入要搜的值', 'Enter a value to search'],
   'search.pickHit': ['点左侧一条命中看详情', 'Click a hit on the left to see details'],
   'search.contextItem': ['这个值还在哪儿', 'Find this value elsewhere'],
+  'grid.ctxFollowFk': ['跟随外键打开', 'Follow foreign key'],
+  'grid.ctxFilterValue': ['按此值过滤', 'Filter by this value'],
+  'grid.ctxClearColFilter': ['清除此列过滤', 'Clear column filter'],
+  'grid.ctxCopySql': ['复制为 SQL 字面量', 'Copy as SQL literal'],
+  'grid.ctxCopyIn': ['选中行此列 → IN (…)', 'Selected → IN (…) list'],
+  'grid.summarySel': ['统计 {n} 个选中行', 'Aggregating {n} selected rows'],
   // ── A4-A7 视图切换 ──
   'view.btn': ['视图', 'View'],
   'view.pivot': ['透视表', 'Pivot'],

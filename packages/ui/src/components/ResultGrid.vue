@@ -720,15 +720,55 @@ function onCellDblClick(area: 'r' | 'n', index: number, col: string): void {
 }
 
 // A8 反向查找：单元格右键 → 抛上去
-const ctxMenu = ref<{ x: number; y: number; value: unknown } | null>(null)
-function onCellContext(e: MouseEvent, value: unknown): void {
-  ctxMenu.value = { x: e.clientX, y: e.clientY, value }
+const ctxMenu = ref<{ x: number; y: number; value: unknown; col: string } | null>(null)
+function onCellContext(e: MouseEvent, value: unknown, col: string): void {
+  ctxMenu.value = { x: e.clientX, y: e.clientY, value, col }
 }
 function doSearchValue(): void {
   const v = ctxMenu.value?.value
   ctxMenu.value = null
   if (v == null) return
   emit('searchValue', String(v))
+}
+/** 右键「按此值过滤」：复用 valueFilters（前端列多值过滤，allow-set）。只读态生效。 */
+function filterByValue(): void {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (!m) return
+  const key = m.value == null ? '__NULL__' : String(m.value)
+  valueFilters.value = { ...valueFilters.value, [m.col]: new Set([key]) }
+}
+function clearColFilter(): void {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (!m) return
+  const next = { ...valueFilters.value }
+  delete next[m.col]
+  valueFilters.value = next
+}
+/** 复制单元格值为 SQL 字面量。 */
+function copyCellSql(): void {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (m) copyText(sqlLiteral(m.value))
+}
+/** 选中行（无选择则全部可见行）该列的值 → 去重拼成 `(a, b, c)` IN 列表，复制。 */
+function copyColAsIn(): void {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (!m) return
+  const rIdx = [...selected.value].filter((k) => k[0] === 'r').map((k) => Number(k.slice(1)))
+  const src = rIdx.length ? rIdx.map((i) => viewRows.value[i]).filter(Boolean) : viewRows.value
+  const uniq = Array.from(new Set(src.map((r) => sqlLiteral(r[m.col]))))
+  copyText(`(${uniq.join(', ')})`)
+}
+/** 右键跟随外键：用本行该列的值打开被引用表（复用 navigateFk emit）。 */
+function ctxNavigateFk(): void {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (!m) return
+  const fk = fkOf(m.col)
+  if (fk) emit('navigateFk', { refTable: fk.refTable, refColumns: [fk.refColumn], values: [m.value] })
 }
 function openRow(index: number): void {
   viewer.value = { row: index, col: null }
@@ -1156,13 +1196,19 @@ function sqlLiteral(v: unknown): string {
   return `'${s.replace(/'/g, "''")}'`
 }
 
-// 汇总行：数值列给 Σ求和/ø均值，其余给非空计数
+// 汇总行：数值列给 Σ求和/ø均值，其余给非空计数。
+// 有勾选行时只统计选中行（DBeaver Calc 面板式「框选即算」），否则统计全部可见行。
 const fmtNum = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2))
+const summarySrc = computed<Row[]>(() => {
+  const rIdx = [...selected.value].filter((k) => k[0] === 'r').map((k) => Number(k.slice(1)))
+  if (rIdx.length) return rIdx.map((i) => viewRows.value[i]).filter(Boolean)
+  return viewRows.value
+})
 const summaryRow = computed<Record<string, string>>(() => {
   if (!showSummary.value) return {}
   const out: Record<string, string> = {}
   for (const c of visibleColumns.value) {
-    const vals = viewRows.value.map((r) => r[c.name]).filter((v) => v !== null && v !== undefined)
+    const vals = summarySrc.value.map((r) => r[c.name]).filter((v) => v !== null && v !== undefined)
     const nums = vals.map((v) => Number(v)).filter((n) => Number.isFinite(n))
     if (vals.length > 0 && nums.length === vals.length) {
       const sum = nums.reduce((a, b) => a + b, 0)
@@ -1484,7 +1530,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                 ]"
                 :style="isEditing('r', i, c.name) ? undefined : cellStyle(row, c)"
                 @dblclick="onCellDblClick('r', i, c.name)"
-                @contextmenu.prevent="onCellContext($event, row[c.name])"
+                @contextmenu.prevent="onCellContext($event, row[c.name], c.name)"
               >
                 <span v-if="editable && isEditing('r', i, c.name)" class="edit-cell">
                   <input
@@ -1548,7 +1594,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
           </tbody>
           <tfoot v-if="showSummary">
             <tr class="summary">
-              <td class="rownum">Σ</td>
+              <td class="rownum" :title="summarySrc.length === viewRows.length ? '' : t('grid.summarySel', { n: summarySrc.length })">Σ{{ summarySrc.length === viewRows.length ? '' : '*' }}</td>
               <td v-for="c in visibleColumns" :key="c.name">{{ summaryRow[c.name] }}</td>
             </tr>
           </tfoot>
@@ -1697,8 +1743,13 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
       <template v-if="ctxMenu">
         <div class="exp-overlay" @click="ctxMenu = null" @contextmenu.prevent="ctxMenu = null" />
         <div class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @click.stop>
+          <button v-if="fkOf(ctxMenu.col)" @click="ctxNavigateFk">🔗 {{ t('grid.ctxFollowFk') }}</button>
+          <button v-if="!editable" @click="filterByValue">▾ {{ t('grid.ctxFilterValue') }}</button>
+          <button v-if="!editable && valueFilters[ctxMenu.col]" @click="clearColFilter">⌫ {{ t('grid.ctxClearColFilter') }}</button>
           <button @click="doSearchValue">🔍 {{ t('search.contextItem') }}</button>
           <button @click="copyText(String(ctxMenu.value ?? '')); ctxMenu = null">📋 {{ t('common.copy') }}</button>
+          <button @click="copyCellSql">＂ {{ t('grid.ctxCopySql') }}</button>
+          <button @click="copyColAsIn">∈ {{ t('grid.ctxCopyIn') }}</button>
         </div>
       </template>
 
