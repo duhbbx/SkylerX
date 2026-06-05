@@ -742,7 +742,9 @@ export function objectTemplate(dialect: DbDialect, kind: ObjectKind, _ctx: Table
       case 'mysql':
         return `CREATE TRIGGER ${q('trg_name')}\nBEFORE INSERT ON ${q('your_table')}\nFOR EACH ROW\nBEGIN\n  -- new.col := ...;\nEND`
       case 'pg':
-        return `-- PG 触发器需先有触发函数：\nCREATE OR REPLACE FUNCTION ${q('trg_fn')}() RETURNS trigger AS $$\nBEGIN\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER ${q('trg_name')}\nBEFORE INSERT ON ${q('your_table')}\nFOR EACH ROW EXECUTE FUNCTION ${q('trg_fn')}();`
+        // EXECUTE PROCEDURE（而非 PG11+ 的 EXECUTE FUNCTION）：标准 PG 也接受这个老写法，
+        // 而 openGauss/Vastbase 只认 PROCEDURE（FUNCTION 报 syntax error），故用兼容性最好的。
+        return `-- PG 触发器需先有触发函数：\nCREATE OR REPLACE FUNCTION ${q('trg_fn')}() RETURNS trigger AS $$\nBEGIN\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER ${q('trg_name')}\nBEFORE INSERT ON ${q('your_table')}\nFOR EACH ROW EXECUTE PROCEDURE ${q('trg_fn')}();`
       case 'sqlserver':
         return `CREATE TRIGGER ${q('trg_name')} ON ${q('your_table')}\nAFTER INSERT AS\nBEGIN\n  SET NOCOUNT ON;\nEND;`
       case 'oracle':

@@ -1167,7 +1167,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER ${q('new_trigger')}
   BEFORE INSERT ON ${s('target_table')}
-  FOR EACH ROW EXECUTE FUNCTION ${s('new_trigger_fn')}();`
+  FOR EACH ROW EXECUTE PROCEDURE ${s('new_trigger_fn')}();`
       title = t('ws.tabNewTrigger')
     } else if (kind === 'type') {
       sql = `CREATE TYPE ${s('new_type')} AS (
