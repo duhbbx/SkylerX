@@ -107,6 +107,14 @@ const DICT: Record<string, [string, string]> = {
     '开启后导航树展示内置系统 schema（PG 的 pg_catalog、openGauss 的 dbe_perf / cstore 等）与 Oracle 系统用户。默认关闭——这些通常用不上、数量又多，藏起来树更清爽。',
     'When on, the tree shows built-in system schemas (PG pg_catalog, openGauss dbe_perf / cstore …) and Oracle system users. Off (default) hides them for a cleaner tree.',
   ],
+  'settings.autoExpandSingleChild': [
+    '自动展开唯一的库 / Schema',
+    'Auto-expand single DB / Schema',
+  ],
+  'settings.autoExpandSingleChildDesc': [
+    '展开连接或库时，如果下级只有一个库或 Schema，自动继续展开到对象分组层（表 / 视图…），省去逐层点击。默认开。',
+    'When expanding a connection or DB, if there is only one DB or Schema below, keep expanding down to the object groups (Tables / Views …) so you skip the extra clicks. On by default.',
+  ],
   'settings.navSortByUsage': ['按使用频率排序数据库 / Schema', 'Sort DBs / Schemas by usage'],
   'settings.navSortByUsageDesc': [
     '开启后，导航树中的库 / Schema 子节点按你「展开 / 双击 / 选中」累计次数高频在前。关闭则保持驱动返回的字典序。',

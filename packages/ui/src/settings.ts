@@ -146,6 +146,12 @@ export interface Settings {
   showSystemObjects: boolean
 
   /**
+   * 展开连接 / 库时，若下级只有「唯一一个库或 schema」就自动继续展开，
+   * 一路钻到对象分组层（表/视图…），省去逐层单击。默认开。
+   */
+  autoExpandSingleChild: boolean
+
+  /**
    * 用户在 NavTree 里的分组顺序(支持空分组持久化)。
    *  - 用户点"新建分组" → 名字进这里;即使该分组下没有任何连接也会显示。
    *  - 拖动分组改顺序 → 重写整个数组。
@@ -204,6 +210,7 @@ const DEFAULTS: Settings = {
   keyBindings: {},
   navSortByUsage: false,
   showSystemObjects: false,
+  autoExpandSingleChild: true,
   groupOrder: [],
   navWidth: 300,
 }

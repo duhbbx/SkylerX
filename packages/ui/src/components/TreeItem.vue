@@ -130,6 +130,26 @@ async function toggle(): Promise<void> {
     bumpUsage(props.connId, node.path)
   }
   if (node.expanded && node.children === null) await ctrl.loadChildren(node, props.connId)
+  // 自动展开「唯一的库 / schema」链：连接下只有一个库、库下只有一个 schema 时
+  // 一路钻到对象分组层，省得逐层点。可在设置关闭。
+  if (node.expanded && settings.autoExpandSingleChild) await autoExpandSingleChain(node)
+}
+
+async function autoExpandSingleChain(start: TreeNode): Promise<void> {
+  let cur = start
+  // 最多下钻 4 层，防异常结构死循环
+  for (let i = 0; i < 4; i++) {
+    const kids = cur.children
+    if (!kids || kids.length !== 1) return
+    const only = kids[0]
+    // 只对「库 / schema」单链自动展开，不碰对象分组 / 表本身
+    if (only.kind !== MetaNodeKind.Database && only.kind !== MetaNodeKind.Schema) return
+    if (!only.hasChildren) return
+    only.expanded = true
+    bumpUsage(props.connId, only.path)
+    if (only.children === null) await ctrl.loadChildren(only, props.connId)
+    cur = only
+  }
 }
 
 // 单击 (#25 增强):

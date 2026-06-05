@@ -261,6 +261,12 @@ function watermarkPreviewSvg(): string {
             <input v-model="settings.showSystemObjects" type="checkbox" class="chk" />
           </label>
           <p class="hint">{{ t('settings.showSystemObjectsDesc') }}</p>
+          <!-- 唯一库/schema 自动展开（默认开） -->
+          <label class="row">
+            <span class="lbl">{{ t('settings.autoExpandSingleChild') }}</span>
+            <input v-model="settings.autoExpandSingleChild" type="checkbox" class="chk" />
+          </label>
+          <p class="hint">{{ t('settings.autoExpandSingleChildDesc') }}</p>
           <!-- #13 数据脱敏：列名匹配 → 结果集渲染遮罩 -->
           <label class="row">
             <span class="lbl">{{ t('mask.enabled') }}</span>
