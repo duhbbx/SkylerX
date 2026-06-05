@@ -132,6 +132,27 @@ const api = {
       ipcRenderer.invoke('ai:fetch', req),
     /** 终止还在飞的请求；返回 true 表示找到并取消了 */
     cancel: (reqId: string): Promise<boolean> => ipcRenderer.invoke('ai:cancel', reqId),
+    /** 流式：主进程逐块把 raw SSE 文本经 `ai:stream:<reqId>` 推回，onChunk 收；
+     *  invoke 在流结束 / 出错时 resolve。SSE 解析在渲染层做。 */
+    stream: (
+      req: {
+        url: string
+        method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+        headers?: Record<string, string>
+        body?: string
+        timeoutMs?: number
+        reqId: string
+      },
+      onChunk: (payload: { chunk: string }) => void,
+    ): Promise<{ ok: boolean; status: number; error?: string }> => {
+      const channel = `ai:stream:${req.reqId}`
+      const listener = (_e: Electron.IpcRendererEvent, payload: { chunk: string }): void =>
+        onChunk(payload)
+      ipcRenderer.on(channel, listener)
+      return ipcRenderer
+        .invoke('ai:stream', req)
+        .finally(() => ipcRenderer.removeListener(channel, listener))
+    },
   },
   window: {
     /** #15 复制当前 SPA 到新 BrowserWindow，跟主窗口完全独立；

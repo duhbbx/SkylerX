@@ -14,6 +14,7 @@ import { ipcMain } from 'electron'
 
 export const AI_IPC = {
   fetch: 'ai:fetch',
+  stream: 'ai:stream',
 } as const
 
 export interface AiFetchRequest {
@@ -71,6 +72,61 @@ export function registerAiIpc(): void {
         const msg = e instanceof Error ? e.message : String(e)
         console.log(`[ai:fetch] ✗ ${msg} ${Date.now() - started}ms (id=${id})`)
         return { ok: false, status: 0, body: '', error: msg }
+      } finally {
+        clearTimeout(to)
+        inflight.delete(id)
+      }
+    },
+  )
+
+  // 流式：跟 ai:fetch 一样发请求，但把响应体按到达顺序原样（raw SSE 文本）
+  // 通过 webContents.send(`ai:stream:<reqId>`, {chunk}) 推回渲染层；
+  // SSE 帧解析 + provider 差异留在渲染层 ai.ts。invoke 在流结束/出错时 resolve。
+  ipcMain.handle(
+    AI_IPC.stream,
+    async (
+      e,
+      req: AiFetchRequest & { reqId: string },
+    ): Promise<{ ok: boolean; status: number; error?: string }> => {
+      const id = req.reqId
+      const channel = `ai:stream:${id}`
+      const controller = new AbortController()
+      inflight.set(id, controller)
+      // 本地大模型首 token 可能很慢（模型冷加载），给 120s
+      const timeoutMs = req.timeoutMs ?? 120_000
+      const to = setTimeout(() => controller.abort(), timeoutMs)
+      const started = Date.now()
+      console.log(`[ai:stream] → ${req.url} (id=${id}, timeout=${timeoutMs}ms)`)
+      try {
+        const res = await fetch(req.url, {
+          method: req.method ?? 'POST',
+          headers: req.headers,
+          body: req.body,
+          signal: controller.signal,
+        })
+        if (!res.ok || !res.body) {
+          const body = await res.text().catch(() => '')
+          console.log(`[ai:stream] ✗ HTTP ${res.status} (id=${id})`)
+          return { ok: false, status: res.status, error: body.slice(0, 500) || `HTTP ${res.status}` }
+        }
+        const reader = (res.body as ReadableStream<Uint8Array>).getReader()
+        const decoder = new TextDecoder()
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (e.sender.isDestroyed()) {
+            controller.abort()
+            break
+          }
+          const text = decoder.decode(value, { stream: true })
+          if (text) e.sender.send(channel, { chunk: text })
+        }
+        console.log(`[ai:stream] ← done ${Date.now() - started}ms (id=${id})`)
+        return { ok: true, status: res.status }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.log(`[ai:stream] ✗ ${msg} ${Date.now() - started}ms (id=${id})`)
+        return { ok: false, status: 0, error: msg }
       } finally {
         clearTimeout(to)
         inflight.delete(id)

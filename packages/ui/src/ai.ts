@@ -47,6 +47,17 @@ interface AiBridge {
     reqId?: string
   }): Promise<{ ok: boolean; status: number; body: string; error?: string }>
   cancel?(reqId: string): Promise<boolean>
+  stream?(
+    req: {
+      url: string
+      method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+      headers?: Record<string, string>
+      body?: string
+      timeoutMs?: number
+      reqId: string
+    },
+    onChunk: (payload: { chunk: string }) => void,
+  ): Promise<{ ok: boolean; status: number; error?: string }>
 }
 function aiBridge(): AiBridge | null {
   const w = globalThis as { api?: { ai?: AiBridge } }
@@ -115,6 +126,99 @@ async function aiHttp(
     body,
     text: async () => body,
     json: async () => JSON.parse(body),
+  }
+}
+
+/**
+ * 流式请求：逐帧把 SSE 的 `data:` JSON 交给 onData（provider 差异由调用方解析）。
+ * 优先走 IPC bridge.stream（主进程推 raw chunk）；无 bridge 时退到原生 fetch + reader。
+ * 内置一个跨 chunk 的 SSE 帧累积器：按空行(\n\n)切帧，取 data 行，遇 [DONE] 停。
+ */
+async function aiHttpStream(
+  url: string,
+  init: {
+    method: string
+    headers: Record<string, string>
+    body: string
+    signal?: AbortSignal
+    timeoutMs?: number
+  },
+  onData: (json: unknown) => void,
+): Promise<void> {
+  let buf = ''
+  let stopped = false
+  const feed = (text: string): void => {
+    if (stopped) return
+    buf += text
+    let idx: number
+    // SSE 帧之间用空行分隔；兼容 \r\n
+    while ((idx = buf.search(/\r?\n\r?\n/)) >= 0) {
+      const frame = buf.slice(0, idx)
+      buf = buf.slice(idx + (buf[idx] === '\r' ? 4 : 2))
+      for (const rawLine of frame.split(/\r?\n/)) {
+        const m = rawLine.match(/^data:\s?(.*)$/)
+        if (!m) continue
+        const payload = m[1]
+        if (payload === '[DONE]') {
+          stopped = true
+          return
+        }
+        try {
+          onData(JSON.parse(payload))
+        } catch {
+          /* 跳过非 JSON（注释行 / keep-alive） */
+        }
+      }
+    }
+  }
+
+  const bridge = aiBridge()
+  if (bridge?.stream) {
+    const reqId = `s${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const onAbort = (): void => {
+      void bridge.cancel?.(reqId)
+    }
+    if (init.signal) {
+      if (init.signal.aborted) onAbort()
+      else init.signal.addEventListener('abort', onAbort, { once: true })
+    }
+    try {
+      const r = await bridge.stream(
+        {
+          url,
+          method: init.method as 'POST',
+          headers: init.headers,
+          body: init.body,
+          timeoutMs: init.timeoutMs,
+          reqId,
+        },
+        (p) => feed(p.chunk),
+      )
+      if (r.error) {
+        const err = new Error(r.error) as Error & { aiAborted?: boolean }
+        if (/abort/i.test(r.error)) err.aiAborted = true
+        throw err
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    } finally {
+      init.signal?.removeEventListener('abort', onAbort)
+    }
+    return
+  }
+
+  // Web 兜底：原生 fetch 流式读取
+  const res = await fetch(url, init as RequestInit)
+  if (!res.ok || !res.body) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`HTTP ${res.status}${t ? `: ${t.slice(0, 200)}` : ''}`)
+  }
+  const reader = res.body.getReader()
+  const dec = new TextDecoder()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    feed(dec.decode(value, { stream: true }))
+    if (stopped) break
   }
 }
 
@@ -345,6 +449,75 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
   await throwIfNotOk(res)
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
   return (data.choices?.[0]?.message?.content ?? '').trim()
+}
+
+/**
+ * 流式版多轮对话：每来一段增量调用 onToken，返回累计的完整文本。
+ * 失败（含 NO_BASE_URL / abort / HTTP 错）按非流式同样语义抛错，调用方可回退。
+ */
+export async function askAiChatStream(
+  o: ChatOptions,
+  onToken: (delta: string) => void,
+): Promise<string> {
+  const provider = settings.aiProvider
+  const cfg = settings.aiProviders[provider]
+  const key = resolveKey(provider, cfg?.apiKey)
+  const base = (cfg?.baseUrl || '').replace(/\/$/, '')
+  if (!base) throw new Error('NO_BASE_URL')
+  const model = cfg.model || 'default'
+  const system = buildSystem(o)
+  let acc = ''
+  const emit = (d: string): void => {
+    if (d) {
+      acc += d
+      onToken(d)
+    }
+  }
+  if (provider === 'anthropic') {
+    await aiHttpStream(
+      `${base}/v1/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({ model, max_tokens: 2000, system, messages: o.messages, stream: true }),
+        signal: o.signal,
+        timeoutMs: 120_000,
+      },
+      (j) => {
+        // Anthropic SSE：content_block_delta 携带 delta.text
+        const ev = j as { type?: string; delta?: { text?: string } }
+        if (ev.type === 'content_block_delta' && ev.delta?.text) emit(ev.delta.text)
+      },
+    )
+    return acc.trim()
+  }
+  await aiHttpStream(
+    `${base}/v1/chat/completions`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2000,
+        stream: true,
+        messages: [{ role: 'system', content: system }, ...o.messages],
+      }),
+      signal: o.signal,
+      timeoutMs: 120_000,
+    },
+    (j) => {
+      // OpenAI 兼容 SSE：choices[0].delta.content
+      const ev = j as { choices?: { delta?: { content?: string } }[] }
+      const d = ev.choices?.[0]?.delta?.content
+      if (d) emit(d)
+    },
+  )
+  return acc.trim()
 }
 
 /** 把 markdown 形式回复里所有 ```sql code block 抽出来。 */

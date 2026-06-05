@@ -5,7 +5,13 @@
  */
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { type ChatMessage, askAiChat, extractAllSql, fmtOracleType } from '../ai'
+import {
+  type ChatMessage,
+  askAiChat,
+  askAiChatStream,
+  extractAllSql,
+  fmtOracleType,
+} from '../ai'
 import { onChatSqlExecuted } from '../chat-bus'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
@@ -460,23 +466,42 @@ async function send(): Promise<void> {
     elapsed.value = Math.round((Date.now() - startT) / 1000)
   }, 1000)
   controller = new AbortController()
+  // 流式：先放一条空的 assistant 占位，token 到达即往里追加（边生成边显示）。
+  // 发给 API 的对话是 convo（含刚才的 user，不含这条占位）。
+  // slot 取自响应式数组里的那个元素（代理），改它的 content 才会触发重渲染。
+  const convo = messages.value.slice()
+  messages.value.push({ role: 'assistant', content: '' })
+  const slot = messages.value[messages.value.length - 1]
   try {
     // 注入 A/B/C 三档记忆段（A：自定义画像；B：事实清单；C：相关向量记忆 top-K）
     const memorySection = await buildMemorySection(text)
-    const reply = await askAiChat({
-      messages: messages.value,
+    const opts = {
+      messages: convo,
       dialect: connOf(connId.value)?.dialect,
       schema: useSchema.value ? schemaText.value || undefined : undefined,
       memorySection,
       signal: controller.signal,
+    }
+    let reply = await askAiChatStream(opts, (delta) => {
+      slot.content += delta
+      scrollToBottom()
     })
-    messages.value.push({ role: 'assistant', content: reply })
+    // 某些代理忽略 stream:true、直接返回整包 → 流里没拿到 token，退回非流式补一发
+    if (!reply.trim()) {
+      reply = await askAiChat(opts)
+    }
+    slot.content = reply
     saveToStorage()
     scrollToBottom()
     // 后台任务：把这轮对话喂给 B 档（事实抽取）与 C 档（向量记忆），失败静默
     void autoExtractFacts({ user: text, assistant: reply })
     void rememberVector(`Q: ${text}\nA: ${reply}`)
   } catch (e) {
+    // 出错 / 取消：没收到任何 token 就把空占位移除，避免界面留一条空气泡
+    if (!slot.content) {
+      const i = messages.value.indexOf(slot)
+      if (i >= 0) messages.value.splice(i, 1)
+    }
     const err = e as Error & { aiAborted?: boolean }
     // 用户主动取消 vs 网络/超时 abort 分流；主动取消静默退出
     if (err.name === 'AbortError' || (err.aiAborted && controller?.signal.aborted)) return
