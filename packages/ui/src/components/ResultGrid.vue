@@ -1573,21 +1573,22 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                 :class="{ editing: isEditing('n', k, c.name) }"
                 @dblclick="startEdit('n', k, c.name)"
               >
-                <input
-                  v-if="isEditing('n', k, c.name)"
-                  :ref="(el) => mountEditor(el as Element | null)"
-                  v-model="inserts[k][c.name]"
-                  class="cell-editor"
-                  :list="fkOf(c.name) ? fkDatalistId(c.name) : undefined"
-                  @focus="ensureFkOptions(c.name)"
-                  @blur="editing = null"
-                  @keydown.enter.prevent="editing = null"
-                  @keydown.esc.prevent="editing = null"
-                  @click.stop
-                />
-                <datalist v-if="isEditing('n', k, c.name) && fkOf(c.name)" :id="fkDatalistId(c.name)">
-                  <option v-for="v in fkOptionsFor(c.name)" :key="v" :value="v" />
-                </datalist>
+                <template v-if="isEditing('n', k, c.name)">
+                  <input
+                    :ref="(el) => mountEditor(el as Element | null)"
+                    v-model="inserts[k][c.name]"
+                    class="cell-editor"
+                    :list="fkOf(c.name) ? fkDatalistId(c.name) : undefined"
+                    @focus="ensureFkOptions(c.name)"
+                    @blur="editing = null"
+                    @keydown.enter.prevent="editing = null"
+                    @keydown.esc.prevent="editing = null"
+                    @click.stop
+                  />
+                  <datalist v-if="fkOf(c.name)" :id="fkDatalistId(c.name)">
+                    <option v-for="v in fkOptionsFor(c.name)" :key="v" :value="v" />
+                  </datalist>
+                </template>
                 <template v-else>{{ row[c.name] === '' ? '' : fmt(row[c.name], c.name) }}</template>
               </td>
             </tr>
@@ -2218,6 +2219,8 @@ td {
 }
 td.editing {
   padding: 0;
+  /* 编辑态只用极淡的背景提示,不加边框/不改尺寸,避免视觉跳动 */
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 tr.spacer td {
   padding: 0;
@@ -2298,14 +2301,13 @@ td input {
   width: 100%;
   box-sizing: border-box;
   border: none;
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  background: var(--bg);
+  outline: none;
+  background: transparent;
   color: var(--text);
   font: inherit;
   padding: 4px 10px;
 }
-/* ── 原位编辑器:与 cell 等宽等高,无突起 ── */
+/* ── 原位编辑器:与 cell 等宽等高、无边框无突起,只靠淡背景提示编辑态 ── */
 td.editing .cell-editor {
   box-sizing: border-box;
   display: block;
@@ -2314,8 +2316,8 @@ td.editing .cell-editor {
   min-width: 0;
   margin: 0;
   padding: 4px 10px; /* 与非编辑态 td 的 padding 完全一致,文字位置不抖动 */
-  border: 1px solid var(--accent, #5b8def);
-  background: var(--bg, white);
+  border: none;
+  background: transparent;
   color: inherit;
   font: inherit;
   outline: none;
