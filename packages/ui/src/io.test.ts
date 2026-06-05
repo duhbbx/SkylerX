@@ -77,4 +77,16 @@ describe('parseCSV (regression)', () => {
       ['1,5', 'x'],
     ])
   })
+  it('parses TSV when delimiter is tab (clipboard paste from spreadsheets)', () => {
+    expect(parseCSV('a\tb\tc\n1\t2\t3', '\t')).toEqual([
+      ['a', 'b', 'c'],
+      ['1', '2', '3'],
+    ])
+  })
+  it('tab delimiter keeps commas inside fields intact', () => {
+    expect(parseCSV('name\tnote\nfoo\ta, b, c', '\t')).toEqual([
+      ['name', 'note'],
+      ['foo', 'a, b, c'],
+    ])
+  })
 })

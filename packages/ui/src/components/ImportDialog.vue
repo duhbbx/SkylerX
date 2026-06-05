@@ -77,6 +77,39 @@ function autoMap(): void {
   mapping.value = m
 }
 
+/** 从剪贴板导入：电子表格复制出来是 TSV，自动按 \t / , 判分隔符。 */
+async function pasteFromClipboard(): Promise<void> {
+  error.value = null
+  let text = ''
+  try {
+    text = await navigator.clipboard.readText()
+  } catch {
+    error.value = t('import.clipboardFail')
+    return
+  }
+  if (!text.trim()) {
+    error.value = t('import.clipboardEmpty')
+    return
+  }
+  fileName.value = t('import.fromClipboard')
+  const trimmed = text.trimStart()
+  const isJson = trimmed.startsWith('[') || trimmed.startsWith('{')
+  try {
+    if (isJson) {
+      csvRows.value = parseJSON(text)
+      hasHeader.value = true
+    } else {
+      const firstLine = text.split(/\r?\n/, 1)[0] ?? ''
+      csvRows.value = parseCSV(text, firstLine.includes('\t') ? '\t' : ',')
+    }
+  } catch (e) {
+    error.value = t('import.parseFail', { msg: e instanceof Error ? e.message : String(e) })
+    csvRows.value = []
+    return
+  }
+  autoMap()
+}
+
 async function pickFile(): Promise<void> {
   error.value = null
   const f = await client.files.openText([
@@ -228,6 +261,7 @@ async function runImport(): Promise<void> {
         <div class="row">
           <button class="primary" @click="pickFile">{{ t('import.pickFile') }}</button>
           <button @click="xlsxInput?.click()">Excel…</button>
+          <button @click="pasteFromClipboard">{{ t('import.paste') }}</button>
           <input ref="xlsxInput" type="file" accept=".xlsx,.xls" style="display: none" @change="onXlsxPicked" />
           <span v-if="fileName" class="fname">{{ fileName }}</span>
           <label v-if="csvRows.length" class="chk">

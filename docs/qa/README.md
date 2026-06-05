@@ -33,6 +33,7 @@ Hand-runnable test cases for SkylerX. These cover what unit tests can't reach: r
 - [`ai-features.md`](./features/ai-features.md) — chat, error-Ask-AI, toolboxes, multi-provider, settings persistence
 - [`nosql-channels.md`](./features/nosql-channels.md) — MongoDB, Redis, Elasticsearch specifics
 - [`import-export.md`](./features/import-export.md) — CSV / Excel / JSON / SQL / Parquet / Markdown
+- [`type-rendering.md`](./features/type-rendering.md) — cross-dialect value rendering (TINYINT(1)/JSONB/UUID/smallint/custom types), identifier case, IPv6/SSH-password, clipboard import
 - [`multi-window-i18n.md`](./features/multi-window-i18n.md) — multi-window, 7-locale switch, RTL safety
 - [`auto-update.md`](./features/auto-update.md) — check, download, install, GitHub / OSS-CN channel switch
 - [`safety.md`](./features/safety.md) — prod-flag confirm, dangerous-SQL guard, settings encryption, audit log

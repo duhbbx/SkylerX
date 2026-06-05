@@ -138,7 +138,8 @@ export function exportRows(
 // ── 导入 (CSV → INSERT) ──
 
 /** 解析 CSV 文本为二维数组（处理引号转义、CRLF、BOM）。 */
-export function parseCSV(text: string): string[][] {
+/** delim 缺省逗号；剪贴板粘贴电子表格时传 '\t'（TSV）。引号/换行转义规则一致。 */
+export function parseCSV(text: string, delim = ','): string[][] {
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
   const rows: string[][] = []
   let field = ''
@@ -167,7 +168,7 @@ export function parseCSV(text: string): string[][] {
       i++
       continue
     }
-    if (ch === ',') {
+    if (ch === delim) {
       row.push(field)
       field = ''
       i++
