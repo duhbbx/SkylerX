@@ -572,21 +572,31 @@ class PgConnection implements DriverConnection {
   }
 
   async executeBatch(statements: string[], options?: ExecuteOptions): Promise<void> {
-    const client = await this.pool.connect()
+    // 整个方法包一层 unwrapAggregate：pg 在连接失败 / 多错误时抛 AggregateError，
+    // 它带一个 errors 数组，跨 Electron IPC 结构化克隆会失败 → 渲染层只看到
+    // "An object could not be cloned"，把真实报错（重复键 / 类型不符 / 连接拒绝）盖掉。
+    // execute() 早就这么处理了，executeBatch 之前漏了。
     try {
-      if (options?.schema) {
-        await client.query(`SET search_path TO ${pgFamilyHelpers.quoteIdentifier(options.schema)}`)
-      }
-      await client.query('BEGIN')
+      const client = await this.pool.connect()
       try {
-        for (const s of statements) await client.query(s)
-        await client.query('COMMIT')
-      } catch (e) {
-        await client.query('ROLLBACK')
-        throw e
+        if (options?.schema) {
+          await client.query(
+            `SET search_path TO ${pgFamilyHelpers.quoteIdentifier(options.schema)}`,
+          )
+        }
+        await client.query('BEGIN')
+        try {
+          for (const s of statements) await client.query(s)
+          await client.query('COMMIT')
+        } catch (e) {
+          await client.query('ROLLBACK')
+          throw e
+        }
+      } finally {
+        client.release()
       }
-    } finally {
-      client.release()
+    } catch (e) {
+      throw unwrapAggregate(e)
     }
   }
 
@@ -602,7 +612,7 @@ class PgConnection implements DriverConnection {
       await client.query('BEGIN')
     } catch (e) {
       client.release()
-      throw e
+      throw unwrapAggregate(e)
     }
     const sid = `pg-s${++this.sessionSeq}-${Date.now()}`
     this.sessions.set(sid, client)
@@ -619,40 +629,52 @@ class PgConnection implements DriverConnection {
     if (!client) throw new Error('SESSION_NOT_FOUND')
     const start = Date.now()
     const text = applyPaging(sql, options)
-    const res = await client.query({ text, values: params })
-    const executionTimeMs = Date.now() - start
-    const columns: QueryColumn[] = res.fields.map((f) => ({
-      name: f.name,
-      dataType: pgTypeName(f.dataTypeID),
-    }))
-    if (res.fields.length > 0) {
-      const all = res.rows as Array<Record<string, unknown>>
-      const max = options?.maxRows
-      const truncated = typeof max === 'number' && all.length > max
-      const rows = truncated ? all.slice(0, max) : all
-      return { columns, rows, rowCount: rows.length, executionTimeMs, truncated }
-    }
-    return {
-      columns: [],
-      rows: [],
-      rowCount: 0,
-      affectedRows: res.rowCount ?? 0,
-      executionTimeMs,
+    try {
+      const res = await client.query({ text, values: params })
+      const executionTimeMs = Date.now() - start
+      const columns: QueryColumn[] = res.fields.map((f) => ({
+        name: f.name,
+        dataType: pgTypeName(f.dataTypeID),
+      }))
+      if (res.fields.length > 0) {
+        const all = res.rows as Array<Record<string, unknown>>
+        const max = options?.maxRows
+        const truncated = typeof max === 'number' && all.length > max
+        const rows = truncated ? all.slice(0, max) : all
+        return { columns, rows, rowCount: rows.length, executionTimeMs, truncated }
+      }
+      return {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        affectedRows: res.rowCount ?? 0,
+        executionTimeMs,
+      }
+    } catch (e) {
+      throw unwrapAggregate(e) // 防 AggregateError 跨 IPC 克隆失败盖掉真错
     }
   }
 
   async commitSession(sessionId: string): Promise<void> {
     const client = this.sessions.get(sessionId)
     if (!client) throw new Error('SESSION_NOT_FOUND')
-    await client.query('COMMIT')
-    await client.query('BEGIN')
+    try {
+      await client.query('COMMIT')
+      await client.query('BEGIN')
+    } catch (e) {
+      throw unwrapAggregate(e)
+    }
   }
 
   async rollbackSession(sessionId: string): Promise<void> {
     const client = this.sessions.get(sessionId)
     if (!client) throw new Error('SESSION_NOT_FOUND')
-    await client.query('ROLLBACK')
-    await client.query('BEGIN')
+    try {
+      await client.query('ROLLBACK')
+      await client.query('BEGIN')
+    } catch (e) {
+      throw unwrapAggregate(e)
+    }
   }
 
   async endSession(sessionId: string): Promise<void> {
