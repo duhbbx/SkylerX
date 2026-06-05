@@ -528,9 +528,13 @@ interface SavedTab {
 }
 const client = useDataClient()
 let restored = false
+// 多开：额外窗口（主进程用 ?session=extra 标记）开成独立空工作区——
+// 不恢复、也不写主窗口那份共享的标签布局，避免多窗口互相覆盖。
+const isExtraWindow =
+  typeof location !== 'undefined' && new URLSearchParams(location.search).get('session') === 'extra'
 
 function saveLayout(): void {
-  if (!restored) return
+  if (!restored || isExtraWindow) return
   const items: SavedTab[] = tabs.value
     .filter((t) => t.kind === 'query' && t.conn)
     .map((t) => ({ connId: t.conn!.id, pinned: t.pinned }))
@@ -542,6 +546,10 @@ function saveLayout(): void {
 }
 
 async function restoreLayout(): Promise<void> {
+  if (isExtraWindow) {
+    restored = true // 额外窗口：空工作区起步
+    return
+  }
   try {
     const raw = localStorage.getItem(LAYOUT_KEY)
     if (!raw) return

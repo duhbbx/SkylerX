@@ -23,15 +23,18 @@ logCryptoProbe()
 
 const isDev = !app.isPackaged
 
-/** #15 第二窗口：复用同一 renderer URL，开一个全新的 BrowserWindow，跟主窗口完全独立 */
+/** #15 多开窗口：复用同一 renderer，开一个全新的 BrowserWindow，独立工作区。 */
+let extraWindowSeq = 0
 function spawnExtraWindow(): void {
+  const n = ++extraWindowSeq
   const win = new BrowserWindow({
     width: 1100,
     height: 750,
     minWidth: 940,
     minHeight: 600,
     show: false,
-    title: isDev ? '[DEV] SkylerX' : 'SkylerX',
+    // 编号让多开窗口在系统窗口切换器里能区分
+    title: `${isDev ? '[DEV] SkylerX' : 'SkylerX'} · 窗口 ${n + 1}`,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -40,9 +43,10 @@ function spawnExtraWindow(): void {
     },
   })
   win.on('ready-to-show', () => win.show())
+  // 标记成「额外窗口」：渲染层据此开成独立的空工作区，不去抢主窗口持久化的标签布局。
   const rendererUrl = process.env.ELECTRON_RENDERER_URL
-  if (isDev && rendererUrl) void win.loadURL(rendererUrl)
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
+  if (isDev && rendererUrl) void win.loadURL(`${rendererUrl}?session=extra`)
+  else void win.loadFile(join(__dirname, '../renderer/index.html'), { search: 'session=extra' })
 }
 
 function createWindow(): BrowserWindow {
