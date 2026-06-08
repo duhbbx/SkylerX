@@ -93,6 +93,13 @@ const inserts = ref<Row[]>([])
 const editing = ref<{ area: 'r' | 'n'; index: number; col: string } | null>(null)
 const selected = ref<Set<string>>(new Set())
 const lastClick = ref<{ area: 'r' | 'n'; index: number } | null>(null)
+// Excel 式单元格区域选择状态（声明在此以便 resetEdits 能清空；逻辑见下方 onCellMouseDown 等）
+type CellPos = { row: number; col: number }
+const rangeAnchor = ref<CellPos | null>(null)
+const rangeFocus = ref<CellPos | null>(null)
+const rangeDragging = ref(false)
+const rangeMoved = ref(false)
+const fillBox = ref<{ x: number; y: number; value: string } | null>(null)
 
 /**
  * #4 FK 值下拉（dbgate 式）：编辑某列时如果它是 FK，给 input 关联 datalist
@@ -482,6 +489,10 @@ function resetEdits(): void {
   editing.value = null
   selected.value = new Set()
   lastClick.value = null
+  rangeAnchor.value = null
+  rangeFocus.value = null
+  rangeDragging.value = false
+  fillBox.value = null
   sortCol.value = null
   viewer.value = null
   filterText.value = ''
@@ -520,6 +531,11 @@ function isSel(area: 'r' | 'n', index: number): boolean {
   return selected.value.has(area + index)
 }
 function onRowClick(area: 'r' | 'n', index: number, e: MouseEvent): void {
+  // 刚结束一次单元格拖选：吞掉这次 click，别又把整行选上
+  if (suppressRowClick) {
+    suppressRowClick = false
+    return
+  }
   const key = area + index
   if (e.metaKey || e.ctrlKey) {
     const s = new Set(selected.value)
@@ -552,6 +568,147 @@ function deleteSelected(): void {
   }
   for (const k of insIdx.sort((a, b) => b - a)) inserts.value.splice(k, 1)
   selected.value = new Set()
+}
+
+// ── Excel 式单元格区域选择（只读 + 编辑态都可用）──
+// 矩形由锚点 anchor 与焦点 focus 两个坐标决定：row = viewRows 行索引（编辑态 viewRows
+// 即 localRows），col = visibleColumns 下标。鼠标拖动实时更新 focus。
+// 选好后**不弹任何东西**——用户可能只想复制：
+//   · 复制：⌘/Ctrl+C 或右键「复制选区」→ TSV（可直接粘进 Excel）。
+//   · 填充：仅编辑态，右键「填充选区为…」弹输入框，值/NULL/DEFAULT 整片填成相同值；
+//     填充直接写 localRows，复用既有 dirty/commit/buildEditDml（本就支持一行多列 UPDATE）。
+// rangeAnchor / rangeFocus / rangeDragging / rangeMoved / fillBox 声明在上方选择状态区。
+let suppressRowClick = false // 拖选后紧跟的 click 不要再触发行选择
+
+const rangeRect = computed(() => {
+  const a = rangeAnchor.value
+  const f = rangeFocus.value
+  if (!a || !f) return null
+  return {
+    r0: Math.min(a.row, f.row),
+    r1: Math.max(a.row, f.row),
+    c0: Math.min(a.col, f.col),
+    c1: Math.max(a.col, f.col),
+  }
+})
+const rangeCellCount = computed(() => {
+  const r = rangeRect.value
+  return r ? (r.r1 - r.r0 + 1) * (r.c1 - r.c0 + 1) : 0
+})
+// 单格不高亮（避免单击选行时闪一下），只在真正成片时显示选区
+function inRange(rowIndex: number, colIndex: number): boolean {
+  const r = rangeRect.value
+  if (!r || rangeCellCount.value <= 1) return false
+  return rowIndex >= r.r0 && rowIndex <= r.r1 && colIndex >= r.c0 && colIndex <= r.c1
+}
+function clearRange(): void {
+  rangeAnchor.value = null
+  rangeFocus.value = null
+  fillBox.value = null
+}
+function onCellMouseDown(rowIndex: number, colIndex: number, e: MouseEvent): void {
+  if (e.button !== 0) return
+  if (editing.value || deleted.value[rowIndex]) return
+  if (e.shiftKey && rangeAnchor.value) {
+    rangeFocus.value = { row: rowIndex, col: colIndex }
+    rangeMoved.value = true
+  } else {
+    rangeAnchor.value = { row: rowIndex, col: colIndex }
+    rangeFocus.value = { row: rowIndex, col: colIndex }
+    rangeMoved.value = false
+  }
+  rangeDragging.value = true
+  fillBox.value = null
+}
+function onCellMouseEnter(rowIndex: number, colIndex: number): void {
+  if (!rangeDragging.value) return
+  rangeFocus.value = { row: rowIndex, col: colIndex }
+  rangeMoved.value = true
+}
+function onWinMouseUp(): void {
+  if (!rangeDragging.value) return
+  rangeDragging.value = false
+  if (rangeMoved.value && rangeCellCount.value > 1) {
+    // 这次是拖选：保留选区（不弹框，用户可能只想复制）。别让紧跟的 click 冒泡去选行——
+    // 跨行拖选时 mousedown/mouseup 落在不同 tr，click 根本不在 tr 上触发、flag 无人消费，
+    // 故用 setTimeout(0) 兜底自清，避免它残留把「下一次」真实点击吃掉。
+    suppressRowClick = true
+    setTimeout(() => {
+      suppressRowClick = false
+    }, 0)
+    // 让网格获得焦点，⌘/Ctrl+C 才能直接复制（不必再点一下）。
+    gridScrollEl.value?.focus({ preventScroll: true })
+  } else {
+    clearRange() // 只是单击：清掉 1×1 选区，交还给原有行选择 / 双击编辑
+  }
+}
+onMounted(() => window.addEventListener('mouseup', onWinMouseUp))
+onBeforeUnmount(() => window.removeEventListener('mouseup', onWinMouseUp))
+
+/** 单元格值 → 复制用纯文本（null 给空串，对象/JSON 串化），供 TSV 拼接。 */
+function cellToText(v: unknown): string {
+  if (v === null || v === undefined) return ''
+  if (isSqlSentinel(v)) return v.__sql
+  if (isBlob(v)) return `<BLOB ${blobSize(v)} bytes>`
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+/** 复制当前选区为 TSV（行用 \n、列用 \t），可直接粘进 Excel / 表格。复制后保留选区。 */
+function copyRange(): void {
+  const r = rangeRect.value
+  if (!r) return
+  const cols = visibleColumns.value
+  const lines: string[] = []
+  for (let row = r.r0; row <= r.r1; row++) {
+    const src = viewRows.value[row]
+    if (!src) continue
+    const cells: string[] = []
+    for (let ci = r.c0; ci <= r.c1; ci++) {
+      const col = cols[ci]?.name
+      cells.push(col ? cellToText(src[col]) : '')
+    }
+    lines.push(cells.join('\t'))
+  }
+  copyText(lines.join('\n'))
+}
+/** 网格按键：选区激活时 ⌘/Ctrl+C 复制、Esc 清除（grid-scroll 有 tabindex 才收得到）。 */
+function onGridKeydown(e: KeyboardEvent): void {
+  if (rangeCellCount.value <= 1) return
+  if (e.key === 'Escape') {
+    clearRange()
+    return
+  }
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) {
+    e.preventDefault()
+    copyRange()
+  }
+}
+
+/** 把当前选区整片填成同一个值（编辑态）。value 可为字符串 / null / SQL_DEFAULT 哨兵。 */
+function applyFill(value: unknown): void {
+  const r = rangeRect.value
+  if (!r) return
+  const cols = visibleColumns.value
+  for (let row = r.r0; row <= r.r1; row++) {
+    if (deleted.value[row]) continue
+    const lr = localRows.value[row]
+    if (!lr) continue
+    for (let ci = r.c0; ci <= r.c1; ci++) {
+      const col = cols[ci]?.name
+      // DEFAULT 哨兵每格给独立副本，避免共享引用
+      if (col) lr[col] = isSqlSentinel(value) ? { ...(value as object) } : value
+    }
+  }
+  clearRange()
+}
+function confirmFill(): void {
+  if (fillBox.value) applyFill(fillBox.value.value)
+}
+function fillNull(): void {
+  applyFill(null)
+}
+function fillDefault(): void {
+  applyFill({ ...SQL_DEFAULT })
 }
 
 function startEdit(area: 'r' | 'n', index: number, col: string): void {
@@ -719,10 +876,30 @@ function onCellDblClick(area: 'r' | 'n', index: number, col: string): void {
   else viewer.value = { row: index, col }
 }
 
-// A8 反向查找：单元格右键 → 抛上去
-const ctxMenu = ref<{ x: number; y: number; value: unknown; col: string } | null>(null)
-function onCellContext(e: MouseEvent, value: unknown, col: string): void {
-  ctxMenu.value = { x: e.clientX, y: e.clientY, value, col }
+// A8 反向查找：单元格右键 → 抛上去。range=右键点在已选区域内（显示复制/填充选区项）。
+const ctxMenu = ref<{ x: number; y: number; value: unknown; col: string; range: boolean } | null>(
+  null,
+)
+function onCellContext(
+  e: MouseEvent,
+  value: unknown,
+  col: string,
+  rowIndex: number,
+  colIndex: number,
+): void {
+  const onRange = rangeCellCount.value > 1 && inRange(rowIndex, colIndex)
+  ctxMenu.value = { x: e.clientX, y: e.clientY, value, col, range: onRange }
+}
+/** 右键「复制选区」。 */
+function ctxCopyRange(): void {
+  ctxMenu.value = null
+  copyRange()
+}
+/** 右键「填充选区为…」：在右键处弹填充输入框（编辑态）。 */
+function ctxFillRange(): void {
+  const m = ctxMenu.value
+  ctxMenu.value = null
+  if (m) fillBox.value = { x: m.x, y: m.y, value: '' }
 }
 function doSearchValue(): void {
   const v = ctxMenu.value?.value
@@ -1436,8 +1613,8 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
         </div>
       </div>
 
-      <div v-else-if="result.columns.length" ref="gridScrollEl" class="grid-scroll" :class="{ 'freeze-1': freezeFirst }" @scroll="onGridScroll">
-        <table>
+      <div v-else-if="result.columns.length" ref="gridScrollEl" class="grid-scroll" :class="{ 'freeze-1': freezeFirst }" tabindex="0" @scroll="onGridScroll" @keydown="onGridKeydown">
+        <table :class="{ ranging: rangeDragging }">
           <thead>
             <tr>
               <th class="rownum">#</th>
@@ -1518,7 +1695,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
             >
               <td class="rownum" :title="t('grid.viewRowTitle')" @click.stop="openRow(i)">{{ i + 1 }}</td>
               <td
-                v-for="c in visibleColumns"
+                v-for="(c, ci) in visibleColumns"
                 :key="c.name"
                 :class="[
                   `cell-${cellKind(row[c.name])}`,
@@ -1526,17 +1703,21 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                     nullcell: isNull(row[c.name]),
                     modified: isModified(i, c.name),
                     editing: isEditing('r', i, c.name),
+                    range: inRange(i, ci),
                   },
                 ]"
                 :style="isEditing('r', i, c.name) ? undefined : cellStyle(row, c)"
+                @mousedown="onCellMouseDown(i, ci, $event)"
+                @mouseenter="onCellMouseEnter(i, ci)"
                 @dblclick="onCellDblClick('r', i, c.name)"
-                @contextmenu.prevent="onCellContext($event, row[c.name], c.name)"
+                @contextmenu.prevent="onCellContext($event, row[c.name], c.name, i, ci)"
               >
                 <span v-if="editable && isEditing('r', i, c.name)" class="edit-cell">
                   <input
                     :ref="(el) => mountEditor(el as Element | null)"
                     v-model="localRows[i][c.name]"
                     class="cell-editor"
+                    size="1"
                     :list="fkOf(c.name) ? fkDatalistId(c.name) : undefined"
                     @focus="ensureFkOptions(c.name)"
                     @blur="editing = null"
@@ -1578,6 +1759,7 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                     :ref="(el) => mountEditor(el as Element | null)"
                     v-model="inserts[k][c.name]"
                     class="cell-editor"
+                    size="1"
                     :list="fkOf(c.name) ? fkDatalistId(c.name) : undefined"
                     @focus="ensureFkOptions(c.name)"
                     @blur="editing = null"
@@ -1744,6 +1926,8 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
       <template v-if="ctxMenu">
         <div class="exp-overlay" @click="ctxMenu = null" @contextmenu.prevent="ctxMenu = null" />
         <div class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }" @click.stop>
+          <button v-if="ctxMenu.range" @click="ctxCopyRange">📋 {{ t('grid.copyRange', { n: rangeCellCount }) }}</button>
+          <button v-if="ctxMenu.range && editable" @click="ctxFillRange">✎ {{ t('grid.fillRange') }}</button>
           <button v-if="fkOf(ctxMenu.col)" @click="ctxNavigateFk">🔗 {{ t('grid.ctxFollowFk') }}</button>
           <button v-if="!editable" @click="filterByValue">▾ {{ t('grid.ctxFilterValue') }}</button>
           <button v-if="!editable && valueFilters[ctxMenu.col]" @click="clearColFilter">⌫ {{ t('grid.ctxClearColFilter') }}</button>
@@ -1751,6 +1935,28 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
           <button @click="copyText(String(ctxMenu.value ?? '')); ctxMenu = null">📋 {{ t('common.copy') }}</button>
           <button @click="copyCellSql">＂ {{ t('grid.ctxCopySql') }}</button>
           <button @click="copyColAsIn">∈ {{ t('grid.ctxCopyIn') }}</button>
+        </div>
+      </template>
+
+      <!-- Excel 式拖选区域后的批量填充浮层：松手处弹出，输入值/NULL/DEFAULT 整片填充 -->
+      <template v-if="fillBox">
+        <div class="exp-overlay" @click="clearRange" @contextmenu.prevent="clearRange" />
+        <div class="fill-box" :style="{ left: fillBox.x + 'px', top: fillBox.y + 'px' }" @click.stop>
+          <div class="fill-title">{{ t('grid.fillTitle', { n: rangeCellCount }) }}</div>
+          <input
+            :ref="(el) => mountEditor(el as Element | null)"
+            v-model="fillBox.value"
+            class="fill-input"
+            :placeholder="t('grid.fillPlaceholder')"
+            @keydown.enter.prevent="confirmFill"
+            @keydown.esc.prevent="clearRange"
+          />
+          <div class="fill-actions">
+            <button class="primary" @click="confirmFill">{{ t('grid.fillApply') }}</button>
+            <button @click="fillNull">NULL</button>
+            <button @click="fillDefault">DEFAULT</button>
+            <button @click="clearRange">{{ t('common.cancel') }}</button>
+          </div>
         </div>
       </template>
 
@@ -2289,6 +2495,20 @@ tbody tr.selected td {
 tbody tr.selected td.rownum {
   background: rgba(124, 108, 255, 0.3);
 }
+/* Excel 式拖选区域高亮：蓝调，与紫色的「行选中 / 已改」区分开 */
+td.range {
+  background: rgba(56, 132, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(56, 132, 255, 0.45);
+}
+/* 拖选过程中禁止文本选中，避免选到单元格文字 */
+table.ranging {
+  user-select: none;
+}
+/* 网格可聚焦（收 ⌘/Ctrl+C），但不显示焦点框 */
+.grid-scroll:focus,
+.grid-scroll:focus-visible {
+  outline: none;
+}
 tr.deleted td {
   text-decoration: line-through;
   opacity: 0.5;
@@ -2595,6 +2815,59 @@ td.rownum:hover {
   border-radius: 4px;
 }
 .ctx-menu button:hover { background: rgba(124, 108, 255, 0.14); }
+/* ── Excel 式区域填充浮层 ── */
+.fill-box {
+  position: fixed;
+  z-index: 1100;
+  min-width: 220px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  padding: 8px;
+}
+.fill-box .fill-title {
+  font-size: 11px;
+  color: var(--text-dim, #888);
+  margin-bottom: 6px;
+}
+.fill-box .fill-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg, transparent);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+.fill-box .fill-input:focus {
+  border-color: rgba(56, 132, 255, 0.7);
+}
+.fill-box .fill-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.fill-box .fill-actions button {
+  flex: 1;
+  padding: 5px 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+}
+.fill-box .fill-actions button:hover { background: rgba(124, 108, 255, 0.14); }
+.fill-box .fill-actions button.primary {
+  background: rgba(56, 132, 255, 0.85);
+  border-color: rgba(56, 132, 255, 0.85);
+  color: #fff;
+}
+.fill-box .fill-actions button.primary:hover { background: rgba(56, 132, 255, 1); }
 /* ── #5 BLOB 图片预览 + JSON 美化 ── */
 .cell-image-wrap {
   display: flex;

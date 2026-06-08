@@ -964,6 +964,11 @@ const DICT: Record<string, [string, string]> = {
   'grid.apply': ['应用', 'Apply'],
   'grid.setNull': ['设为 NULL', 'Set NULL'],
   'grid.setDefault': ['设为 DEFAULT', 'Set DEFAULT'],
+  'grid.fillTitle': ['填充 {n} 个单元格', 'Fill {n} cells'],
+  'grid.fillPlaceholder': ['输入值，回车填充', 'Value, Enter to fill'],
+  'grid.fillApply': ['填充', 'Fill'],
+  'grid.copyRange': ['复制选区（{n} 格）', 'Copy selection ({n})'],
+  'grid.fillRange': ['填充选区为…', 'Fill selection with…'],
   'grid.fkJump': ['→ {tbl}', '→ {tbl}'],
   'grid.fkJumpTitle': [
     '打开新查询页：{tbl}.{col} = 当前值',
