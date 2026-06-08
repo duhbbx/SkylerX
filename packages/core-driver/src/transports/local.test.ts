@@ -77,3 +77,89 @@ describe('LocalTransport.acquire concurrency', () => {
     expect(state.connectCalls).toBe(2)
   })
 })
+
+// ── 闲置断线自动重连：失败再重连重试一次（仅复用的缓存连接 + 连接级错误）──
+const OK = { columns: [{ name: 'n' }], rows: [{ n: 1 }], rowCount: 1 } as unknown as QueryResult
+
+class FakeConn implements DriverConnection {
+  calls = 0
+  closed = false
+  // errorOn(nth) 返回要抛的错误，null/undefined 表示该次成功
+  constructor(private readonly errorOn: (nth: number) => unknown) {}
+  async execute() {
+    const err = this.errorOn(++this.calls)
+    if (err) throw err
+    return OK
+  }
+  async fetchMetadata() {
+    return []
+  }
+  async ping() {}
+  async close() {
+    this.closed = true
+  }
+}
+
+/** 注册假驱动，按 connect 顺序给每条连接一个失败脚本；built 暴露所有建出来的连接。 */
+function registerFlakyDriver(scripts: Array<(nth: number) => unknown>) {
+  const built: FakeConn[] = []
+  const driver: DatabaseDriver = {
+    dialect: DbDialect.MySQL,
+    sql: {} as DatabaseDriver['sql'],
+    async test() {
+      return { ok: true }
+    },
+    async connect(): Promise<DriverConnection> {
+      const c = new FakeConn(scripts[built.length] ?? (() => null))
+      built.push(c)
+      return c
+    },
+  }
+  registerDriver(driver)
+  return built
+}
+
+const myRef = (id: string): ConnectionRef => ({
+  id,
+  config: { id, name: id, dialect: DbDialect.MySQL } as ConnectionConfig,
+})
+const LOST = Object.assign(new Error('Connection lost: The server closed the connection.'), {
+  code: 'PROTOCOL_CONNECTION_LOST',
+})
+const SYNTAX = new Error('You have an error in your SQL syntax')
+
+describe('LocalTransport 自动重连', () => {
+  it('复用的缓存连接遇连接级错误 → 丢弃旧连接、新连接重试一次并成功', async () => {
+    const built = registerFlakyDriver([(n) => (n === 2 ? LOST : null), () => null])
+    const t = new LocalTransport()
+    await t.execute(myRef('r1'), 'SELECT 1') // 建连 #0
+    const r = await t.execute(myRef('r1'), 'SELECT 1') // 复用 #0 断线 → 重连 #1 成功
+    expect(r).toEqual(OK)
+    expect(built).toHaveLength(2)
+    expect(built[0].closed).toBe(true)
+  })
+
+  it('新建连接首次就断 → 不重试，直接抛错', async () => {
+    const built = registerFlakyDriver([() => LOST])
+    const t = new LocalTransport()
+    await expect(t.execute(myRef('r2'), 'SELECT 1')).rejects.toThrow(/Connection lost/)
+    expect(built).toHaveLength(1)
+  })
+
+  it('复用连接遇普通 SQL 错误 → 不重试', async () => {
+    const built = registerFlakyDriver([(n) => (n === 2 ? SYNTAX : null)])
+    const t = new LocalTransport()
+    await t.execute(myRef('r3'), 'SELECT 1')
+    await expect(t.execute(myRef('r3'), 'bad')).rejects.toThrow(/SQL syntax/)
+    expect(built).toHaveLength(1)
+    expect(built[0].closed).toBe(false)
+  })
+
+  it('重试也失败 → 抛第二次的错误，不无限重试', async () => {
+    const built = registerFlakyDriver([(n) => (n === 2 ? LOST : null), () => LOST])
+    const t = new LocalTransport()
+    await t.execute(myRef('r4'), 'SELECT 1')
+    await expect(t.execute(myRef('r4'), 'SELECT 1')).rejects.toThrow(/Connection lost/)
+    expect(built).toHaveLength(2)
+  })
+})
