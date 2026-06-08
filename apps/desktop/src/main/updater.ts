@@ -233,20 +233,11 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
   })
   ipcMain.handle('updates:downloadAndInstall', async () => {
     if (!app.isPackaged) return { devMode: true }
-    // macOS 自动安装走 Squirrel.Mac,它在 swap-in 前调系统 codesign 强制校验:
-    //   "Code signature at URL ... did not pass validation:
-    //    代码不含资源,但签名指示这些资源必须存在"
-    // 我们 mac.identity=null (ad-hoc 签名),过不了这步.electron-updater 自带的
-    // verifyUpdateCodeSignature 我们 stub 掉只能跳过 updater 自己的校验,跳不过
-    // Squirrel.Mac 内嵌的 OS 校验. 等 Apple Developer ID 真签名到位前,mac 平台
-    // 把"立即下载并安装"降级为"前往下载页",让用户手动下 dmg 装.
-    if (process.platform === 'darwin') {
-      const url = await downloadPageFor(await loadChannel())
-      pushLog(`macOS unsigned build → open download page in browser: ${url}`, 'warn')
-      pushLog('（mac auto-install needs Apple Developer ID signature, WIP）', 'warn')
-      await shell.openExternal(url)
-      return { ok: true, manualDownload: true }
-    }
+    // macOS 自动安装走 Squirrel.Mac,swap-in 前会做系统 codesign 校验:新版签名必须满足
+    // 旧版的 Designated Requirement(同一 Developer ID / Team).正式版已 Developer ID 签名
+    // + 公证(CI secret 齐时用 -c.mac.identity= 覆盖 electron-builder.yml 的 identity:null),
+    // 新旧版同 Team → 校验通过,可正常应用内更新.
+    // 兜底:万一某个构建没签到位 / 校验失败,catch 里降级到下载页,别让用户卡住.
     try {
       if (lastStatus.kind === 'downloaded') {
         // 已下完 → 直接装
@@ -258,21 +249,33 @@ export function setupAutoUpdate(mainWindow: BrowserWindow): void {
       return { ok: true }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
+      if (process.platform === 'darwin') {
+        const url = await downloadPageFor(await loadChannel())
+        pushLog(`macOS 自动更新失败(${msg}); 降级到下载页: ${url}`, 'warn')
+        await shell.openExternal(url)
+        return { ok: true, manualDownload: true }
+      }
       broadcast({ kind: 'error', message: msg })
       return { ok: false, error: msg }
     }
   })
   ipcMain.handle('updates:install', async () => {
     if (!app.isPackaged) return { devMode: true }
-    // 同上: mac 没真签名 → quitAndInstall 失败,改打开下载页.
-    if (process.platform === 'darwin') {
-      const url = await downloadPageFor(await loadChannel())
-      pushLog(`macOS unsigned build → open download page in browser: ${url}`, 'warn')
-      await shell.openExternal(url)
-      return { ok: true, manualDownload: true }
+    // 正式版已 Developer ID 签名 + 公证,quitAndInstall 可正常 swap;失败再降级到下载页.
+    try {
+      autoUpdater.quitAndInstall()
+      return { ok: true }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (process.platform === 'darwin') {
+        const url = await downloadPageFor(await loadChannel())
+        pushLog(`macOS quitAndInstall 失败(${msg}); 降级到下载页: ${url}`, 'warn')
+        await shell.openExternal(url)
+        return { ok: true, manualDownload: true }
+      }
+      broadcast({ kind: 'error', message: msg })
+      return { ok: false, error: msg }
     }
-    autoUpdater.quitAndInstall()
-    return { ok: true }
   })
 
   if (!app.isPackaged) return // 后续 autoUpdater 设置仅在 packaged 模式
