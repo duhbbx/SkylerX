@@ -38,7 +38,14 @@ function encryptPassword(plain?: string): string | null {
 function decryptPassword(stored: string | null): string | undefined {
   if (!stored) return undefined
   if (stored.startsWith('enc:')) {
-    return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'))
+    try {
+      return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'))
+    } catch {
+      // 钥匙串里的 key 失效(换机 / 删登录钥匙串 / app 改名换了钥匙串条目)时解密会抛错。
+      // 吞掉返回 undefined,让表单回填成空密码、用户重输一次,而不是让 getConnection
+      // 整个抛错卡住"编辑连接 / 连接"流程。与 settingsStore.decryptValue 同策略。
+      return undefined
+    }
   }
   if (stored.startsWith('plain:')) {
     return Buffer.from(stored.slice(6), 'base64').toString('utf8')

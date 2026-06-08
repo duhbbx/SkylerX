@@ -16,6 +16,13 @@ import { setupMenu } from './menu.js'
 import { disposeTransport } from './transport.js'
 import { setupAutoUpdate } from './updater.js'
 
+// safeStorage / 系统钥匙串的服务名 = app.getName()。不显式设的话默认取 package.json 的
+// "@db-tool/desktop"(scoped 包名),钥匙串授权弹窗就显示成"@db-tool/desktop 想要访问…",
+// 用户看着像不明软件。这里定名 SkylerX,让弹窗显示 "SkylerX…SkylerX Safe Storage"。
+// 注意:改名会切到新的钥匙串条目,旧版本加密的连接密码 / apiKey 解不出,用户需重输一次
+// (decryptPassword / settingsStore.decryptValue 均已容错,不会崩)。必须在 app ready 前调用。
+app.setName('SkylerX')
+
 // Boot-time crypto runtime check — logs OpenSSL/BoringSSL identity + missing legacy
 // ciphers so future driver crypto bugs (DM / Oracle / etc.) are one log line away
 // from a diagnosis. Cheap (synchronous, ~ms). 详见 crypto-probe.ts 头注释.
