@@ -2986,9 +2986,14 @@ function onKeydown(e: KeyboardEvent): void {
 }
 // Ctrl/⌘ + 滚轮缩放（跟键盘缩放共用 zoomIn/zoomOut）。捕获阶段 + preventDefault
 // 拦掉浏览器自身的页面缩放，保证用我们的 CSS zoom 档位。节流到一次一档避免飞滚。
+// 注：macOS 触控板双指捏合也走这条路径（Chromium 会合成 ctrlKey=true 的 wheel 事件）。
+// settings.wheelZoom 默认关闭：此时仍 preventDefault 拦掉原生缩放，但不应用 CSS zoom，
+// 即滚轮 / 触控板既不会触发浏览器原生缩放、也不会动我们的档位，彻底"锁住"界面缩放。
+// 键盘 ⌘ +/−/0 和设置里的 +/− 按钮另走 onKeydown / 按钮，不受此开关影响，始终可用。
 function onWheelZoom(e: WheelEvent): void {
   if (!(e.ctrlKey || e.metaKey)) return
   e.preventDefault()
+  if (!settings.wheelZoom) return
   if (e.deltaY < 0) zoomIn()
   else if (e.deltaY > 0) zoomOut()
 }

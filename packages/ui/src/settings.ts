@@ -72,6 +72,11 @@ export interface Settings {
   /** 全局界面缩放（CSS zoom，1 = 100%） */
   uiZoom: number
   /**
+   * 是否允许用 Ctrl/⌘ + 滚轮、触控板双指捏合来缩放界面。默认关闭——
+   * 防止误触把界面缩花；键盘 ⌘± / 设置里的 +/− 按钮不受此开关影响，始终可用。
+   */
+  wheelZoom: boolean
+  /**
    * 事务提交模式（全局默认）：
    *  - 'auto'：每条 SQL 立即提交（默认）
    *  - 'manual'：手动「提交/回滚」，QueryPane 走 session
@@ -182,6 +187,7 @@ const DEFAULTS: Settings = {
   keywordCase: 'upper',
   theme: 'system',
   uiZoom: 1,
+  wheelZoom: false,
   commitMode: 'auto',
   aiProvider: 'anthropic',
   aiProviders: defaultProviders(),

@@ -95,6 +95,14 @@ const DICT: Record<string, [string, string]> = {
   'settings.fontSize': ['编辑器字号', 'Editor font size'],
   'settings.zoom': ['界面缩放', 'UI zoom'],
   'settings.zoomReset': ['重置', 'Reset'],
+  'settings.wheelZoom': [
+    '允许滚轮 / 触控板缩放',
+    'Allow wheel / trackpad zoom',
+  ],
+  'settings.wheelZoomDesc': [
+    '开启后可用 Ctrl/⌘ + 滚轮或触控板双指捏合缩放界面。默认关闭，避免误触把界面缩花；键盘 ⌘ +/−/0 和上面的 +/− 按钮始终可用，不受此开关影响。',
+    'When on, you can zoom the UI with Ctrl/⌘ + mouse wheel or a trackpad pinch. Off by default to avoid accidental zooming; keyboard ⌘ +/−/0 and the +/− buttons above always work regardless of this switch.',
+  ],
   'settings.tabSize': ['Tab 宽度', 'Tab size'],
   'settings.wordWrap': ['自动换行', 'Word wrap'],
   'settings.enableCompletion': ['启用补全', 'Enable autocompletion'],
@@ -1222,8 +1230,8 @@ const DICT: Record<string, [string, string]> = {
   // ── 关于 ──
   'about.title': ['关于', 'About'],
   'about.tag': [
-    '现代数据库管理工具 · 桌面端 + Web 端',
-    'Modern database management · Desktop + Web',
+    '现代数据库管理工具',
+    'Modern database management',
   ],
   'about.version': ['版本', 'Version'],
   'about.license': ['许可', 'License'],
