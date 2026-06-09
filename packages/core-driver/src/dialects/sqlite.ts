@@ -14,6 +14,7 @@ import {
   type TestResult,
 } from '@db-tool/shared-types'
 import type { DatabaseDriver, DriverConnection, SqlDialectHelpers } from '../driver.js'
+import { normalizeBigInt } from './base.js'
 
 // SQLite 驱动:`connection.database` 字段视为本地文件路径(空串 / 缺省 → :memory:)。
 // better-sqlite3 同步 API,所有方法包成 Promise 满足 DriverConnection 契约。
@@ -76,17 +77,32 @@ class SqliteConnection implements DriverConnection {
         : sql
     return Promise.resolve().then(() => {
       const stmt = this.db.prepare(finalSql)
+      // BIGINT 精度保护:开 safeIntegers 后 INTEGER 以 BigInt 返回(不丢精度),
+      // 再用 normalizeBigInt 归一(安全范围内仍是 number,超界转字符串)。
+      // 某些语句(如部分 PRAGMA)不支持 safeIntegers,失败则降级为旧行为。
+      try {
+        stmt.safeIntegers(true)
+      } catch {
+        /* ignore — 该语句不支持,按普通整数返回 */
+      }
       const executionTimeMs = () => Date.now() - start
       if (select || stmt.reader) {
-        const all = (params.length ? stmt.all(...params) : stmt.all()) as Array<
+        const raw = (params.length ? stmt.all(...params) : stmt.all()) as Array<
           Record<string, unknown>
         >
+        const all = raw.map((r) => {
+          const o: Record<string, unknown> = {}
+          for (const k of Object.keys(r)) o[k] = normalizeBigInt(r[k])
+          return o
+        })
         let columns: QueryColumn[] = []
         try {
-          columns = (stmt.columns() as Array<{ name: string; type: string | null }>).map((c) => ({
-            name: c.name,
-            dataType: c.type ?? 'unknown',
-          }))
+          columns = (stmt.columns() as Array<{ name: string; type: string | null }>).map((c) => {
+            const col: QueryColumn = { name: c.name, dataType: c.type ?? 'unknown' }
+            // 声明为整数类型的列(INTEGER/INT/BIGINT)标 lossy:超界值已字符串化。
+            if (/int/i.test(c.type ?? '')) col.lossy = 'bigint'
+            return col
+          })
         } catch {
           // 某些语句(如 PRAGMA)columns() 不可用,从首行键推断
           if (all.length) {

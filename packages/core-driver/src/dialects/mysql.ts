@@ -88,11 +88,17 @@ function typeName(code?: number): string {
 
 function mapColumns(fields?: FieldPacket[]): QueryColumn[] {
   if (!fields) return []
-  return fields.map((f) => ({
-    name: f.name,
-    dataType: typeName(f.type),
-    nullable: typeof f.flags === 'number' ? (f.flags & NOT_NULL_FLAG) === 0 : undefined,
-  }))
+  return fields.map((f) => {
+    const col: QueryColumn = {
+      name: f.name,
+      dataType: typeName(f.type),
+      nullable: typeof f.flags === 'number' ? (f.flags & NOT_NULL_FLAG) === 0 : undefined,
+    }
+    // BIGINT(type code 8):超 ±2^53 的值已被 supportBigNumbers 字符串化以保留精度,
+    // 标记 lossy 让表头提示、并按字符串处理(显示/排序)。
+    if (f.type === 8) col.lossy = 'bigint'
+    return col
+  })
 }
 
 function buildConnectionOptions(config: ConnectionConfig): ConnectionOptions {
@@ -113,6 +119,10 @@ function buildConnectionOptions(config: ConnectionConfig): ConnectionOptions {
     ssl,
     // 让 DATE/DATETIME 以字符串返回，避免时区漂移
     dateStrings: true,
+    // BIGINT 精度保护：mysql2 默认把 BIGINT 读成 JS number(53bit),18 位雪花 ID 会被
+    // 截尾(如 …507394 → …507400)。开 supportBigNumbers 后,超出 ±2^53 的整数自动以
+    // 字符串返回(安全范围内仍是 number);BIGINT 列另在 mapColumns 标 lossy='bigint'。
+    supportBigNumbers: true,
     connectTimeout: 10_000,
     // 只透传已剥离应用层元数据（env/readOnly/...）的安全 extra；
     // 否则 mysql2 会对未知配置项报 invalid configuration option，将来还会升级为 throw。

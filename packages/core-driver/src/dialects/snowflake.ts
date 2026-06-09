@@ -14,6 +14,7 @@ import {
   type TestResult,
 } from '@db-tool/shared-types'
 import type { DatabaseDriver, DriverConnection, SqlDialectHelpers } from '../driver.js'
+import { normalizeBigInt } from './base.js'
 
 /**
  * snowflake-sdk 是可选 peerDep，惰性加载：core-driver 加载不依赖它，仅连接时按需 import。
@@ -61,6 +62,9 @@ function buildConnectOptions(config: ConnectionConfig): Record<string, unknown> 
     database: config.database,
     schema: extra.schema,
     role: extra.role,
+    // BIGINT 精度保护:整数列(NUMBER scale=0)以 BigInt 返回,execute 再用 normalizeBigInt
+    // 归一(安全范围内仍是 number,超界转字符串)。否则 18 位整数会被截成 53bit。
+    jsTreatIntegerAsBigInt: true,
   }
   if (usePrivateKey) {
     if (privateKey) opts.privateKey = privateKey
@@ -139,14 +143,26 @@ class SnowflakeConnection implements DriverConnection {
     const executionTimeMs = Date.now() - start
 
     const cols: any[] = typeof stmt?.getColumns === 'function' ? (stmt.getColumns() ?? []) : []
-    const columns: QueryColumn[] = cols.map((c: any) => ({
-      name: typeof c?.getName === 'function' ? String(c.getName()) : String(c?.name ?? ''),
-      dataType:
-        typeof c?.getType === 'function' ? String(c.getType()) : String(c?.type ?? 'unknown'),
-    }))
+    const columns: QueryColumn[] = cols.map((c: any) => {
+      const type =
+        typeof c?.getType === 'function' ? String(c.getType()) : String(c?.type ?? 'unknown')
+      const scale = typeof c?.getScale === 'function' ? Number(c.getScale() ?? 0) : 0
+      const col: QueryColumn = {
+        name: typeof c?.getName === 'function' ? String(c.getName()) : String(c?.name ?? ''),
+        dataType: type,
+      }
+      // 整数列(fixed/number/integer 且 scale<=0)可能超界,已 BigInt→字符串,标 lossy。
+      if (/fixed|number|numeric|integer|bigint/i.test(type) && scale <= 0) col.lossy = 'bigint'
+      return col
+    })
 
     if (columns.length > 0 && !isWriteStmt(sql)) {
-      const all = (rows ?? []) as Array<Record<string, unknown>>
+      const src = (rows ?? []) as Array<Record<string, unknown>>
+      const all = src.map((r) => {
+        const o: Record<string, unknown> = {}
+        for (const k of Object.keys(r)) o[k] = normalizeBigInt(r[k])
+        return o
+      })
       const max = options?.maxRows
       const truncated = typeof max === 'number' && all.length > max
       const out = truncated ? all.slice(0, max) : all

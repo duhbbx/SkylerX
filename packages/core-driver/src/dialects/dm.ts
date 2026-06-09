@@ -14,7 +14,7 @@ import {
   type TestResult,
 } from '@db-tool/shared-types'
 import type { DatabaseDriver, DriverConnection } from '../driver.js'
-import { oracleFamilyHelpers } from './base.js'
+import { numberMetaIsLossy, oracleFamilyHelpers } from './base.js'
 
 /**
  * 达梦 dmdb 是原生模块且由达梦官方分发（公共 registry 无 macOS arm64 预编译）。
@@ -48,6 +48,15 @@ async function loadDmdb(): Promise<any> {
     // 表现就是用户点"编辑视图定义" / "复制 DDL"等读 ALL_VIEWS.TEXT / ALL_SOURCE.TEXT
     // 的操作都报错. 跟 oracle.ts 的设置一致.
     if (dmdb.CLOB != null) dmdb.fetchAsString = [dmdb.CLOB]
+    // BIGINT 精度保护:NUMBER/BIGINT 默认读成 JS number(53bit),大 ID 会被截尾。
+    // 对"整数且可能 >15 位"的列改用字符串 fetch 保精度(mapResult 同步标 lossy)。
+    // fetchTypeHandler 若 dmdb 不支持则为无害的未用属性,值仍按旧行为返回。
+    if (dmdb.STRING != null) {
+      dmdb.fetchTypeHandler = (metaData: any): { type: number } | undefined =>
+        numberMetaIsLossy(metaData?.dbTypeName, metaData?.precision, metaData?.scale)
+          ? { type: dmdb.STRING }
+          : undefined
+    }
     return dmdb
   } catch {
     throw new Error(
@@ -78,10 +87,12 @@ class DmConnection implements DriverConnection {
   private mapResult(res: any, start: number, options?: ExecuteOptions): QueryResult {
     const executionTimeMs = Date.now() - start
     if (res.metaData) {
-      const columns: QueryColumn[] = res.metaData.map((m: any) => ({
-        name: m.name,
-        dataType: m.dbTypeName ?? 'unknown',
-      }))
+      const columns: QueryColumn[] = res.metaData.map((m: any) => {
+        const col: QueryColumn = { name: m.name, dataType: m.dbTypeName ?? 'unknown' }
+        // 与 fetchTypeHandler 同口径:大整数列已字符串化,标 lossy 让表头提示。
+        if (numberMetaIsLossy(m?.dbTypeName, m?.precision, m?.scale)) col.lossy = 'bigint'
+        return col
+      })
       const all = (res.rows ?? []) as Array<Record<string, unknown>>
       const max = options?.maxRows
       const truncated = typeof max === 'number' && all.length > max

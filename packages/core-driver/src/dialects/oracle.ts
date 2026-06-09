@@ -14,7 +14,7 @@ import {
   type TestResult,
 } from '@db-tool/shared-types'
 import type { DatabaseDriver, DriverConnection } from '../driver.js'
-import { oracleFamilyHelpers } from './base.js'
+import { numberMetaIsLossy, oracleFamilyHelpers } from './base.js'
 
 /**
  * oracledb 惰性加载：core-driver 不直接依赖，仅连接时按需 import。
@@ -32,6 +32,15 @@ async function loadOracleDb(): Promise<any> {
     // 设这一行后所有 CLOB 列自动 fetch 为 string,前端逻辑能直接读 row.ddl。
     // (LONG 类型用 all_views.text 也建议,但 LONG 由 outFormat OBJECT 默认走 string)
     oracledb.fetchAsString = [oracledb.CLOB]
+    // BIGINT 精度保护:NUMBER 默认读成 JS number(53bit),18 位 ID 会被截尾。
+    // 对"整数且可能 >15 位"的 NUMBER 列改用字符串 fetch 保精度(mapResult 同步标 lossy)。
+    // fetchTypeHandler 是 oracledb 6 能力;旧版本赋值无害(被忽略)。
+    if (oracledb.STRING != null) {
+      oracledb.fetchTypeHandler = (metaData: any): { type: number } | undefined =>
+        numberMetaIsLossy(metaData?.dbTypeName, metaData?.precision, metaData?.scale)
+          ? { type: oracledb.STRING }
+          : undefined
+    }
     return oracledb
   } catch {
     throw new Error(
@@ -89,10 +98,12 @@ class OracleConnection implements DriverConnection {
   private mapResult(res: any, start: number, options?: ExecuteOptions): QueryResult {
     const executionTimeMs = Date.now() - start
     if (res.metaData) {
-      const columns: QueryColumn[] = res.metaData.map((m: any) => ({
-        name: m.name,
-        dataType: m.dbTypeName ?? 'unknown',
-      }))
+      const columns: QueryColumn[] = res.metaData.map((m: any) => {
+        const col: QueryColumn = { name: m.name, dataType: m.dbTypeName ?? 'unknown' }
+        // 与 fetchTypeHandler 同口径:大整数 NUMBER 列已字符串化,标 lossy 让表头提示。
+        if (numberMetaIsLossy(m?.dbTypeName, m?.precision, m?.scale)) col.lossy = 'bigint'
+        return col
+      })
       const all = (res.rows ?? []) as Array<Record<string, unknown>>
       const max = options?.maxRows
       const truncated = typeof max === 'number' && all.length > max
