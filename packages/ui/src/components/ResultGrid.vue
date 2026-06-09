@@ -554,6 +554,20 @@ function onRowClick(area: 'r' | 'n', index: number, e: MouseEvent): void {
   lastClick.value = { area, index }
 }
 
+// 表头「#」点击:全选 / 取消全选(只针对结果行 'r…',不动插入行 'n…')
+function toggleSelectAll(): void {
+  const total = viewRows.value.length
+  const rSelected = Array.from(selected.value).filter((k) => k[0] === 'r').length
+  const others = Array.from(selected.value).filter((k) => k[0] !== 'r')
+  if (total > 0 && rSelected === total) {
+    selected.value = new Set(others) // 已全选 → 清掉结果行
+  } else {
+    const s = new Set(others)
+    for (let i = 0; i < total; i++) s.add('r' + i)
+    selected.value = s
+  }
+}
+
 function addRow(): void {
   const row: Row = {}
   for (const c of columnNames.value) row[c] = ''
@@ -711,9 +725,21 @@ function fillDefault(): void {
   applyFill({ ...SQL_DEFAULT })
 }
 
+// 进编辑态前钉住列宽:编辑用的 <input size="1"> 在 table-layout:auto 下会把列拉到
+// min-content 宽度,导致双击单元格时整列被压缩。若该列还没有显式宽度,就把当前表头
+// 实测宽度写进 colWidths,配合 <td> 上的 width 绑定,让列宽在编辑前后保持不变。
+function pinColWidth(col: string): void {
+  if (colWidths.value[col]) return
+  const host = gridScrollEl.value
+  if (!host) return
+  const th = host.querySelector(`thead th[data-col="${CSS.escape(col)}"]`) as HTMLElement | null
+  const w = th?.offsetWidth
+  if (w && w > 0) colWidths.value = { ...colWidths.value, [col]: w }
+}
 function startEdit(area: 'r' | 'n', index: number, col: string): void {
   if (!props.editable) return
   if (area === 'r' && deleted.value[index]) return
+  pinColWidth(col)
   editing.value = { area, index, col }
 }
 function isEditing(area: 'r' | 'n', index: number, col: string): boolean {
@@ -1617,10 +1643,11 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
         <table :class="{ ranging: rangeDragging }">
           <thead>
             <tr>
-              <th class="rownum">#</th>
+              <th class="rownum sel" :title="t('grid.selectAllTitle')" @click="toggleSelectAll">#</th>
               <th
                 v-for="c in visibleColumns"
                 :key="c.name"
+                :data-col="c.name"
                 :class="{ sortable: !editable, dragging: dragCol === c.name }"
                 :style="colWidths[c.name] ? { width: `${colWidths[c.name]}px` } : undefined"
                 draggable="true"
@@ -1693,7 +1720,12 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
               :class="{ selected: isSel('r', i), deleted: editable && deleted[i] }"
               @click="onRowClick('r', i, $event)"
             >
-              <td class="rownum" :title="t('grid.viewRowTitle')" @click.stop="openRow(i)">{{ i + 1 }}</td>
+              <td
+                class="rownum sel"
+                :title="t('grid.rownumTitle')"
+                @click.stop="onRowClick('r', i, $event)"
+                @dblclick.stop="openRow(i)"
+              >{{ i + 1 }}</td>
               <td
                 v-for="(c, ci) in visibleColumns"
                 :key="c.name"
@@ -1706,7 +1738,10 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                     range: inRange(i, ci),
                   },
                 ]"
-                :style="isEditing('r', i, c.name) ? undefined : cellStyle(row, c)"
+                :style="[
+                  colWidths[c.name] ? { width: `${colWidths[c.name]}px` } : null,
+                  isEditing('r', i, c.name) ? null : cellStyle(row, c),
+                ]"
                 @mousedown="onCellMouseDown(i, ci, $event)"
                 @mouseenter="onCellMouseEnter(i, ci)"
                 @dblclick="onCellDblClick('r', i, c.name)"
@@ -2449,6 +2484,13 @@ thead th {
   background: var(--panel);
   text-align: right;
   user-select: none;
+}
+/* 行号既是选区把手:单击选行、表头单击全选 */
+.rownum.sel {
+  cursor: pointer;
+}
+.rownum.sel:hover {
+  color: var(--text);
 }
 .nullcell {
   color: var(--muted);

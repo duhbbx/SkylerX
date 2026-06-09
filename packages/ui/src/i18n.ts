@@ -955,6 +955,11 @@ const DICT: Record<string, [string, string]> = {
   'grid.filterPopAdvanced': ['高级 WHERE 条件…', 'Advanced WHERE…'],
   'grid.resizeColTitle': ['拖拽调整列宽', 'Drag to resize column'],
   'grid.viewRowTitle': ['查看整行', 'View full row'],
+  'grid.rownumTitle': [
+    '单击选中整行 · ⌘/Ctrl 加选 · Shift 连选 · 双击查看整行',
+    'Click to select row · ⌘/Ctrl add · Shift range · double-click to view',
+  ],
+  'grid.selectAllTitle': ['选中/取消选中全部行', 'Select / clear all rows'],
   'grid.cellEditorTitle': ['大文本 / JSON 编辑器', 'Large text / JSON editor'],
   'grid.prevPage': ['‹ 上一页', '‹ Prev'],
   'grid.nextPage': ['下一页 ›', 'Next ›'],
