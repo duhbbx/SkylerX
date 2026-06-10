@@ -267,8 +267,14 @@ jobs:
       #   - softprops 先到时 release 还不存在, 会 create with body=空, 等 release-notes
       #     job 后到时 gh release edit --notes-file 补 body. body 字段最终由 release-notes
       #     job 写入, electron-updater 拉这个 body 作为 releaseNotes 显示在 about 弹框.
+      # continue-on-error: 多个 matrix job 并发往同一个 Release attach 时,softprops
+      # 偶发撞 GitHub API(release race / 422)会让本 job 失败。而 OSS 镜像 job needs: build,
+      # 一个 attach 失败就整步 skip → 国内 OSS 停在旧版(用户报"检查不到更新")。
+      # attach 在 upload-artifact 之后,OSS 镜像从 artifact 取产物、不依赖这步成功,
+      # 故这步设为非致命:GH Release 由并发 job + 重试兜底,别再卡住 OSS 同步。
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           files: |
