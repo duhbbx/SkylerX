@@ -46,6 +46,30 @@ describe('drop-object action — Oracle/DM object kinds', () => {
   })
 })
 
+describe('new-query action — 表/视图目录(Group)节点', () => {
+  function group(groupName: string): TreeNode {
+    return { ...node(MetaNodeKind.Group, groupName, ['shop', groupName]), group: groupName }
+  }
+  const hasNewQuery = (n: TreeNode): boolean =>
+    actionsFor(n, DbDialect.MySQL).some((a) => a.id === 'new-query')
+
+  it('出现在「表」目录与「视图」目录节点上', () => {
+    expect(hasNewQuery(group('tables'))).toBe(true)
+    expect(hasNewQuery(group('views'))).toBe(true)
+  })
+
+  it('不出现在其它目录(函数/序列等)节点上', () => {
+    expect(hasNewQuery(group('functions'))).toBe(false)
+    expect(hasNewQuery(group('sequences'))).toBe(false)
+  })
+
+  it('仍出现在连接 / 库 / schema 节点上(回归)', () => {
+    expect(hasNewQuery(node(MetaNodeKind.Connection, 'c', []))).toBe(true)
+    expect(hasNewQuery(node(MetaNodeKind.Database, 'shop', ['shop']))).toBe(true)
+    expect(hasNewQuery(node(MetaNodeKind.Schema, 'public', ['shop', 'public']))).toBe(true)
+  })
+})
+
 describe('isSystemMetaNode / isSystemSchemaName (一键排除系统库/Schema)', () => {
   const m = (kind: string, name: string, system?: boolean) => ({ kind, name, detail: { system } })
 

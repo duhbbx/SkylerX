@@ -227,7 +227,9 @@ export const TREE_ACTIONS: TreeAction[] = [
     id: 'new-query',
     label: 'ctx.new-query',
     section: 'create',
-    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema],
+    // 也挂到「表 / 视图」目录(Group)节点上:在该目录所属库/schema 下直接新建查询。
+    kinds: [MetaNodeKind.Connection, MetaNodeKind.Database, MetaNodeKind.Schema, MetaNodeKind.Group],
+    enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'tables' || n.group === 'views',
     run: ({ node, connId, ctrl }) => ctrl.newQuery(node, connId),
   },
   // 新建数据库 — 连接节点。
