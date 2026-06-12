@@ -16,6 +16,7 @@ import { categorizeConnectionError, extractDbErrorCode } from '../connError'
 import { useDataClient } from '../data-client'
 import { t } from '../i18n'
 import DialectSelect from './DialectSelect.vue'
+import SmartFillDialog from './SmartFillDialog.vue'
 import { dialectOptions } from '../dialects'
 
 const client = useDataClient()
@@ -78,6 +79,7 @@ const readOnly = ref(false) // 只读连接，存于 extra.readOnly
 const testResult = ref<TestResult | null>(null)
 const busy = ref(false)
 const section = ref<'general' | 'ssl' | 'ssh'>('general')
+const showSmartFill = ref(false)
 const groups = ref<string[]>([])
 const showRawError = ref(false) // 错误 banner 中「查看原始错误」折叠
 
@@ -207,6 +209,21 @@ watch(
 
 function onDialectChange(): void {
   form.port = defaultPorts[form.dialect] ?? form.port
+}
+
+/**
+ * AI 智能填充:把解析出的 Partial<ConnectionConfig> 合并进表单。
+ * 顶层字段直接覆盖;ssl/ssh/extra 做浅合并(只补 AI 给到的子键,不清掉用户已填的其它子键),
+ * 这样部分解析不会把已存在的嵌套配置抹掉。合并后归一化,确保 SSL/SSH 子对象齐全可绑定。
+ */
+function onSmartFillApply(partial: Partial<ConnectionConfig>): void {
+  const { ssl, ssh, extra, ...rest } = partial
+  Object.assign(form, rest)
+  if (ssl) form.ssl = { ...(form.ssl ?? { enabled: false }), ...ssl }
+  if (ssh) form.ssh = { ...(form.ssh ?? { enabled: false, host: '', port: 22, user: '' }), ...ssh }
+  if (extra) form.extra = { ...(form.extra ?? {}), ...extra }
+  normalize()
+  showSmartFill.value = false
 }
 
 const isMongo = computed(() => form.dialect === DbDialect.MongoDB)
@@ -423,6 +440,12 @@ async function remove(): Promise<void> {
       </button>
       <button :class="{ active: section === 'ssh' }" @click="section = 'ssh'">
         {{ t('conn.tab.ssh') }}<span v-if="form.ssh?.enabled" class="dot">●</span>
+      </button>
+    </div>
+
+    <div class="smart-fill-row">
+      <button type="button" class="ghost smart-fill-btn" @click="showSmartFill = true">
+        {{ t('conn.smartFill') }}
       </button>
     </div>
 
@@ -649,6 +672,12 @@ async function remove(): Promise<void> {
         </div>
       </template>
     </div>
+
+    <SmartFillDialog
+      v-if="showSmartFill"
+      @apply="onSmartFillApply"
+      @close="showSmartFill = false"
+    />
   </div>
 </template>
 
@@ -669,6 +698,23 @@ async function remove(): Promise<void> {
   gap: 4px;
   margin-bottom: 14px;
   flex: none;
+}
+.smart-fill-row {
+  display: flex;
+  margin-bottom: 12px;
+  flex: none;
+}
+.smart-fill-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--accent, #7c6cff);
+  color: var(--accent, #7c6cff);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.smart-fill-btn:hover {
+  background: rgba(124, 108, 255, 0.1);
 }
 /*
  * 中间表单区：唯一可滚动的区块，宽度由 modal 决定（不出横向滚动条），
