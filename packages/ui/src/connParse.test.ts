@@ -73,6 +73,16 @@ describe('sanitizeParsedConnection', () => {
     expect(out.ssl).toEqual({ enabled: true, ca: '---CA---' })
   })
 
+  it('does not auto-enable ssl when only rejectUnauthorized is given (no cert material)', () => {
+    const out = sanitizeParsedConnection({ ssl: { rejectUnauthorized: false } })
+    expect(out.ssl).toEqual({ rejectUnauthorized: false })
+  })
+
+  it('respects an explicit ssl.enabled=true even without cert material', () => {
+    const out = sanitizeParsedConnection({ ssl: { enabled: true } })
+    expect(out.ssl).toEqual({ enabled: true })
+  })
+
   it('extracts an ssh tunnel and marks it enabled when a host is present', () => {
     const out = sanitizeParsedConnection({ ssh: { host: 'jump.example.com', port: '22', user: 'ec2' } })
     expect(out.ssh).toEqual({ enabled: true, host: 'jump.example.com', port: 22, user: 'ec2' })

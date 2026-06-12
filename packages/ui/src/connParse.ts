@@ -58,12 +58,18 @@ function sanitizeSsl(v: unknown): ConnectionConfig['ssl'] | undefined {
   const o = v as Record<string, unknown>
   const out: Record<string, unknown> = {}
   if (typeof o.rejectUnauthorized === 'boolean') out.rejectUnauthorized = o.rejectUnauthorized
+  let hasCert = false
   for (const k of ['ca', 'cert', 'key']) {
     const s = str(o[k])
-    if (s) out[k] = s
+    if (s) {
+      out[k] = s
+      hasCert = true
+    }
   }
+  // enabled 显式给就用;否则只在带了实际证书材料时才自动开启——
+  // 不能因为只出现一个 rejectUnauthorized 就悄悄把 SSL 打开(会误翻用户的安全开关)。
   if (typeof o.enabled === 'boolean') out.enabled = o.enabled
-  else if (Object.keys(out).length) out.enabled = true
+  else if (hasCert) out.enabled = true
   return Object.keys(out).length ? (out as unknown as ConnectionConfig['ssl']) : undefined
 }
 
