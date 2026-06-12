@@ -1063,6 +1063,27 @@ const DICT: Record<string, [string, string]> = {
   'conn.save': ['保存', 'Save'],
   'conn.create': ['创建', 'Create'],
   'conn.test': ['测试连接', 'Test connection'],
+  'conn.smartFill': ['✨ AI 填充', '✨ AI fill'],
+  'conn.smartFill.title': ['AI 智能填充连接', 'AI smart-fill connection'],
+  'conn.smartFill.desc': [
+    '粘贴任意包含连接信息的文本(JDBC URL、命令行、环境变量、URI 或描述),AI 会解析并填入表单。',
+    'Paste any text with connection info (JDBC URL, CLI command, env vars, URI, or prose). AI will parse it and fill the form.',
+  ],
+  'conn.smartFill.ph': [
+    '例如:jdbc:postgresql://user:pass@db.example.com:5432/app',
+    'e.g. jdbc:postgresql://user:pass@db.example.com:5432/app',
+  ],
+  'conn.smartFill.parse': ['解析并填充', 'Parse & fill'],
+  'conn.smartFill.parsing': ['解析中…', 'Parsing…'],
+  'conn.smartFill.empty': ['请先粘贴一段连接信息文本', 'Paste some connection text first'],
+  'conn.smartFill.failed': [
+    '无法从这段文本解析出连接信息,请检查内容或换一段。',
+    "Couldn't parse connection info from this text — check it or try another.",
+  ],
+  'conn.smartFill.notConfigured': [
+    '尚未配置 AI,请先到「设置 → AI」填入 API Key。',
+    'AI is not configured. Set an API key in Settings → AI first.',
+  ],
   'conn.ok': ['✓ 连接成功', '✓ Connected'],
   'conn.removeConfirm': ['确定删除该连接？', 'Delete this connection?'],
 
