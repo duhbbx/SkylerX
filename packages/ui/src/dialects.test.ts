@@ -7,7 +7,7 @@ import { DIALECT_IDS, dialectOptions } from './dialects'
 
 describe('dialects', () => {
   it('exposes a non-empty option list with value + label', () => {
-    expect(dialectOptions.length).toBeGreaterThan(20)
+    expect(dialectOptions.length).toBeGreaterThanOrEqual(39)
     for (const o of dialectOptions) {
       expect(typeof o.value).toBe('string')
       expect(o.value.length).toBeGreaterThan(0)

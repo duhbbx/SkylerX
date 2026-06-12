@@ -28,7 +28,6 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ saved: [ConnectionConfig]; deleted: [string]; cancel: [] }>()
 
-
 const defaultPorts: Record<string, number> = {
   [DbDialect.MySQL]: 3306,
   [DbDialect.MariaDB]: 3306,
