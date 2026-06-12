@@ -2,9 +2,11 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import type { DbDialect } from '@db-tool/shared-types'
+import type { ConnectionConfig, DbDialect } from '@db-tool/shared-types'
 import { locale } from './i18n'
 import { type AiProvider, isLocalAiProvider, settings } from './settings'
+import { extractJson, sanitizeParsedConnection } from './connParse'
+import { dialectOptions } from './dialects'
 
 /**
  * Oracle/DM 列类型带上长度/精度渲染：VARCHAR2(50) / NUMBER(10,2)。
@@ -581,6 +583,88 @@ export function canEmbed(): boolean {
   const base = settings.aiEmbeddingBaseUrl.trim()
   if (!base) return false
   return !!settings.aiEmbeddingApiKey.trim() || isLocalEmbeddingBase(base)
+}
+
+// ── Connection text → structured fields (AI smart-fill) ──────────────
+// ConnectionForm 的「✨ AI 填充」: 把用户粘贴的任意文本(JDBC URL / CLI / env / 散文)
+// 交给模型抽成 JSON,再经 connParse 规整成 Partial<ConnectionConfig> 回填表单。
+
+function connParseSystem(): string {
+  const ids = dialectOptions.map((o) => o.value).join(', ')
+  return [
+    'You extract database connection parameters from arbitrary text: JDBC URLs, CLI commands (psql/mysql/mongosh), env var blocks, URIs, or prose.',
+    'Return ONLY a single JSON object. No markdown, no code fence, no commentary.',
+    'Shape (omit any field you cannot determine — never invent values):',
+    '{ "dialect": <id>, "name": string, "host": string, "port": number, "user": string, "password": string, "database": string, "group": string,',
+    '  "ssl": { "enabled": boolean, "rejectUnauthorized": boolean, "ca": string, "cert": string, "key": string },',
+    '  "ssh": { "enabled": boolean, "host": string, "port": number, "user": string, "password": string, "privateKey": string, "passphrase": string },',
+    '  "extra": { ...dialect-specific keys... } }',
+    `Valid dialect ids (use exactly one of these for "dialect"): ${ids}.`,
+    'Put dialect-specific values in "extra": MongoDB full connection string → extra.uri; ClickHouse full URL → extra.url; Snowflake → extra.account / extra.warehouse / extra.role / extra.schema / extra.authenticator.',
+    'Infer dialect from scheme/port/keywords (e.g. jdbc:postgresql → postgresql, port 3306 → mysql). If genuinely ambiguous, omit "dialect".',
+  ].join('\n')
+}
+
+/**
+ * 解析一段连接信息文本 → 结构化字段(供表单回填)。
+ * 复用当前 provider 的分发逻辑(同 askAi);成功返回经校验的 Partial<ConnectionConfig>。
+ * 文本无法解析成 JSON 时由 extractJson 抛错,上层提示用户。
+ */
+export async function parseConnectionText(
+  text: string,
+  signal?: AbortSignal,
+): Promise<Partial<ConnectionConfig>> {
+  const provider = settings.aiProvider
+  const cfg = settings.aiProviders[provider]
+  const key = resolveKey(provider, cfg?.apiKey)
+  const base = (cfg?.baseUrl || '').replace(/\/$/, '')
+  if (!base) throw new Error('NO_BASE_URL')
+  const model = cfg.model || 'default'
+  const system = connParseSystem()
+  let rawText: string
+  if (provider === 'anthropic') {
+    const res = await aiHttp(`${base}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1200,
+        system,
+        messages: [{ role: 'user', content: text }],
+      }),
+      signal,
+    })
+    await throwIfNotOk(res)
+    const data = (await res.json()) as { content?: { type: string; text?: string }[] }
+    rawText = (data.content ?? [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text ?? '')
+      .join('')
+      .trim()
+  } else {
+    const res = await aiHttp(`${base}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1200,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: text },
+        ],
+      }),
+      signal,
+    })
+    await throwIfNotOk(res)
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+    rawText = (data.choices?.[0]?.message?.content ?? '').trim()
+  }
+  return sanitizeParsedConnection(extractJson(rawText))
 }
 
 // ── Connectivity test (#28) ──────────────────────────────────────────
