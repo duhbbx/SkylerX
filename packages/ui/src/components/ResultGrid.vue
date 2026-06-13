@@ -554,6 +554,33 @@ function onRowClick(area: 'r' | 'n', index: number, e: MouseEvent): void {
   lastClick.value = { area, index }
 }
 
+// 行号列拖选:在序号格按下并向上/下拖动,连续多选行。
+// mousedown 记锚点 → mouseenter 实时把「锚点→当前」整段区间选上 → mouseup(onWinMouseUp)收尾。
+// 纯单击(没移动)不改选区,交还给 onRowClick(保留单选 / ⌘Ctrl 切换 / Shift 区间)。
+let rowDragging = false
+let rowDragArea: 'r' | 'n' = 'r'
+let rowDragAnchor = 0
+let rowDragMoved = false
+function onRowNumMouseDown(area: 'r' | 'n', index: number, e: MouseEvent): void {
+  if (e.button !== 0) return
+  // 带修饰键的点击交给 onRowClick(⌘/Ctrl 切换、Shift 区间),不进入拖选
+  if (e.shiftKey || e.metaKey || e.ctrlKey) return
+  rowDragging = true
+  rowDragArea = area
+  rowDragAnchor = index
+  rowDragMoved = false
+}
+function onRowNumMouseEnter(area: 'r' | 'n', index: number): void {
+  if (!rowDragging || area !== rowDragArea) return
+  rowDragMoved = true
+  const lo = Math.min(rowDragAnchor, index)
+  const hi = Math.max(rowDragAnchor, index)
+  const s = new Set<string>()
+  for (let i = lo; i <= hi; i++) s.add(area + i)
+  selected.value = s
+  lastClick.value = { area, index }
+}
+
 // 表头「#」点击:全选 / 取消全选(只针对结果行 'r…',不动插入行 'n…')
 function toggleSelectAll(): void {
   const total = viewRows.value.length
@@ -640,6 +667,17 @@ function onCellMouseEnter(rowIndex: number, colIndex: number): void {
   rangeMoved.value = true
 }
 function onWinMouseUp(): void {
+  // 行号拖选收尾(先于单元格选区判断:行拖选时 rangeDragging 为 false)。
+  if (rowDragging) {
+    rowDragging = false
+    if (rowDragMoved) {
+      // 拖选已把多行选好,吞掉紧跟的 click,别塌回单选。
+      suppressRowClick = true
+      setTimeout(() => {
+        suppressRowClick = false
+      }, 0)
+    }
+  }
   if (!rangeDragging.value) return
   rangeDragging.value = false
   if (rangeMoved.value && rangeCellCount.value > 1) {
@@ -1723,6 +1761,8 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
               <td
                 class="rownum sel"
                 :title="t('grid.rownumTitle')"
+                @mousedown="onRowNumMouseDown('r', i, $event)"
+                @mouseenter="onRowNumMouseEnter('r', i)"
                 @click.stop="onRowClick('r', i, $event)"
                 @dblclick.stop="openRow(i)"
               >{{ i + 1 }}</td>
@@ -2534,8 +2574,13 @@ td.cell-blob {
 tbody tr.selected td {
   background: rgba(124, 108, 255, 0.22);
 }
-tbody tr.selected td.rownum {
-  background: rgba(124, 108, 255, 0.3);
+/* 选中行的序号格用实色强调(不透明,冻结/sticky 时也不透底),与未选中的 var(--panel) 明显区分。
+   第二个选择器压过 .rownum.sel:hover(3 class),让选中态 hover 时仍保持白字。 */
+tbody tr.selected td.rownum,
+tbody tr.selected td.rownum.sel:hover {
+  background: var(--accent, #7c6cff);
+  color: #fff;
+  font-weight: 600;
 }
 /* Excel 式拖选区域高亮：蓝调，与紫色的「行选中 / 已改」区分开 */
 td.range {
