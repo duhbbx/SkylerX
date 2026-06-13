@@ -73,8 +73,13 @@ jobs:
 
           # ── Windows：x64 native；arm64 在 x64 runner 上交叉打包 ──
           # GH-hosted 暂无 Windows ARM runner，arm64 native modules 走 prebuild。
-          - { name: win-x64,    os: windows-latest,   eb_args: '--win --x64',    npm_arch: x64    }
-          - { name: win-arm64,  os: windows-latest,   eb_args: '--win --arm64',  npm_arch: arm64  }
+          # 钉 windows-2022(VS 2022)：windows-latest 已滚到 windows-2025-vs2026,
+          # electron-builder 自带的 node-gyp 认不出 Visual Studio 2026 →
+          # "Could not find any Visual Studio installation" → 原生模块(better-sqlite3/
+          # bufferutil…)全部重建失败 → win job 挂 → OSS 镜像(needs: build)被 skip,
+          # 国内更新 feed 卡在旧版。VS 2022 是 node-gyp 能识别的已知良好环境。
+          - { name: win-x64,    os: windows-2022,     eb_args: '--win --x64',    npm_arch: x64    }
+          - { name: win-arm64,  os: windows-2022,     eb_args: '--win --arm64',  npm_arch: arm64  }
 
           # ── Linux x64：拆成两个并行 job 提速 ──
           #   linux-x64-image: AppImage + tar.gz, 不走 fpm, ~3 min
