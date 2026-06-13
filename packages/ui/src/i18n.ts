@@ -1063,6 +1063,10 @@ const DICT: Record<string, [string, string]> = {
   'conn.save': ['保存', 'Save'],
   'conn.create': ['创建', 'Create'],
   'conn.test': ['测试连接', 'Test connection'],
+  'query.tabMessages': ['消息', 'Messages'],
+  'msg.empty': ['暂无消息（执行一段 SQL 后这里记录每条语句的耗时与结果）', 'No messages yet — run some SQL to log each statement here'],
+  'msg.returned': ['返回 {n} 行', '{n} row(s) returned'],
+  'msg.stmtCol': ['语句', 'Statement'],
   'conn.smartFill': ['✨ AI 填充', '✨ AI fill'],
   'conn.smartFill.title': ['AI 智能填充连接', 'AI smart-fill connection'],
   'conn.smartFill.desc': [

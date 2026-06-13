@@ -84,8 +84,26 @@ interface ResultTab {
   page: number
   pageSize: number
   loading: boolean
+  /** 本条语句耗时(ms);出错时驱动拿不到 executionTimeMs,回退到前端实测 */
+  durationMs: number
   /** 可编辑时的目标表引用（简单单表 SELECT *），否则 null */
   editTable: string | null
+}
+
+/**
+ * 「消息」面板的一条记录：每次执行把所有语句(含 DDL/DML/出错)逐条登记,
+ * 记录耗时 / 结果 / 影响行数 / 报错。结果集只在「结果 N」网格里展示,
+ * DDL(create/alter…) 这类无结果集的不再占一个空网格,只进消息面板。
+ */
+interface MsgEntry {
+  seq: number
+  sql: string
+  ok: boolean
+  durationMs: number
+  kind: 'resultset' | 'affected' | 'ok' | 'error'
+  rowCount?: number
+  affectedRows?: number
+  error?: string | null
 }
 
 const props = defineProps<{
@@ -150,6 +168,10 @@ function onWinClickForMore(e: MouseEvent): void {
 const showHistory = ref(false)
 const showSnippets = ref(false)
 const showPlan = ref(false)
+const showMessages = ref(false)
+// 最近一次执行的逐条语句日志（消息面板用）
+const messages = ref<MsgEntry[]>([])
+const hasMsgErr = computed(() => messages.value.some((m) => !m.ok))
 const planData = ref<{ tree: PlanNode | null; text: string | null } | null>(null)
 const history = ref<QueryHistoryEntry[]>([])
 const running = ref(false)
@@ -997,7 +1019,11 @@ async function execSql(text: string): Promise<void> {
   const token = ++runToken
   running.value = true
   showHistory.value = false
-  const next: ResultTab[] = []
+  showSnippets.value = false
+  showPlan.value = false
+  // all：本次执行的每条语句(含 DDL/DML/出错),供消息面板 + 通知 + DDL 刷新判定用；
+  // 真正进「结果 N」网格的只有其中"返回结果集"的语句(见下方 resultTabs)。
+  const all: ResultTab[] = []
   // 手动模式：先开 session（失败回落到 auto）；auto 模式：sid 始终是 null
   const sid = commitMode.value === 'manual' ? await ensureSession() : null
   try {
@@ -1013,8 +1039,10 @@ async function execSql(text: string): Promise<void> {
         page: 0,
         pageSize: pageSize.value,
         loading: false,
+        durationMs: 0,
         editTable,
       }
+      const t0 = Date.now()
       try {
         const opts = pageable ? { ...execOptions(), limit: tab.pageSize, offset: 0 } : execOptions()
         tab.result = sid
@@ -1031,23 +1059,31 @@ async function execSql(text: string): Promise<void> {
         // MySQL 没这个状态，单条 stmt 失败不影响后续。
       }
       if (token !== runToken) return // 已被停止，丢弃结果
-      next.push(tab)
+      // 出错时驱动没有 executionTimeMs,用前端实测兜底
+      tab.durationMs = tab.result?.executionTimeMs ?? Date.now() - t0
+      all.push(tab)
     }
-    tabs.value = next
+    // 只有「返回结果集」(有列)的语句进结果网格;DDL/DML/报错只登记到消息面板,
+    // 不再各占一个空网格(用户诉求：alter/create table 这些不需要结果集)。
+    const resultTabs = all.filter((tb) => tb.result != null && tb.result.columns.length > 0)
+    tabs.value = resultTabs
     activeTab.value = 0
-    // 异步校验每个 tab 的 editTable 是真表（不是视图）：是视图就清空 editTable
+    messages.value = all.map((tb, i) => buildMsg(tb, i + 1))
+    // 没有任何结果集（纯 DDL/DML 或全部报错）→ 默认落到消息面板,否则看第一个结果集
+    showMessages.value = resultTabs.length === 0
+    // 异步校验每个结果集 tab 的 editTable 是真表（不是视图）：是视图就清空 editTable
     // 让结果集变只读。fire-and-forget，不阻塞结果集渲染。
-    for (const tab of next) void verifyEditableIsTable(tab)
+    for (const tab of resultTabs) void verifyEditableIsTable(tab)
     // AI 聊天面板：以原文 SQL 为 key 广播执行结果，更新代码块旁的执行徽章
-    const firstErr = next.find((t) => t.error)?.error ?? null
+    const firstErr = all.find((t) => t.error)?.error ?? null
     emitChatSqlExecuted({ sql: text, ok: !firstErr, error: firstErr })
     // 结构变更（DDL）执行成功 → 通知导航树深刷新对应连接子树。
     // 仅 auto 模式即时刷新；manual 模式等 commit() 后再刷新（未提交的 DDL 别的 session 看不到）。
-    if (!sid && next.some((tb) => !tb.error && isStructureChangingStatement(tb.sql))) {
+    if (!sid && all.some((tb) => !tb.error && isStructureChangingStatement(tb.sql))) {
       emitSchemaChanged({ connId: props.conn.id, schema: execOptions().schema })
     }
     // I1 通知 webhook：失败 → query-error；耗时超阈值 → slow-query
-    void notifyExecResult(text, next, firstErr)
+    void notifyExecResult(text, all, firstErr)
   } finally {
     if (token === runToken) {
       running.value = false
@@ -1104,19 +1140,23 @@ async function explain(withAnalyze = false): Promise<void> {
       await appAlert({ message: t('query.explainUnsupported'), variant: 'warn' })
       return
     }
+    const exRes = await client.connections.execute(props.conn.id, ex, [], execOptions())
     const tab: ResultTab = {
       id: ++tabSeq,
       sql: ex,
-      result: await client.connections.execute(props.conn.id, ex, [], execOptions()),
+      result: exRes,
       error: null,
       pageable: false,
       page: 0,
       pageSize: pageSize.value,
       loading: false,
+      durationMs: exRes.executionTimeMs ?? 0,
       editTable: null,
     }
     tabs.value = [tab]
     activeTab.value = 0
+    messages.value = []
+    showMessages.value = false
     showPlan.value = false
   } catch (e) {
     reportError(e, { tag: 'query.explainFailed' })
@@ -1227,7 +1267,44 @@ async function openHistory(): Promise<void> {
   await loadHistory()
   showSnippets.value = false
   showPlan.value = false
+  showMessages.value = false
   showHistory.value = true
+}
+
+// ── 消息面板：最近一次执行各语句的耗时 / 结果 / 影响行数 / 报错 ──
+function openMessages(): void {
+  showHistory.value = false
+  showSnippets.value = false
+  showPlan.value = false
+  showMessages.value = true
+}
+function buildMsg(tb: ResultTab, seq: number): MsgEntry {
+  if (tb.error) {
+    return { seq, sql: tb.sql, ok: false, durationMs: tb.durationMs, kind: 'error', error: tb.error }
+  }
+  const r = tb.result
+  if (r && r.columns.length > 0) {
+    return { seq, sql: tb.sql, ok: true, durationMs: tb.durationMs, kind: 'resultset', rowCount: r.rowCount }
+  }
+  if (r && typeof r.affectedRows === 'number' && r.affectedRows > 0) {
+    return { seq, sql: tb.sql, ok: true, durationMs: tb.durationMs, kind: 'affected', affectedRows: r.affectedRows }
+  }
+  return { seq, sql: tb.sql, ok: true, durationMs: tb.durationMs, kind: 'ok' }
+}
+function msgOutcome(m: MsgEntry): string {
+  if (m.kind === 'resultset') return t('msg.returned', { n: m.rowCount ?? 0 })
+  if (m.kind === 'affected') return t('grid.affected', { n: m.affectedRows ?? 0 })
+  return t('grid.execOk')
+}
+// 消息面板里某条报错语句 →「问 AI」,复用结果网格的同款上下文(连接 + SQL + 错误)
+function askAiAboutMsg(m: MsgEntry): void {
+  if (!m.error) return
+  emit('askAiAboutError', {
+    connId: props.conn.id,
+    connName: props.conn.name,
+    sql: m.sql,
+    error: m.error,
+  })
 }
 
 function onPickHistory(picked: string): void {
@@ -1244,11 +1321,13 @@ async function onClearHistory(): Promise<void> {
 function openSnippets(): void {
   showHistory.value = false
   showPlan.value = false
+  showMessages.value = false
   showSnippets.value = true
 }
 function openPlan(): void {
   showHistory.value = false
   showSnippets.value = false
+  showMessages.value = false
   showPlan.value = true
 }
 function onPickSnippet(picked: string): void {
@@ -1293,6 +1372,7 @@ function selectTab(i: number): void {
   showHistory.value = false
   showSnippets.value = false
   showPlan.value = false
+  showMessages.value = false
   activeTab.value = i
 }
 
@@ -1567,10 +1647,18 @@ defineExpose({
         v-for="(tab, i) in tabs"
         :key="tab.id"
         class="rtab"
-        :class="{ active: !showHistory && !showSnippets && !showPlan && activeTab === i }"
+        :class="{ active: !showHistory && !showSnippets && !showPlan && !showMessages && activeTab === i }"
         @click="selectTab(i)"
       >
-        {{ t('query.tabResult', { n: i + 1 }) }}<span v-if="tab.error" class="err-dot">!</span>
+        {{ t('query.tabResult', { n: i + 1 }) }}
+      </button>
+      <button
+        v-if="messages.length"
+        class="rtab"
+        :class="{ active: showMessages }"
+        @click="openMessages"
+      >
+        {{ t('query.tabMessages') }}<span v-if="hasMsgErr" class="err-dot">!</span>
       </button>
       <button v-if="planData" class="rtab" :class="{ active: showPlan }" @click="openPlan">{{ t('query.tabPlan') }}</button>
       <button class="rtab" :class="{ active: showHistory }" @click="openHistory">{{ t('query.tabHistory') }}</button>
@@ -1587,6 +1675,30 @@ defineExpose({
       />
       <SnippetsPanel v-else-if="showSnippets" :dialect="props.conn.dialect" @pick="onPickSnippet" />
       <PlanPanel v-else-if="showPlan" :tree="planData?.tree ?? null" :text="planData?.text ?? null" />
+      <div v-else-if="showMessages" class="msg-log">
+        <div v-if="!messages.length" class="msg-empty">{{ t('msg.empty') }}</div>
+        <div v-else class="msg-list">
+          <div v-for="m in messages" :key="m.seq" class="msg-row" :class="{ err: !m.ok }">
+            <span class="msg-ico" :class="{ err: !m.ok }">{{ m.ok ? '✓' : '✕' }}</span>
+            <div class="msg-body">
+              <code class="msg-sql" :title="m.sql">{{ m.sql }}</code>
+              <div class="msg-meta">
+                <span v-if="!m.ok" class="msg-err">{{ m.error }}</span>
+                <span v-else class="msg-outcome">{{ msgOutcome(m) }}</span>
+                <button
+                  v-if="!m.ok"
+                  class="msg-ai"
+                  :title="t('aichat.askAi')"
+                  @click="askAiAboutMsg(m)"
+                >
+                  ✨ {{ t('aichat.askAi') }}
+                </button>
+                <span class="msg-dur">{{ m.durationMs }} ms</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <ResultGrid
         v-else
         :result="cur?.result ?? null"
@@ -1923,5 +2035,87 @@ defineExpose({
 .result {
   flex: 1;
   min-height: 0;
+}
+
+/* ── 消息面板：逐条语句的耗时 / 结果 / 影响行数 / 报错 ── */
+.msg-log {
+  height: 100%;
+  overflow: auto;
+  font-size: 12px;
+}
+.msg-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+.msg-list {
+  display: flex;
+  flex-direction: column;
+}
+.msg-row {
+  display: flex;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.msg-row.err {
+  background: color-mix(in srgb, var(--err) 7%, transparent);
+}
+.msg-ico {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ok, #3fb950);
+  line-height: 1.5;
+}
+.msg-ico.err {
+  color: var(--err);
+}
+.msg-body {
+  flex: 1;
+  min-width: 0;
+}
+.msg-sql {
+  display: block;
+  font-family: var(--font-mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msg-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+  align-items: baseline;
+}
+.msg-outcome {
+  color: var(--muted);
+}
+.msg-err {
+  color: var(--err);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg-ai {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.msg-ai:hover {
+  border-color: var(--accent, #7c6cff);
+}
+.msg-dur {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 </style>
