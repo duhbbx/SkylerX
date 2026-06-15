@@ -505,15 +505,28 @@ function resetEdits(): void {
 }
 watch(() => props.result, resetEdits, { immediate: true })
 
+/**
+ * 单元格「是否变化」判定。localRows / original 是对同一份结果各自 JSON 深拷贝出来的,
+ * 所以对象/数组类的单元格(JSON 列、BLOB 哨兵等)是**两个不同实例**,直接 `!==` 会恒为真,
+ * 导致结果一加载就误判「有改动」。基本类型走 `===` 快路径;只有对象才退到结构化比较。
+ */
+function cellEq(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
+  return false
+}
+
 function isModified(i: number, col: string): boolean {
-  return props.editable && localRows.value[i]?.[col] !== original.value[i]?.[col]
+  return props.editable && !cellEq(localRows.value[i]?.[col], original.value[i]?.[col])
 }
 
 const dirty = computed(() => {
   if (!props.editable) return false
   if (inserts.value.length || deleted.value.some(Boolean)) return true
   return localRows.value.some((r, i) =>
-    columnNames.value.some((c) => r[c] !== original.value[i]?.[c]),
+    columnNames.value.some((c) => !cellEq(r[c], original.value[i]?.[c])),
   )
 })
 
@@ -521,7 +534,7 @@ const changeCount = computed(() => {
   let n = inserts.value.length + deleted.value.filter(Boolean).length
   localRows.value.forEach((r, i) => {
     if (deleted.value[i]) return
-    if (columnNames.value.some((c) => r[c] !== original.value[i]?.[c])) n++
+    if (columnNames.value.some((c) => !cellEq(r[c], original.value[i]?.[c]))) n++
   })
   return n
 })
@@ -818,7 +831,7 @@ function commit(): void {
       return
     }
     const changed: Record<string, unknown> = {}
-    for (const c of columnNames.value) if (r[c] !== original.value[i]?.[c]) changed[c] = r[c]
+    for (const c of columnNames.value) if (!cellEq(r[c], original.value[i]?.[c])) changed[c] = r[c]
     if (Object.keys(changed).length) updates.push({ original: original.value[i], changed })
   })
   emit('commit', { updates, deletes, inserts: inserts.value.map((r) => ({ ...r })) })
@@ -1780,7 +1793,9 @@ function cellStyle(row: Row, col: ColInfo): CellStyle {
                 ]"
                 :style="[
                   colWidths[c.name] ? { width: `${colWidths[c.name]}px` } : null,
-                  isEditing('r', i, c.name) ? null : cellStyle(row, c),
+                  // 选中行不应用单元格条件着色(null/0/大数的内联背景),否则内联样式压过
+                  // .selected td 的选中底色,导致这些格子背景不跟着变。整行统一显示选中色。
+                  isEditing('r', i, c.name) || isSel('r', i) ? null : cellStyle(row, c),
                 ]"
                 @mousedown="onCellMouseDown(i, ci, $event)"
                 @mouseenter="onCellMouseEnter(i, ci)"
