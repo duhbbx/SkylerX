@@ -10,7 +10,7 @@ import {
   type QueryResult,
   dialectKind,
 } from '@db-tool/shared-types'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
@@ -83,6 +83,17 @@ const tabs = ref<Tab[]>([])
 const activeId = ref(0)
 let tabSeq = 0
 let pendSeq = 0
+
+const barEl = ref<HTMLElement>()
+// 切换 / 新建 tab 后,把激活的 tab 滚动进可视区。新建的 tab 追加在末尾,tab 条
+// 横向溢出(overflow-x:auto)时它会落在右侧视口外——滚动让它露出来,而不是停在原位。
+watch(activeId, () => {
+  void nextTick(() => {
+    barEl.value
+      ?.querySelector<HTMLElement>('.qtab.active')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  })
+})
 
 const active = computed(() => tabs.value.find((t) => t.id === activeId.value) ?? null)
 
@@ -585,7 +596,7 @@ watch(tabs, saveLayout, { deep: true })
       {{ tr('tabs.empty') }}
     </div>
     <template v-else>
-      <div class="qtab-bar">
+      <div ref="barEl" class="qtab-bar">
         <div
           v-for="t in orderedTabs"
           :key="t.id"
