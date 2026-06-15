@@ -243,10 +243,15 @@ async function save(): Promise<void> {
     } else {
       restExtra.visibleSchemas = undefined
     }
-    await client.connections.update({
-      ...props.conn,
-      extra: Object.keys(restExtra).length > 0 ? restExtra : undefined,
-    })
+    // 过 IPC 前转成纯对象:props.conn 的嵌套字段(ssl/ssh/extra…)还是 Vue 响应式 Proxy,
+    // 直接传给主进程会触发结构化克隆错误「An object could not be cloned」。同 ConnectionForm.buildConfig。
+    const payload = JSON.parse(
+      JSON.stringify({
+        ...props.conn,
+        extra: Object.keys(restExtra).length > 0 ? restExtra : undefined,
+      }),
+    ) as ConnectionConfig
+    await client.connections.update(payload)
     toast.success('已保存可见库/Schema 配置')
     emit('saved')
     emit('close')
