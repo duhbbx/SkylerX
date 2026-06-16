@@ -22,6 +22,7 @@ export const FILE_IPC = {
   mkdir: 'files:mkdir',
   stat: 'files:stat',
   pathJoin: 'files:pathJoin',
+  readText: 'files:readText',
 } as const
 
 type Filter = { name: string; extensions: string[] }
@@ -203,4 +204,9 @@ export function registerFileIpc(): void {
 
   /** path.join — renderer 不能直接用 node:path,这里转发。 */
   ipcMain.handle(FILE_IPC.pathJoin, (_e, ...parts: string[]) => join(...parts))
+
+  /** 按路径读取 utf8 文本(供代码库索引扫描用)。失败抛错,渲染层 catch 跳过该文件。 */
+  ipcMain.handle(FILE_IPC.readText, async (_e, filePath: string): Promise<string> => {
+    return readFile(filePath, 'utf8')
+  })
 }

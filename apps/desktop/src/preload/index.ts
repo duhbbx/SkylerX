@@ -124,6 +124,8 @@ const api = {
       ipcRenderer.invoke('files:stat', p),
     pathJoin: (...parts: string[]): Promise<string> =>
       ipcRenderer.invoke('files:pathJoin', ...parts),
+    readText: (filePath: string): Promise<string> =>
+      ipcRenderer.invoke('files:readText', filePath),
   },
   ai: {
     /** 经主进程做 HTTP；避开渲染层 CORS（DeepSeek/OpenAI/Grok 直发会被预检卡）；

@@ -531,6 +531,8 @@ export interface DataClient {
       p: string,
     ): Promise<{ size: number; mtime: number; isFile: boolean; isDirectory: boolean } | null>
     pathJoin?(...parts: string[]): Promise<string>
+    /** 按路径读取文本文件内容(代码库索引扫描用;desktop-only)。 */
+    readText?(path: string): Promise<string>
   }
   /** 窗口管理（桌面专属；Web 端 noop） */
   window?: {
