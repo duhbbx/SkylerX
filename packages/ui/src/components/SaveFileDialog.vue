@@ -22,7 +22,7 @@ import { reportError, reportInlineError } from '../errorReporter'
 import Modal from './Modal.vue'
 
 type Filter = { name: string; extensions: string[] }
-type Mode = 'save' | 'pick-existing' | 'pick-or-create'
+type Mode = 'save' | 'pick-existing' | 'pick-or-create' | 'pick-directory'
 
 const props = defineProps<{
   open: boolean
@@ -37,15 +37,18 @@ const props = defineProps<{
 
 const mode = computed<Mode>(() => props.mode ?? 'save')
 const isPickExisting = computed(() => mode.value === 'pick-existing')
+const isPickDirectory = computed(() => mode.value === 'pick-directory')
 const isPickAny = computed(() => mode.value === 'pick-existing' || mode.value === 'pick-or-create')
 const titleText = computed(() => {
   if (mode.value === 'pick-existing') return '选择文件'
   if (mode.value === 'pick-or-create') return '选择或新建文件'
+  if (mode.value === 'pick-directory') return '选择目录'
   return '保存文件'
 })
 const confirmText = computed(() => {
   if (mode.value === 'pick-existing') return '▶ 选定'
   if (mode.value === 'pick-or-create') return '▶ 选定路径'
+  if (mode.value === 'pick-directory') return '▶ 选定此目录'
   return '▶ 保存'
 })
 
@@ -248,6 +251,23 @@ function isFav(): boolean {
 }
 
 async function doSave(): Promise<void> {
+  // 选目录模式:直接返回当前所在目录(不需要文件名)。
+  if (isPickDirectory.value) {
+    if (!currentDir.value) return
+    submitting.value = true
+    try {
+      emit('save', currentDir.value)
+      const next = [
+        currentDir.value,
+        ...recentDirs.value.filter((d) => d !== currentDir.value),
+      ].slice(0, 5)
+      recentDirs.value = next
+      localStorage.setItem(LS_RECENT, JSON.stringify(next))
+    } finally {
+      submitting.value = false
+    }
+    return
+  }
   if (!fileNameFinal.value || !currentDir.value) return
   // pick-existing 模式:确认所选确实存在
   if (isPickExisting.value && !nameConflict.value) {
@@ -465,7 +485,7 @@ watch(
 
         <!-- 底部:文件名 + filter + 保存 -->
         <div class="footer-row">
-          <div class="fn-row">
+          <div v-if="!isPickDirectory" class="fn-row">
             <label class="fn-lbl">文件名</label>
             <input ref="fileNameInputEl" v-model="fileName" class="fn-ip" />
           </div>
@@ -483,7 +503,8 @@ watch(
             ⚠ 该文件不存在;本模式只能选已存在文件
           </div>
           <div class="target-preview">
-            {{ mode === 'save' ? '保存到' : '选择' }}: <code>{{ targetPath || '—' }}</code>
+            {{ mode === 'save' ? '保存到' : '选择' }}:
+            <code>{{ isPickDirectory ? currentDir || '—' : targetPath || '—' }}</code>
           </div>
         </div>
       </div>
@@ -494,7 +515,11 @@ watch(
       <button class="btn-ghost" :disabled="submitting" @click="emit('close')">取消</button>
       <button
         class="btn-primary"
-        :disabled="submitting || !fileNameFinal || !currentDir || (isPickExisting && !nameConflict)"
+        :disabled="
+          submitting ||
+          !currentDir ||
+          (!isPickDirectory && (!fileNameFinal || (isPickExisting && !nameConflict)))
+        "
         @click="doSave"
       >
         {{ submitting ? '处理中…' : confirmText }}

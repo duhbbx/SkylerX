@@ -38,8 +38,8 @@ function wrap(real: DataClient): DataClient {
         return saveFileWithDialog(req)
       },
       selectFile: async (req) => {
-        // SQLite/DuckDB 选库文件路径(allowCreate=true 时允许新名):
-        // 同样走自定义 SaveFileDialog,体验跨平台一致。
+        // SQLite/DuckDB 选库文件路径(allowCreate=true 时允许新名)、或代码库关联选目录
+        // (directory=true → pick-directory 模式):统一走自定义 SaveFileDialog,跨平台一致。
         const { selectFileWithDialog } = await import('./saveFile')
         return selectFileWithDialog(req ?? {})
       },

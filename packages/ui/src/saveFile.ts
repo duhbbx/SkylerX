@@ -26,7 +26,7 @@ import { reactive } from 'vue'
  * 'pick-existing'  只选已存在文件:用户点列表里的文件就 resolve(path),不写
  * 'pick-or-create' 选已有或填新名(SQLite/DuckDB 新建库场景):resolve(path),不写
  */
-export type SaveDialogMode = 'save' | 'pick-existing' | 'pick-or-create'
+export type SaveDialogMode = 'save' | 'pick-existing' | 'pick-or-create' | 'pick-directory'
 
 export interface SaveFileRequest {
   /** save / pick-or-create 模式的默认文件名;pick-existing 模式可空 */
@@ -151,13 +151,15 @@ export function selectFileWithDialog(req: {
   allowCreate?: boolean
   defaultDir?: string
   defaultName?: string
+  /** true = 选目录(代码库关联等);走统一 SaveFileDialog 的 pick-directory 模式 */
+  directory?: boolean
 }): Promise<string | null> {
   if (!hasFsCapability()) {
     return selectFileBrowserFallback(req)
   }
   return new Promise((resolve) => {
     saveFileState.req = {
-      mode: req.allowCreate ? 'pick-or-create' : 'pick-existing',
+      mode: req.directory ? 'pick-directory' : req.allowCreate ? 'pick-or-create' : 'pick-existing',
       filters: req.filters,
       defaultDir: req.defaultDir,
       defaultName: req.defaultName ?? '',
@@ -172,10 +174,20 @@ async function selectFileBrowserFallback(req: {
   filters?: { name: string; extensions: string[] }[]
   allowCreate?: boolean
   defaultName?: string
+  directory?: boolean
 }): Promise<string | null> {
   const win = window as unknown as {
     showOpenFilePicker?: (opts: unknown) => Promise<Array<{ name: string }>>
     showSaveFilePicker?: (opts: unknown) => Promise<{ name: string }>
+    showDirectoryPicker?: () => Promise<{ name: string }>
+  }
+  if (req.directory) {
+    try {
+      const h = await win.showDirectoryPicker?.()
+      return h?.name ?? null // 浏览器只给目录名,不给绝对路径
+    } catch (e) {
+      return (e as Error).name === 'AbortError' ? null : null
+    }
   }
   const types = (req.filters ?? []).map((f) => ({
     description: f.name,
