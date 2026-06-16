@@ -43,6 +43,8 @@ export interface TreeController {
   openConnection(connId: string): void
   /** 为该连接新开一个查询页；node 用于预选其所在库/schema 作为查询上下文 */
   newQuery(node: TreeNode, connId: string): void
+  /** 为该库/Schema 节点关联代码库(打开 CodeRepoDialog) */
+  associateCodeRepo(node: TreeNode, connId: string): void
   /** 在该节点所属库/schema 下新建对象（表/视图/函数/存储过程） */
   createObject(kind: ObjectKind, node: TreeNode, connId: string): void
   /** 删除对象（表/视图/函数/存储过程/库/schema），需二次确认 */

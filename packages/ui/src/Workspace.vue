@@ -13,6 +13,7 @@ import {
 import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import type { AiMode } from './ai'
 import { onChatErrorAsk } from './chat-bus'
+import { containerKey } from './rag/codeRepo'
 import AiAssistantDialog from './components/AiAssistantDialog.vue'
 import AiChatPanel from './components/AiChatPanel.vue'
 import AiCommentDialog from './components/AiCommentDialog.vue'
@@ -26,6 +27,7 @@ import BackupRestoreDialog from './components/BackupRestoreDialog.vue'
 import ChartViewerDialog from './components/ChartViewerDialog.vue'
 import ClickHouseAdvancedDialog from './components/ClickHouseAdvancedDialog.vue'
 import ClusterTopologyDialog from './components/ClusterTopologyDialog.vue'
+import CodeRepoDialog from './components/CodeRepoDialog.vue'
 import CommandPalette, { type PaletteItem } from './components/CommandPalette.vue'
 import ComplianceDialog from './components/ComplianceDialog.vue'
 import ConnectionForm from './components/ConnectionForm.vue'
@@ -315,6 +317,12 @@ async function onNewQuery(id: string, node?: TreeNode): Promise<void> {
   // 用触发节点所在的库/schema 作为查询上下文（找不到则查询页落默认库）
   const ctx = node ? contextOfNode(conn.dialect, node) : undefined
   tabsRef.value?.newQuery(conn, ctx)
+}
+
+async function onAssociateCodeRepo(connId: string, node: TreeNode): Promise<void> {
+  const conn = await client.connections.get(connId)
+  const container = containerKey(contextOfNode(conn.dialect, node))
+  codeRepo.value = { conn, container }
 }
 
 async function onRunSql(connId: string, sql: string): Promise<void> {
@@ -2001,6 +2009,7 @@ const mongoAggOpen = ref<{ conn: ConnectionConfig; database: string; collection:
 )
 /** OB/TiDB 集群拓扑 */
 const clusterTopoOpen = ref<{ conn: ConnectionConfig } | null>(null)
+const codeRepo = ref<{ conn: ConnectionConfig; container: string } | null>(null)
 /** PG 高级面板(扩展/复制/复制槽) */
 const pgAdvOpen = ref<{ conn: ConnectionConfig; database?: string } | null>(null)
 /** ClickHouse 高级面板(分区/Mutation/副本/TTL) */
@@ -3143,6 +3152,7 @@ onMounted(async () => {
     @edit-conn="onEditConn"
     @select-conn="onSelectConn"
     @new-query="onNewQuery"
+    @associate-code-repo="onAssociateCodeRepo"
     @delete-conn="onDeleteConn"
     @duplicate-conn="onDuplicateConn"
     @copy-conn-info="onCopyConnInfo"
@@ -3696,6 +3706,15 @@ onMounted(async () => {
     :open="!!clusterTopoOpen"
     :conn="clusterTopoOpen.conn"
     @close="clusterTopoOpen = null"
+  />
+
+  <!-- 关联代码库 (RAG) -->
+  <CodeRepoDialog
+    v-if="codeRepo"
+    :conn="codeRepo.conn"
+    :container="codeRepo.container"
+    @close="codeRepo = null"
+    @saved="codeRepo = null"
   />
 
   <!-- PG 高级面板 -->

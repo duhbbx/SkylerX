@@ -42,6 +42,7 @@ const client = useDataClient()
 const emit = defineEmits<{
   selectConn: [string]
   newQuery: [string, TreeNode]
+  associateCodeRepo: [string, TreeNode]
   editConn: [string]
   newConn: []
   deleteConn: [string]
@@ -732,6 +733,7 @@ const controller: TreeController = {
   },
   openConnection: (connId) => emit('selectConn', connId),
   newQuery: (node, connId) => emit('newQuery', connId, node),
+  associateCodeRepo: (node, connId) => emit('associateCodeRepo', connId, node),
   createObject: (kind, node, connId) => emit('newObject', kind, connId, node),
   dropObject: (node, connId) => emit('dropObject', connId, node),
   viewStructure: (node, connId) => emit('viewStructure', connId, node),

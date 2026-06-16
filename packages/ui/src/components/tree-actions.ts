@@ -232,6 +232,13 @@ export const TREE_ACTIONS: TreeAction[] = [
     enabled: (n) => n.kind !== MetaNodeKind.Group || n.group === 'tables' || n.group === 'views',
     run: ({ node, connId, ctrl }) => ctrl.newQuery(node, connId),
   },
+  {
+    id: 'associate-code-repo',
+    label: 'ctx.associate-code-repo',
+    section: 'meta',
+    kinds: [MetaNodeKind.Database, MetaNodeKind.Schema],
+    run: ({ node, connId, ctrl }) => ctrl.associateCodeRepo(node, connId),
+  },
   // 新建数据库 — 连接节点。
   // - Oracle/DM: "数据库" 在 Oracle 是实例级,要 DBA + DBCA + 数据文件; 在 SkylerX 内
   //   应该新建 schema(用户) 代替,所以菜单直接不出现(走 new-schema)。
