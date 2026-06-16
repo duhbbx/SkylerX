@@ -45,6 +45,34 @@ export function setRepoPath<T extends ConnLike>(conn: T, container: string, path
   return { ...conn, extra: Object.keys(extra).length ? extra : undefined }
 }
 
+/**
+ * 在连接已绑定的代码库里,为给定上下文挑出最匹配的容器键(检索侧用)。
+ * 优先级:① 精确匹配 → ② 连接只绑了一个就用它 → ③ 同 database 段(先 schema 也相同、
+ * 再无 schema 的库级绑定、否则同库第一个)→ 都不中返回 null。
+ * 解决检索侧 currentCtx 与绑定侧 contextOfNode 容器键不完全一致时的「静默无结果」。
+ */
+export function resolveBoundContainer(
+  conn: ConnLike | null | undefined,
+  ctx: TableContext,
+): string | null {
+  const repos = conn?.extra?.codeRepos as RepoMap | undefined
+  if (!repos) return null
+  const keys = Object.keys(repos)
+  if (!keys.length) return null
+  const exact = containerKey(ctx)
+  if (repos[exact]) return exact
+  if (keys.length === 1) return keys[0]
+  const wantDb = ctx.database ?? ''
+  const sameDb = keys.filter((k) => k.split(SEP)[0] === wantDb)
+  if (!sameDb.length) return null
+  const wantSchema = ctx.schema ?? ''
+  return (
+    sameDb.find((k) => (k.split(SEP)[1] ?? '') === wantSchema) ??
+    sameDb.find((k) => (k.split(SEP)[1] ?? '') === '') ??
+    sameDb[0]
+  )
+}
+
 export interface ScannedFile {
   relPath: string
   mtime: number

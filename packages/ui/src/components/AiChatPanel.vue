@@ -19,7 +19,7 @@ import { confirm as appConfirm, toast } from '../dialog'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
-import { containerKey, getRepoPath, retrieveCode } from '../rag/codeRepo'
+import { resolveBoundContainer, retrieveCode } from '../rag/codeRepo'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
 import { monaco } from '../monaco-setup'
 import {
@@ -502,18 +502,11 @@ async function send(): Promise<void> {
     let codeContext: string | undefined
     if (useCode.value) {
       const conn = connOf(connId.value)
-      if (conn) {
-        const container = containerKey(currentCtx(conn))
-        if (getRepoPath(conn, container)) {
-          codeContext =
-            (await retrieveCode(
-              conn.id,
-              container,
-              text,
-              settings.aiVectorTopK,
-              controller.signal,
-            )) || undefined
-        }
+      const container = conn ? resolveBoundContainer(conn, currentCtx(conn)) : null
+      if (conn && container) {
+        codeContext =
+          (await retrieveCode(conn.id, container, text, settings.aiVectorTopK, controller.signal)) ||
+          undefined
       }
     }
     const opts = {

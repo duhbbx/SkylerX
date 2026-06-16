@@ -3,7 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { describe, expect, it } from 'vitest'
-import { codeIndexKey, containerKey, getRepoPath, planRefresh, setRepoPath } from './codeRepo'
+import {
+  codeIndexKey,
+  containerKey,
+  getRepoPath,
+  planRefresh,
+  resolveBoundContainer,
+  setRepoPath,
+} from './codeRepo'
 
 describe('containerKey', () => {
   it('joins database + schema with a unit separator', () => {
@@ -57,5 +64,35 @@ describe('planRefresh — incremental diff by mtime/size', () => {
     expect(plan.deleted).toEqual(['b.sql'])
     expect(plan.unchanged).toEqual(['a.ts'])
     expect(plan.toReindex).toEqual([])
+  })
+})
+
+describe('resolveBoundContainer', () => {
+  const conn = (keys: string[]) => ({
+    extra: { codeRepos: Object.fromEntries(keys.map((k) => [k, { path: '/p/' + k }])) },
+  })
+  it('returns null when nothing bound', () => {
+    expect(resolveBoundContainer(undefined, { database: 'shop' })).toBeNull()
+    expect(resolveBoundContainer({}, { database: 'shop' })).toBeNull()
+  })
+  it('prefers an exact container match', () => {
+    expect(resolveBoundContainer(conn(['shop␟', 'app␟public']), { database: 'shop' })).toBe('shop␟')
+    expect(
+      resolveBoundContainer(conn(['shop␟', 'app␟public']), { database: 'app', schema: 'public' }),
+    ).toBe('app␟public')
+  })
+  it('uses the only bound repo regardless of context', () => {
+    expect(resolveBoundContainer(conn(['app␟public']), { database: 'whatever' })).toBe('app␟public')
+  })
+  it('falls back to same-database: schema match, then schema-less, then first', () => {
+    // multiple repos, no exact match; ctx db = warehouse
+    const c = conn(['shop␟public', 'warehouse␟', 'warehouse␟sales'])
+    // schema-less db-node bind matches a db-only ctx
+    expect(resolveBoundContainer(c, { database: 'warehouse' })).toBe('warehouse␟')
+    // schema match preferred when ctx has the schema
+    expect(resolveBoundContainer(c, { database: 'warehouse', schema: 'sales' })).toBe('warehouse␟sales')
+  })
+  it('returns null when no bound repo shares the database', () => {
+    expect(resolveBoundContainer(conn(['a␟x', 'b␟y']), { database: 'c', schema: 'z' })).toBeNull()
   })
 })

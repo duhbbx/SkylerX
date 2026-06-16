@@ -10,7 +10,7 @@ import { useDataClient } from '../data-client'
 import type { TableContext } from '../ddl'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
-import { containerKey, getRepoPath, retrieveCode } from '../rag/codeRepo'
+import { resolveBoundContainer, retrieveCode } from '../rag/codeRepo'
 import { isActiveAiConfigured, settings } from '../settings'
 import Modal from './Modal.vue'
 
@@ -154,18 +154,16 @@ async function run(): Promise<void> {
     let codeContext: string | undefined
     if (useCode.value) {
       const conn = connOf(connId.value)
-      if (conn) {
-        const container = containerKey(currentCtx(conn))
-        if (getRepoPath(conn, container)) {
-          codeContext =
-            (await retrieveCode(
-              conn.id,
-              container,
-              input.value,
-              settings.aiVectorTopK,
-              controller.signal,
-            )) || undefined
-        }
+      const container = conn ? resolveBoundContainer(conn, currentCtx(conn)) : null
+      if (conn && container) {
+        codeContext =
+          (await retrieveCode(
+            conn.id,
+            container,
+            input.value,
+            settings.aiVectorTopK,
+            controller.signal,
+          )) || undefined
       }
     }
     answer.value = await askAi({
