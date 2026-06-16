@@ -13,7 +13,7 @@ import type { SchemaInput } from '../migrate/convert'
 
 export interface RagChunk {
   id: string
-  kind: 'table' | 'doc' | 'view' | 'routine'
+  kind: 'table' | 'doc' | 'view' | 'routine' | 'code'
   title: string
   text: string
   ref?: { schema?: string; table?: string }
