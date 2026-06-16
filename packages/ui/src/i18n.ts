@@ -1295,6 +1295,11 @@ const DICT: Record<string, [string, string]> = {
   'ai.modeOptimize': ['优化建议', 'Optimize'],
   'ai.modeDiagnose': ['错误诊断', 'Diagnose error'],
   'ai.useSchema': ['附带库结构', 'Include schema'],
+  'ai.useCode': ['代码库', 'Code repo'],
+  'ai.useCodeTitle': [
+    '把绑定代码库里最相关的片段作为上下文，让 AI 生成的 SQL 更贴合你的项目',
+    'Feed the most relevant snippets from the bound code repo as context for more accurate SQL',
+  ],
   'ai.phNl': [
     '用一句话描述你想做的事，例如：找出最近 7 天注册的用户',
     'Describe what you want, e.g.: find users registered in the last 7 days',

@@ -13,11 +13,13 @@ import {
   fmtOracleType,
 } from '../ai'
 import { onChatSqlExecuted } from '../chat-bus'
+import type { TableContext } from '../ddl'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, toast } from '../dialog'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
+import { containerKey, getRepoPath, retrieveCode } from '../rag/codeRepo'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
 import { monaco } from '../monaco-setup'
 import {
@@ -218,6 +220,8 @@ function onResizeUp(e: PointerEvent): void {
   }
 }
 const useSchema = ref(false)
+// 「代码库」开关：附带当前容器绑定代码库里最相关的片段作为上下文
+const useCode = ref(false)
 const schemaText = ref('')
 const schemaLoading = ref(false)
 /**
@@ -240,12 +244,14 @@ let controller: AbortController | null = null
 // 持久化：每应用一份，避免会话间丢失
 const STORAGE_KEY = 'skylerx.aiChat.messages'
 const SCHEMA_TOGGLE_KEY = 'skylerx.aiChat.useSchema'
+const CODE_TOGGLE_KEY = 'skylerx.aiChat.useCode'
 
 function loadFromStorage(): void {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) messages.value = JSON.parse(raw) as ChatMessage[]
     useSchema.value = localStorage.getItem(SCHEMA_TOGGLE_KEY) === '1'
+    useCode.value = localStorage.getItem(CODE_TOGGLE_KEY) === '1'
   } catch {
     /* ignore */
   }
@@ -255,6 +261,7 @@ function saveToStorage(): void {
     // 只存最近 50 条，避免无限增长
     localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.value.slice(-50)))
     localStorage.setItem(SCHEMA_TOGGLE_KEY, useSchema.value ? '1' : '0')
+    localStorage.setItem(CODE_TOGGLE_KEY, useCode.value ? '1' : '0')
   } catch {
     /* ignore */
   }
@@ -445,6 +452,22 @@ function toggleSchema(): void {
   saveToStorage()
 }
 
+function toggleCode(): void {
+  useCode.value = !useCode.value
+  saveToStorage()
+}
+
+/**
+ * 当前选中容器的 {database, schema}，与代码库绑定时用的容器键保持同构
+ * （mysql=库名 / pg=conn.database + schema / oracle=用户名），见 loadSchema 的目标解析。
+ */
+function currentCtx(c: ConnectionConfig): TableContext {
+  const f = fam(c.dialect)
+  if (f === 'pg') return { database: c.database, schema: selectedDb.value || 'public' }
+  if (f === 'oracle') return { schema: selectedDb.value || c.database || '' }
+  return { database: selectedDb.value || c.database || '' }
+}
+
 async function send(): Promise<void> {
   const text = input.value.trim()
   if (!text || running.value) return
@@ -475,10 +498,29 @@ async function send(): Promise<void> {
   try {
     // 注入 A/B/C 三档记忆段（A：自定义画像；B：事实清单；C：相关向量记忆 top-K）
     const memorySection = await buildMemorySection(text)
+    // 代码库：开关 ON 且当前容器绑定了代码库 → 检索 top-K 相关片段一起送出
+    let codeContext: string | undefined
+    if (useCode.value) {
+      const conn = connOf(connId.value)
+      if (conn) {
+        const container = containerKey(currentCtx(conn))
+        if (getRepoPath(conn, container)) {
+          codeContext =
+            (await retrieveCode(
+              conn.id,
+              container,
+              text,
+              settings.aiVectorTopK,
+              controller.signal,
+            )) || undefined
+        }
+      }
+    }
     const opts = {
       messages: convo,
       dialect: connOf(connId.value)?.dialect,
       schema: useSchema.value ? schemaText.value || undefined : undefined,
+      codeContext,
       memorySection,
       signal: controller.signal,
     }
@@ -622,6 +664,10 @@ function onKeydown(e: KeyboardEvent): void {
           <span class="schk-lbl">{{ t('aichat.useSchema') }}</span>
           <span v-if="schemaLoading" class="mini">…</span>
           <span v-else-if="useSchema && schemaText" class="mini" :title="schemaText">✓</span>
+        </label>
+        <label class="schk" :title="t('aichat.useCodeTitle')">
+          <input type="checkbox" :checked="useCode" @change="toggleCode" />
+          <span class="schk-lbl">{{ t('aichat.useCode') }}</span>
         </label>
         <button class="ghost sm clear-btn" :disabled="!messages.length" @click="clearAll">{{ t('aichat.clear') }}</button>
       </div>

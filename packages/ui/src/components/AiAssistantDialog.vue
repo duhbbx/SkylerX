@@ -7,8 +7,10 @@ import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/sha
 import { onMounted, onUnmounted, ref } from 'vue'
 import { type AiMode, askAi, extractSql, fmtOracleType } from '../ai'
 import { useDataClient } from '../data-client'
+import type { TableContext } from '../ddl'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
+import { containerKey, getRepoPath, retrieveCode } from '../rag/codeRepo'
 import { isActiveAiConfigured, settings } from '../settings'
 import Modal from './Modal.vue'
 
@@ -27,6 +29,8 @@ const mode = ref<AiMode>(props.initialMode ?? 'nl2sql')
 const input = ref(props.initialSql ?? '')
 const errInput = ref(props.initialError ?? '')
 const useSchema = ref(false)
+// 「代码库」开关：附带当前连接默认容器绑定代码库里最相关的片段作为上下文
+const useCode = ref(false)
 const schemaText = ref('')
 const schemaLoading = ref(false)
 const answer = ref('')
@@ -59,6 +63,18 @@ function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'oracle' | 'other' {
   return 'other'
 }
 const connOf = (id: string) => conns.value.find((c) => c.id === id)
+
+/**
+ * 当前连接默认容器的 {database, schema}，与代码库绑定时的容器键同构。
+ * 本弹窗不让用户单独选库，跟 loadSchema 一样落到默认库/schema（mysql=DATABASE() /
+ * pg='public' / oracle=当前用户）。
+ */
+function currentCtx(c: ConnectionConfig): TableContext {
+  const f = fam(c.dialect)
+  if (f === 'pg') return { database: c.database, schema: 'public' }
+  if (f === 'oracle') return { schema: c.database || '' }
+  return { database: c.database || '' }
+}
 
 onMounted(async () => {
   conns.value = await client.connections.list()
@@ -134,12 +150,31 @@ async function run(): Promise<void> {
   running.value = true
   controller = new AbortController()
   try {
+    // 代码库：开关 ON 且当前连接默认容器绑定了代码库 → 检索 top-K 相关片段一起送出
+    let codeContext: string | undefined
+    if (useCode.value) {
+      const conn = connOf(connId.value)
+      if (conn) {
+        const container = containerKey(currentCtx(conn))
+        if (getRepoPath(conn, container)) {
+          codeContext =
+            (await retrieveCode(
+              conn.id,
+              container,
+              input.value,
+              settings.aiVectorTopK,
+              controller.signal,
+            )) || undefined
+        }
+      }
+    }
     answer.value = await askAi({
       mode: mode.value,
       dialect: connOf(connId.value)?.dialect,
       input: input.value,
       error: errInput.value || undefined,
       schema: useSchema.value ? schemaText.value || undefined : undefined,
+      codeContext,
       signal: controller.signal,
     })
   } catch (e) {
@@ -190,6 +225,10 @@ onUnmounted(() => controller?.abort())
           <span class="schk-lbl">{{ t('ai.useSchema') }}</span>
           <span v-if="schemaLoading" class="mini">…</span>
           <span v-else-if="useSchema && schemaText" class="mini">✓</span>
+        </label>
+        <label class="schk" :title="t('ai.useCodeTitle')">
+          <input type="checkbox" v-model="useCode" />
+          <span class="schk-lbl">{{ t('ai.useCode') }}</span>
         </label>
       </div>
 
