@@ -1476,6 +1476,7 @@ const DICT: Record<string, [string, string]> = {
 
   // ── 右键菜单（TREE_ACTIONS）所有动作标签 ──
   'ctx.new-query': ['新建查询', 'New query'],
+  'ctx.associate-code-repo': ['关联代码库…', 'Associate code repo…'],
   'ctx.new-table': ['新建表', 'New table'],
   'ctx.new-view': ['新建视图', 'New view'],
   'ctx.new-function': ['新建函数', 'New function'],
@@ -2019,6 +2020,11 @@ const DICT: Record<string, [string, string]> = {
     '{name} 下未取到任何表/列；可能是空库或权限不足',
     'No tables/columns under {name}; possibly empty schema or insufficient privileges',
   ],
+  'aichat.useCode': ['代码库', 'Code repo'],
+  'aichat.useCodeTitle': [
+    '把绑定代码库里最相关的片段作为上下文，让 AI 生成的 SQL 更贴合你的项目',
+    'Feed the most relevant snippets from the bound code repo as context for more accurate SQL',
+  ],
   'aichat.useSchema': ['附带库结构', 'Include schema'],
   'aichat.useSchemaTitle': [
     '勾选后会把当前连接 information_schema 里的表/列汇总发给 AI 作为上下文（压缩后最多 6KB）',
@@ -2074,6 +2080,27 @@ const DICT: Record<string, [string, string]> = {
     '帮我分析下这条 SQL 为什么报错，并给出修复方案。',
     'Help me analyze why this SQL errored and how to fix it.',
   ],
+  'coderepo.title': ['关联代码库', 'Associate code repo'],
+  'coderepo.desc': [
+    '为该库/Schema 绑定一个本地代码仓库（实体模型、SQL、迁移、文档），AI 生成 SQL 时会参考其中相关片段。',
+    'Bind a local code repo (models, SQL, migrations, docs) to this database/schema; the AI uses relevant snippets when generating SQL.',
+  ],
+  'coderepo.folder': ['仓库目录', 'Repo folder'],
+  'coderepo.pick': ['选择目录…', 'Choose folder…'],
+  'coderepo.build': ['建立 / 刷新索引', 'Build / refresh index'],
+  'coderepo.building': ['索引中…', 'Indexing…'],
+  'coderepo.unbind': ['解除绑定', 'Unbind'],
+  'coderepo.status': [
+    '已索引 {files} 个文件、{chunks} 个片段（{mode}）',
+    'Indexed {files} files, {chunks} chunks ({mode})',
+  ],
+  'coderepo.capped': ['（已达上限，部分文件未索引）', '(capped; some files not indexed)'],
+  'coderepo.privacy': [
+    '提示：向量索引会把代码发送到所配置的 embedding 端点（未配置则仅本地词法检索）。',
+    'Note: vector indexing sends code to the configured embedding endpoint (lexical-only if unconfigured).',
+  ],
+  'coderepo.noPath': ['尚未选择仓库目录', 'No repo folder selected'],
+  'coderepo.saved': ['已保存代码库绑定', 'Code repo binding saved'],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
   'ws.favoritesEmpty': [
