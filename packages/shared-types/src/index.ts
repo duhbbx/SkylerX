@@ -508,6 +508,8 @@ export interface DataClient {
       filters?: { name: string; extensions: string[] }[]
       allowCreate?: boolean
       defaultPath?: string
+      /** true = 选目录(openDirectory),供代码库关联用 */
+      directory?: boolean
     }): Promise<string | null>
     /** 自定义 SaveFileDialog 用的低级原语(桌面专属;Web 端按需用 File System Access API 实现) */
     listDir?(

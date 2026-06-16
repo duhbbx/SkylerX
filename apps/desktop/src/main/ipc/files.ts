@@ -72,9 +72,17 @@ export function registerFileIpc(): void {
     FILE_IPC.selectFile,
     async (
       _e,
-      req?: { filters?: Filter[]; allowCreate?: boolean; defaultPath?: string },
+      req?: { filters?: Filter[]; allowCreate?: boolean; defaultPath?: string; directory?: boolean },
     ): Promise<string | null> => {
       const win = focusedWindow()
+      if (req?.directory) {
+        // 选目录(代码库关联用):openDirectory 只让选文件夹。
+        const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined!, {
+          properties: ['openDirectory'],
+          defaultPath: req?.defaultPath,
+        })
+        return canceled || !filePaths.length ? null : filePaths[0]
+      }
       if (req?.allowCreate) {
         // showSaveDialog 允许指定不存在的文件名,用于"新建数据库文件"场景
         const { canceled, filePath } = await dialog.showSaveDialog(win ?? undefined!, {

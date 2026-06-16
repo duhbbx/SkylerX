@@ -21,7 +21,7 @@ const busy = ref(false)
 const status = ref('')
 
 async function pick(): Promise<void> {
-  const picked = await client.files.selectFile?.({ allowCreate: false })
+  const picked = await client.files.selectFile?.({ directory: true })
   if (picked) path.value = picked
 }
 

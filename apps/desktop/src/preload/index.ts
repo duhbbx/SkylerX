@@ -97,6 +97,7 @@ const api = {
       filters?: { name: string; extensions: string[] }[]
       allowCreate?: boolean
       defaultPath?: string
+      directory?: boolean
     }): Promise<string | null> => ipcRenderer.invoke('files:selectFile', req),
     // ── 自定义 SaveFileDialog 用的原语 ───────────────────────────
     listDir: (
