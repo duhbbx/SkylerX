@@ -21,8 +21,12 @@ const savedCard = ref<{ path: string } | null>(null)
 async function onSaveFileSubmit(path: string): Promise<void> {
   const req = saveFileState.req
   if (!req) return
-  // pick 模式:不写文件,只返回所选 path
-  if (req.mode === 'pick-existing' || req.mode === 'pick-or-create') {
+  // pick 模式(选文件 / 选或新建 / 选目录):不写文件,只返回所选 path
+  if (
+    req.mode === 'pick-existing' ||
+    req.mode === 'pick-or-create' ||
+    req.mode === 'pick-directory'
+  ) {
     saveFileState.open = false
     saveFileState.resolve?.(path)
     return
