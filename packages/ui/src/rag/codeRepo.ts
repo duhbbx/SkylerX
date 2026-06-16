@@ -3,11 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import type { DataClient } from '@db-tool/shared-types'
-import { embedTexts } from '../ai'
 import type { TableContext } from '../ddl'
 import { chunkCode, parseGitignore, shouldIndexFile } from './codeScan'
 import type { RagChunk } from './corpus'
-import { formatContext, searchIndex } from './service'
+import { embedBatched, formatContext, searchIndex } from './service'
 import { type RagIndex, encodeVec, loadIndex, saveIndex } from './store'
 
 const SEP = '␟' // unit separator,容器各段之间的分隔符(不会出现在库名/路径里)
@@ -167,6 +166,8 @@ export async function refreshCodeIndex(
     })
   }
 
+  const prevChunkById = new Map((prev?.chunks ?? []).map((c) => [c.id, c]))
+
   const nextManifest: CodeManifest = {}
   const reindexChunks: RagChunk[] = []
   const sizeByPath = new Map(files.map((f) => [f.relPath, f]))
@@ -192,7 +193,11 @@ export async function refreshCodeIndex(
   let mode: 'vector' | 'lexical' = 'lexical'
   if (reindexChunks.length) {
     try {
-      const raw = await embedTexts(reindexChunks.map((c) => c.text), opts.signal)
+      const raw = await embedBatched(
+        reindexChunks.map((c) => c.text),
+        opts.onProgress,
+        opts.signal,
+      )
       if (raw.length === reindexChunks.length) {
         reindexVecs = raw.map((v) => encodeVec(v))
         mode = 'vector'
@@ -209,7 +214,7 @@ export async function refreshCodeIndex(
     const entry = manifest[relPath]
     nextManifest[relPath] = entry
     for (const id of entry.chunkIds) {
-      const chunk = prev?.chunks.find((c) => c.id === id)
+      const chunk = prevChunkById.get(id)
       if (!chunk) continue
       chunks.push(chunk)
       const v = prevVecByChunk.get(id)

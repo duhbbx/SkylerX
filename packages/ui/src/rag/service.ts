@@ -18,7 +18,7 @@ export type RetrievalMode = 'hybrid' | 'lexical'
 const EMBED_BATCH = 64
 
 /** 分批 embedding:大库拆成多次请求,任一批失败则整体抛出(交由上层退化词法)。 */
-async function embedBatched(
+export async function embedBatched(
   texts: string[],
   onProgress?: (done: number, total: number) => void,
   signal?: AbortSignal,
