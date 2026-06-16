@@ -252,6 +252,8 @@ export interface AskOptions {
   error?: string
   /** 可选：库结构上下文（schema.table(col type, ...)） */
   schema?: string
+  /** 可选:代码库相关片段(实体/SQL/迁移/文档),作为参考上下文 */
+  codeContext?: string
   signal?: AbortSignal
 }
 
@@ -259,6 +261,11 @@ function buildUserMessage(o: AskOptions): string {
   const parts: string[] = []
   if (o.dialect) parts.push(`SQL dialect: ${o.dialect}`)
   if (o.schema) parts.push(`Database schema:\n${o.schema}`)
+  if (o.codeContext)
+    parts.push(
+      `Reference snippets from the project's code repository (entities/SQL/migrations/docs). ` +
+        `Prefer the live database schema above for structure; use these for naming, semantics, and query patterns:\n${o.codeContext}`,
+    )
   if (o.mode === 'nl2sql') {
     parts.push(`Request: ${o.input}`)
   } else if (o.mode === 'diagnose') {
@@ -383,6 +390,8 @@ export interface ChatOptions {
   dialect?: DbDialect
   /** 库结构上下文（用户可开关） */
   schema?: string
+  /** 可选:代码库相关片段(实体/SQL/迁移/文档),作为参考上下文 */
+  codeContext?: string
   /** 用户额外的系统提示词（追加在内置系统提示词之后） */
   extraSystem?: string
   /** A/B/C 三档记忆汇总段（由 memory.ts/buildMemorySection 生成）；优先注入到 system 前面 */
@@ -402,6 +411,11 @@ function buildSystem(o: ChatOptions): string {
   if (o.memorySection?.trim()) parts.push(o.memorySection.trim())
   if (o.dialect) parts.push(`SQL dialect: ${o.dialect}`)
   if (o.schema) parts.push(`Database schema (read-only context):\n${o.schema}`)
+  if (o.codeContext)
+    parts.push(
+      `Project code repository snippets (read-only reference; prefer the DB schema for structure, ` +
+        `use these for naming/semantics/query patterns):\n${o.codeContext}`,
+    )
   if (o.extraSystem) parts.push(o.extraSystem)
   return parts.join('\n\n')
 }
