@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { describe, expect, it } from 'vitest'
-import { type IgnoreMatcher, parseGitignore, shouldIndexFile } from './codeScan'
+import { type IgnoreMatcher, chunkCode, parseGitignore, shouldIndexFile } from './codeScan'
 
 describe('parseGitignore + IgnoreMatcher', () => {
   it('matches plain names and globs, ignores comments/blanks', () => {
@@ -33,5 +33,29 @@ describe('shouldIndexFile', () => {
     expect(shouldIndexFile('dist/bundle.js', 10, ig)).toBe(false)
     const ig2 = parseGitignore('secret.sql\n')
     expect(shouldIndexFile('secret.sql', 10, ig2)).toBe(false)
+  })
+})
+
+describe('chunkCode', () => {
+  it('one chunk for a short file, prefixed with the path header', () => {
+    const chunks = chunkCode('src/User.java', 'class User {}\n')
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0].id).toBe('code:src/User.java␟0')
+    expect(chunks[0].kind).toBe('code')
+    expect(chunks[0].title).toBe('src/User.java')
+    expect(chunks[0].text.startsWith('// file: src/User.java')).toBe(true)
+    expect(chunks[0].text).toContain('class User {}')
+  })
+
+  it('splits a long file into overlapping line windows', () => {
+    const lines = Array.from({ length: 150 }, (_, i) => `line${i}`).join('\n')
+    const chunks = chunkCode('a.ts', lines)
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.map((c) => c.id)).toEqual(chunks.map((_, i) => `code:a.ts␟${i}`))
+    expect(chunks[1].text).toContain('line70')
+  })
+
+  it('returns no chunks for blank content', () => {
+    expect(chunkCode('a.ts', '   \n\n')).toEqual([])
   })
 })

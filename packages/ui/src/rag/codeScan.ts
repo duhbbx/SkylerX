@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { RagChunk } from './corpus'
+
 /** 单文件大小上限(字节):超过的源文件(通常是生成物/压缩文件)跳过,省 token 与噪声。 */
 export const MAX_FILE_BYTES = 256 * 1024
 
@@ -66,4 +68,29 @@ export function shouldIndexFile(relPath: string, size: number, ig: IgnoreMatcher
   if (size > MAX_FILE_BYTES) return false
   if (ig.ignores(relPath)) return false
   return true
+}
+
+/** 代码分块:按行滑窗(窗口 80 行、重叠 10 行),每块头部带文件路径,便于检索归因。 */
+const WINDOW_LINES = 80
+const OVERLAP_LINES = 10
+
+export function chunkCode(relPath: string, text: string): RagChunk[] {
+  if (!text.trim()) return []
+  const lines = text.split(/\r?\n/)
+  const out: RagChunk[] = []
+  const step = WINDOW_LINES - OVERLAP_LINES
+  let i = 0
+  for (let start = 0; start < lines.length; start += step) {
+    const slice = lines.slice(start, start + WINDOW_LINES).join('\n')
+    if (!slice.trim()) continue
+    out.push({
+      id: `code:${relPath}␟${i}`,
+      kind: 'code',
+      title: relPath,
+      text: `// file: ${relPath}\n${slice}`,
+    })
+    i++
+    if (start + WINDOW_LINES >= lines.length) break
+  }
+  return out
 }
