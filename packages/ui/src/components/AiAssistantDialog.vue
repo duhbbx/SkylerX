@@ -43,6 +43,20 @@ const answer = ref('')
 const running = ref(false)
 const error = ref<string | null>(null)
 let controller: AbortController | null = null
+let requestSequence = 0
+let activeRequestId = 0
+
+interface AssistantRequestSnapshot {
+  id: number
+  connId: string
+  dialect: DbDialect | undefined
+  context: TableContext
+  mode: AiMode
+  input: string
+  error: string | undefined
+  schema: string | undefined
+  useCode: boolean
+}
 
 const MODES: { id: AiMode; label: () => string }[] = [
   { id: 'nl2sql', label: () => t('ai.modeNl2sql') },
@@ -75,11 +89,11 @@ const connOf = (id: string) => conns.value.find((c) => c.id === id)
  * 本弹窗不让用户单独选库，跟 loadSchema 一样落到默认库/schema（mysql=DATABASE() /
  * pg='public' / oracle=当前用户）。
  */
-function currentCtx(c: ConnectionConfig): TableContext {
+function currentCtx(c: ConnectionConfig, captured: TableContext = {}): TableContext {
   const f = fam(c.dialect)
-  if (f === 'pg') return { database: c.database, schema: 'public' }
-  if (f === 'oracle') return { schema: c.database || '' }
-  return { database: c.database || '' }
+  if (f === 'pg') return { database: captured.database ?? c.database, schema: captured.schema ?? 'public' }
+  if (f === 'oracle') return { schema: captured.schema ?? (c.database || '') }
+  return { database: captured.database ?? (c.database || '') }
 }
 
 onMounted(async () => {
@@ -146,7 +160,19 @@ function toggleSchema(): void {
 }
 
 function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw new DOMException('Request aborted', 'AbortError')
+  if (!signal.aborted) return
+  throw signal.reason instanceof Error && signal.reason.name === 'AbortError'
+    ? signal.reason
+    : new DOMException('Request aborted', 'AbortError')
+}
+
+function isCurrentRequest(snapshot: AssistantRequestSnapshot): boolean {
+  return activeRequestId === snapshot.id && connId.value === snapshot.connId
+}
+
+function throwIfRequestStale(snapshot: AssistantRequestSnapshot, signal: AbortSignal): void {
+  throwIfAborted(signal)
+  if (!isCurrentRequest(snapshot)) throw new DOMException('Request superseded', 'AbortError')
 }
 
 function codeRetrievalLabel(): string {
@@ -166,34 +192,37 @@ function codeRetrievalTitle(): string {
 }
 
 async function retrieveCodeContext(
-  query: string,
+  snapshot: AssistantRequestSnapshot,
   signal: AbortSignal,
 ): Promise<string | undefined> {
-  if (!useCode.value) return undefined
-  if (!connId.value) {
+  if (!snapshot.useCode) return undefined
+  if (!snapshot.connId) {
+    throwIfRequestStale(snapshot, signal)
     codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
     return undefined
   }
   try {
     // Repository bindings may have changed after the selector's cached connection list loaded.
-    const conn = await client.connections.get(connId.value)
-    throwIfAborted(signal)
-    const container = resolveBoundContainer(conn, currentCtx(conn))
+    const conn = await client.connections.get(snapshot.connId)
+    throwIfRequestStale(snapshot, signal)
+    const container = resolveBoundContainer(conn, currentCtx(conn, snapshot.context))
     if (!container) {
+      throwIfRequestStale(snapshot, signal)
       codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
       return undefined
     }
     const result = await retrieveCodeDetailed(
       conn.id,
       container,
-      query,
+      snapshot.input,
       settings.aiVectorTopK,
       signal,
     )
+    throwIfRequestStale(snapshot, signal)
     codeRetrieval.value = result
     return result.context || undefined
   } catch (e) {
-    throwIfAborted(signal)
+    throwIfRequestStale(snapshot, signal)
     if ((e as Error).name === 'AbortError') throw e
     codeRetrieval.value = {
       mode: 'error',
@@ -204,39 +233,59 @@ async function retrieveCodeContext(
 }
 
 async function run(): Promise<void> {
-  if (!input.value.trim()) return
-  codeRetrieval.value = null
+  if (!input.value.trim() || running.value) return
   if (!isActiveAiConfigured()) {
     error.value = t('ai.noKey')
     return
   }
+  const cachedConn = connOf(connId.value)
+  const snapshot: AssistantRequestSnapshot = {
+    id: ++requestSequence,
+    connId: connId.value,
+    dialect: cachedConn?.dialect,
+    context: cachedConn ? currentCtx(cachedConn) : {},
+    mode: mode.value,
+    input: input.value,
+    error: errInput.value || undefined,
+    schema: useSchema.value ? schemaText.value || undefined : undefined,
+    useCode: useCode.value,
+  }
+  activeRequestId = snapshot.id
+  codeRetrieval.value = null
   answer.value = ''
   error.value = null
   running.value = true
-  controller = new AbortController()
+  const requestController = new AbortController()
+  controller = requestController
   try {
-    const codeContext = await retrieveCodeContext(input.value, controller.signal)
-    answer.value = await askAi({
-      mode: mode.value,
-      dialect: connOf(connId.value)?.dialect,
-      input: input.value,
-      error: errInput.value || undefined,
-      schema: useSchema.value ? schemaText.value || undefined : undefined,
+    const codeContext = await retrieveCodeContext(snapshot, requestController.signal)
+    throwIfRequestStale(snapshot, requestController.signal)
+    const result = await askAi({
+      mode: snapshot.mode,
+      dialect: snapshot.dialect,
+      input: snapshot.input,
+      error: snapshot.error,
+      schema: snapshot.schema,
       codeContext,
-      signal: controller.signal,
+      signal: requestController.signal,
     })
+    throwIfRequestStale(snapshot, requestController.signal)
+    answer.value = result
   } catch (e) {
-    if ((e as Error).name === 'AbortError') return
+    if ((e as Error).name === 'AbortError' || requestController.signal.aborted || !isCurrentRequest(snapshot)) return
     const msg = e instanceof Error ? e.message : String(e)
     error.value = msg === 'NO_API_KEY' ? t('ai.noKey') : msg
   } finally {
-    running.value = false
-    controller = null
+    if (activeRequestId === snapshot.id) {
+      running.value = false
+      controller = null
+      activeRequestId = 0
+    }
   }
 }
 
 function stop(): void {
-  controller?.abort()
+  if (activeRequestId) controller?.abort()
 }
 
 function insertSql(): void {

@@ -246,6 +246,19 @@ const elapsed = ref(0) // 思考中计时（秒），便于发现「卡住」
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 const error = ref<string | null>(null)
 let controller: AbortController | null = null
+let requestSequence = 0
+let activeRequestId = 0
+
+interface ChatRequestSnapshot {
+  id: number
+  connId: string
+  selectedDb: string
+  dialect: DbDialect | undefined
+  schema: string | undefined
+  useCode: boolean
+  text: string
+  messages: ChatMessage[]
+}
 
 // 持久化：每应用一份，避免会话间丢失
 const STORAGE_KEY = 'skylerx.aiChat.messages'
@@ -464,7 +477,23 @@ function toggleCode(): void {
 }
 
 function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw new DOMException('Request aborted', 'AbortError')
+  if (!signal.aborted) return
+  throw signal.reason instanceof Error && signal.reason.name === 'AbortError'
+    ? signal.reason
+    : new DOMException('Request aborted', 'AbortError')
+}
+
+function isCurrentRequest(snapshot: ChatRequestSnapshot): boolean {
+  return (
+    activeRequestId === snapshot.id &&
+    connId.value === snapshot.connId &&
+    selectedDb.value === snapshot.selectedDb
+  )
+}
+
+function throwIfRequestStale(snapshot: ChatRequestSnapshot, signal: AbortSignal): void {
+  throwIfAborted(signal)
+  if (!isCurrentRequest(snapshot)) throw new DOMException('Request superseded', 'AbortError')
 }
 
 function codeRetrievalLabel(): string {
@@ -484,34 +513,37 @@ function codeRetrievalTitle(): string {
 }
 
 async function retrieveCodeContext(
-  query: string,
+  snapshot: ChatRequestSnapshot,
   signal: AbortSignal,
 ): Promise<string | undefined> {
-  if (!useCode.value) return undefined
-  if (!connId.value) {
+  if (!snapshot.useCode) return undefined
+  if (!snapshot.connId) {
+    throwIfRequestStale(snapshot, signal)
     codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
     return undefined
   }
   try {
     // Repository bindings may have changed after the selector's cached connection list loaded.
-    const conn = await client.connections.get(connId.value)
-    throwIfAborted(signal)
-    const container = resolveBoundContainer(conn, currentCtx(conn))
+    const conn = await client.connections.get(snapshot.connId)
+    throwIfRequestStale(snapshot, signal)
+    const container = resolveBoundContainer(conn, currentCtx(conn, snapshot.selectedDb))
     if (!container) {
+      throwIfRequestStale(snapshot, signal)
       codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
       return undefined
     }
     const result = await retrieveCodeDetailed(
       conn.id,
       container,
-      query,
+      snapshot.text,
       settings.aiVectorTopK,
       signal,
     )
+    throwIfRequestStale(snapshot, signal)
     codeRetrieval.value = result
     return result.context || undefined
   } catch (e) {
-    throwIfAborted(signal)
+    throwIfRequestStale(snapshot, signal)
     if ((e as Error).name === 'AbortError') throw e
     codeRetrieval.value = {
       mode: 'error',
@@ -525,22 +557,34 @@ async function retrieveCodeContext(
  * 当前选中容器的 {database, schema}，与代码库绑定时用的容器键保持同构
  * （mysql=库名 / pg=conn.database + schema / oracle=用户名），见 loadSchema 的目标解析。
  */
-function currentCtx(c: ConnectionConfig): TableContext {
+function currentCtx(c: ConnectionConfig, selectedContainer: string): TableContext {
   const f = fam(c.dialect)
-  if (f === 'pg') return { database: c.database, schema: selectedDb.value || 'public' }
-  if (f === 'oracle') return { schema: selectedDb.value || c.database || '' }
-  return { database: selectedDb.value || c.database || '' }
+  if (f === 'pg') return { database: c.database, schema: selectedContainer || 'public' }
+  if (f === 'oracle') return { schema: selectedContainer || c.database || '' }
+  return { database: selectedContainer || c.database || '' }
 }
 
 async function send(): Promise<void> {
   const text = input.value.trim()
   if (!text || running.value) return
-  codeRetrieval.value = null
   if (!isActiveAiConfigured()) {
     error.value = t('ai.noKey')
     return
   }
   const userMsg: ChatMessage = { role: 'user', content: text }
+  const cachedConn = connOf(connId.value)
+  const snapshot: ChatRequestSnapshot = {
+    id: ++requestSequence,
+    connId: connId.value,
+    selectedDb: selectedDb.value,
+    dialect: cachedConn?.dialect,
+    schema: useSchema.value ? schemaText.value || undefined : undefined,
+    useCode: useCode.value,
+    text,
+    messages: [...messages.value, userMsg],
+  }
+  activeRequestId = snapshot.id
+  codeRetrieval.value = null
   messages.value.push(userMsg)
   input.value = ''
   saveToStorage()
@@ -551,34 +595,43 @@ async function send(): Promise<void> {
   elapsed.value = 0
   const startT = Date.now()
   elapsedTimer = setInterval(() => {
+    if (!isCurrentRequest(snapshot)) return
     elapsed.value = Math.round((Date.now() - startT) / 1000)
   }, 1000)
-  controller = new AbortController()
+  const requestController = new AbortController()
+  controller = requestController
   // 流式：先放一条空的 assistant 占位，token 到达即往里追加（边生成边显示）。
   // 发给 API 的对话是 convo（含刚才的 user，不含这条占位）。
   // slot 取自响应式数组里的那个元素（代理），改它的 content 才会触发重渲染。
-  const convo = messages.value.slice()
   messages.value.push({ role: 'assistant', content: '' })
   const slot = messages.value[messages.value.length - 1]
   try {
     // 注入 A/B/C 三档记忆段（A：自定义画像；B：事实清单；C：相关向量记忆 top-K）
     const memorySection = await buildMemorySection(text)
-    const codeContext = await retrieveCodeContext(text, controller.signal)
+    throwIfRequestStale(snapshot, requestController.signal)
+    const codeContext = await retrieveCodeContext(snapshot, requestController.signal)
+    throwIfRequestStale(snapshot, requestController.signal)
     const opts = {
-      messages: convo,
-      dialect: connOf(connId.value)?.dialect,
-      schema: useSchema.value ? schemaText.value || undefined : undefined,
+      messages: snapshot.messages,
+      dialect: snapshot.dialect,
+      schema: snapshot.schema,
       codeContext,
       memorySection,
-      signal: controller.signal,
+      signal: requestController.signal,
     }
     let reply = await askAiChatStream(opts, (delta) => {
+      if (!isCurrentRequest(snapshot)) {
+        requestController.abort()
+        return
+      }
       slot.content += delta
       scrollToBottom()
     })
+    throwIfRequestStale(snapshot, requestController.signal)
     // 某些代理忽略 stream:true、直接返回整包 → 流里没拿到 token，退回非流式补一发
     if (!reply.trim()) {
       reply = await askAiChat(opts)
+      throwIfRequestStale(snapshot, requestController.signal)
     }
     slot.content = reply
     saveToStorage()
@@ -594,24 +647,27 @@ async function send(): Promise<void> {
     }
     const err = e as Error & { aiAborted?: boolean }
     // 用户主动取消 vs 网络/超时 abort 分流；主动取消静默退出
-    if (err.name === 'AbortError' || (err.aiAborted && controller?.signal.aborted)) return
+    if (err.name === 'AbortError' || requestController.signal.aborted || !isCurrentRequest(snapshot)) return
     const msg = err.message || String(e)
     if (msg === 'NO_API_KEY') error.value = t('ai.noKey')
     else if (/abort|timeout/i.test(msg))
       error.value = t('aichat.timeoutHint', { secs: elapsed.value })
     else error.value = msg
   } finally {
-    if (elapsedTimer) {
-      clearInterval(elapsedTimer)
-      elapsedTimer = null
+    if (activeRequestId === snapshot.id) {
+      if (elapsedTimer) {
+        clearInterval(elapsedTimer)
+        elapsedTimer = null
+      }
+      running.value = false
+      controller = null
+      activeRequestId = 0
     }
-    running.value = false
-    controller = null
   }
 }
 
 function stop(): void {
-  controller?.abort()
+  if (activeRequestId) controller?.abort()
 }
 
 async function clearAll(): Promise<void> {
