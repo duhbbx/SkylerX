@@ -2094,6 +2094,7 @@ const DICT: Record<string, [string, string]> = {
   'coderepo.pick': ['选择目录…', 'Choose folder…'],
   'coderepo.build': ['建立 / 刷新索引', 'Build / refresh index'],
   'coderepo.building': ['索引中…', 'Indexing…'],
+  'coderepo.progress': ['正在构建索引：{done}/{total} 个片段', 'Building index: {done}/{total} chunks'],
   'coderepo.unbind': ['解除绑定', 'Unbind'],
   'coderepo.status': [
     '已索引 {files} 个文件、{chunks} 个片段（{mode}）',
@@ -2106,6 +2107,10 @@ const DICT: Record<string, [string, string]> = {
   ],
   'coderepo.noPath': ['尚未选择仓库目录', 'No repo folder selected'],
   'coderepo.saved': ['已保存代码库绑定', 'Code repo binding saved'],
+  'coderepo.storageFull': [
+    '代码库太大，无法保存到当前本地索引存储。请缩小仓库范围或移除不需要的文件，然后重试。',
+    'This repository is too large for the current local index store. Reduce its scope or remove unneeded files, then try again.',
+  ],
   'ws.shortcutsTitle': ['快捷键参考', 'Keyboard shortcuts'],
   'ws.favoritesTitle': ['收藏夹', 'Favorites'],
   'ws.favoritesEmpty': [

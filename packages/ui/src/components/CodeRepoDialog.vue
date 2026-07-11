@@ -19,6 +19,8 @@ const client = useDataClient()
 const path = ref(getRepoPath(props.conn, props.container) ?? '')
 const busy = ref(false)
 const status = ref('')
+const error = ref('')
+const savedConn = ref<ConnectionConfig | null>(null)
 
 async function pick(): Promise<void> {
   const picked = await client.files.selectFile?.({ directory: true })
@@ -27,12 +29,10 @@ async function pick(): Promise<void> {
 
 /** 保存绑定路径到 connection.extra(过 IPC 前已是纯对象:JSON 深拷贝剥掉响应式 Proxy)。 */
 async function persist(p: string): Promise<ConnectionConfig> {
-  const next = setRepoPath(props.conn, props.container, p)
-  const saved = await client.connections.update(
+  const next = setRepoPath(savedConn.value ?? props.conn, props.container, p)
+  return await client.connections.update(
     JSON.parse(JSON.stringify(next)) as ConnectionConfig,
   )
-  emit('saved', saved)
-  return saved
 }
 
 async function build(): Promise<void> {
@@ -41,11 +41,16 @@ async function build(): Promise<void> {
     return
   }
   busy.value = true
-  status.value = ''
+  status.value = t('coderepo.building')
+  error.value = ''
+  savedConn.value = null
   try {
-    await persist(path.value)
+    const saved = await persist(path.value)
     const r = await refreshCodeIndex(client, props.conn.id, props.container, path.value, {
       nowMs: Date.now(),
+      onProgress: (done, total) => {
+        status.value = t('coderepo.progress', { done: String(done), total: String(total) })
+      },
     })
     status.value =
       t('coderepo.status', {
@@ -53,9 +58,16 @@ async function build(): Promise<void> {
         chunks: String(r.index.chunks.length),
         mode: r.mode,
       }) + (r.capped ? ` ${t('coderepo.capped')}` : '')
+    savedConn.value = saved
     toast.success(t('coderepo.saved'))
   } catch (e) {
-    toast.warn(e instanceof Error ? e.message : String(e))
+    status.value = ''
+    error.value = e instanceof Error && e.message === 'CODE_INDEX_STORAGE_FULL'
+      ? t('coderepo.storageFull')
+      : e instanceof Error
+        ? e.message
+        : String(e)
+    toast.warn(error.value)
   } finally {
     busy.value = false
   }
@@ -63,15 +75,24 @@ async function build(): Promise<void> {
 
 async function unbind(): Promise<void> {
   busy.value = true
+  error.value = ''
   try {
-    await persist('')
+    const saved = await persist('')
     path.value = ''
     status.value = ''
     toast.success(t('coderepo.saved'))
+    emit('saved', saved)
     emit('close')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+    toast.warn(error.value)
   } finally {
     busy.value = false
   }
+}
+
+function done(): void {
+  if (savedConn.value) emit('saved', savedConn.value)
 }
 </script>
 
@@ -85,17 +106,19 @@ async function unbind(): Promise<void> {
         <button class="ghost" :disabled="busy" @click="pick">{{ t('coderepo.pick') }}</button>
       </div>
       <div v-if="status" class="status">{{ status }}</div>
+      <div v-if="error" class="error">{{ error }}</div>
       <div v-if="!canEmbed()" class="privacy">{{ t('coderepo.privacy') }}</div>
     </div>
     <template #footer>
-      <button v-if="getRepoPath(props.conn, props.container)" class="ghost" :disabled="busy" @click="unbind">
+      <button v-if="getRepoPath(savedConn ?? props.conn, props.container)" class="ghost" :disabled="busy" @click="unbind">
         {{ t('coderepo.unbind') }}
       </button>
       <span class="grow" />
       <button class="ghost" @click="emit('close')">{{ t('common.cancel') }}</button>
-      <button class="primary" :disabled="busy || !path.trim()" @click="build">
+      <button :class="savedConn ? 'ghost' : 'primary'" :disabled="busy || !path.trim()" @click="build">
         {{ busy ? t('coderepo.building') : t('coderepo.build') }}
       </button>
+      <button v-if="savedConn" class="primary" :disabled="busy" @click="done">{{ t('common.done') }}</button>
     </template>
   </Modal>
 </template>
@@ -110,6 +133,7 @@ async function unbind(): Promise<void> {
   border-radius: 6px; color: var(--text); padding: 6px 8px; font-family: var(--font-mono); font-size: 12px;
 }
 .coderepo .status { font-size: 12px; color: var(--text); }
+.coderepo .error { font-size: 12px; color: var(--err, #e04050); line-height: 1.5; }
 .coderepo .privacy { font-size: 12px; color: var(--muted); }
 .grow { flex: 1; }
 .primary { background: var(--accent, #7c6cff); color: #fff; border-color: var(--accent, #7c6cff); }
