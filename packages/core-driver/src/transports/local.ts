@@ -7,6 +7,7 @@ import type {
   CommandResult,
   ConnectionConfig,
   ConnectionRef,
+  ConnectionScope,
   ExecuteOptions,
   MetaScope,
   MetadataNode,
@@ -29,7 +30,7 @@ function isStaleConnError(err: unknown): boolean {
   const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : ''
   const re =
     /PROTOCOL_CONNECTION_LOST|ECONNRESET|EPIPE|Connection lost|Connection terminated|server closed the connection|terminating connection|Client has encountered a connection error|socket hang up|This socket has been ended|Cannot use a pool after calling end|connection is closed|read ECONNRESET/i
-  return re.test(msg) || re.test(code)
+  return re.test(msg) || re.test(code) || code === 'ECONNREFUSED' || /ECONNREFUSED/i.test(msg)
 }
 
 /**
@@ -40,8 +41,10 @@ function isStaleConnError(err: unknown): boolean {
  */
 export class LocalTransport implements SqlTransport {
   private readonly connections = new Map<string, DriverConnection>()
+  private readonly connectionConnIds = new Map<string, string>()
   /** 进行中的建连 Promise（按 connId 去重并发 acquire，避免重复 connect()/建池） */
   private readonly pending = new Map<string, Promise<DriverConnection>>()
+  private readonly pendingConnIds = new Map<string, string>()
   /** sessionId → 持有 session 的 DriverConnection（用于 commit/rollback/end 路由） */
   private readonly sessionOwners = new Map<string, DriverConnection>()
 
@@ -77,16 +80,29 @@ export class LocalTransport implements SqlTransport {
   }
 
   async cancel(conn: ConnectionRef): Promise<void> {
-    const connection = this.connections.get(conn.id)
+    const connection = this.connections.get(this.scopedKey(conn))
     if (connection?.cancelActive) await connection.cancelActive()
   }
 
   async disconnect(connId: string): Promise<void> {
-    const connection = this.connections.get(connId)
-    if (connection) {
-      this.connections.delete(connId)
-      await connection.close()
+    const keys = [...this.connectionConnIds.entries()]
+      .filter(([, id]) => id === connId)
+      .map(([key]) => key)
+    const pendingKeys = [...this.pendingConnIds.entries()]
+      .filter(([, id]) => id === connId)
+      .map(([key]) => key)
+    for (const key of pendingKeys) {
+      this.pending.delete(key)
+      this.pendingConnIds.delete(key)
     }
+    const closing = keys.map((key) => this.closeScopedKey(key))
+    await Promise.all(closing)
+  }
+
+  async releaseScope(connId: string, scope?: ConnectionScope): Promise<void> {
+    this.pending.delete(this.keyFor(connId, scope))
+    this.pendingConnIds.delete(this.keyFor(connId, scope))
+    await this.closeScopedKey(this.keyFor(connId, scope))
   }
 
   // ── 手动提交会话路由：begin 走 acquire；其余按 sessionId 找回持有者 ──
@@ -142,6 +158,9 @@ export class LocalTransport implements SqlTransport {
   async dispose(): Promise<void> {
     const all = [...this.connections.values()]
     this.connections.clear()
+    this.connectionConnIds.clear()
+    this.pending.clear()
+    this.pendingConnIds.clear()
     await Promise.allSettled(all.map((c) => c.close()))
   }
 
@@ -161,7 +180,7 @@ export class LocalTransport implements SqlTransport {
     conn: ConnectionRef,
     run: (c: DriverConnection) => Promise<T>,
   ): Promise<T> {
-    const reused = this.connections.has(conn.id)
+    const reused = this.connections.has(this.scopedKey(conn))
     const connection = await this.acquire(conn)
     try {
       return await run(connection)
@@ -170,7 +189,7 @@ export class LocalTransport implements SqlTransport {
       console.warn(
         `[transport] connection ${conn.id} appears stale (${err instanceof Error ? err.message : err}); reconnecting and retrying once`,
       )
-      await this.disconnect(conn.id).catch(() => {})
+      await this.releaseScope(conn.id, conn.scope).catch(() => {})
       const fresh = await this.acquire(conn)
       return run(fresh)
     }
@@ -178,26 +197,50 @@ export class LocalTransport implements SqlTransport {
 
   /** 取已缓存连接，无则按配置建立。 */
   private async acquire(conn: ConnectionRef): Promise<DriverConnection> {
-    const existing = this.connections.get(conn.id)
+    const key = this.scopedKey(conn)
+    const existing = this.connections.get(key)
     if (existing) return existing
 
     // 复用进行中的建连 Promise：并发 acquire 同一 connId 时只 connect() 一次。
     // 之前是 check-then-act（get → await connect → set），两个并发调用都看到空缓存
     // 各建一条连接 → 各建一个池。多数驱动只是浪费/泄漏池，但 dmdb 对省略 poolAlias
     // 的池一律登记为 "default"，第二个直接抛 [20006] ECJS_POOL_ALIAS_CONFLICT。
-    const inflight = this.pending.get(conn.id)
+    const inflight = this.pending.get(key)
     if (inflight) return inflight
 
     const building = (async () => {
       const config = await this.resolveConfig(conn)
       const connection = await getDriver(config.dialect).connect(config)
-      this.connections.set(conn.id, connection)
+      this.connections.set(key, connection)
+      this.connectionConnIds.set(key, conn.id)
       return connection
     })()
-    this.pending.set(conn.id, building)
+    this.pending.set(key, building)
+    this.pendingConnIds.set(key, conn.id)
     // 成败都清理 pending：成功后已落入 connections；失败后允许下次重连（不缓存失败）。
-    void building.finally(() => this.pending.delete(conn.id)).catch(() => {})
+    void building
+      .finally(() => {
+        this.pending.delete(key)
+        this.pendingConnIds.delete(key)
+      })
+      .catch(() => {})
     return building
+  }
+
+  private keyFor(connId: string, scope?: ConnectionScope): string {
+    return `${connId}␟${scope?.id || 'shared'}`
+  }
+
+  private scopedKey(conn: ConnectionRef): string {
+    return this.keyFor(conn.id, conn.scope)
+  }
+
+  private async closeScopedKey(key: string): Promise<void> {
+    const connection = this.connections.get(key)
+    if (!connection) return
+    this.connections.delete(key)
+    this.connectionConnIds.delete(key)
+    await connection.close()
   }
 
   private async resolveConfig(conn: ConnectionRef): Promise<ConnectionConfig> {

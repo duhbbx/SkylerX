@@ -7,6 +7,7 @@ import type {
   CommandResult,
   ConnectionConfig,
   ConnectionRef,
+  ConnectionScope,
   ExecuteOptions,
   MetaScope,
   MetadataNode,
@@ -48,6 +49,9 @@ export interface SqlTransport {
 
   /** 主动断开某连接并清理其资源（如池）。 */
   disconnect(connId: string): Promise<void>
+
+  /** 主动释放某连接的一个 scoped 资源；scope 缺省时释放 shared scope。 */
+  releaseScope(connId: string, scope?: ConnectionScope): Promise<void>
 
   // ── 手动提交会话 ──
   /** 钉连接、进入事务；返回 sessionId。方言不支持时抛 'COMMIT_MODE_UNSUPPORTED' */

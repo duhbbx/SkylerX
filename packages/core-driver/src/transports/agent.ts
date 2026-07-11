@@ -7,6 +7,7 @@ import type {
   CommandResult,
   ConnectionConfig,
   ConnectionRef,
+  ConnectionScope,
   ExecuteOptions,
   MetaScope,
   MetadataNode,
@@ -81,6 +82,12 @@ export class AgentTransport implements SqlTransport {
     if (!agentId) return // 该连接从未经本 transport 路由过，无需远端断开
     this.routes.delete(connId)
     await this.client.call<void>(agentId, 'disconnect', { connId })
+  }
+
+  async releaseScope(connId: string, scope?: ConnectionScope): Promise<void> {
+    const agentId = this.routes.get(connId)
+    if (!agentId) return
+    await this.client.call<void>(agentId, 'releaseScope', { connId, scope })
   }
 
   // ── 手动提交会话路由：begin 记录 connId→agentId 映射；session 操作按 sessionId 找回 ──

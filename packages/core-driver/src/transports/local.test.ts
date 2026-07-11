@@ -123,8 +123,16 @@ const myRef = (id: string): ConnectionRef => ({
   id,
   config: { id, name: id, dialect: DbDialect.MySQL } as ConnectionConfig,
 })
+const scopedRef = (id: string, scopeId?: string): ConnectionRef => ({
+  id,
+  scope: scopeId ? { id: scopeId, kind: 'query-tab' } : undefined,
+  config: { id, name: id, dialect: DbDialect.MySQL } as ConnectionConfig,
+})
 const LOST = Object.assign(new Error('Connection lost: The server closed the connection.'), {
   code: 'PROTOCOL_CONNECTION_LOST',
+})
+const REFUSED = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:56503'), {
+  code: 'ECONNREFUSED',
 })
 const SYNTAX = new Error('You have an error in your SQL syntax')
 
@@ -161,5 +169,96 @@ describe('LocalTransport 自动重连', () => {
     await t.execute(myRef('r4'), 'SELECT 1')
     await expect(t.execute(myRef('r4'), 'SELECT 1')).rejects.toThrow(/Connection lost/)
     expect(built).toHaveLength(2)
+  })
+})
+
+describe('LocalTransport scoped connection caches', () => {
+  it('caches different driver connections for different scopes of the same connId', async () => {
+    const built = registerFlakyDriver([() => null, () => null])
+    const t = new LocalTransport()
+
+    await t.execute(scopedRef('s1', 'tab:a'), 'SELECT 1')
+    await t.execute(scopedRef('s1', 'tab:b'), 'SELECT 1')
+    await t.execute(scopedRef('s1', 'tab:a'), 'SELECT 1')
+
+    expect(built).toHaveLength(2)
+  })
+
+  it('releaseScope closes only the matching scoped connection', async () => {
+    const built = registerFlakyDriver([() => null, () => null])
+    const t = new LocalTransport()
+
+    await t.execute(scopedRef('s2', 'tab:a'), 'SELECT 1')
+    await t.execute(scopedRef('s2', 'tab:b'), 'SELECT 1')
+    await t.releaseScope('s2', { id: 'tab:a', kind: 'query-tab' })
+
+    expect(built[0].closed).toBe(true)
+    expect(built[1].closed).toBe(false)
+  })
+
+  it('disconnect closes all scoped connections for a connId', async () => {
+    const built = registerFlakyDriver([() => null, () => null, () => null])
+    const t = new LocalTransport()
+
+    await t.execute(scopedRef('s3', 'tab:a'), 'SELECT 1')
+    await t.execute(scopedRef('s3', 'tab:b'), 'SELECT 1')
+    await t.execute(scopedRef('other', 'tab:a'), 'SELECT 1')
+    await t.disconnect('s3')
+
+    expect(built[0].closed).toBe(true)
+    expect(built[1].closed).toBe(true)
+    expect(built[2].closed).toBe(false)
+  })
+
+  it('reconnects once for ECONNREFUSED on a reused scoped connection', async () => {
+    const built = registerFlakyDriver([(n) => (n === 2 ? REFUSED : null), () => null])
+    const t = new LocalTransport()
+
+    await t.execute(scopedRef('s4', 'tab:a'), 'SELECT 1')
+    const result = await t.execute(scopedRef('s4', 'tab:a'), 'SELECT 1')
+
+    expect(result).toEqual(OK)
+    expect(built).toHaveLength(2)
+    expect(built[0].closed).toBe(true)
+  })
+
+  it('cancel targets only the scoped cached driver', async () => {
+    class CancelConn extends FakeConn {
+      canceled = false
+      async cancelActive() {
+        this.canceled = true
+      }
+    }
+    const built: CancelConn[] = []
+    registerDriver({
+      dialect: DbDialect.ClickHouse,
+      sql: {} as DatabaseDriver['sql'],
+      async test() {
+        return { ok: true }
+      },
+      async connect(): Promise<DriverConnection> {
+        const c = new CancelConn(() => null)
+        built.push(c)
+        return c
+      },
+    })
+    const refA: ConnectionRef = {
+      id: 's5',
+      scope: { id: 'tab:a', kind: 'query-tab' },
+      config: { id: 's5', name: 's5', dialect: DbDialect.ClickHouse } as ConnectionConfig,
+    }
+    const refB: ConnectionRef = {
+      id: 's5',
+      scope: { id: 'tab:b', kind: 'query-tab' },
+      config: { id: 's5', name: 's5', dialect: DbDialect.ClickHouse } as ConnectionConfig,
+    }
+    const t = new LocalTransport()
+
+    await t.execute(refA, 'SELECT 1')
+    await t.execute(refB, 'SELECT 1')
+    await t.cancel(refB)
+
+    expect(built[0].canceled).toBe(false)
+    expect(built[1].canceled).toBe(true)
   })
 })

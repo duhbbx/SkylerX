@@ -183,9 +183,17 @@ export type ConnectionEnv = 'dev' | 'test' | 'prod'
  */
 export type CommitMode = 'auto' | 'manual'
 
+/** 一次执行所属的连接使用范围；用于隔离 query tab、导航树、弹窗等连接缓存。 */
+export interface ConnectionScope {
+  id: string
+  kind?: 'query-tab' | 'navigation' | 'dialog' | 'shared'
+}
+
 /** 传给执行层的轻量连接引用（不一定携带明文密码，可由执行层按 id 解析）。 */
 export interface ConnectionRef {
   id: string
+  /** 可选执行范围；缺省表示 shared scope。 */
+  scope?: ConnectionScope
   /** 可选内联配置；缺省时执行层按 id 从配置仓解析 */
   config?: ConnectionConfig
 }
@@ -455,10 +463,17 @@ export interface DataClient {
       sql: string,
       params?: unknown[],
       options?: ExecuteOptions,
+      scope?: ConnectionScope,
     ): Promise<QueryResult>
-    metadata(connId: string, scope: MetaScope): Promise<MetadataNode[]>
-    executeBatch(connId: string, statements: string[], options?: ExecuteOptions): Promise<void>
-    cancel(connId: string): Promise<void>
+    metadata(connId: string, scope: MetaScope, connectionScope?: ConnectionScope): Promise<MetadataNode[]>
+    executeBatch(
+      connId: string,
+      statements: string[],
+      options?: ExecuteOptions,
+      scope?: ConnectionScope,
+    ): Promise<void>
+    cancel(connId: string, scope?: ConnectionScope): Promise<void>
+    releaseScope(connId: string, scope?: ConnectionScope): Promise<void>
     history(connId: string, limit?: number): Promise<QueryHistoryEntry[]>
     historyClear(connId: string): Promise<void>
     /** 跨连接搜索历史 SQL/备注/标签;不传 connectionId = 全库搜 */
@@ -478,7 +493,7 @@ export interface DataClient {
     // commitSession 提交并自动开下一个 txn；rollbackSession 同理；
     // endSession 还连接给池。未支持的方言会抛 'COMMIT_MODE_UNSUPPORTED'。
     /** 返回 sessionId（不透明字符串） */
-    beginSession(connId: string, options?: ExecuteOptions): Promise<string>
+    beginSession(connId: string, options?: ExecuteOptions, scope?: ConnectionScope): Promise<string>
     executeInSession(
       sessionId: string,
       sql: string,
@@ -491,7 +506,11 @@ export interface DataClient {
     // ── NoSQL 平行通道 ────────────────────────────────────────────
     // MongoDB / Redis 等非 SQL 方言走此通道；SQL 方言驱动未实现时
     // 主进程会抛错 'COMMAND_CHANNEL_UNSUPPORTED'。
-    executeCommand(connId: string, command: CommandRequest): Promise<CommandResult>
+    executeCommand(
+      connId: string,
+      command: CommandRequest,
+      scope?: ConnectionScope,
+    ): Promise<CommandResult>
   }
   files: {
     saveText(req: {

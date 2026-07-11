@@ -6,6 +6,7 @@ import type {
   CommandRequest,
   ConnectionConfig,
   ConnectionRef,
+  ConnectionScope,
   ExecuteOptions,
   MetaScope,
 } from '@db-tool/shared-types'
@@ -25,6 +26,7 @@ export type AgentRpcMethod =
   | 'testConnection'
   | 'cancel'
   | 'disconnect'
+  | 'releaseScope'
   | 'beginSession'
   | 'executeInSession'
   | 'commitSession'
@@ -39,6 +41,7 @@ export interface AgentRpcPayloads {
   testConnection: { config: ConnectionConfig }
   cancel: { conn: ConnectionRef }
   disconnect: { connId: string }
+  releaseScope: { connId: string; scope?: ConnectionScope }
   beginSession: { conn: ConnectionRef; options?: ExecuteOptions }
   executeInSession: { sessionId: string; sql: string; params?: unknown[]; options?: ExecuteOptions }
   commitSession: { sessionId: string }
@@ -89,6 +92,11 @@ export async function dispatchAgentRpc(
     case 'disconnect': {
       const p = payload as AgentRpcPayloads['disconnect']
       await transport.disconnect(p.connId)
+      return null
+    }
+    case 'releaseScope': {
+      const p = payload as AgentRpcPayloads['releaseScope']
+      await transport.releaseScope(p.connId, p.scope)
       return null
     }
     case 'beginSession': {
