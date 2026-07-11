@@ -6,6 +6,7 @@ import type { DataClient } from '@db-tool/shared-types'
 import type { TableContext } from '../ddl'
 import { expandCodeSearchQuery } from '../ai'
 import { chunkCode, parseGitignore, shouldIndexFile } from './codeScan'
+import { normalizeCodeRepoRoot } from './codeRepoBuild'
 import type { RagChunk } from './corpus'
 import { embedBatched, formatContext, searchIndex, type RetrievalMode } from './service'
 import { type RagIndex, encodeVec, loadIndex, saveIndex } from './store'
@@ -82,6 +83,11 @@ export interface ScannedFile {
 
 export type CodeManifest = Record<string, { mtime: number; size: number; chunkIds: string[] }>
 
+interface StoredCodeManifest {
+  codeSourceRoot?: string
+  files: CodeManifest
+}
+
 export interface CodeRetrievalResult {
   context: string
   mode: RetrievalMode | 'none'
@@ -114,17 +120,28 @@ export function assertIndexSaved(saved: boolean): void {
 function manifestStorageKey(connId: string, container: string): string {
   return `skylerx.rag.codemanifest:${connId}${SEP}${container}`
 }
-function loadManifest(connId: string, container: string): CodeManifest {
+function loadManifest(connId: string, container: string): StoredCodeManifest {
   try {
     const raw = localStorage.getItem(manifestStorageKey(connId, container))
-    return raw ? (JSON.parse(raw) as CodeManifest) : {}
+    if (!raw) return { files: {} }
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'files' in parsed &&
+      typeof parsed.files === 'object' &&
+      parsed.files !== null
+    ) {
+      return parsed as StoredCodeManifest
+    }
+    return { files: parsed as CodeManifest }
   } catch {
-    return {}
+    return { files: {} }
   }
 }
-function saveManifest(connId: string, container: string, m: CodeManifest): void {
+function saveManifest(connId: string, container: string, manifest: StoredCodeManifest): void {
   try {
-    localStorage.setItem(manifestStorageKey(connId, container), JSON.stringify(m))
+    localStorage.setItem(manifestStorageKey(connId, container), JSON.stringify(manifest))
   } catch {
     /* localStorage 满/不可用时忽略 */
   }
@@ -158,7 +175,12 @@ export async function walkRepo(
     let entries: Awaited<ReturnType<NonNullable<DataClient['files']['listDir']>>>
     try {
       entries = await listDir(abs)
-    } catch {
+    } catch (error) {
+      if (!rel) {
+        const rootError = new Error('CODE_REPO_ROOT_UNREADABLE') as Error & { cause?: unknown }
+        rootError.cause = error
+        throw rootError
+      }
       continue
     }
     for (const e of entries) {
@@ -210,12 +232,17 @@ export async function refreshCodeIndex(
     nowMs: 0,
   },
 ): Promise<{ index: RagIndex; fileCount: number; capped: boolean; mode: 'vector' | 'lexical' }> {
+  const codeSourceRoot = normalizeCodeRepoRoot(root)
   const key = codeIndexKey(connId, container)
-  const { files, capped } = await walkRepo(client, root)
-  const manifest = loadManifest(connId, container)
+  const { files, capped } = await walkRepo(client, codeSourceRoot)
+  const storedManifest = loadManifest(connId, container)
+  const storedIndex = loadIndex(key)
+  const canReuse =
+    storedManifest.codeSourceRoot === codeSourceRoot &&
+    storedIndex?.codeSourceRoot === codeSourceRoot
+  const manifest = canReuse ? storedManifest.files : {}
+  const prev = canReuse ? storedIndex : null
   const plan = planRefresh(manifest, files)
-
-  const prev = loadIndex(key)
   const prevVecByChunk = new Map<string, string>()
   if (prev?.vectors) {
     prev.chunks.forEach((c, i) => {
@@ -232,7 +259,7 @@ export async function refreshCodeIndex(
   for (const relPath of plan.toReindex) {
     let text = ''
     try {
-      const abs = await client.files.pathJoin?.(root, relPath)
+      const abs = await client.files.pathJoin?.(codeSourceRoot, relPath)
       text = (abs && (await client.files.readText?.(abs))) || ''
     } catch {
       continue
@@ -291,10 +318,11 @@ export async function refreshCodeIndex(
     builtAt: opts.nowMs,
     mode: haveAllVecs && vectors.length === chunks.length ? 'vector' : 'lexical',
     chunks,
+    codeSourceRoot,
     vectors: haveAllVecs && vectors.length === chunks.length ? vectors : undefined,
   }
   assertIndexSaved(saveIndex(index))
-  saveManifest(connId, container, nextManifest)
+  saveManifest(connId, container, { codeSourceRoot, files: nextManifest })
   opts.onProgress?.(chunks.length, chunks.length)
   return { index, fileCount: files.length, capped, mode: index.mode }
 }
@@ -303,13 +331,20 @@ export async function refreshCodeIndex(
 export async function retrieveCodeDetailed(
   connId: string,
   container: string,
+  expectedRoot: string,
   query: string,
   topK: number,
   signal?: AbortSignal,
   expandQuery: CodeSearchQueryExpander = expandCodeSearchQuery,
 ): Promise<CodeRetrievalResult> {
   const idx = loadIndex(codeIndexKey(connId, container))
-  if (!idx || !idx.chunks.length) {
+  const normalizedExpectedRoot = normalizeCodeRepoRoot(expectedRoot)
+  if (
+    !idx ||
+    !normalizedExpectedRoot ||
+    idx.codeSourceRoot !== normalizedExpectedRoot ||
+    !idx.chunks.length
+  ) {
     return { context: '', mode: 'none', hitCount: 0, sources: [] }
   }
   let searchQuery = query
@@ -336,9 +371,10 @@ export async function retrieveCodeDetailed(
 export async function retrieveCode(
   connId: string,
   container: string,
+  expectedRoot: string,
   query: string,
   topK: number,
   signal?: AbortSignal,
 ): Promise<string> {
-  return (await retrieveCodeDetailed(connId, container, query, topK, signal)).context
+  return (await retrieveCodeDetailed(connId, container, expectedRoot, query, topK, signal)).context
 }

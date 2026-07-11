@@ -14,6 +14,8 @@ export interface RagIndex {
   builtAt: number
   mode: 'vector' | 'lexical'
   chunks: RagChunk[]
+  /** Normalized repository root for code indexes; absent on legacy indexes. */
+  codeSourceRoot?: string
   /** base64(Float32) 向量,与 chunks 同序;lexical 模式为空。 */
   vectors?: string[]
   /** 建索引时语料的指纹,用于陈旧检测(见 corpus.fingerprint)。 */

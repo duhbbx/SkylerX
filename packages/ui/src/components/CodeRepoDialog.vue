@@ -10,7 +10,7 @@ import { toast } from '../dialog'
 import { t } from '../i18n'
 import { canEmbed } from '../ai'
 import { getRepoPath, refreshCodeIndex, setRepoPath } from '../rag/codeRepo'
-import { runCodeRepoBuild } from '../rag/codeRepoBuild'
+import { normalizeCodeRepoRoot, runCodeRepoBuild } from '../rag/codeRepoBuild'
 import Modal from './Modal.vue'
 
 const props = defineProps<{ conn: ConnectionConfig; container: string }>()
@@ -25,7 +25,7 @@ const savedConn = ref<ConnectionConfig | null>(null)
 
 watch(path, (nextPath) => {
   const savedRoot = savedConn.value && getRepoPath(savedConn.value, props.container)
-  if (savedRoot && nextPath.trim() !== savedRoot) {
+  if (savedRoot && normalizeCodeRepoRoot(nextPath) !== normalizeCodeRepoRoot(savedRoot)) {
     savedConn.value = null
     status.value = ''
   }
@@ -60,7 +60,7 @@ async function build(): Promise<void> {
         },
       }),
     })
-    if (path.value.trim() !== result.root) {
+    if (normalizeCodeRepoRoot(path.value) !== result.root) {
       status.value = ''
       return
     }

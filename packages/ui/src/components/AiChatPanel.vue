@@ -20,6 +20,7 @@ import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
 import {
+  getRepoPath,
   resolveBoundContainer,
   retrieveCodeDetailed,
   type CodeRetrievalResult,
@@ -238,6 +239,8 @@ const schemaLoading = ref(false)
 const dbList = ref<string[]>([])
 const selectedDb = ref<string>('')
 const dbLoading = ref(false)
+let dbListLoadSequence = 0
+let schemaLoadSequence = 0
 
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
@@ -362,6 +365,10 @@ function cancelActiveRequestForContextChange(): void {
 // 切连接 → 取消旧上下文请求、重新拉 database/schema 列表 + 重置 schema 缓存
 watch(connId, async () => {
   cancelActiveRequestForContextChange()
+  dbListLoadSequence++
+  schemaLoadSequence++
+  dbLoading.value = false
+  schemaLoading.value = false
   schemaText.value = ''
   selectedDb.value = ''
   await loadDbList()
@@ -370,6 +377,8 @@ watch(connId, async () => {
 // 切库 → 取消旧上下文请求，旧 schema 文本作废
 watch(selectedDb, () => {
   cancelActiveRequestForContextChange()
+  schemaLoadSequence++
+  schemaLoading.value = false
   schemaText.value = ''
   if (useSchema.value) void loadSchema()
 }, { flush: 'sync' })
@@ -395,8 +404,13 @@ const connOf = (id: string): ConnectionConfig | undefined => conns.value.find((c
 
 /** 拉「当前连接的所有 database / schema 列表」用于下拉。系统库过滤掉。 */
 async function loadDbList(): Promise<void> {
-  const c = connOf(connId.value)
+  const loadId = ++dbListLoadSequence
+  const loadConnId = connId.value
+  const isCurrentLoad = (): boolean =>
+    dbListLoadSequence === loadId && connId.value === loadConnId
+  const c = connOf(loadConnId)
   dbList.value = []
+  dbLoading.value = false
   if (!c) return
   const f = fam(c.dialect)
   if (f === 'other') return
@@ -416,6 +430,7 @@ async function loadDbList(): Promise<void> {
     const res = (await client.connections.execute(c.id, sql, [])) as QueryResult
     let names = (res.rows as { name: string }[]).map((r) => r.name)
     if (f === 'oracle') names = names.filter((n) => !isSystemSchemaName(n))
+    if (!isCurrentLoad()) return
     dbList.value = names
     // 默认选项：连接默认库（mysql=database / oracle=当前用户=c.database）/ public（pg）/ 列表第一个
     const def = f === 'pg' ? 'public' : c.database || dbList.value[0]
@@ -424,12 +439,19 @@ async function loadDbList(): Promise<void> {
   } catch {
     /* 拉不到就允许用户手动输入 / 留空走默认库 */
   } finally {
-    dbLoading.value = false
+    if (isCurrentLoad()) dbLoading.value = false
   }
 }
 
 async function loadSchema(): Promise<void> {
-  const c = connOf(connId.value)
+  const loadId = ++schemaLoadSequence
+  const loadConnId = connId.value
+  const loadSelectedDb = selectedDb.value
+  const isCurrentLoad = (): boolean =>
+    schemaLoadSequence === loadId &&
+    connId.value === loadConnId &&
+    selectedDb.value === loadSelectedDb
+  const c = connOf(loadConnId)
   if (!c) return
   const f = fam(c.dialect)
   if (f === 'other') {
@@ -441,7 +463,7 @@ async function loadSchema(): Promise<void> {
   error.value = null
   try {
     // 用户选的容器名优先；没选时回退到连接默认（pg=public / 其余=连接默认库/当前用户）
-    const target = selectedDb.value || (f === 'pg' ? 'public' : c.database || '')
+    const target = loadSelectedDb || (f === 'pg' ? 'public' : c.database || '')
     if (!target) {
       schemaText.value = ''
       error.value = t('aichat.schemaNoTarget')
@@ -481,12 +503,13 @@ async function loadSchema(): Promise<void> {
         break
       }
     }
+    if (!isCurrentLoad()) return
     schemaText.value = byTable.size ? lines.join('\n') : ''
     if (!byTable.size) error.value = t('aichat.schemaEmpty', { name: target })
   } catch (e) {
-    reportInlineError(error, e)
+    if (isCurrentLoad()) reportInlineError(error, e)
   } finally {
-    schemaLoading.value = false
+    if (isCurrentLoad()) schemaLoading.value = false
   }
 }
 
@@ -557,9 +580,16 @@ async function retrieveCodeContext(
       codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
       return undefined
     }
+    const expectedRoot = getRepoPath(conn, container)
+    if (!expectedRoot) {
+      throwIfRequestStale(snapshot, signal)
+      codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
+      return undefined
+    }
     const result = await retrieveCodeDetailed(
       conn.id,
       container,
+      expectedRoot,
       snapshot.text,
       settings.aiVectorTopK,
       signal,

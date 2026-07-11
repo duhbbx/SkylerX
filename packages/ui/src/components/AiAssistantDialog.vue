@@ -11,6 +11,7 @@ import type { TableContext } from '../ddl'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import {
+  getRepoPath,
   resolveBoundContainer,
   retrieveCodeDetailed,
   type CodeRetrievalResult,
@@ -39,6 +40,7 @@ type CodeRetrievalStatus = CodeRetrievalResult | { mode: 'error'; message: strin
 const codeRetrieval = ref<CodeRetrievalStatus | null>(null)
 const schemaText = ref('')
 const schemaLoading = ref(false)
+let schemaLoadSequence = 0
 const answer = ref('')
 const running = ref(false)
 const error = ref<string | null>(null)
@@ -113,12 +115,18 @@ function cancelActiveRequestForConnectionChange(): void {
 
 watch(connId, () => {
   cancelActiveRequestForConnectionChange()
+  schemaLoadSequence++
+  schemaLoading.value = false
   schemaText.value = ''
   if (useSchema.value) void loadSchema()
 }, { flush: 'sync' })
 
 async function loadSchema(): Promise<void> {
-  const c = connOf(connId.value)
+  const loadId = ++schemaLoadSequence
+  const loadConnId = connId.value
+  const isCurrentLoad = (): boolean =>
+    schemaLoadSequence === loadId && connId.value === loadConnId
+  const c = connOf(loadConnId)
   if (!c) return
   const f = fam(c.dialect)
   if (f === 'other') {
@@ -161,12 +169,13 @@ async function loadSchema(): Promise<void> {
         break
       }
     }
+    if (!isCurrentLoad()) return
     schemaText.value = lines.join('\n')
     if (!schemaText.value) error.value = t('ai.schemaEmpty')
   } catch (e) {
-    reportInlineError(error, e)
+    if (isCurrentLoad()) reportInlineError(error, e)
   } finally {
-    schemaLoading.value = false
+    if (isCurrentLoad()) schemaLoading.value = false
   }
 }
 
@@ -228,9 +237,16 @@ async function retrieveCodeContext(
       codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
       return { context: undefined, conn: freshConn }
     }
+    const expectedRoot = getRepoPath(freshConn, container)
+    if (!expectedRoot) {
+      throwIfRequestStale(snapshot, signal)
+      codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
+      return { context: undefined, conn: freshConn }
+    }
     const result = await retrieveCodeDetailed(
       freshConn.id,
       container,
+      expectedRoot,
       snapshot.input,
       settings.aiVectorTopK,
       signal,

@@ -15,6 +15,7 @@ import {
   retrieveCodeDetailed,
   resolveBoundContainer,
   setRepoPath,
+  walkRepo,
 } from './codeRepo'
 import { encodeVec, saveIndex } from './store'
 
@@ -47,12 +48,41 @@ describe('codeIndexKey', () => {
 
 describe('code index retrieval diagnostics', () => {
   it('reports no retrieval when the code index is missing', async () => {
-    await expect(retrieveCodeDetailed('missing-conn', 'app␟public', 'find users', 3)).resolves.toEqual({
+    await expect(retrieveCodeDetailed('missing-conn', 'app␟public', '/repo', 'find users', 3)).resolves.toEqual({
       context: '',
       mode: 'none',
       hitCount: 0,
       sources: [],
     })
+  })
+
+  it('returns no context before searching when the stored root differs from the binding', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    saveIndex({
+      key: codeIndexKey('c1', 'app␟public'),
+      builtAt: 1,
+      mode: 'lexical',
+      codeSourceRoot: '/repo-a',
+      chunks: [
+        {
+          id: 'code:secret.ts␟0',
+          kind: 'code',
+          title: 'secret.ts',
+          text: 'repository A private implementation',
+        },
+      ],
+    })
+    const expand = vi.fn(async () => 'private implementation')
+
+    await expect(
+      retrieveCodeDetailed('c1', 'app␟public', '/repo-b', 'private', 3, undefined, expand),
+    ).resolves.toEqual({ context: '', mode: 'none', hitCount: 0, sources: [] })
+    expect(expand).not.toHaveBeenCalled()
   })
 })
 
@@ -68,6 +98,7 @@ describe('lexical code-query expansion', () => {
       key: codeIndexKey('c1', 'app␟public'),
       builtAt: 1,
       mode: 'lexical',
+      codeSourceRoot: '/repo',
       chunks: [
         {
           id: 'code:order-user-repository.ts␟0',
@@ -79,7 +110,7 @@ describe('lexical code-query expansion', () => {
     })
     const expand = vi.fn(async () => 'order user repository mapper')
 
-    const result = await retrieveCodeDetailed('c1', 'app␟public', '如何查询订单用户', 3, undefined, expand)
+    const result = await retrieveCodeDetailed('c1', 'app␟public', '/repo', '如何查询订单用户', 3, undefined, expand)
 
     expect(expand).toHaveBeenCalledWith('如何查询订单用户', undefined)
     expect(result).toMatchObject({ mode: 'lexical', hitCount: 1, sources: ['src/order-user-repository.ts'] })
@@ -96,6 +127,7 @@ describe('lexical code-query expansion', () => {
       key: codeIndexKey('c1', 'app␟public'),
       builtAt: 1,
       mode: 'lexical',
+      codeSourceRoot: '/repo',
       chunks: [
         {
           id: 'code:billing-gateway.ts␟0',
@@ -109,6 +141,7 @@ describe('lexical code-query expansion', () => {
     const result = await retrieveCodeDetailed(
       'c1',
       'app␟public',
+      '/repo',
       'billing endpoint',
       3,
       undefined,
@@ -129,6 +162,7 @@ describe('lexical code-query expansion', () => {
       key: codeIndexKey('c1', 'app␟public'),
       builtAt: 1,
       mode: 'lexical',
+      codeSourceRoot: '/repo',
       chunks: [
         {
           id: 'code:order-user-repository.ts␟0',
@@ -142,7 +176,7 @@ describe('lexical code-query expansion', () => {
       throw new Error('provider unavailable')
     })
 
-    const result = await retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, undefined, expand)
+    const result = await retrieveCodeDetailed('c1', 'app␟public', '/repo', 'order user', 3, undefined, expand)
 
     expect(expand).toHaveBeenCalledWith('order user', undefined)
     expect(result).toMatchObject({ mode: 'lexical', hitCount: 1, sources: ['src/order-user-repository.ts'] })
@@ -159,6 +193,7 @@ describe('lexical code-query expansion', () => {
       key: codeIndexKey('c1', 'app␟public'),
       builtAt: 1,
       mode: 'lexical',
+      codeSourceRoot: '/repo',
       chunks: [
         {
           id: 'code:order-user-repository.ts␟0',
@@ -171,7 +206,7 @@ describe('lexical code-query expansion', () => {
     const abortError = new DOMException('Expansion canceled', 'AbortError')
 
     await expect(
-      retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, undefined, async () => {
+      retrieveCodeDetailed('c1', 'app␟public', '/repo', 'order user', 3, undefined, async () => {
         throw abortError
       }),
     ).rejects.toBe(abortError)
@@ -188,6 +223,7 @@ describe('lexical code-query expansion', () => {
       key: codeIndexKey('c1', 'app␟public'),
       builtAt: 1,
       mode: 'lexical',
+      codeSourceRoot: '/repo',
       chunks: [
         {
           id: 'code:order-user-repository.ts␟0',
@@ -203,7 +239,7 @@ describe('lexical code-query expansion', () => {
     const expand = vi.fn(async () => 'order user repository')
 
     await expect(
-      retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, controller.signal, expand),
+      retrieveCodeDetailed('c1', 'app␟public', '/repo', 'order user', 3, controller.signal, expand),
     ).rejects.toBe(abortError)
     expect(expand).not.toHaveBeenCalled()
   })
@@ -219,6 +255,7 @@ describe('lexical code-query expansion', () => {
       key: codeIndexKey('c1', 'app␟public'),
       builtAt: 1,
       mode: 'vector',
+      codeSourceRoot: '/repo',
       chunks: [
         {
           id: 'code:order-user-repository.ts␟0',
@@ -231,7 +268,7 @@ describe('lexical code-query expansion', () => {
     })
     const expand = vi.fn(async () => 'unrelated terms')
 
-    const result = await retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, undefined, expand)
+    const result = await retrieveCodeDetailed('c1', 'app␟public', '/repo', 'order user', 3, undefined, expand)
 
     expect(expand).not.toHaveBeenCalled()
     expect(result).toMatchObject({ hitCount: 1, sources: ['src/order-user-repository.ts'] })
@@ -266,6 +303,70 @@ describe('refreshCodeIndex persistence failure', () => {
       'CODE_INDEX_STORAGE_FULL',
     )
     expect(writes).not.toContain('skylerx.rag.codemanifest:c1␟app␟public')
+  })
+})
+
+describe('refreshCodeIndex root identity', () => {
+  it('fully rebuilds when the root changes despite identical relative metadata', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    const client = {
+      files: {
+        listDir: async () => [{ name: 'same.ts', isDirectory: false, size: 12, mtime: 7 }],
+        pathJoin: async (...parts: string[]) => parts.join('/'),
+        readText: async (path: string) => path.endsWith('.gitignore') ? '' : `content from ${path.split('/')[1]}`,
+      },
+    } as unknown as DataClient
+
+    const first = await refreshCodeIndex(client, 'c1', 'app␟public', '/repo-a', { nowMs: 1 })
+    const second = await refreshCodeIndex(client, 'c1', 'app␟public', '/repo-b/', { nowMs: 2 })
+
+    expect(first.index.chunks[0]?.text).toContain('repo-a')
+    expect(second.index.codeSourceRoot).toBe('/repo-b')
+    expect(second.index.chunks[0]?.text).toContain('repo-b')
+    expect(second.index.chunks[0]?.text).not.toContain('repo-a')
+  })
+})
+
+describe('walkRepo root traversal errors', () => {
+  it('throws a specific error when the repository root cannot be listed', async () => {
+    const client = {
+      files: {
+        listDir: async () => { throw new Error('EACCES') },
+        pathJoin: async (...parts: string[]) => parts.join('/'),
+      },
+    } as unknown as DataClient
+
+    await expect(walkRepo(client, '/private/repo')).rejects.toThrow('CODE_REPO_ROOT_UNREADABLE')
+  })
+
+  it('skips nested directories that cannot be listed', async () => {
+    const client = {
+      files: {
+        listDir: async (path: string) => {
+          if (path === '/repo') return [{ name: 'blocked', isDirectory: true, size: 0, mtime: 0 }]
+          throw new Error('EACCES')
+        },
+        pathJoin: async (...parts: string[]) => parts.join('/'),
+      },
+    } as unknown as DataClient
+
+    await expect(walkRepo(client, '/repo')).resolves.toEqual({ files: [], capped: false })
+  })
+
+  it('accepts a readable empty repository', async () => {
+    const client = {
+      files: {
+        listDir: async () => [],
+        pathJoin: async (...parts: string[]) => parts.join('/'),
+      },
+    } as unknown as DataClient
+
+    await expect(walkRepo(client, '/repo')).resolves.toEqual({ files: [], capped: false })
   })
 })
 

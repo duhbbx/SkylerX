@@ -3,7 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { describe, expect, it, vi } from 'vitest'
-import { runCodeRepoBuild } from './codeRepoBuild'
+import { normalizeCodeRepoRoot, runCodeRepoBuild } from './codeRepoBuild'
+
+describe('normalizeCodeRepoRoot', () => {
+  it('removes trailing separators without collapsing filesystem roots', () => {
+    expect(normalizeCodeRepoRoot('/repo///')).toBe('/repo')
+    expect(normalizeCodeRepoRoot('///')).toBe('/')
+    expect(normalizeCodeRepoRoot('C:\\\\')).toBe('C:\\')
+  })
+})
 
 describe('runCodeRepoBuild', () => {
   it('rejects an empty trimmed root without invoking either operation', async () => {
@@ -16,13 +24,13 @@ describe('runCodeRepoBuild', () => {
     expect(refresh).not.toHaveBeenCalled()
   })
 
-  it('uses the trimmed root snapshot when the external path changes during persistence', async () => {
+  it('uses the trimmed root snapshot when the external path changes during refresh', async () => {
     let path = '  /repo  '
-    const persist = vi.fn(async (root: string) => {
+    const persist = vi.fn(async (root: string) => ({ id: 'conn-1', root }))
+    const refresh = vi.fn(async (root: string) => {
       path = '/other-repo'
-      return { id: 'conn-1', root }
+      return { root, fileCount: 2 }
     })
-    const refresh = vi.fn(async (root: string) => ({ root, fileCount: 2 }))
 
     const result = await runCodeRepoBuild(path, { persist, refresh })
 
@@ -35,7 +43,7 @@ describe('runCodeRepoBuild', () => {
     })
   })
 
-  it('rejects without a success result when refresh fails', async () => {
+  it('does not persist the binding when refresh fails', async () => {
     const persist = vi.fn(async () => ({ id: 'conn-1' }))
     const refresh = vi.fn(async () => {
       throw new Error('index failed')
@@ -45,12 +53,12 @@ describe('runCodeRepoBuild', () => {
     await expect(build).rejects.toThrow('index failed')
     const result = await build.catch(() => undefined)
 
-    expect(persist).toHaveBeenCalledOnce()
+    expect(persist).not.toHaveBeenCalled()
     expect(refresh).toHaveBeenCalledOnce()
     expect(result).toBeUndefined()
   })
 
-  it('persists before refreshing and returns both successful results', async () => {
+  it('refreshes before persisting and returns both successful results', async () => {
     const calls: string[] = []
     const persist = vi.fn(async (root: string) => {
       calls.push(`persist:${root}`)
@@ -63,7 +71,7 @@ describe('runCodeRepoBuild', () => {
 
     const result = await runCodeRepoBuild('/repo', { persist, refresh })
 
-    expect(calls).toEqual(['persist:/repo', 'refresh:/repo'])
+    expect(calls).toEqual(['refresh:/repo', 'persist:/repo'])
     expect(result).toEqual({
       root: '/repo',
       saved: { id: 'conn-1' },
