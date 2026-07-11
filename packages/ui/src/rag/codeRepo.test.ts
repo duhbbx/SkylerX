@@ -15,6 +15,7 @@ import {
   resolveBoundContainer,
   setRepoPath,
 } from './codeRepo'
+import { encodeVec, saveIndex } from './store'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -41,6 +42,95 @@ describe('code index retrieval diagnostics', () => {
       hitCount: 0,
       sources: [],
     })
+  })
+})
+
+describe('lexical code-query expansion', () => {
+  it('uses an injected English expansion to find code for a Chinese question', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    saveIndex({
+      key: codeIndexKey('c1', 'app␟public'),
+      builtAt: 1,
+      mode: 'lexical',
+      chunks: [
+        {
+          id: 'code:order-user-repository.ts␟0',
+          kind: 'code',
+          title: 'src/order-user-repository.ts',
+          text: 'export class OrderUserRepository { findOrderUser() {} }',
+        },
+      ],
+    })
+    const expand = vi.fn(async () => 'order user repository mapper')
+
+    const result = await retrieveCodeDetailed('c1', 'app␟public', '如何查询订单用户', 3, undefined, expand)
+
+    expect(expand).toHaveBeenCalledWith('如何查询订单用户', undefined)
+    expect(result).toMatchObject({ mode: 'lexical', hitCount: 1, sources: ['src/order-user-repository.ts'] })
+  })
+
+  it('falls back to the original lexical query when expansion fails', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    saveIndex({
+      key: codeIndexKey('c1', 'app␟public'),
+      builtAt: 1,
+      mode: 'lexical',
+      chunks: [
+        {
+          id: 'code:order-user-repository.ts␟0',
+          kind: 'code',
+          title: 'src/order-user-repository.ts',
+          text: 'export class OrderUserRepository { findOrderUser() {} }',
+        },
+      ],
+    })
+    const expand = vi.fn(async () => {
+      throw new Error('provider unavailable')
+    })
+
+    const result = await retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, undefined, expand)
+
+    expect(expand).toHaveBeenCalledWith('order user', undefined)
+    expect(result).toMatchObject({ mode: 'lexical', hitCount: 1, sources: ['src/order-user-repository.ts'] })
+  })
+
+  it('does not expand queries from a stored vector index', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    saveIndex({
+      key: codeIndexKey('c1', 'app␟public'),
+      builtAt: 1,
+      mode: 'vector',
+      chunks: [
+        {
+          id: 'code:order-user-repository.ts␟0',
+          kind: 'code',
+          title: 'src/order-user-repository.ts',
+          text: 'export class OrderUserRepository { findOrderUser() {} }',
+        },
+      ],
+      vectors: [encodeVec([1, 0])],
+    })
+    const expand = vi.fn(async () => 'unrelated terms')
+
+    const result = await retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, undefined, expand)
+
+    expect(expand).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ hitCount: 1, sources: ['src/order-user-repository.ts'] })
   })
 })
 

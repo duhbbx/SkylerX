@@ -4,6 +4,7 @@
  */
 import type { DataClient } from '@db-tool/shared-types'
 import type { TableContext } from '../ddl'
+import { expandCodeSearchQuery } from '../ai'
 import { chunkCode, parseGitignore, shouldIndexFile } from './codeScan'
 import type { RagChunk } from './corpus'
 import { embedBatched, formatContext, searchIndex, type RetrievalMode } from './service'
@@ -87,6 +88,8 @@ export interface CodeRetrievalResult {
   hitCount: number
   sources: string[]
 }
+
+export type CodeSearchQueryExpander = (query: string, signal?: AbortSignal) => Promise<string>
 
 export function assertIndexSaved(saved: boolean): void {
   if (!saved) throw new Error('CODE_INDEX_STORAGE_FULL')
@@ -287,12 +290,21 @@ export async function retrieveCodeDetailed(
   query: string,
   topK: number,
   signal?: AbortSignal,
+  expandQuery: CodeSearchQueryExpander = expandCodeSearchQuery,
 ): Promise<CodeRetrievalResult> {
   const idx = loadIndex(codeIndexKey(connId, container))
   if (!idx || !idx.chunks.length) {
     return { context: '', mode: 'none', hitCount: 0, sources: [] }
   }
-  const { hits, mode } = await searchIndex(idx, query, topK, { signal })
+  let searchQuery = query
+  if (idx.mode === 'lexical') {
+    try {
+      searchQuery = await expandQuery(query, signal)
+    } catch {
+      /* Expansion is optional; retain the original lexical query on provider failure. */
+    }
+  }
+  const { hits, mode } = await searchIndex(idx, searchQuery, topK, { signal })
   return {
     context: formatContext(hits),
     mode,

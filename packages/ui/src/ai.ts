@@ -396,6 +396,8 @@ export interface ChatOptions {
   extraSystem?: string
   /** A/B/C 三档记忆汇总段（由 memory.ts/buildMemorySection 生成）；优先注入到 system 前面 */
   memorySection?: string
+  /** 可选：限制非流式响应长度（默认保持现有 chat 预算）。 */
+  maxTokens?: number
   signal?: AbortSignal
 }
 
@@ -428,6 +430,7 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
   if (!base) throw new Error('NO_BASE_URL')
   const model = cfg.model || 'default'
   const system = buildSystem(o)
+  const maxTokens = o.maxTokens ?? 2000
   if (provider === 'anthropic') {
     const res = await aiHttp(`${base}/v1/messages`, {
       method: 'POST',
@@ -437,7 +440,7 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: JSON.stringify({ model, max_tokens: 2000, system, messages: o.messages }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: o.messages }),
       signal: o.signal,
     })
     await throwIfNotOk(res)
@@ -457,7 +460,7 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       messages: [{ role: 'system', content: system }, ...o.messages],
     }),
     signal: o.signal,
@@ -465,6 +468,21 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
   await throwIfNotOk(res)
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
   return (data.choices?.[0]?.message?.content ?? '').trim()
+}
+
+const CODE_SEARCH_EXPANSION_SYSTEM =
+  'Expand this code-repository search question into relevant English identifiers and business terms. ' +
+  'Return only space-separated terms. Do not include explanations, punctuation, markdown, or translations.'
+
+/** 将自然语言代码问题扩展为更适合英文标识符词法检索的关键词。 */
+export async function expandCodeSearchQuery(query: string, signal?: AbortSignal): Promise<string> {
+  const expanded = await askAiChat({
+    messages: [{ role: 'user', content: query }],
+    extraSystem: CODE_SEARCH_EXPANSION_SYSTEM,
+    maxTokens: 96,
+    signal,
+  })
+  return expanded.trim() || query
 }
 
 /**
