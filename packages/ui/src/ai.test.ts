@@ -70,7 +70,7 @@ describe('askAiChatStream', () => {
     }
   }
   afterEach(() => {
-    delete (globalThis as unknown as { api?: unknown }).api
+    (globalThis as unknown as { api?: unknown }).api = undefined
   })
 
   it('accumulates OpenAI-compat deltas across a frame split mid-chunk', async () => {

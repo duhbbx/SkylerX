@@ -208,7 +208,7 @@ function segments(text: string, needle: string): { s: string; m: boolean }[] {
 function cellSegments(v: unknown): { s: string; m: boolean }[] | null {
   if (v == null) return null
   let s = String(v)
-  if (s.length > 120) s = s.slice(0, 120) + '…'
+  if (s.length > 120) s = `${s.slice(0, 120)}…`
   return segments(s, value.value)
 }
 </script>

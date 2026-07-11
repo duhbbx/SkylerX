@@ -26,7 +26,7 @@ function mem() {
 }
 const nb = (id: string, t: number): Notebook => ({
   id,
-  title: 'NB ' + id,
+  title: `NB ${id}`,
   connId: 'c1',
   createdAt: t,
   updatedAt: t,

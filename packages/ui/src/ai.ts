@@ -152,9 +152,9 @@ async function aiHttpStream(
   const feed = (text: string): void => {
     if (stopped) return
     buf += text
-    let idx: number
     // SSE 帧之间用空行分隔；兼容 \r\n
-    while ((idx = buf.search(/\r?\n\r?\n/)) >= 0) {
+    let idx = buf.search(/\r?\n\r?\n/)
+    while (idx >= 0) {
       const frame = buf.slice(0, idx)
       buf = buf.slice(idx + (buf[idx] === '\r' ? 4 : 2))
       for (const rawLine of frame.split(/\r?\n/)) {
@@ -171,6 +171,7 @@ async function aiHttpStream(
           /* 跳过非 JSON（注释行 / keep-alive） */
         }
       }
+      idx = buf.search(/\r?\n\r?\n/)
     }
   }
 
@@ -263,8 +264,7 @@ function buildUserMessage(o: AskOptions): string {
   if (o.schema) parts.push(`Database schema:\n${o.schema}`)
   if (o.codeContext)
     parts.push(
-      `Reference snippets from the project's code repository (entities/SQL/migrations/docs). ` +
-        `Prefer the live database schema above for structure; use these for naming, semantics, and query patterns:\n${o.codeContext}`,
+      `Reference snippets from the project's code repository (entities/SQL/migrations/docs). Prefer the live database schema above for structure; use these for naming, semantics, and query patterns:\n${o.codeContext}`,
     )
   if (o.mode === 'nl2sql') {
     parts.push(`Request: ${o.input}`)
@@ -422,8 +422,7 @@ function buildSystem(o: ChatOptions): string {
   if (o.schema) parts.push(`Database schema (read-only context):\n${o.schema}`)
   if (o.codeContext)
     parts.push(
-      `Project code repository snippets (read-only reference; prefer the DB schema for structure, ` +
-        `use these for naming/semantics/query patterns):\n${o.codeContext}`,
+      `Project code repository snippets (read-only reference; prefer the DB schema for structure, use these for naming/semantics/query patterns):\n${o.codeContext}`,
     )
   if (o.extraSystem) parts.push(o.extraSystem)
   return parts.join('\n\n')

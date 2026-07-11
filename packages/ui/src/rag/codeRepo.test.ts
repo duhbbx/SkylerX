@@ -420,7 +420,7 @@ describe('planRefresh — incremental diff by mtime/size', () => {
 
 describe('resolveBoundContainer', () => {
   const conn = (keys: string[]) => ({
-    extra: { codeRepos: Object.fromEntries(keys.map((k) => [k, { path: '/p/' + k }])) },
+    extra: { codeRepos: Object.fromEntries(keys.map((k) => [k, { path: `/p/${k}` }])) },
   })
   it('returns null when nothing bound', () => {
     expect(resolveBoundContainer(undefined, { database: 'shop' })).toBeNull()

@@ -81,7 +81,7 @@ const OBJ_MAP: Record<string, keyof ObjectInventory> = {
 
 async function listDatabases(exec: ProfileExec): Promise<DatabaseInfo[]> {
   try {
-    const rows = await exec(`SELECT name FROM v$pdbs ORDER BY name`)
+    const rows = await exec('SELECT name FROM v$pdbs ORDER BY name')
     if (rows.length) {
       return rows.map((r) => {
         const name = String(r.NAME ?? r.name ?? '')
@@ -92,7 +92,7 @@ async function listDatabases(exec: ProfileExec): Promise<DatabaseInfo[]> {
     /* 非 CDB / 无权限 */
   }
   try {
-    const rows = await exec(`SELECT ora_database_name AS name FROM dual`)
+    const rows = await exec('SELECT ora_database_name AS name FROM dual')
     return [{ name: String(rows[0]?.NAME ?? rows[0]?.name ?? 'ORACLE'), system: false }]
   } catch {
     return [{ name: 'ORACLE', system: false }]
@@ -108,11 +108,11 @@ async function listSchemas(
   let hasOm = true
   try {
     rows = await exec(
-      `SELECT username AS name, oracle_maintained AS om FROM all_users ORDER BY username`,
+      'SELECT username AS name, oracle_maintained AS om FROM all_users ORDER BY username',
     )
   } catch {
     hasOm = false
-    rows = await exec(`SELECT username AS name FROM all_users ORDER BY username`)
+    rows = await exec('SELECT username AS name FROM all_users ORDER BY username')
   }
   const out: SchemaInfo[] = rows.map((r) => {
     const name = String(r.NAME ?? r.name ?? '')

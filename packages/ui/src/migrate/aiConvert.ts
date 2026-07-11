@@ -119,12 +119,7 @@ async function repairWithAi(
 ): Promise<ConvertResult> {
   const fence = '```'
   const userMsg =
-    `The ${target} DDL you produced for ${prev.schema}.${prev.name} failed when executed on the ` +
-    `target database. Fix it and return the corrected full DDL.\n\n` +
-    `Your previous DDL:\n${fence}sql\n${prev.sql}\n${fence}\n\n` +
-    `The statement that failed:\n${fence}sql\n${failedStatement}\n${fence}\n\n` +
-    `Target database error:\n${error}\n\n` +
-    `Return the complete corrected DDL in one ${fence}sql block, then a short note on what you changed.`
+    `The ${target} DDL you produced for ${prev.schema}.${prev.name} failed when executed on the target database. Fix it and return the corrected full DDL.\n\nYour previous DDL:\n${fence}sql\n${prev.sql}\n${fence}\n\nThe statement that failed:\n${fence}sql\n${failedStatement}\n${fence}\n\nTarget database error:\n${error}\n\nReturn the complete corrected DDL in one ${fence}sql block, then a short note on what you changed.`
   try {
     const reply = await askAiChat({
       messages: [{ role: 'user', content: userMsg }],

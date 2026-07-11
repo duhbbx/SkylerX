@@ -208,11 +208,11 @@ export class LocalTransport implements SqlTransport {
     const inflight = this.pending.get(key)
     if (inflight) return inflight
 
-    let building!: Promise<DriverConnection>
-    building = (async () => {
+    const holder: { promise?: Promise<DriverConnection> } = {}
+    const building = (async () => {
       const config = await this.resolveConfig(conn)
       const connection = await getDriver(config.dialect).connect(config)
-      if (this.pending.get(key) !== building) {
+      if (this.pending.get(key) !== holder.promise) {
         await connection.close().catch(() => {})
         throw new Error('CONNECTION_SCOPE_RELEASED')
       }
@@ -220,6 +220,7 @@ export class LocalTransport implements SqlTransport {
       this.connectionConnIds.set(key, conn.id)
       return connection
     })()
+    holder.promise = building
     this.pending.set(key, building)
     this.pendingConnIds.set(key, conn.id)
     // 成败都清理 pending：成功后已落入 connections；失败后允许下次重连（不缓存失败）。

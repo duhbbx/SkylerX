@@ -51,11 +51,11 @@ async function scalar(exec: ProfileExec, sql: string, col = 'cnt'): Promise<numb
 async function listDatabases(exec: ProfileExec): Promise<DatabaseInfo[]> {
   const size = new Map<string, number>()
   for (const r of await exec(
-    `SELECT DB_NAME(database_id) AS name, CAST(SUM(size) AS bigint) * 8 * 1024 AS bytes FROM sys.master_files GROUP BY database_id`,
+    'SELECT DB_NAME(database_id) AS name, CAST(SUM(size) AS bigint) * 8 * 1024 AS bytes FROM sys.master_files GROUP BY database_id',
   ).catch(() => [])) {
     size.set(String(r.name ?? r.NAME ?? ''), num(r.bytes ?? r.BYTES))
   }
-  const rows = await exec(`SELECT name FROM sys.databases`)
+  const rows = await exec('SELECT name FROM sys.databases')
   return rows.map((r) => {
     const name = String(r.name ?? r.NAME ?? '')
     return { name, system: SYS_DB.has(name.toLowerCase()), sizeBytes: size.get(name) }
@@ -67,7 +67,7 @@ async function listSchemas(
   _database: string | undefined,
   showSystem = false,
 ): Promise<SchemaInfo[]> {
-  const rows = await exec(`SELECT name FROM sys.schemas ORDER BY name`)
+  const rows = await exec('SELECT name FROM sys.schemas ORDER BY name')
   const out: SchemaInfo[] = rows.map((r) => {
     const name = String(r.name ?? r.NAME ?? '')
     return { name, system: SYS_SCHEMA.has(name.toLowerCase()) }

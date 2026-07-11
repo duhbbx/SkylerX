@@ -42,7 +42,7 @@ function norm(raw: string): string {
   return raw.trim().replace(/^["`[]|["`\]]$/g, '')
 }
 
-const TABLE = `[A-Za-z_][\\w$]*(?:\\.[A-Za-z_][\\w$]*)*`
+const TABLE = '[A-Za-z_][\\w$]*(?:\\.[A-Za-z_][\\w$]*)*'
 
 /** 抽单条语句的血缘。 */
 export function extractLineage(sql: string): StmtLineage {

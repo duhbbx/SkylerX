@@ -32,11 +32,11 @@ describe('splitStatements — PL/SQL blocks (Oracle/DM)', () => {
     expect(stmts[0]).toContain('END;')
   })
   it('keeps procedure/function bodies whole', () => {
-    const proc = `CREATE OR REPLACE PROCEDURE p IS\nBEGIN\n  INSERT INTO t VALUES (1);\n  NULL;\nEND;`
+    const proc = 'CREATE OR REPLACE PROCEDURE p IS\nBEGIN\n  INSERT INTO t VALUES (1);\n  NULL;\nEND;'
     expect(splitStatements(proc)).toHaveLength(1)
   })
   it("splits PL/SQL objects on SQL*Plus '/' terminators", () => {
-    const pkg = `CREATE OR REPLACE PACKAGE pk AS\n  PROCEDURE hello;\nEND;\n/\n\nCREATE OR REPLACE PACKAGE BODY pk AS\n  PROCEDURE hello IS\n  BEGIN\n    NULL;\n  END;\nEND;\n/`
+    const pkg = 'CREATE OR REPLACE PACKAGE pk AS\n  PROCEDURE hello;\nEND;\n/\n\nCREATE OR REPLACE PACKAGE BODY pk AS\n  PROCEDURE hello IS\n  BEGIN\n    NULL;\n  END;\nEND;\n/'
     const stmts = splitStatements(pkg)
     expect(stmts).toHaveLength(2)
     expect(stmts[0]).toMatch(/^CREATE OR REPLACE PACKAGE pk/)
@@ -47,7 +47,7 @@ describe('splitStatements — PL/SQL blocks (Oracle/DM)', () => {
     expect(splitStatements('DECLARE x INT;\nBEGIN\n  x := 1;\nEND;')).toHaveLength(1)
   })
   it('a CREATE TABLE then a trigger: table splits, trigger stays whole', () => {
-    const sql = `CREATE TABLE t (id INT);\nCREATE TRIGGER trg BEFORE INSERT ON t FOR EACH ROW BEGIN NULL; END;`
+    const sql = 'CREATE TABLE t (id INT);\nCREATE TRIGGER trg BEFORE INSERT ON t FOR EACH ROW BEGIN NULL; END;'
     const stmts = splitStatements(sql)
     expect(stmts).toHaveLength(2)
     expect(stmts[1]).toContain('END;')

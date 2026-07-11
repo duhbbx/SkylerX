@@ -43,7 +43,7 @@ export function setRepoPath<T extends ConnLike>(conn: T, container: string, path
   if (normalizedRoot) repos[container] = { path: normalizedRoot }
   else delete repos[container]
   if (Object.keys(repos).length) extra.codeRepos = repos
-  else delete extra.codeRepos
+  else extra.codeRepos = undefined
   return { ...conn, extra: Object.keys(extra).length ? extra : undefined }
 }
 

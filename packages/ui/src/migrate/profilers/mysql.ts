@@ -42,7 +42,7 @@ async function listDatabases(exec: ProfileExec): Promise<DatabaseInfo[]> {
   ).catch(() => [])) {
     size.set(String(r.name ?? r.NAME ?? ''), num(r.bytes ?? r.BYTES))
   }
-  const rows = await exec(`SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA`)
+  const rows = await exec('SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA')
   return rows.map((r) => {
     const name = String(r.name ?? r.NAME ?? '')
     return { name, system: SYS_DB.has(name.toLowerCase()), sizeBytes: size.get(name) }
@@ -56,7 +56,7 @@ async function listSchemas(
 ): Promise<SchemaInfo[]> {
   // schema 即 database
   const rows = await exec(
-    `SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME`,
+    'SELECT SCHEMA_NAME AS name FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME',
   )
   const out: SchemaInfo[] = rows.map((r) => {
     const name = String(r.name ?? r.NAME ?? '')

@@ -603,7 +603,7 @@ function toggleSelectAll(): void {
     selected.value = new Set(others) // 已全选 → 清掉结果行
   } else {
     const s = new Set(others)
-    for (let i = 0; i < total; i++) s.add('r' + i)
+    for (let i = 0; i < total; i++) s.add(`r${i}`)
     selected.value = s
   }
 }
