@@ -401,6 +401,13 @@ export interface ChatOptions {
   signal?: AbortSignal
 }
 
+export const DEFAULT_CHAT_MAX_TOKENS = 2000
+export const CODE_SEARCH_EXPANSION_MAX_TOKENS = 96
+
+export function resolveChatMaxTokens(maxTokens?: number): number {
+  return maxTokens ?? DEFAULT_CHAT_MAX_TOKENS
+}
+
 const CHAT_SYSTEM =
   'You are SkylerX, an expert SQL assistant embedded inside a database management tool. ' +
   'You can read provided schema context, write SQL for the given dialect, explain queries, ' +
@@ -430,7 +437,7 @@ export async function askAiChat(o: ChatOptions): Promise<string> {
   if (!base) throw new Error('NO_BASE_URL')
   const model = cfg.model || 'default'
   const system = buildSystem(o)
-  const maxTokens = o.maxTokens ?? 2000
+  const maxTokens = resolveChatMaxTokens(o.maxTokens)
   if (provider === 'anthropic') {
     const res = await aiHttp(`${base}/v1/messages`, {
       method: 'POST',
@@ -474,14 +481,18 @@ const CODE_SEARCH_EXPANSION_SYSTEM =
   'Expand this code-repository search question into relevant English identifiers and business terms. ' +
   'Return only space-separated terms. Do not include explanations, punctuation, markdown, or translations.'
 
-/** 将自然语言代码问题扩展为更适合英文标识符词法检索的关键词。 */
-export async function expandCodeSearchQuery(query: string, signal?: AbortSignal): Promise<string> {
-  const expanded = await askAiChat({
+export function buildCodeSearchExpansionOptions(query: string, signal?: AbortSignal): ChatOptions {
+  return {
     messages: [{ role: 'user', content: query }],
     extraSystem: CODE_SEARCH_EXPANSION_SYSTEM,
-    maxTokens: 96,
+    maxTokens: CODE_SEARCH_EXPANSION_MAX_TOKENS,
     signal,
-  })
+  }
+}
+
+/** 将自然语言代码问题扩展为更适合英文标识符词法检索的关键词。 */
+export async function expandCodeSearchQuery(query: string, signal?: AbortSignal): Promise<string> {
+  const expanded = await askAiChat(buildCodeSearchExpansionOptions(query, signal))
   return expanded.trim() || query
 }
 

@@ -91,6 +91,22 @@ export interface CodeRetrievalResult {
 
 export type CodeSearchQueryExpander = (query: string, signal?: AbortSignal) => Promise<string>
 
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'AbortError'
+  )
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException('The operation was aborted', 'AbortError')
+}
+
 export function assertIndexSaved(saved: boolean): void {
   if (!saved) throw new Error('CODE_INDEX_STORAGE_FULL')
 }
@@ -298,9 +314,12 @@ export async function retrieveCodeDetailed(
   }
   let searchQuery = query
   if (idx.mode === 'lexical') {
+    throwIfAborted(signal)
     try {
-      searchQuery = await expandQuery(query, signal)
-    } catch {
+      searchQuery = `${query} ${await expandQuery(query, signal)}`
+      throwIfAborted(signal)
+    } catch (error) {
+      if (signal?.aborted || isAbortError(error)) throw error
       /* Expansion is optional; retain the original lexical query on provider failure. */
     }
   }

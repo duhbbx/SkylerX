@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DataClient } from '@db-tool/shared-types'
+import { buildCodeSearchExpansionOptions, resolveChatMaxTokens } from '../ai'
 import {
   assertIndexSaved,
   codeIndexKey,
@@ -18,6 +19,16 @@ import {
 import { encodeVec, saveIndex } from './store'
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('code search expansion chat options', () => {
+  it('keeps the ordinary chat budget while bounding expansion requests', () => {
+    expect(resolveChatMaxTokens()).toBe(2000)
+    expect(buildCodeSearchExpansionOptions('如何查询订单用户')).toMatchObject({
+      messages: [{ role: 'user', content: '如何查询订单用户' }],
+      maxTokens: 96,
+    })
+  })
+})
 
 describe('containerKey', () => {
   it('joins database + schema with a unit separator', () => {
@@ -74,6 +85,39 @@ describe('lexical code-query expansion', () => {
     expect(result).toMatchObject({ mode: 'lexical', hitCount: 1, sources: ['src/order-user-repository.ts'] })
   })
 
+  it('preserves original identifier terms when the expansion is incomplete', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    saveIndex({
+      key: codeIndexKey('c1', 'app␟public'),
+      builtAt: 1,
+      mode: 'lexical',
+      chunks: [
+        {
+          id: 'code:billing-gateway.ts␟0',
+          kind: 'code',
+          title: 'src/billing-gateway.ts',
+          text: 'export class BillingGateway { charge() {} }',
+        },
+      ],
+    })
+
+    const result = await retrieveCodeDetailed(
+      'c1',
+      'app␟public',
+      'billing endpoint',
+      3,
+      undefined,
+      async () => 'invoice mapper',
+    )
+
+    expect(result).toMatchObject({ hitCount: 1, sources: ['src/billing-gateway.ts'] })
+  })
+
   it('falls back to the original lexical query when expansion fails', async () => {
     const items = new Map<string, string>()
     vi.stubGlobal('localStorage', {
@@ -102,6 +146,66 @@ describe('lexical code-query expansion', () => {
 
     expect(expand).toHaveBeenCalledWith('order user', undefined)
     expect(result).toMatchObject({ mode: 'lexical', hitCount: 1, sources: ['src/order-user-repository.ts'] })
+  })
+
+  it('propagates an AbortError from the expander', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    saveIndex({
+      key: codeIndexKey('c1', 'app␟public'),
+      builtAt: 1,
+      mode: 'lexical',
+      chunks: [
+        {
+          id: 'code:order-user-repository.ts␟0',
+          kind: 'code',
+          title: 'src/order-user-repository.ts',
+          text: 'export class OrderUserRepository { findOrderUser() {} }',
+        },
+      ],
+    })
+    const abortError = new DOMException('Expansion canceled', 'AbortError')
+
+    await expect(
+      retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, undefined, async () => {
+        throw abortError
+      }),
+    ).rejects.toBe(abortError)
+  })
+
+  it('stops before expansion when the caller signal is already aborted', async () => {
+    const items = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+      removeItem: (key: string) => items.delete(key),
+    })
+    saveIndex({
+      key: codeIndexKey('c1', 'app␟public'),
+      builtAt: 1,
+      mode: 'lexical',
+      chunks: [
+        {
+          id: 'code:order-user-repository.ts␟0',
+          kind: 'code',
+          title: 'src/order-user-repository.ts',
+          text: 'export class OrderUserRepository { findOrderUser() {} }',
+        },
+      ],
+    })
+    const controller = new AbortController()
+    const abortError = new DOMException('Search canceled', 'AbortError')
+    controller.abort(abortError)
+    const expand = vi.fn(async () => 'order user repository')
+
+    await expect(
+      retrieveCodeDetailed('c1', 'app␟public', 'order user', 3, controller.signal, expand),
+    ).rejects.toBe(abortError)
+    expect(expand).not.toHaveBeenCalled()
   })
 
   it('does not expand queries from a stored vector index', async () => {
