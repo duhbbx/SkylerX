@@ -2,17 +2,21 @@
  * Copyright 2026 武汉斯凯勒网络科技有限公司 (Wuhan Skyler Network Technology Co., Ltd.)
  * SPDX-License-Identifier: Apache-2.0
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { DataClient } from '@db-tool/shared-types'
 import {
   assertIndexSaved,
   codeIndexKey,
   containerKey,
   getRepoPath,
   planRefresh,
+  refreshCodeIndex,
   retrieveCodeDetailed,
   resolveBoundContainer,
   setRepoPath,
 } from './codeRepo'
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('containerKey', () => {
   it('joins database + schema with a unit separator', () => {
@@ -43,6 +47,31 @@ describe('code index retrieval diagnostics', () => {
 describe('assertIndexSaved', () => {
   it('throws a storage-full error when the index cannot be persisted', () => {
     expect(() => assertIndexSaved(false)).toThrow('CODE_INDEX_STORAGE_FULL')
+  })
+})
+
+describe('refreshCodeIndex persistence failure', () => {
+  it('rejects before writing the manifest when index storage is full', async () => {
+    const writes: string[] = []
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: (key: string) => {
+        writes.push(key)
+        if (key.startsWith('skylerx.rag.code:')) throw new Error('QuotaExceededError')
+      },
+      removeItem: () => undefined,
+    })
+    const client = {
+      files: {
+        listDir: async () => [],
+        pathJoin: async (...parts: string[]) => parts.join('/'),
+      },
+    } as unknown as DataClient
+
+    await expect(refreshCodeIndex(client, 'c1', 'app␟public', '/repo', { nowMs: 1 })).rejects.toThrow(
+      'CODE_INDEX_STORAGE_FULL',
+    )
+    expect(writes).not.toContain('skylerx.rag.codemanifest:c1␟app␟public')
   })
 })
 
