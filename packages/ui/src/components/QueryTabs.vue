@@ -5,12 +5,14 @@
  */
 import {
   type ConnectionConfig,
+  type ConnectionScope,
   DbDialect,
   DbKind,
   type QueryResult,
   dialectKind,
 } from '@db-tool/shared-types'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { queryTabConnectionScope } from '../connectionScope'
 import { useDataClient } from '../data-client'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
 import { confirm as appConfirm, toast } from '../dialog'
@@ -56,6 +58,8 @@ interface Tab {
   redis?: { dbIndex: number; pendingKey?: string | null }
   /** NoSQL：Elasticsearch index tab */
   es?: { index: string }
+  /** 查询 tab 的 scoped 执行身份；每次打开 query tab 都重新生成。 */
+  scope?: ConnectionScope
 }
 
 const emit = defineEmits<{
@@ -110,7 +114,9 @@ function togglePin(id: number): void {
 
 function push(tab: Omit<Tab, 'id'>): void {
   const id = ++tabSeq
-  tabs.value.push({ ...tab, id })
+  const next: Tab = { ...tab, id }
+  if (next.kind === 'query') next.scope = queryTabConnectionScope(id)
+  tabs.value.push(next)
   activeId.value = id
 }
 
@@ -628,6 +634,7 @@ watch(tabs, saveLayout, { deep: true })
             :pending="t.pending"
             :initial-sql="t.draft"
             :initial-ctx="t.ctx"
+            :connection-scope="t.scope!"
             :active="t.id === activeId"
             :ref="(el) => setDirtyRef(t.id, el)"
             @conn-error="(id, msg) => emit('connError', id, msg)"

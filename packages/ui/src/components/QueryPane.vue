@@ -5,6 +5,7 @@
  */
 import {
   type ConnectionConfig,
+  type ConnectionScope,
   DbKind,
   MetaNodeKind,
   type QueryHistoryEntry,
@@ -117,6 +118,8 @@ const props = defineProps<{
   /** 该 tab 是否为当前激活 tab。用于把自动补全上下文的元数据拉取推迟到首次激活，
    *  避免启动恢复多个后台 tab 时同时探测所有连接（很多还连不上 → 报错刷屏）。 */
   active?: boolean
+  /** 当前查询 tab 独享的连接 scope。 */
+  connectionScope: ConnectionScope
 }>()
 
 const emit = defineEmits<{
@@ -231,6 +234,8 @@ async function verifyEditableIsTable(tab: ResultTab): Promise<void> {
         WHERE table_name = ? AND (? = '' OR table_schema = ?)
         LIMIT 1`,
       [ref.table, ref.schema ?? '', ref.schema ?? ''],
+      undefined,
+      props.connectionScope,
     )
     const tt = (r.rows[0] as Record<string, unknown> | undefined)?.table_type
     if (typeof tt === 'string' && /view/i.test(tt)) {
@@ -280,19 +285,15 @@ async function loadFks(editTable: string): Promise<void> {
   try {
     const out = fwdSql
       ? parseFkRows(
-          (await client.connections.execute(props.conn.id, fwdSql, [], ctx)).rows as Record<
-            string,
-            unknown
-          >[],
+          (await client.connections.execute(props.conn.id, fwdSql, [], ctx, props.connectionScope))
+            .rows as Record<string, unknown>[],
           'reftab',
         )
       : []
     const rev = revSql
       ? parseFkRows(
-          (await client.connections.execute(props.conn.id, revSql, [], ctx)).rows as Record<
-            string,
-            unknown
-          >[],
+          (await client.connections.execute(props.conn.id, revSql, [], ctx, props.connectionScope))
+            .rows as Record<string, unknown>[],
           'srctab',
         )
       : []
@@ -355,7 +356,13 @@ async function onExpandFk(payload: {
   let refCols: string[] = []
   try {
     const refTbl = q(payload.refTable)
-    const probe = await client.connections.execute(props.conn.id, `SELECT * FROM ${refTbl} LIMIT 0`)
+    const probe = await client.connections.execute(
+      props.conn.id,
+      `SELECT * FROM ${refTbl} LIMIT 0`,
+      [],
+      undefined,
+      props.connectionScope,
+    )
     refCols = probe.columns
       .slice(0, 4)
       .map((c) => c.name)
@@ -392,6 +399,9 @@ async function onFkLookup(payload: {
     const r = await client.connections.execute(
       props.conn.id,
       `SELECT DISTINCT ${col} AS v FROM ${tbl} WHERE ${col} IS NOT NULL ORDER BY ${col} LIMIT 50`,
+      [],
+      undefined,
+      props.connectionScope,
     )
     cb(
       r.rows
@@ -460,7 +470,11 @@ let sessionUnsupportedWarned = false
 async function ensureSession(): Promise<string | null> {
   if (sessionId.value) return sessionId.value
   try {
-    const sid = await client.connections.beginSession(props.conn.id, execOptions())
+    const sid = await client.connections.beginSession(
+      props.conn.id,
+      execOptions(),
+      props.connectionScope,
+    )
     sessionId.value = sid
     return sid
   } catch (e) {
@@ -554,7 +568,7 @@ async function loadContext(): Promise<void> {
     const top = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Connection,
       path: [],
-    })
+    }, props.connectionScope)
     if (!top.length) return
     if (top[0].kind === MetaNodeKind.Schema) {
       // Oracle / 达梦：顶层即 schema
@@ -588,7 +602,7 @@ async function loadSchemaOptions(db: string): Promise<void> {
     const sub = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Database,
       path: [db],
-    })
+    }, props.connectionScope)
     if (sub[0]?.kind === MetaNodeKind.Schema) schemaOptions.value = sub.map((n) => n.name)
   } catch {
     /* ignore */
@@ -775,7 +789,7 @@ async function loadTables(): Promise<string[]> {
       parentKind: MetaNodeKind.Group,
       path,
       group: 'tables',
-    })
+    }, props.connectionScope)
     tableList = nodes.map((n) => n.name)
   } catch {
     tableList = []
@@ -793,7 +807,7 @@ async function loadColumns(table: string): Promise<string[]> {
       parentKind: MetaNodeKind.Group,
       path: [...path, table],
       group: 'columns',
-    })
+    }, props.connectionScope)
     const cols = nodes.map((n) => n.name)
     colCache.set(table, cols)
     return cols
@@ -1047,7 +1061,7 @@ async function execSql(text: string): Promise<void> {
         const opts = pageable ? { ...execOptions(), limit: tab.pageSize, offset: 0 } : execOptions()
         tab.result = sid
           ? await client.connections.executeInSession(sid, stmt, [], opts)
-          : await client.connections.execute(props.conn.id, stmt, [], opts)
+          : await client.connections.execute(props.conn.id, stmt, [], opts, props.connectionScope)
         // 非纯读语句执行成功 → 标记 session 有未提交改动
         if (sid && !isReadOnlyStatement(stmt)) dirty.value = true
       } catch (e) {
@@ -1117,7 +1131,11 @@ async function explain(withAnalyze = false): Promise<void> {
     if (pq) {
       if (pq.prep) {
         // Oracle/DM：prep(EXPLAIN PLAN) 与读 PLAN_TABLE 必须同连接（会话级 GTT），走 session。
-        const sid = await client.connections.beginSession(props.conn.id, execOptions())
+        const sid = await client.connections.beginSession(
+          props.conn.id,
+          execOptions(),
+          props.connectionScope,
+        )
         try {
           await client.connections.executeInSession(sid, pq.prep, [], execOptions())
           const r = await client.connections.executeInSession(sid, pq.sql, [], execOptions())
@@ -1126,7 +1144,13 @@ async function explain(withAnalyze = false): Promise<void> {
           await client.connections.endSession(sid)
         }
       } else {
-        const r = await client.connections.execute(props.conn.id, pq.sql, [], execOptions())
+        const r = await client.connections.execute(
+          props.conn.id,
+          pq.sql,
+          [],
+          execOptions(),
+          props.connectionScope,
+        )
         planData.value = buildPlanData(pq.format, r)
       }
       showHistory.value = false
@@ -1140,7 +1164,13 @@ async function explain(withAnalyze = false): Promise<void> {
       await appAlert({ message: t('query.explainUnsupported'), variant: 'warn' })
       return
     }
-    const exRes = await client.connections.execute(props.conn.id, ex, [], execOptions())
+    const exRes = await client.connections.execute(
+      props.conn.id,
+      ex,
+      [],
+      execOptions(),
+      props.connectionScope,
+    )
     const tab: ResultTab = {
       id: ++tabSeq,
       sql: ex,
@@ -1167,7 +1197,7 @@ async function explain(withAnalyze = false): Promise<void> {
 
 /** 取消：服务端取消正在执行的查询（MySQL KILL QUERY / PG pg_cancel_backend）+ 渲染端放弃在途结果。 */
 function cancel(): void {
-  void client.connections.cancel(props.conn.id)
+  void client.connections.cancel(props.conn.id, props.connectionScope)
   runToken++
   running.value = false
 }
@@ -1202,11 +1232,17 @@ async function gotoPage(tab: ResultTab | undefined, page: number): Promise<void>
   if (!tab || !tab.pageable || page < 0 || tab.loading) return
   tab.loading = true
   try {
-    tab.result = await client.connections.execute(props.conn.id, tab.sql, [], {
-      ...execOptions(),
-      limit: tab.pageSize,
-      offset: page * tab.pageSize,
-    })
+    tab.result = await client.connections.execute(
+      props.conn.id,
+      tab.sql,
+      [],
+      {
+        ...execOptions(),
+        limit: tab.pageSize,
+        offset: page * tab.pageSize,
+      },
+      props.connectionScope,
+    )
     tab.page = page
     tab.error = null
   } catch (e) {
@@ -1251,7 +1287,12 @@ async function doCommit(): Promise<void> {
   try {
     // p.stmts 是 ref 里的 Vue 响应式 Proxy 数组；直接丢进 ipcRenderer.invoke 会被
     // 结构化克隆拒绝 → "An object could not be cloned"。展开成纯数组再传。
-    await client.connections.executeBatch(props.conn.id, [...p.stmts], execOptions())
+    await client.connections.executeBatch(
+      props.conn.id,
+      [...p.stmts],
+      execOptions(),
+      props.connectionScope,
+    )
     await gotoPage(tab, tab.page) // 刷新当前页（结果变更会重置网格编辑态）
     await loadHistory()
   } catch (e) {
@@ -1476,6 +1517,7 @@ onBeforeUnmount(() => {
   // 关 tab 时若还有未关闭的 session，按"放弃改动"语义结束（endSession 内部会 ROLLBACK）。
   // 这里不弹确认——确认的责任在 QueryTabs.close（它有机会先弹再卸载组件）。
   void endSessionIfAny()
+  void client.connections.releaseScope(props.conn.id, props.connectionScope)
 })
 
 /**

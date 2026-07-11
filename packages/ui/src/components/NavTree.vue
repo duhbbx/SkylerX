@@ -11,6 +11,7 @@ import {
 } from '@db-tool/shared-types'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { onSchemaChanged } from '../chat-bus'
+import { navConnectionScope } from '../connectionScope'
 import { setConnStatus } from '../conn-status'
 import { connEnv } from '../connEnv'
 import { isConnectionError } from '../connError'
@@ -37,6 +38,7 @@ import { type TreeController, TreeControllerKey } from './tree-controller'
 import { type TreeNode, fromMetadata, rootNode } from './treeNode'
 
 const client = useDataClient()
+const navScope = navConnectionScope()
 
 // 上抛给 App 的高层事件（动作原语桥接到这里）
 const emit = defineEmits<{
@@ -564,7 +566,7 @@ const controller: TreeController = {
         path: [...node.path],
         group: node.group,
         showSystem: settings.showSystemObjects,
-      })
+      }, navScope)
       node.children = children.map((n) => {
         const child = fromMetadata(n)
         child.parent = node
