@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import type { ConnectionConfig } from '@db-tool/shared-types'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { toast } from '../dialog'
 import { t } from '../i18n'
 import { canEmbed } from '../ai'
 import { getRepoPath, refreshCodeIndex, setRepoPath } from '../rag/codeRepo'
+import { runCodeRepoBuild } from '../rag/codeRepoBuild'
 import Modal from './Modal.vue'
 
 const props = defineProps<{ conn: ConnectionConfig; container: string }>()
@@ -21,6 +22,14 @@ const busy = ref(false)
 const status = ref('')
 const error = ref('')
 const savedConn = ref<ConnectionConfig | null>(null)
+
+watch(path, (nextPath) => {
+  const savedRoot = savedConn.value && getRepoPath(savedConn.value, props.container)
+  if (savedRoot && nextPath.trim() !== savedRoot) {
+    savedConn.value = null
+    status.value = ''
+  }
+})
 
 async function pick(): Promise<void> {
   const picked = await client.files.selectFile?.({ directory: true })
@@ -36,32 +45,41 @@ async function persist(p: string): Promise<ConnectionConfig> {
 }
 
 async function build(): Promise<void> {
-  if (!path.value.trim()) {
-    toast.warn(t('coderepo.noPath'))
-    return
-  }
+  const buildPath = path.value
+  const previousStatus = status.value
   busy.value = true
   status.value = t('coderepo.building')
   error.value = ''
-  savedConn.value = null
   try {
-    const saved = await persist(path.value)
-    const r = await refreshCodeIndex(client, props.conn.id, props.container, path.value, {
-      nowMs: Date.now(),
-      onProgress: (done, total) => {
-        status.value = t('coderepo.progress', { done: String(done), total: String(total) })
-      },
+    const result = await runCodeRepoBuild(buildPath, {
+      persist,
+      refresh: (root) => refreshCodeIndex(client, props.conn.id, props.container, root, {
+        nowMs: Date.now(),
+        onProgress: (done, total) => {
+          status.value = t('coderepo.progress', { done: String(done), total: String(total) })
+        },
+      }),
     })
+    if (path.value.trim() !== result.root) {
+      status.value = ''
+      return
+    }
+
+    const r = result.refresh
     status.value =
       t('coderepo.status', {
         files: String(r.fileCount),
         chunks: String(r.index.chunks.length),
         mode: r.mode,
       }) + (r.capped ? ` ${t('coderepo.capped')}` : '')
-    savedConn.value = saved
+    savedConn.value = result.saved
     toast.success(t('coderepo.saved'))
   } catch (e) {
-    status.value = ''
+    status.value = path.value === buildPath ? previousStatus : ''
+    if (e instanceof Error && e.message === 'CODE_REPO_PATH_REQUIRED') {
+      toast.warn(t('coderepo.noPath'))
+      return
+    }
     error.value = e instanceof Error && e.message === 'CODE_INDEX_STORAGE_FULL'
       ? t('coderepo.storageFull')
       : e instanceof Error
@@ -102,7 +120,7 @@ function done(): void {
       <p class="desc">{{ t('coderepo.desc') }}</p>
       <label class="lbl">{{ t('coderepo.folder') }}</label>
       <div class="row">
-        <input v-model="path" class="path" :placeholder="t('coderepo.noPath')" />
+        <input v-model="path" class="path" :disabled="busy" :placeholder="t('coderepo.noPath')" />
         <button class="ghost" :disabled="busy" @click="pick">{{ t('coderepo.pick') }}</button>
       </div>
       <div v-if="status" class="status">{{ status }}</div>
