@@ -10,7 +10,11 @@ import { useDataClient } from '../data-client'
 import type { TableContext } from '../ddl'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
-import { resolveBoundContainer, retrieveCode } from '../rag/codeRepo'
+import {
+  resolveBoundContainer,
+  retrieveCodeDetailed,
+  type CodeRetrievalResult,
+} from '../rag/codeRepo'
 import { isActiveAiConfigured, settings } from '../settings'
 import Modal from './Modal.vue'
 
@@ -31,6 +35,8 @@ const errInput = ref(props.initialError ?? '')
 const useSchema = ref(false)
 // 「代码库」开关：附带当前连接默认容器绑定代码库里最相关的片段作为上下文
 const useCode = ref(false)
+type CodeRetrievalStatus = CodeRetrievalResult | { mode: 'error'; message: string }
+const codeRetrieval = ref<CodeRetrievalStatus | null>(null)
 const schemaText = ref('')
 const schemaLoading = ref(false)
 const answer = ref('')
@@ -139,8 +145,67 @@ function toggleSchema(): void {
   if (useSchema.value && !schemaText.value) void loadSchema()
 }
 
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new DOMException('Request aborted', 'AbortError')
+}
+
+function codeRetrievalLabel(): string {
+  const result = codeRetrieval.value
+  if (!result) return ''
+  if (result.mode === 'error') return t('code.statusError')
+  if (result.mode === 'none') return t('code.statusNone')
+  if (!result.hitCount) return t('code.statusNoHit', { mode: result.mode })
+  return t('code.statusHits', { mode: result.mode, n: result.hitCount })
+}
+
+function codeRetrievalTitle(): string {
+  const result = codeRetrieval.value
+  if (!result) return ''
+  if (result.mode === 'error') return result.message
+  return result.sources.join('\n')
+}
+
+async function retrieveCodeContext(
+  query: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  if (!useCode.value) return undefined
+  if (!connId.value) {
+    codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
+    return undefined
+  }
+  try {
+    // Repository bindings may have changed after the selector's cached connection list loaded.
+    const conn = await client.connections.get(connId.value)
+    throwIfAborted(signal)
+    const container = resolveBoundContainer(conn, currentCtx(conn))
+    if (!container) {
+      codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
+      return undefined
+    }
+    const result = await retrieveCodeDetailed(
+      conn.id,
+      container,
+      query,
+      settings.aiVectorTopK,
+      signal,
+    )
+    codeRetrieval.value = result
+    return result.context || undefined
+  } catch (e) {
+    throwIfAborted(signal)
+    if ((e as Error).name === 'AbortError') throw e
+    codeRetrieval.value = {
+      mode: 'error',
+      message: e instanceof Error ? e.message : String(e),
+    }
+    return undefined
+  }
+}
+
 async function run(): Promise<void> {
   if (!input.value.trim()) return
+  codeRetrieval.value = null
   if (!isActiveAiConfigured()) {
     error.value = t('ai.noKey')
     return
@@ -150,22 +215,7 @@ async function run(): Promise<void> {
   running.value = true
   controller = new AbortController()
   try {
-    // 代码库：开关 ON 且当前连接默认容器绑定了代码库 → 检索 top-K 相关片段一起送出
-    let codeContext: string | undefined
-    if (useCode.value) {
-      const conn = connOf(connId.value)
-      const container = conn ? resolveBoundContainer(conn, currentCtx(conn)) : null
-      if (conn && container) {
-        codeContext =
-          (await retrieveCode(
-            conn.id,
-            container,
-            input.value,
-            settings.aiVectorTopK,
-            controller.signal,
-          )) || undefined
-      }
-    }
+    const codeContext = await retrieveCodeContext(input.value, controller.signal)
     answer.value = await askAi({
       mode: mode.value,
       dialect: connOf(connId.value)?.dialect,
@@ -227,6 +277,12 @@ onUnmounted(() => controller?.abort())
         <label class="schk" :title="t('ai.useCodeTitle')">
           <input type="checkbox" v-model="useCode" />
           <span class="schk-lbl">{{ t('ai.useCode') }}</span>
+          <span
+            v-if="useCode && codeRetrieval"
+            class="code-status"
+            :class="'code-' + codeRetrieval.mode"
+            :title="codeRetrievalTitle()"
+          >{{ codeRetrievalLabel() }}</span>
         </label>
       </div>
 
@@ -316,6 +372,21 @@ onUnmounted(() => controller?.abort())
 }
 .schk-lbl {
   white-space: nowrap;
+}
+.code-status {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: var(--accent);
+  cursor: help;
+}
+.code-none,
+.code-error {
+  color: var(--muted);
+}
+.code-error {
+  color: var(--err, #e04050);
 }
 .mini {
   color: var(--accent);

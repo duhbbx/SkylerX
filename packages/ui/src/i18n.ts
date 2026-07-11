@@ -83,6 +83,10 @@ const DICT: Record<string, [string, string]> = {
   'common.untitled': ['(未命名)', '(untitled)'],
   'common.loading': ['加载中…', 'Loading…'],
   'common.remove': ['移除', 'Remove'],
+  'code.statusNone': ['无索引', 'No index'],
+  'code.statusNoHit': ['{mode} 无命中', 'No {mode} hits'],
+  'code.statusHits': ['{mode} {n} 条', '{mode} {n} hits'],
+  'code.statusError': ['检索失败', 'Retrieval failed'],
 
   // ── 设置 ──
   'settings.title': ['设置', 'Settings'],

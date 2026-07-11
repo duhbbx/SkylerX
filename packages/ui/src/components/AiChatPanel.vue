@@ -19,7 +19,11 @@ import { confirm as appConfirm, toast } from '../dialog'
 import { reportInlineError } from '../errorReporter'
 import { t } from '../i18n'
 import { renderMarkdown } from '../markdown'
-import { resolveBoundContainer, retrieveCode } from '../rag/codeRepo'
+import {
+  resolveBoundContainer,
+  retrieveCodeDetailed,
+  type CodeRetrievalResult,
+} from '../rag/codeRepo'
 import { autoExtractFacts, buildMemorySection, rememberVector } from '../memory'
 import { monaco } from '../monaco-setup'
 import {
@@ -222,6 +226,8 @@ function onResizeUp(e: PointerEvent): void {
 const useSchema = ref(false)
 // 「代码库」开关：附带当前容器绑定代码库里最相关的片段作为上下文
 const useCode = ref(false)
+type CodeRetrievalStatus = CodeRetrievalResult | { mode: 'error'; message: string }
+const codeRetrieval = ref<CodeRetrievalStatus | null>(null)
 const schemaText = ref('')
 const schemaLoading = ref(false)
 /**
@@ -457,6 +463,64 @@ function toggleCode(): void {
   saveToStorage()
 }
 
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new DOMException('Request aborted', 'AbortError')
+}
+
+function codeRetrievalLabel(): string {
+  const result = codeRetrieval.value
+  if (!result) return ''
+  if (result.mode === 'error') return t('code.statusError')
+  if (result.mode === 'none') return t('code.statusNone')
+  if (!result.hitCount) return t('code.statusNoHit', { mode: result.mode })
+  return t('code.statusHits', { mode: result.mode, n: result.hitCount })
+}
+
+function codeRetrievalTitle(): string {
+  const result = codeRetrieval.value
+  if (!result) return ''
+  if (result.mode === 'error') return result.message
+  return result.sources.join('\n')
+}
+
+async function retrieveCodeContext(
+  query: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  if (!useCode.value) return undefined
+  if (!connId.value) {
+    codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
+    return undefined
+  }
+  try {
+    // Repository bindings may have changed after the selector's cached connection list loaded.
+    const conn = await client.connections.get(connId.value)
+    throwIfAborted(signal)
+    const container = resolveBoundContainer(conn, currentCtx(conn))
+    if (!container) {
+      codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
+      return undefined
+    }
+    const result = await retrieveCodeDetailed(
+      conn.id,
+      container,
+      query,
+      settings.aiVectorTopK,
+      signal,
+    )
+    codeRetrieval.value = result
+    return result.context || undefined
+  } catch (e) {
+    throwIfAborted(signal)
+    if ((e as Error).name === 'AbortError') throw e
+    codeRetrieval.value = {
+      mode: 'error',
+      message: e instanceof Error ? e.message : String(e),
+    }
+    return undefined
+  }
+}
+
 /**
  * 当前选中容器的 {database, schema}，与代码库绑定时用的容器键保持同构
  * （mysql=库名 / pg=conn.database + schema / oracle=用户名），见 loadSchema 的目标解析。
@@ -471,6 +535,7 @@ function currentCtx(c: ConnectionConfig): TableContext {
 async function send(): Promise<void> {
   const text = input.value.trim()
   if (!text || running.value) return
+  codeRetrieval.value = null
   if (!isActiveAiConfigured()) {
     error.value = t('ai.noKey')
     return
@@ -498,17 +563,7 @@ async function send(): Promise<void> {
   try {
     // 注入 A/B/C 三档记忆段（A：自定义画像；B：事实清单；C：相关向量记忆 top-K）
     const memorySection = await buildMemorySection(text)
-    // 代码库：开关 ON 且当前容器绑定了代码库 → 检索 top-K 相关片段一起送出
-    let codeContext: string | undefined
-    if (useCode.value) {
-      const conn = connOf(connId.value)
-      const container = conn ? resolveBoundContainer(conn, currentCtx(conn)) : null
-      if (conn && container) {
-        codeContext =
-          (await retrieveCode(conn.id, container, text, settings.aiVectorTopK, controller.signal)) ||
-          undefined
-      }
-    }
+    const codeContext = await retrieveCodeContext(text, controller.signal)
     const opts = {
       messages: convo,
       dialect: connOf(connId.value)?.dialect,
@@ -661,6 +716,12 @@ function onKeydown(e: KeyboardEvent): void {
         <label class="schk" :title="t('aichat.useCodeTitle')">
           <input type="checkbox" :checked="useCode" @change="toggleCode" />
           <span class="schk-lbl">{{ t('aichat.useCode') }}</span>
+          <span
+            v-if="useCode && codeRetrieval"
+            class="code-status"
+            :class="'code-' + codeRetrieval.mode"
+            :title="codeRetrievalTitle()"
+          >{{ codeRetrievalLabel() }}</span>
         </label>
         <button class="ghost sm clear-btn" :disabled="!messages.length" @click="clearAll">{{ t('aichat.clear') }}</button>
       </div>
@@ -834,6 +895,21 @@ function onKeydown(e: KeyboardEvent): void {
 }
 .schk-lbl {
   white-space: nowrap;
+}
+.code-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: var(--accent);
+  cursor: help;
+}
+.code-none,
+.code-error {
+  color: var(--muted);
+}
+.code-error {
+  color: var(--err, #e04050);
 }
 .clear-btn {
   flex: none;
