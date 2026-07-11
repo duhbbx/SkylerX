@@ -6,7 +6,7 @@ import type { DataClient } from '@db-tool/shared-types'
 import type { TableContext } from '../ddl'
 import { chunkCode, parseGitignore, shouldIndexFile } from './codeScan'
 import type { RagChunk } from './corpus'
-import { embedBatched, formatContext, searchIndex } from './service'
+import { embedBatched, formatContext, searchIndex, type RetrievalMode } from './service'
 import { type RagIndex, encodeVec, loadIndex, saveIndex } from './store'
 
 const SEP = '␟' // unit separator,容器各段之间的分隔符(不会出现在库名/路径里)
@@ -80,6 +80,17 @@ export interface ScannedFile {
 }
 
 export type CodeManifest = Record<string, { mtime: number; size: number; chunkIds: string[] }>
+
+export interface CodeRetrievalResult {
+  context: string
+  mode: RetrievalMode | 'none'
+  hitCount: number
+  sources: string[]
+}
+
+export function assertIndexSaved(saved: boolean): void {
+  if (!saved) throw new Error('CODE_INDEX_STORAGE_FULL')
+}
 
 function manifestStorageKey(connId: string, container: string): string {
   return `skylerx.rag.codemanifest:${connId}${SEP}${container}`
@@ -263,13 +274,34 @@ export async function refreshCodeIndex(
     chunks,
     vectors: haveAllVecs && vectors.length === chunks.length ? vectors : undefined,
   }
-  saveIndex(index)
+  assertIndexSaved(saveIndex(index))
   saveManifest(connId, container, nextManifest)
   opts.onProgress?.(chunks.length, chunks.length)
   return { index, fileCount: files.length, capped, mode: index.mode }
 }
 
-/** 检索某容器代码库 top-K 相关片段,拼成可注入 AI 的上下文文本;无索引/无命中 → ''。 */
+/** 检索某容器代码库 top-K 相关片段,返回上下文及检索诊断。 */
+export async function retrieveCodeDetailed(
+  connId: string,
+  container: string,
+  query: string,
+  topK: number,
+  signal?: AbortSignal,
+): Promise<CodeRetrievalResult> {
+  const idx = loadIndex(codeIndexKey(connId, container))
+  if (!idx || !idx.chunks.length) {
+    return { context: '', mode: 'none', hitCount: 0, sources: [] }
+  }
+  const { hits, mode } = await searchIndex(idx, query, topK, { signal })
+  return {
+    context: formatContext(hits),
+    mode,
+    hitCount: hits.length,
+    sources: [...new Set(hits.map((hit) => hit.chunk.title))],
+  }
+}
+
+/** 兼容旧调用方:只返回可注入 AI 的上下文文本。 */
 export async function retrieveCode(
   connId: string,
   container: string,
@@ -277,9 +309,5 @@ export async function retrieveCode(
   topK: number,
   signal?: AbortSignal,
 ): Promise<string> {
-  const idx = loadIndex(codeIndexKey(connId, container))
-  if (!idx || !idx.chunks.length) return ''
-  const { hits } = await searchIndex(idx, query, topK, { signal })
-  if (!hits.length) return ''
-  return formatContext(hits)
+  return (await retrieveCodeDetailed(connId, container, query, topK, signal)).context
 }

@@ -4,10 +4,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  assertIndexSaved,
   codeIndexKey,
   containerKey,
   getRepoPath,
   planRefresh,
+  retrieveCodeDetailed,
   resolveBoundContainer,
   setRepoPath,
 } from './codeRepo'
@@ -24,6 +26,23 @@ describe('containerKey', () => {
 describe('codeIndexKey', () => {
   it('namespaces by connId + container', () => {
     expect(codeIndexKey('c1', 'app␟public')).toBe('code:c1␟app␟public')
+  })
+})
+
+describe('code index retrieval diagnostics', () => {
+  it('reports no retrieval when the code index is missing', async () => {
+    await expect(retrieveCodeDetailed('missing-conn', 'app␟public', 'find users', 3)).resolves.toEqual({
+      context: '',
+      mode: 'none',
+      hitCount: 0,
+      sources: [],
+    })
+  })
+})
+
+describe('assertIndexSaved', () => {
+  it('throws a storage-full error when the index cannot be persisted', () => {
+    expect(() => assertIndexSaved(false)).toThrow('CODE_INDEX_STORAGE_FULL')
   })
 })
 
