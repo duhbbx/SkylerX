@@ -248,6 +248,7 @@ const error = ref<string | null>(null)
 let controller: AbortController | null = null
 let requestSequence = 0
 let activeRequestId = 0
+let activeAssistantSlot: ChatMessage | null = null
 
 interface ChatRequestSnapshot {
   id: number
@@ -314,6 +315,7 @@ onMounted(async () => {
   scrollToBottom()
 })
 onBeforeUnmount(() => {
+  cancelActiveRequestForContextChange()
   unsubExec?.()
 })
 
@@ -336,18 +338,41 @@ watch(
   },
   { deep: true, immediate: true },
 )
-// 切连接 → 重新拉 database/schema 列表 + 重置 schema 缓存
+function removeAssistantSlot(slot: ChatMessage | null): void {
+  if (!slot) return
+  const i = messages.value.indexOf(slot)
+  if (i >= 0) messages.value.splice(i, 1)
+}
+
+function cancelActiveRequestForContextChange(): void {
+  codeRetrieval.value = null
+  if (!activeRequestId) return
+  activeRequestId = 0
+  controller?.abort()
+  controller = null
+  running.value = false
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+  removeAssistantSlot(activeAssistantSlot)
+  activeAssistantSlot = null
+}
+
+// 切连接 → 取消旧上下文请求、重新拉 database/schema 列表 + 重置 schema 缓存
 watch(connId, async () => {
+  cancelActiveRequestForContextChange()
   schemaText.value = ''
   selectedDb.value = ''
   await loadDbList()
   if (useSchema.value) void loadSchema()
-})
-// 切库 → 旧 schema 文本作废
+}, { flush: 'sync' })
+// 切库 → 取消旧上下文请求，旧 schema 文本作废
 watch(selectedDb, () => {
+  cancelActiveRequestForContextChange()
   schemaText.value = ''
   if (useSchema.value) void loadSchema()
-})
+}, { flush: 'sync' })
 
 function fam(d: DbDialect | undefined): 'mysql' | 'pg' | 'oracle' | 'other' {
   if (d && [DbDialect.MySQL, DbDialect.MariaDB, DbDialect.OceanBase, DbDialect.GBase8a].includes(d))
@@ -605,6 +630,7 @@ async function send(): Promise<void> {
   // slot 取自响应式数组里的那个元素（代理），改它的 content 才会触发重渲染。
   messages.value.push({ role: 'assistant', content: '' })
   const slot = messages.value[messages.value.length - 1]
+  activeAssistantSlot = slot
   try {
     // 注入 A/B/C 三档记忆段（A：自定义画像；B：事实清单；C：相关向量记忆 top-K）
     const memorySection = await buildMemorySection(text)
@@ -662,6 +688,7 @@ async function send(): Promise<void> {
       running.value = false
       controller = null
       activeRequestId = 0
+      activeAssistantSlot = null
     }
   }
 }

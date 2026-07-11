@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { type ConnectionConfig, DbDialect, type QueryResult } from '@db-tool/shared-types'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { type AiMode, askAi, extractSql, fmtOracleType } from '../ai'
 import { useDataClient } from '../data-client'
 import type { TableContext } from '../ddl'
@@ -50,7 +50,6 @@ interface AssistantRequestSnapshot {
   id: number
   connId: string
   dialect: DbDialect | undefined
-  context: TableContext
   mode: AiMode
   input: string
   error: string | undefined
@@ -89,17 +88,34 @@ const connOf = (id: string) => conns.value.find((c) => c.id === id)
  * 本弹窗不让用户单独选库，跟 loadSchema 一样落到默认库/schema（mysql=DATABASE() /
  * pg='public' / oracle=当前用户）。
  */
-function currentCtx(c: ConnectionConfig, captured: TableContext = {}): TableContext {
+function currentCtx(c: ConnectionConfig): TableContext {
   const f = fam(c.dialect)
-  if (f === 'pg') return { database: captured.database ?? c.database, schema: captured.schema ?? 'public' }
-  if (f === 'oracle') return { schema: captured.schema ?? (c.database || '') }
-  return { database: captured.database ?? (c.database || '') }
+  if (f === 'pg') return { database: c.database, schema: 'public' }
+  if (f === 'oracle') return { schema: c.database || '' }
+  return { database: c.database || '' }
 }
 
 onMounted(async () => {
   conns.value = await client.connections.list()
   connId.value = props.initialConnId ?? conns.value[0]?.id ?? ''
 })
+
+function cancelActiveRequestForConnectionChange(): void {
+  codeRetrieval.value = null
+  answer.value = ''
+  error.value = null
+  if (!activeRequestId) return
+  activeRequestId = 0
+  controller?.abort()
+  controller = null
+  running.value = false
+}
+
+watch(connId, () => {
+  cancelActiveRequestForConnectionChange()
+  schemaText.value = ''
+  if (useSchema.value) void loadSchema()
+}, { flush: 'sync' })
 
 async function loadSchema(): Promise<void> {
   const c = connOf(connId.value)
@@ -194,22 +210,22 @@ function codeRetrievalTitle(): string {
 async function retrieveCodeContext(
   snapshot: AssistantRequestSnapshot,
   signal: AbortSignal,
-): Promise<string | undefined> {
-  if (!snapshot.useCode) return undefined
+): Promise<{ context: string | undefined; conn: ConnectionConfig | undefined }> {
+  if (!snapshot.useCode) return { context: undefined, conn: undefined }
   if (!snapshot.connId) {
     throwIfRequestStale(snapshot, signal)
     codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
-    return undefined
+    return { context: undefined, conn: undefined }
   }
   try {
     // Repository bindings may have changed after the selector's cached connection list loaded.
     const conn = await client.connections.get(snapshot.connId)
     throwIfRequestStale(snapshot, signal)
-    const container = resolveBoundContainer(conn, currentCtx(conn, snapshot.context))
+    const container = resolveBoundContainer(conn, currentCtx(conn))
     if (!container) {
       throwIfRequestStale(snapshot, signal)
       codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
-      return undefined
+      return { context: undefined, conn }
     }
     const result = await retrieveCodeDetailed(
       conn.id,
@@ -220,7 +236,7 @@ async function retrieveCodeContext(
     )
     throwIfRequestStale(snapshot, signal)
     codeRetrieval.value = result
-    return result.context || undefined
+    return { context: result.context || undefined, conn }
   } catch (e) {
     throwIfRequestStale(snapshot, signal)
     if ((e as Error).name === 'AbortError') throw e
@@ -228,7 +244,7 @@ async function retrieveCodeContext(
       mode: 'error',
       message: e instanceof Error ? e.message : String(e),
     }
-    return undefined
+    return { context: undefined, conn: undefined }
   }
 }
 
@@ -243,7 +259,6 @@ async function run(): Promise<void> {
     id: ++requestSequence,
     connId: connId.value,
     dialect: cachedConn?.dialect,
-    context: cachedConn ? currentCtx(cachedConn) : {},
     mode: mode.value,
     input: input.value,
     error: errInput.value || undefined,
@@ -258,15 +273,15 @@ async function run(): Promise<void> {
   const requestController = new AbortController()
   controller = requestController
   try {
-    const codeContext = await retrieveCodeContext(snapshot, requestController.signal)
+    const codeRetrievalResult = await retrieveCodeContext(snapshot, requestController.signal)
     throwIfRequestStale(snapshot, requestController.signal)
     const result = await askAi({
       mode: snapshot.mode,
-      dialect: snapshot.dialect,
+      dialect: codeRetrievalResult.conn?.dialect ?? snapshot.dialect,
       input: snapshot.input,
       error: snapshot.error,
       schema: snapshot.schema,
-      codeContext,
+      codeContext: codeRetrievalResult.context,
       signal: requestController.signal,
     })
     throwIfRequestStale(snapshot, requestController.signal)
