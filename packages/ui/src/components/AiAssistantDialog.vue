@@ -217,18 +217,19 @@ async function retrieveCodeContext(
     codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
     return { context: undefined, conn: undefined }
   }
+  let freshConn: ConnectionConfig | undefined
   try {
     // Repository bindings may have changed after the selector's cached connection list loaded.
-    const conn = await client.connections.get(snapshot.connId)
+    freshConn = await client.connections.get(snapshot.connId)
     throwIfRequestStale(snapshot, signal)
-    const container = resolveBoundContainer(conn, currentCtx(conn))
+    const container = resolveBoundContainer(freshConn, currentCtx(freshConn))
     if (!container) {
       throwIfRequestStale(snapshot, signal)
       codeRetrieval.value = { context: '', mode: 'none', hitCount: 0, sources: [] }
-      return { context: undefined, conn }
+      return { context: undefined, conn: freshConn }
     }
     const result = await retrieveCodeDetailed(
-      conn.id,
+      freshConn.id,
       container,
       snapshot.input,
       settings.aiVectorTopK,
@@ -236,7 +237,7 @@ async function retrieveCodeContext(
     )
     throwIfRequestStale(snapshot, signal)
     codeRetrieval.value = result
-    return { context: result.context || undefined, conn }
+    return { context: result.context || undefined, conn: freshConn }
   } catch (e) {
     throwIfRequestStale(snapshot, signal)
     if ((e as Error).name === 'AbortError') throw e
@@ -244,7 +245,7 @@ async function retrieveCodeContext(
       mode: 'error',
       message: e instanceof Error ? e.message : String(e),
     }
-    return { context: undefined, conn: undefined }
+    return { context: undefined, conn: freshConn }
   }
 }
 
