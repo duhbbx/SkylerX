@@ -6,6 +6,7 @@ import type {
   CommandRequest,
   CommandResult,
   ConnectionConfig,
+  ConnectionScope,
   ExecuteOptions,
   MetaScope,
   MetadataNode,
@@ -32,11 +33,21 @@ const api = {
       sql: string,
       params?: unknown[],
       options?: ExecuteOptions,
+      scope?: ConnectionScope,
     ): Promise<QueryResult> =>
-      ipcRenderer.invoke('connections:execute', connId, sql, params, options),
-    metadata: (connId: string, scope: MetaScope): Promise<MetadataNode[]> =>
-      ipcRenderer.invoke('connections:metadata', connId, scope),
-    executeBatch: (connId: string, statements: string[], options?: ExecuteOptions): Promise<void> =>
+      ipcRenderer.invoke('connections:execute', connId, sql, params, options, scope),
+    metadata: (
+      connId: string,
+      scope: MetaScope,
+      connectionScope?: ConnectionScope,
+    ): Promise<MetadataNode[]> =>
+      ipcRenderer.invoke('connections:metadata', connId, scope, connectionScope),
+    executeBatch: (
+      connId: string,
+      statements: string[],
+      options?: ExecuteOptions,
+      scope?: ConnectionScope,
+    ): Promise<void> =>
       // 防御：调用方可能传进 Vue 响应式 Proxy（数组/对象），结构化克隆会抛
       // "An object could not be cloned"。在 IPC 边界拍平成纯对象再发。
       ipcRenderer.invoke(
@@ -44,8 +55,12 @@ const api = {
         connId,
         Array.from(statements, String),
         options ? { ...options } : options,
+        scope,
       ),
-    cancel: (connId: string): Promise<void> => ipcRenderer.invoke('connections:cancel', connId),
+    cancel: (connId: string, scope?: ConnectionScope): Promise<void> =>
+      ipcRenderer.invoke('connections:cancel', connId, scope),
+    releaseScope: (connId: string, scope?: ConnectionScope): Promise<void> =>
+      ipcRenderer.invoke('connections:releaseScope', connId, scope),
     history: (connId: string, limit?: number): Promise<QueryHistoryEntry[]> =>
       ipcRenderer.invoke('connections:history', connId, limit),
     historyClear: (connId: string): Promise<void> =>
@@ -61,8 +76,12 @@ const api = {
     historyDelete: (id: number): Promise<void> =>
       ipcRenderer.invoke('connections:historyDelete', id),
     // ── 手动提交会话 ──
-    beginSession: (connId: string, options?: ExecuteOptions): Promise<string> =>
-      ipcRenderer.invoke('connections:beginSession', connId, options),
+    beginSession: (
+      connId: string,
+      options?: ExecuteOptions,
+      scope?: ConnectionScope,
+    ): Promise<string> =>
+      ipcRenderer.invoke('connections:beginSession', connId, options, scope),
     executeInSession: (
       sessionId: string,
       sql: string,
@@ -77,8 +96,12 @@ const api = {
     endSession: (sessionId: string): Promise<void> =>
       ipcRenderer.invoke('connections:endSession', sessionId),
     // ── NoSQL 平行通道(MongoDB / Redis) ──
-    executeCommand: (connId: string, command: CommandRequest): Promise<CommandResult> =>
-      ipcRenderer.invoke('connections:executeCommand', connId, command),
+    executeCommand: (
+      connId: string,
+      command: CommandRequest,
+      scope?: ConnectionScope,
+    ): Promise<CommandResult> =>
+      ipcRenderer.invoke('connections:executeCommand', connId, command, scope),
   },
   files: {
     /** 弹保存对话框写入文本；返回路径，取消返回 null */

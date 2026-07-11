@@ -5,9 +5,14 @@
 import { LocalTransport, registerBuiltinDrivers } from '@db-tool/core-driver'
 import type { ConnectionConfigStore, SqlTransport } from '@db-tool/core-driver'
 import { sqliteConfigStore } from './db/connectionStore.js'
-import { closeAllTunnels, ensureTunnel } from './ssh-tunnel.js'
+import { closeAllTunnels, ensureTunnel, onTunnelClosed } from './ssh-tunnel.js'
 
 let transport: SqlTransport | null = null
+
+onTunnelClosed((connId) => {
+  if (!transport) return
+  void transport.disconnect(connId).catch(() => {})
+})
 
 /**
  * 解析配置时若启用 SSH 隧道：先建立（或复用）隧道，把 host/port 改写为本地转发端点，

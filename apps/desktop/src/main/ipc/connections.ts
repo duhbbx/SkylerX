@@ -5,6 +5,7 @@
 import type {
   CommandRequest,
   ConnectionConfig,
+  ConnectionScope,
   ExecuteOptions,
   MetaScope,
 } from '@db-tool/shared-types'
@@ -49,6 +50,7 @@ export const IPC = {
   commitSession: 'connections:commitSession',
   rollbackSession: 'connections:rollbackSession',
   endSession: 'connections:endSession',
+  releaseScope: 'connections:releaseScope',
   // NoSQL 平行通道
   executeCommand: 'connections:executeCommand',
 } as const
@@ -86,10 +88,17 @@ export function registerConnectionIpc(): void {
 
   ipcMain.handle(
     IPC.execute,
-    async (_e, connId: string, sql: string, params?: unknown[], options?: ExecuteOptions) => {
+    async (
+      _e,
+      connId: string,
+      sql: string,
+      params?: unknown[],
+      options?: ExecuteOptions,
+      scope?: ConnectionScope,
+    ) => {
       const start = Date.now()
       try {
-        const result = await getTransport().execute({ id: connId }, sql, params, options)
+        const result = await getTransport().execute({ id: connId, scope }, sql, params, options)
         recordHistory(connId, sql, Date.now() - start, true)
         return result
       } catch (e) {
@@ -99,17 +108,29 @@ export function registerConnectionIpc(): void {
     },
   )
 
-  ipcMain.handle(IPC.metadata, (_e, connId: string, scope: MetaScope) =>
-    getTransport().fetchMetadata({ id: connId }, scope),
+  ipcMain.handle(
+    IPC.metadata,
+    (_e, connId: string, metaScope: MetaScope, scope?: ConnectionScope) =>
+      getTransport().fetchMetadata({ id: connId, scope }, metaScope),
   )
 
   ipcMain.handle(
     IPC.executeBatch,
-    (_e, connId: string, statements: string[], options?: ExecuteOptions) =>
-      getTransport().executeBatch({ id: connId }, statements, options),
+    (
+      _e,
+      connId: string,
+      statements: string[],
+      options?: ExecuteOptions,
+      scope?: ConnectionScope,
+    ) => getTransport().executeBatch({ id: connId, scope }, statements, options),
   )
 
-  ipcMain.handle(IPC.cancel, (_e, connId: string) => getTransport().cancel({ id: connId }))
+  ipcMain.handle(IPC.cancel, (_e, connId: string, scope?: ConnectionScope) =>
+    getTransport().cancel({ id: connId, scope }),
+  )
+  ipcMain.handle(IPC.releaseScope, (_e, connId: string, scope?: ConnectionScope) =>
+    getTransport().releaseScope(connId, scope),
+  )
 
   ipcMain.handle(IPC.history, (_e, connId: string, limit?: number) => listHistory(connId, limit))
 
@@ -130,8 +151,10 @@ export function registerConnectionIpc(): void {
   ipcMain.handle(IPC.historyDelete, (_e, id: number) => deleteHistoryEntry(id))
 
   // ── 手动提交会话 ──
-  ipcMain.handle(IPC.beginSession, (_e, connId: string, options?: ExecuteOptions) =>
-    getTransport().beginSession({ id: connId }, options),
+  ipcMain.handle(
+    IPC.beginSession,
+    (_e, connId: string, options?: ExecuteOptions, scope?: ConnectionScope) =>
+      getTransport().beginSession({ id: connId, scope }, options),
   )
   ipcMain.handle(
     IPC.executeInSession,
@@ -152,18 +175,21 @@ export function registerConnectionIpc(): void {
   // ── NoSQL 平行通道 ──
   // 写历史:NoSQL 命令也记一条,sql 字段塞 `${op} ${JSON.stringify(args)}`
   // 方便用户在历史里翻找(后续可考虑给 history 表加 kind 列)
-  ipcMain.handle(IPC.executeCommand, async (_e, connId: string, command: CommandRequest) => {
+  ipcMain.handle(
+    IPC.executeCommand,
+    async (_e, connId: string, command: CommandRequest, scope?: ConnectionScope) => {
     const start = Date.now()
     const sqlLike = `${command.op}${command.args ? ` ${safeStringify(command.args)}` : ''}`
     try {
-      const result = await getTransport().executeCommand({ id: connId }, command)
+      const result = await getTransport().executeCommand({ id: connId, scope }, command)
       recordHistory(connId, sqlLike, Date.now() - start, true)
       return result
     } catch (e) {
       recordHistory(connId, sqlLike, Date.now() - start, false)
       throw e
     }
-  })
+    },
+  )
 }
 
 function safeStringify(v: unknown): string {

@@ -14,6 +14,23 @@ interface Tunnel {
 
 /** 每连接一条隧道，按 connId 复用；连接断开/更新时关闭。 */
 const tunnels = new Map<string, Tunnel>()
+type TunnelCloseListener = (connId: string) => void
+const closeListeners = new Set<TunnelCloseListener>()
+
+export function onTunnelClosed(listener: TunnelCloseListener): () => void {
+  closeListeners.add(listener)
+  return () => closeListeners.delete(listener)
+}
+
+function notifyTunnelClosed(connId: string): void {
+  for (const listener of closeListeners) {
+    try {
+      listener(connId)
+    } catch {
+      /* ignore listener failures */
+    }
+  }
+}
 
 /**
  * 确保该连接的 SSH 隧道已建立，返回本地转发端点（127.0.0.1:port）。
@@ -81,6 +98,7 @@ export function closeTunnel(connId: string): void {
   const t = tunnels.get(connId)
   if (!t) return
   tunnels.delete(connId)
+  notifyTunnelClosed(connId)
   try {
     t.server.close()
   } catch {
