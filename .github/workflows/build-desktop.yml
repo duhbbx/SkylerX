@@ -153,6 +153,9 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Generate app icons
+        run: pnpm generate:app-icons
+
       - name: Typecheck
         run: pnpm --filter @db-tool/desktop typecheck
 

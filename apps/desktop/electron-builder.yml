@@ -19,6 +19,7 @@ asarUnpack:
 # 由 CI 后续 step 上传 SignPath → 拉回签好的 .exe 覆盖。详见 .github/workflows/build-desktop.yml。
 # 这里只设元数据（publisherName 影响 UAC 弹框上的名字 + NSIS 显示）。
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:
@@ -51,6 +52,7 @@ portable:
 #   - notarize 由 CI 在 5 个 APPLE_* secret 齐全时用 -c.mac.notarize.teamId= 打开
 # 这样未配 secret 的本地 / 分支构建照常出 dmg（未签），配齐 secret 自动签 + 公证。
 mac:
+  icon: build/icon.icns
   target:
     - target: dmg
       arch:
@@ -83,6 +85,7 @@ mac:
 # NOTE: electron-builder 25 给 arm64 拉的 fpm 是 x86 二进制（upstream fpm 没发 arm64 release），
 # 在 arm64 runner 上跑直接 ENOEXEC。所以 arm64 只留 AppImage + tar.gz（这俩不走 fpm）。
 linux:
+  icon: build/icon.png
   target:
     - target: AppImage
       arch:

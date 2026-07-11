@@ -6,11 +6,9 @@
 /**
  * 数据库方言 logo 显示组件。
  *
- *  - 24×24 viewBox 的 SVG，单条 path，带品牌色
+ *  - 优先渲染品牌 PNG，未知方言走 DB fallback
  *  - 用法：<DialectIcon :dialect="conn.dialect" :size="16" />
  *  - size 默认 16；inline-block，跟文字基线对齐；不占额外行高
- *  - 颜色直接来自 dialect-icon.ts 的 brand color，**不接受外部 prop**——
- *    这是 logo，不是图标字体，颜色受品牌规范保护
  *
  * 落地点（截至 v0.3.16）：
  *  - TreeItem.vue 连接节点（替代 🔌 emoji）
@@ -35,18 +33,30 @@ const icon = computed(() => getDialectIcon(props.dialect))
 </script>
 
 <template>
-  <svg
+  <img
+    v-if="icon.src"
     class="dialect-icon"
+    :src="icon.src"
+    alt=""
+    aria-hidden="true"
+    :title="title ?? icon.label"
     :width="size"
     :height="size"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
+  />
+  <span
+    v-else
+    class="dialect-icon dialect-icon-fallback"
     aria-hidden="true"
-    role="img"
+    :title="title ?? icon.label"
+    :style="{
+      width: `${size}px`,
+      height: `${size}px`,
+      backgroundColor: icon.color,
+      fontSize: `${Math.max(7, Math.round(size * 0.42))}px`,
+    }"
   >
-    <title>{{ title ?? icon.label }}</title>
-    <path :d="icon.path" :fill="icon.color" />
-  </svg>
+    {{ icon.initials ?? 'DB' }}
+  </span>
 </template>
 
 <style scoped>
@@ -54,5 +64,17 @@ const icon = computed(() => getDialectIcon(props.dialect))
   display: inline-block;
   vertical-align: -2px;
   flex: none;
+  object-fit: contain;
+  object-position: center;
+}
+.dialect-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
 }
 </style>
