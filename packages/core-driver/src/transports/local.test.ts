@@ -261,4 +261,47 @@ describe('LocalTransport scoped connection caches', () => {
     expect(built[0].canceled).toBe(false)
     expect(built[1].canceled).toBe(true)
   })
+
+  it('does not cache an in-flight connection after its scope is released', async () => {
+    let connectStarted!: () => void
+    let allowConnect!: () => void
+    const started = new Promise<void>((resolve) => {
+      connectStarted = resolve
+    })
+    const allow = new Promise<void>((resolve) => {
+      allowConnect = resolve
+    })
+    const built: FakeConn[] = []
+    registerDriver({
+      dialect: DbDialect.Snowflake,
+      sql: {} as DatabaseDriver['sql'],
+      async test() {
+        return { ok: true }
+      },
+      async connect(): Promise<DriverConnection> {
+        connectStarted()
+        await allow
+        const c = new FakeConn(() => null)
+        built.push(c)
+        return c
+      },
+    })
+    const ref: ConnectionRef = {
+      id: 's6',
+      scope: { id: 'tab:a', kind: 'query-tab' },
+      config: { id: 's6', name: 's6', dialect: DbDialect.Snowflake } as ConnectionConfig,
+    }
+    const t = new LocalTransport()
+
+    const first = t.execute(ref, 'SELECT 1').catch((error: unknown) => error)
+    await started
+    await t.releaseScope('s6', ref.scope)
+    allowConnect()
+
+    await expect(first).resolves.toBeInstanceOf(Error)
+    expect(built[0].closed).toBe(true)
+
+    await t.execute(ref, 'SELECT 1')
+    expect(built).toHaveLength(2)
+  })
 })
