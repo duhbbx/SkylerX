@@ -15,12 +15,16 @@ export interface CodeRepoBuildResult<Saved, Refresh> {
 
 /** Stable repository identity used by bindings, manifests, and code indexes. */
 export function normalizeCodeRepoRoot(path: string): string {
-  const root = path.trim()
-  if (!root) return root
-  if (/^[\\/]+$/.test(root)) return root[0]
-  const driveRoot = root.match(/^([A-Za-z]:)([\\/]+)$/)
-  if (driveRoot) return `${driveRoot[1]}${driveRoot[2][0]}`
-  return root.replace(/[\\/]+$/, '')
+  if (!path.trim()) return ''
+
+  const isWindowsDrive = /^[A-Za-z]:[\\/]/.test(path)
+  const isUnc = /^[/\\]{2}[^/\\]+[/\\]+[^/\\]+/.test(path)
+  if (isWindowsDrive || isUnc) {
+    const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
+    return /^[A-Za-z]:$/.test(normalized) ? `${normalized}/` : normalized
+  }
+
+  return path.replace(/\/+$/, '') || '/'
 }
 
 /** Runs one code-repository binding and indexing operation against an immutable root snapshot. */

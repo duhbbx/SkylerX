@@ -39,8 +39,8 @@ export function getRepoPath(conn: ConnLike | null | undefined, container: string
 export function setRepoPath<T extends ConnLike>(conn: T, container: string, path: string): T {
   const extra = { ...(conn.extra ?? {}) } as Record<string, unknown>
   const repos: RepoMap = { ...((extra.codeRepos as RepoMap | undefined) ?? {}) }
-  const trimmed = path.trim()
-  if (trimmed) repos[container] = { path: trimmed }
+  const normalizedRoot = normalizeCodeRepoRoot(path)
+  if (normalizedRoot) repos[container] = { path: normalizedRoot }
   else delete repos[container]
   if (Object.keys(repos).length) extra.codeRepos = repos
   else delete extra.codeRepos

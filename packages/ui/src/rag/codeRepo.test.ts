@@ -383,6 +383,14 @@ describe('getRepoPath / setRepoPath on connection.extra', () => {
     conn = setRepoPath(conn, 'k', '')
     expect(getRepoPath(conn, 'k')).toBeUndefined()
   })
+
+  it('keeps distinct POSIX roots distinct in the persisted binding', () => {
+    const roots = ['/tmp/repo', '/tmp/repo\\', '/tmp/repo ']
+
+    expect(
+      roots.map((root) => getRepoPath(setRepoPath({}, 'app␟public', root), 'app␟public')),
+    ).toEqual(roots)
+  })
 })
 
 describe('planRefresh — incremental diff by mtime/size', () => {

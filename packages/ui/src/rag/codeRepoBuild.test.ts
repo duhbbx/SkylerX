@@ -6,10 +6,32 @@ import { describe, expect, it, vi } from 'vitest'
 import { normalizeCodeRepoRoot, runCodeRepoBuild } from './codeRepoBuild'
 
 describe('normalizeCodeRepoRoot', () => {
-  it('removes trailing separators without collapsing filesystem roots', () => {
-    expect(normalizeCodeRepoRoot('/repo///')).toBe('/repo')
+  it('keeps POSIX roots distinct when they end in backslash or space', () => {
+    const roots = ['/tmp/repo', '/tmp/repo\\', '/tmp/repo ']
+
+    expect(roots.map(normalizeCodeRepoRoot)).toEqual(roots)
+    expect(new Set(roots.map(normalizeCodeRepoRoot))).toHaveLength(3)
+  })
+
+  it('removes only redundant POSIX trailing slashes', () => {
+    expect(normalizeCodeRepoRoot('/tmp/repo/')).toBe('/tmp/repo')
+    expect(normalizeCodeRepoRoot('/tmp/repo///')).toBe('/tmp/repo')
     expect(normalizeCodeRepoRoot('///')).toBe('/')
-    expect(normalizeCodeRepoRoot('C:\\\\')).toBe('C:\\')
+    expect(normalizeCodeRepoRoot('/')).toBe('/')
+  })
+
+  it('normalizes Windows drive and UNC separator equivalents', () => {
+    expect(normalizeCodeRepoRoot('C:\\repo\\')).toBe('C:/repo')
+    expect(normalizeCodeRepoRoot('C:/repo/')).toBe('C:/repo')
+    expect(normalizeCodeRepoRoot('C:\\')).toBe('C:/')
+    expect(normalizeCodeRepoRoot('C:/')).toBe('C:/')
+    expect(normalizeCodeRepoRoot('\\\\server\\share\\repo\\')).toBe('//server/share/repo')
+    expect(normalizeCodeRepoRoot('//server/share/repo/')).toBe('//server/share/repo')
+  })
+
+  it('uses trimming only to reject all-whitespace input', () => {
+    expect(normalizeCodeRepoRoot('   ')).toBe('')
+    expect(normalizeCodeRepoRoot(' /tmp/repo ')).toBe(' /tmp/repo ')
   })
 })
 
@@ -24,7 +46,7 @@ describe('runCodeRepoBuild', () => {
     expect(refresh).not.toHaveBeenCalled()
   })
 
-  it('uses the trimmed root snapshot when the external path changes during refresh', async () => {
+  it('passes the exact normalized root to refresh and persist', async () => {
     let path = '  /repo  '
     const persist = vi.fn(async (root: string) => ({ id: 'conn-1', root }))
     const refresh = vi.fn(async (root: string) => {
@@ -34,12 +56,12 @@ describe('runCodeRepoBuild', () => {
 
     const result = await runCodeRepoBuild(path, { persist, refresh })
 
-    expect(persist).toHaveBeenCalledWith('/repo')
-    expect(refresh).toHaveBeenCalledWith('/repo')
+    expect(persist).toHaveBeenCalledWith('  /repo  ')
+    expect(refresh).toHaveBeenCalledWith('  /repo  ')
     expect(result).toEqual({
-      root: '/repo',
-      saved: { id: 'conn-1', root: '/repo' },
-      refresh: { root: '/repo', fileCount: 2 },
+      root: '  /repo  ',
+      saved: { id: 'conn-1', root: '  /repo  ' },
+      refresh: { root: '  /repo  ', fileCount: 2 },
     })
   })
 
