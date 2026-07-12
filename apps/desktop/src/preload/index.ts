@@ -16,6 +16,16 @@ import type {
 } from '@db-tool/shared-types'
 import { contextBridge, ipcRenderer } from 'electron'
 
+function plainObject<T extends object>(value: T | undefined): T | undefined {
+  if (!value) return value
+  return { ...value }
+}
+
+function plainArray<T>(value: T[] | undefined): T[] | undefined {
+  if (!value) return value
+  return Array.from(value)
+}
+
 /** 暴露给渲染进程的安全 API（经 contextBridge，渲染进程无 Node 权限）。 */
 const api = {
   connections: {
@@ -35,13 +45,25 @@ const api = {
       options?: ExecuteOptions,
       scope?: ConnectionScope,
     ): Promise<QueryResult> =>
-      ipcRenderer.invoke('connections:execute', connId, sql, params, options, scope),
+      ipcRenderer.invoke(
+        'connections:execute',
+        connId,
+        sql,
+        plainArray(params),
+        plainObject(options),
+        plainObject(scope),
+      ),
     metadata: (
       connId: string,
       scope: MetaScope,
       connectionScope?: ConnectionScope,
     ): Promise<MetadataNode[]> =>
-      ipcRenderer.invoke('connections:metadata', connId, scope, connectionScope),
+      ipcRenderer.invoke(
+        'connections:metadata',
+        connId,
+        plainObject(scope),
+        plainObject(connectionScope),
+      ),
     executeBatch: (
       connId: string,
       statements: string[],
@@ -54,13 +76,13 @@ const api = {
         'connections:executeBatch',
         connId,
         Array.from(statements, String),
-        options ? { ...options } : options,
-        scope,
+        plainObject(options),
+        plainObject(scope),
       ),
     cancel: (connId: string, scope?: ConnectionScope): Promise<void> =>
-      ipcRenderer.invoke('connections:cancel', connId, scope),
+      ipcRenderer.invoke('connections:cancel', connId, plainObject(scope)),
     releaseScope: (connId: string, scope?: ConnectionScope): Promise<void> =>
-      ipcRenderer.invoke('connections:releaseScope', connId, scope),
+      ipcRenderer.invoke('connections:releaseScope', connId, plainObject(scope)),
     history: (connId: string, limit?: number): Promise<QueryHistoryEntry[]> =>
       ipcRenderer.invoke('connections:history', connId, limit),
     historyClear: (connId: string): Promise<void> =>
@@ -81,14 +103,20 @@ const api = {
       options?: ExecuteOptions,
       scope?: ConnectionScope,
     ): Promise<string> =>
-      ipcRenderer.invoke('connections:beginSession', connId, options, scope),
+      ipcRenderer.invoke('connections:beginSession', connId, plainObject(options), plainObject(scope)),
     executeInSession: (
       sessionId: string,
       sql: string,
       params?: unknown[],
       options?: ExecuteOptions,
     ): Promise<QueryResult> =>
-      ipcRenderer.invoke('connections:executeInSession', sessionId, sql, params, options),
+      ipcRenderer.invoke(
+        'connections:executeInSession',
+        sessionId,
+        sql,
+        plainArray(params),
+        plainObject(options),
+      ),
     commitSession: (sessionId: string): Promise<void> =>
       ipcRenderer.invoke('connections:commitSession', sessionId),
     rollbackSession: (sessionId: string): Promise<void> =>
@@ -101,7 +129,12 @@ const api = {
       command: CommandRequest,
       scope?: ConnectionScope,
     ): Promise<CommandResult> =>
-      ipcRenderer.invoke('connections:executeCommand', connId, command, scope),
+      ipcRenderer.invoke(
+        'connections:executeCommand',
+        connId,
+        plainObject(command),
+        plainObject(scope),
+      ),
   },
   files: {
     /** 弹保存对话框写入文本；返回路径，取消返回 null */

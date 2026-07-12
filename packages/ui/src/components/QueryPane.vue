@@ -574,14 +574,14 @@ async function loadContext(): Promise<void> {
       // Oracle / 达梦：顶层即 schema
       topKind.value = 'schema'
       schemaOptions.value = top.map((n) => n.name)
-      // 预选触发节点的 schema（命中才选，否则留默认）
-      const s = props.initialCtx?.schema
+      // 预选触发节点的 schema；没有触发节点时回落到连接用户名/默认 schema。
+      const s = props.initialCtx?.schema ?? props.conn.user
       if (s && schemaOptions.value.includes(s)) selectedSchema.value = s
     } else {
       topKind.value = 'database'
       dbOptions.value = top.map((n) => n.name)
-      // 预选触发节点的库；命中则进一步加载并预选其 schema
-      const db = props.initialCtx?.database
+      // 预选触发节点的库；没有触发节点时回落到连接配置里的默认库。
+      const db = props.initialCtx?.database ?? props.conn.database
       if (db && dbOptions.value.includes(db)) {
         selectedDb.value = db
         await loadSchemaOptions(db)
