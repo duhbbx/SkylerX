@@ -43,6 +43,7 @@ import { type Suggestion, monaco } from '../monaco-setup'
 import { notify } from '../notifications'
 import { type PlanNode, buildPlanData, planQuery } from '../plan'
 import { pluginBuiltinSnippets } from '../plugins'
+import { resolveQueryContextState } from '../queryContext'
 import { settings } from '../settings'
 import { addSnippet, snippets } from '../snippets'
 import { lintStatements } from '../sqlLint'
@@ -563,49 +564,73 @@ const schemaOptions = ref<string[]>([])
 const selectedDb = ref('')
 const selectedSchema = ref('')
 
-async function loadContext(): Promise<void> {
+async function loadContext(): Promise<boolean> {
+  let topNodes: Awaited<ReturnType<typeof client.connections.metadata>> = []
+  let childSchemaNodes: Awaited<ReturnType<typeof client.connections.metadata>> = []
+  let loadedFromMetadata = false
   try {
-    const top = await client.connections.metadata(props.conn.id, {
+    topNodes = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Connection,
       path: [],
     }, props.connectionScope)
-    if (!top.length) return
-    if (top[0].kind === MetaNodeKind.Schema) {
-      // Oracle / 达梦：顶层即 schema
-      topKind.value = 'schema'
-      schemaOptions.value = top.map((n) => n.name)
-      // 预选触发节点的 schema；没有触发节点时回落到连接用户名/默认 schema。
-      const s = props.initialCtx?.schema ?? props.conn.user
-      if (s && schemaOptions.value.includes(s)) selectedSchema.value = s
-    } else {
-      topKind.value = 'database'
-      dbOptions.value = top.map((n) => n.name)
-      // 预选触发节点的库；没有触发节点时回落到连接配置里的默认库。
-      const db = props.initialCtx?.database ?? props.conn.database
-      if (db && dbOptions.value.includes(db)) {
-        selectedDb.value = db
-        await loadSchemaOptions(db)
-        const s = props.initialCtx?.schema
-        if (s && schemaOptions.value.includes(s)) selectedSchema.value = s
-      }
+    loadedFromMetadata = true
+    const targetDb = props.initialCtx?.database ?? props.conn.database ?? ''
+    if (targetDb && topNodes.some((n) => n.kind === MetaNodeKind.Database && n.name === targetDb)) {
+      childSchemaNodes = await loadSchemaNodes(targetDb)
     }
-  } catch {
-    // 连接不可达等：保持空，查询用默认上下文
+  } catch (e) {
+    // 连接不可达 / scoped metadata 失败时仍保留连接默认库(schema)的显式上下文，
+    // 避免工具栏消失以及 SELECT 1 这类无库 SQL 以空 database 执行。
+    console.warn('[query-context] metadata load failed, falling back to connection defaults', e)
   }
+  applyContextState(topNodes, childSchemaNodes)
+  return loadedFromMetadata
 }
 
 /** 加载某库下的 schema 下拉（PG / SQLServer 才有 schema 子层）。 */
+async function loadSchemaNodes(db: string): Promise<Awaited<ReturnType<typeof client.connections.metadata>>> {
+  if (!db) return []
+  return client.connections.metadata(props.conn.id, {
+    parentKind: MetaNodeKind.Database,
+    path: [db],
+  }, props.connectionScope)
+}
+
+function applyContextState(
+  topNodes: Awaited<ReturnType<typeof client.connections.metadata>>,
+  childSchemaNodes: Awaited<ReturnType<typeof client.connections.metadata>>,
+): void {
+  const state = resolveQueryContextState({
+    dialect: props.conn.dialect,
+    connectionDatabase: props.conn.database,
+    connectionUser: props.conn.user,
+    initialCtx: props.initialCtx,
+    topNodes,
+    schemaNodes: childSchemaNodes,
+  })
+  topKind.value = state.topKind
+  dbOptions.value = state.dbOptions
+  schemaOptions.value = state.schemaOptions
+  selectedDb.value = state.selectedDb
+  selectedSchema.value = state.selectedSchema
+}
+
 async function loadSchemaOptions(db: string): Promise<void> {
-  schemaOptions.value = []
+  schemaOptions.value = props.initialCtx?.schema ? [props.initialCtx.schema] : []
   if (!db) return
   try {
-    const sub = await client.connections.metadata(props.conn.id, {
-      parentKind: MetaNodeKind.Database,
-      path: [db],
-    }, props.connectionScope)
-    if (sub[0]?.kind === MetaNodeKind.Schema) schemaOptions.value = sub.map((n) => n.name)
-  } catch {
-    /* ignore */
+    const sub = await loadSchemaNodes(db)
+    const state = resolveQueryContextState({
+      dialect: props.conn.dialect,
+      connectionDatabase: db,
+      initialCtx: { schema: selectedSchema.value || props.initialCtx?.schema },
+      topNodes: [],
+      schemaNodes: sub,
+    })
+    schemaOptions.value = state.schemaOptions
+    selectedSchema.value = state.selectedSchema
+  } catch (e) {
+    console.warn('[query-context] schema metadata load failed', e)
   }
 }
 
@@ -615,10 +640,16 @@ async function onDbChange(): Promise<void> {
 }
 
 function execOptions(): { database?: string; schema?: string } {
-  return {
-    database: topKind.value === 'database' ? selectedDb.value || undefined : undefined,
-    schema: selectedSchema.value || undefined,
-  }
+  return resolveQueryContextState({
+    dialect: props.conn.dialect,
+    connectionDatabase: selectedDb.value || props.initialCtx?.database || props.conn.database,
+    connectionUser: props.conn.user,
+    initialCtx: {
+      schema: selectedSchema.value || props.initialCtx?.schema,
+    },
+    topNodes: [],
+    schemaNodes: [],
+  }).execOptions
 }
 
 // ── SQL 自动补全（关键字 + 表名 + FROM/JOIN 引用表的列）──
@@ -1476,10 +1507,17 @@ function setupAiInline(): void {
 // 自动补全上下文懒加载：只在该 tab 首次激活时拉一次元数据，避免启动恢复的后台 tab
 // 同时探测所有连接。已加载过就不再重复。
 let contextLoaded = false
+let contextLoading = false
 function ensureContext(): void {
-  if (contextLoaded) return
-  contextLoaded = true
+  if (contextLoaded || contextLoading) return
+  contextLoading = true
   void loadContext()
+    .then((loaded) => {
+      contextLoaded = loaded
+    })
+    .finally(() => {
+      contextLoading = false
+    })
 }
 watch(
   () => props.active,
