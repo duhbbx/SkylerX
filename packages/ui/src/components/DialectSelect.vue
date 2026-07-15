@@ -116,7 +116,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMouseDown))
       :aria-label="t('conn.dialect')"
       @click="toggle"
     >
-      <DialectIcon :dialect="modelValue" :size="16" />
+      <DialectIcon :dialect="modelValue" :size="20" />
       <span class="dsel-label">{{ currentLabel }}</span>
       <span class="dsel-caret">▾</span>
     </button>
@@ -131,7 +131,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocMouseDown))
         @click="pick(o)"
         @mouseenter="hover = i"
       >
-        <DialectIcon :dialect="o.value" :size="16" />
+        <DialectIcon :dialect="o.value" :size="20" />
         <span class="opt-label">{{ o.label }}</span>
         <span v-if="o.value === modelValue" class="opt-check">✓</span>
       </div>

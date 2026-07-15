@@ -33,11 +33,11 @@ CREATE TABLE IF NOT EXISTS query_history (
   FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
 );
 
--- 应用级 KV 持久化(替代 renderer localStorage,避免 force-kill 丢配置 + apiKey 明文)。
+-- 应用级 KV 持久化(替代 renderer localStorage,避免 force-kill 丢配置)。
 -- value 形态:
---   enc:base64  → safeStorage 加密(含 apiKey 等敏感字段)
---   plain:base64→ safeStorage 不可用时的明文 base64(带警告)
--- 目前只放一行 key='settings'(整份 Settings JSON,主进程 enc/dec)。
+--   plain:base64→ 明文 base64(不是加密,只做 SQLite 文本安全包装)
+--   enc:base64  → 旧版本系统加密密文;新版本不再读取,避免触发系统钥匙串
+-- 目前只放一行 key='settings'(整份 Settings JSON,主进程 encode/decode)。
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,

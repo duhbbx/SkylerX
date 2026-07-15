@@ -5,9 +5,6 @@
  */
 import { type ConnectionEnv, MetaNodeKind } from '@db-tool/shared-types'
 import { computed, inject } from 'vue'
-import { connStatus } from '../conn-status'
-import { ENV_META } from '../connEnv'
-import { t } from '../i18n'
 import { bumpUsage, getUsage, navUsageVersion } from '../nav-usage'
 import { settings } from '../settings'
 import DialectIcon from './DialectIcon.vue'
@@ -213,22 +210,10 @@ function onContext(e: MouseEvent): void {
       <DialectIcon
         v-if="node.kind === 'connection' && dialect"
         :dialect="dialect"
-        :size="14"
+        :size="20"
         class="ico-svg"
       />
       <span v-else class="ico">{{ iconFor(node) }}</span>
-      <span
-        v-if="node.kind === 'connection' && env"
-        class="env-dot"
-        :style="{ borderColor: ENV_META[env].color }"
-        :title="t('env.dotTitle', { label: t('env.' + env) })"
-      />
-      <span
-        v-if="node.kind === 'connection' && connStatus(connId)"
-        class="status-dot"
-        :class="connStatus(connId)"
-        :title="connStatus(connId) === 'ok' ? t('conn.statusOk') : t('conn.statusError')"
-      />
       <span class="label">{{ node.name }}</span>
       <span v-if="node.count != null" class="count">({{ node.count }})</span>
       <span v-if="node.detail?.dataType" class="col-type">{{ node.detail.dataType }}</span>
@@ -317,35 +302,12 @@ function onContext(e: MouseEvent): void {
   text-align: center;
 }
 .ico-svg {
-  width: 16px;
+  width: 20px;
+  height: 20px;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-/* 环境标记:空心环(○),跟实心的状态点(●)区分开 —— 否则「开发(绿)+ 已连上(绿)」
-   会是两个一模一样的绿点,看着像重复/故障。颜色走内联 borderColor。 */
-.env-dot {
-  flex: none;
-  box-sizing: border-box;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: transparent;
-  border: 2px solid;
-}
-/* 连接可达性小圆点：🟢 上次连上 / 🔴 上次出错（未尝试不显示）。 */
-.status-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-.status-dot.ok {
-  background: #4caf50;
-}
-.status-dot.error {
-  background: #e04050;
 }
 /* #24 过滤入口 — 两个状态:
    静态 = 不启用过滤: 透明 ▾ 入口, hover 才可见 (跟 .edit-btn 一致).

@@ -38,6 +38,8 @@ const api = {
     remove: (id: string): Promise<void> => ipcRenderer.invoke('connections:remove', id),
     test: (config: ConnectionConfig): Promise<TestResult> =>
       ipcRenderer.invoke('connections:test', config),
+    testSsh: (config: ConnectionConfig): Promise<TestResult> =>
+      ipcRenderer.invoke('connections:testSsh', plainObject(config)),
     execute: (
       connId: string,
       sql: string,
@@ -154,6 +156,7 @@ const api = {
       allowCreate?: boolean
       defaultPath?: string
       directory?: boolean
+      showHidden?: boolean
     }): Promise<string | null> => ipcRenderer.invoke('files:selectFile', req),
     // ── 自定义 SaveFileDialog 用的原语 ───────────────────────────
     listDir: (
@@ -264,7 +267,7 @@ const api = {
     },
   },
   // 应用设置持久化(替代 renderer localStorage)
-  // 整份 Settings JSON 在主进程经 safeStorage 加密后落 SQLite,强杀不丢、apiKey 不明文。
+  // 整份 Settings JSON 落主进程 SQLite,强杀不丢；secret 按产品决策不走系统钥匙串。
   settings: {
     /** 读整份 settings JSON;不存在(首次启动)返回 null */
     get: (): Promise<string | null> => ipcRenderer.invoke('settings:get'),

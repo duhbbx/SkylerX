@@ -35,8 +35,23 @@ export interface SaveFileRequest {
   content?: string | Uint8Array
   filters?: { name: string; extensions: string[] }[]
   defaultDir?: string
+  /** 打开时默认显示隐藏文件/目录,用于证书和 SSH key 等常在 ~/.ssh 下的文件。 */
+  showHidden?: boolean
   /** 默认 save */
   mode?: SaveDialogMode
+}
+
+export function resolveDialogFileName(
+  name: string,
+  opts: { mode: SaveDialogMode; filter?: { name: string; extensions: string[] } | null },
+): string {
+  const trimmed = name.trim()
+  if (!trimmed) return ''
+  if (opts.mode === 'pick-existing' || opts.mode === 'pick-directory') return trimmed
+  const ext = opts.filter?.extensions[0]
+  if (!ext || ext === '*') return trimmed
+  if (/\.[a-zA-Z0-9]+$/.test(trimmed)) return trimmed
+  return `${trimmed}.${ext}`
 }
 
 interface SaveFileState {
@@ -62,6 +77,15 @@ function hasFsCapability(): boolean {
   return typeof api?.files?.listDir === 'function'
 }
 
+function pickerTypes(filters?: { name: string; extensions: string[] }[]): unknown[] | undefined {
+  const limited = (filters ?? []).filter((f) => !f.extensions.includes('*'))
+  if (!limited.length) return undefined
+  return limited.map((f) => ({
+    description: f.name,
+    accept: { 'application/octet-stream': f.extensions.map((e) => `.${e}`) },
+  }))
+}
+
 /** Web 端 fallback:优先 File System Access API → 兜底 anchor download。 */
 async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string | null> {
   // 1) 新浏览器(Chrome 86+/Edge):File System Access API,体验最接近原生
@@ -78,13 +102,10 @@ async function saveFileWithBrowserFallback(req: SaveFileRequest): Promise<string
   ).showSaveFilePicker
   if (showSaveFilePicker) {
     try {
-      const types = (req.filters ?? []).map((f) => ({
-        description: f.name,
-        accept: { 'application/octet-stream': f.extensions.map((e) => `.${e}`) },
-      }))
+      const types = pickerTypes(req.filters)
       const handle = await showSaveFilePicker({
         suggestedName: req.defaultName ?? 'export',
-        types: types.length ? types : undefined,
+        types,
       })
       const writable = await handle.createWritable()
       await writable.write(req.content!)
@@ -151,6 +172,8 @@ export function selectFileWithDialog(req: {
   allowCreate?: boolean
   defaultDir?: string
   defaultName?: string
+  /** 打开时默认显示隐藏文件/目录。 */
+  showHidden?: boolean
   /** true = 选目录(代码库关联等);走统一 SaveFileDialog 的 pick-directory 模式 */
   directory?: boolean
 }): Promise<string | null> {
@@ -163,6 +186,7 @@ export function selectFileWithDialog(req: {
       filters: req.filters,
       defaultDir: req.defaultDir,
       defaultName: req.defaultName ?? '',
+      showHidden: req.showHidden,
     }
     saveFileState.resolve = resolve
     saveFileState.open = true
@@ -189,22 +213,19 @@ async function selectFileBrowserFallback(req: {
       return (e as Error).name === 'AbortError' ? null : null
     }
   }
-  const types = (req.filters ?? []).map((f) => ({
-    description: f.name,
-    accept: { 'application/octet-stream': f.extensions.map((e) => `.${e}`) },
-  }))
+  const types = pickerTypes(req.filters)
   try {
     if (req.allowCreate && win.showSaveFilePicker) {
       const h = await win.showSaveFilePicker({
         suggestedName: req.defaultName ?? '',
-        types: types.length ? types : undefined,
+        types,
       })
       return h.name
     }
     if (win.showOpenFilePicker) {
       const handles = await win.showOpenFilePicker({
         multiple: false,
-        types: types.length ? types : undefined,
+        types,
       })
       return handles[0]?.name ?? null
     }

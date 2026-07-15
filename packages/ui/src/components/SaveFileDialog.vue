@@ -19,6 +19,7 @@ import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useDataClient } from '../data-client'
 import { confirm as appConfirm, prompt as appPrompt, toast } from '../dialog'
 import { reportError, reportInlineError } from '../errorReporter'
+import { resolveDialogFileName } from '../saveFile'
 import Modal from './Modal.vue'
 
 type Filter = { name: string; extensions: string[] }
@@ -31,6 +32,8 @@ const props = defineProps<{
   filters?: Filter[]
   /** 默认开始目录;不传用 localStorage 上次目录,再不传用 Documents */
   defaultDir?: string
+  /** 打开时默认显示隐藏文件/目录。 */
+  showHidden?: boolean
   /** 模式:save 写文件 / pick-existing 选已有 / pick-or-create 选或新建 */
   mode?: Mode
 }>()
@@ -104,15 +107,7 @@ const activeFilter = computed<Filter | null>(() => {
 
 /** 根据 activeFilter 给文件名自动追加扩展名(用户已带扩展名则不变)。 */
 const fileNameFinal = computed(() => {
-  const n = fileName.value.trim()
-  if (!n) return ''
-  const af = activeFilter.value
-  if (!af || !af.extensions.length) return n
-  const ext = af.extensions[0]
-  if (ext === '*') return n
-  // 用户已经带了任意 extension 就保持
-  if (/\.[a-zA-Z0-9]+$/.test(n)) return n
-  return `${n}.${ext}`
+  return resolveDialogFileName(fileName.value, { mode: mode.value, filter: activeFilter.value })
 })
 
 const targetPath = computed(() => {
@@ -363,6 +358,7 @@ onMounted(async () => {
   } catch {
     /* ignore */
   }
+  showHidden.value = props.showHidden ?? false
   // 默认目录
   const initDir =
     props.defaultDir || recentDirs.value[0] || homes.value.documents || homes.value.home
@@ -374,6 +370,7 @@ watch(
   () => props.open,
   async (op) => {
     if (op) {
+      showHidden.value = props.showHidden ?? false
       fileName.value = props.defaultName
       await nextTick()
       fileNameInputRef.value?.focus()

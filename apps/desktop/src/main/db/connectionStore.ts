@@ -5,7 +5,6 @@
 import { randomUUID } from 'node:crypto'
 import type { ConnectionConfig, ConnectionConfigStore, SshConfig } from '@db-tool/core-driver'
 import type { DbDialect } from '@db-tool/core-driver'
-import { safeStorage } from 'electron'
 import { getDb } from './sqlite.js'
 
 interface ConnectionRow {
@@ -26,26 +25,17 @@ interface ConnectionRow {
   sort_index: number | null
 }
 
-/** 用系统钥匙串加密密码；不可用时降级为 base64（仅开发兜底，附前缀以便识别）。 */
-function encryptPassword(plain?: string): string | null {
+/** 裸存 secret。base64 只是避免特殊字符影响存储,不是加密。 */
+function encodeSecret(plain?: string): string | null {
   if (!plain) return null
-  if (safeStorage.isEncryptionAvailable()) {
-    return `enc:${safeStorage.encryptString(plain).toString('base64')}`
-  }
   return `plain:${Buffer.from(plain, 'utf8').toString('base64')}`
 }
 
-function decryptPassword(stored: string | null): string | undefined {
+function decodeSecret(stored: string | null): string | undefined {
   if (!stored) return undefined
   if (stored.startsWith('enc:')) {
-    try {
-      return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'))
-    } catch {
-      // 钥匙串里的 key 失效(换机 / 删登录钥匙串 / app 改名换了钥匙串条目)时解密会抛错。
-      // 吞掉返回 undefined,让表单回填成空密码、用户重输一次,而不是让 getConnection
-      // 整个抛错卡住"编辑连接 / 连接"流程。与 settingsStore.decryptValue 同策略。
-      return undefined
-    }
+    // 旧版本系统加密密文。按新策略不碰系统钥匙串,返回空让用户重输一次。
+    return undefined
   }
   if (stored.startsWith('plain:')) {
     return Buffer.from(stored.slice(6), 'base64').toString('utf8')
@@ -53,14 +43,14 @@ function decryptPassword(stored: string | null): string | undefined {
   return stored
 }
 
-/** SSH 配置含密码/私钥，整体加密存储。 */
-function encryptSsh(ssh?: SshConfig): string | null {
-  return ssh ? encryptPassword(JSON.stringify(ssh)) : null
+/** SSH 配置含密码/私钥，整体裸存。 */
+function encodeSsh(ssh?: SshConfig): string | null {
+  return ssh ? encodeSecret(JSON.stringify(ssh)) : null
 }
 
-/** 解出 SSH 配置；脱敏时（列表）剔除密码/私钥/口令。 */
-function decryptSsh(stored: string | null, withSecrets: boolean): SshConfig | undefined {
-  const dec = decryptPassword(stored)
+/** 读出 SSH 配置；脱敏时（列表）剔除密码/私钥/口令。 */
+function decodeSsh(stored: string | null, withSecrets: boolean): SshConfig | undefined {
+  const dec = decodeSecret(stored)
   if (!dec) return undefined
   const ssh = JSON.parse(dec) as SshConfig
   return withSecrets
@@ -76,11 +66,11 @@ function rowToConfig(row: ConnectionRow, withPassword: boolean): ConnectionConfi
     host: row.host,
     port: row.port,
     user: row.username,
-    password: withPassword ? decryptPassword(row.password_enc) : undefined,
+    password: withPassword ? decodeSecret(row.password_enc) : undefined,
     database: row.database ?? undefined,
     ssl: row.ssl_json ? JSON.parse(row.ssl_json) : undefined,
-    // 仅在需要密码时（getConnection）才解密 SSH（含密钥）；列表脱敏，避免无谓的钥匙串读取
-    ssh: withPassword ? decryptSsh(row.ssh_json, true) : undefined,
+    // 仅在需要密码时（getConnection）才读取 SSH（含密钥）；列表脱敏，避免 secrets 进连接列表
+    ssh: withPassword ? decodeSsh(row.ssh_json, true) : undefined,
     group: row.group_name ?? undefined,
     extra: row.extra_json ? JSON.parse(row.extra_json) : undefined,
     createdAt: row.created_at,
@@ -108,7 +98,7 @@ export function listConnections(): ConnectionConfig[] {
   return rows.map((r) => rowToConfig(r, false))
 }
 
-/** 按 id 取单条连接，含解密后的密码（用于编辑表单回填 / 执行层解析）。 */
+/** 按 id 取单条连接，含密码（用于编辑表单回填 / 执行层解析）。 */
 export function getConnection(id: string): ConnectionConfig {
   const row = getDb().prepare('SELECT * FROM connections WHERE id = ?').get(id) as
     | ConnectionRow
@@ -134,10 +124,10 @@ export function createConnection(input: ConnectionConfig): ConnectionConfig {
       host: input.host,
       port: input.port,
       username: input.user,
-      password_enc: encryptPassword(input.password),
+      password_enc: encodeSecret(input.password),
       database: input.database ?? null,
       ssl_json: input.ssl ? JSON.stringify(input.ssl) : null,
-      ssh_json: encryptSsh(input.ssh),
+      ssh_json: encodeSsh(input.ssh),
       group_name: input.group?.trim() || null,
       extra_json: input.extra ? JSON.stringify(input.extra) : null,
       created_at: now,
@@ -156,7 +146,7 @@ export function updateConnection(input: ConnectionConfig): ConnectionConfig {
     | undefined
   if (!existing) throw new Error(`连接不存在: ${input.id}`)
 
-  const passwordEnc = input.password ? encryptPassword(input.password) : existing.password_enc
+  const passwordEnc = input.password ? encodeSecret(input.password) : existing.password_enc
   db.prepare(
     `UPDATE connections SET
        name=@name, dialect=@dialect, host=@host, port=@port, username=@username,
@@ -174,7 +164,7 @@ export function updateConnection(input: ConnectionConfig): ConnectionConfig {
     password_enc: passwordEnc,
     database: input.database ?? null,
     ssl_json: input.ssl ? JSON.stringify(input.ssl) : null,
-    ssh_json: encryptSsh(input.ssh),
+    ssh_json: encodeSsh(input.ssh),
     group_name: input.group?.trim() || null,
     extra_json: input.extra ? JSON.stringify(input.extra) : null,
     updated_at: now,
@@ -203,10 +193,10 @@ function toRow(
     host: input.host,
     port: input.port,
     username: input.user,
-    password_enc: encryptPassword(input.password),
+    password_enc: encodeSecret(input.password),
     database: input.database ?? null,
     ssl_json: input.ssl ? JSON.stringify(input.ssl) : null,
-    ssh_json: encryptSsh(input.ssh),
+    ssh_json: encodeSsh(input.ssh),
     group_name: input.group?.trim() || null,
     extra_json: input.extra ? JSON.stringify(input.extra) : null,
     created_at: createdAt,
@@ -216,7 +206,7 @@ function toRow(
 }
 
 /**
- * 供 core-driver 的执行层按连接 id 解析出完整配置（含解密密码）。
+ * 供 core-driver 的执行层按连接 id 解析出完整配置（含密码）。
  * 实现 ConnectionConfigStore 接口，注入到 LocalTransport。
  */
 export const sqliteConfigStore: ConnectionConfigStore = {

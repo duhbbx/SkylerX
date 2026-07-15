@@ -30,4 +30,12 @@ describe('i18n', () => {
     setLocale('en')
     expect(locale.value).toBe('en')
   })
+
+  it('translates SSL and SSH scoped test actions', () => {
+    expect(t('conn.ssl.test')).toBe('测试 SSL')
+    expect(t('conn.ssh.test')).toBe('测试 SSH')
+    setLocale('en')
+    expect(t('conn.ssl.test')).toBe('Test SSL')
+    expect(t('conn.ssh.test')).toBe('Test SSH')
+  })
 })

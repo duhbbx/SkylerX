@@ -298,7 +298,7 @@ function load(): Settings {
  *
  * 持久化分两层(从快到慢):
  *  1. renderer localStorage     —— 用作"启动 0ms 即时显示"的缓存,避免首屏闪默认值
- *  2. main 进程 SQLite + safeStorage —— 真·持久层,强杀不丢、apiKey 加密
+ *  2. main 进程 SQLite —— 真·持久层,强杀不丢；secret 按产品决策不走系统钥匙串
  *
  * 启动顺序:
  *   load() 同步读 localStorage(可能是旧版本/默认) → 立即响应式
@@ -366,7 +366,7 @@ watch(
       // 1. localStorage:0 延迟缓存,首屏永远拿得到
       localStorage.setItem(KEY, json)
       if (hasMeaningfulConfig(settings)) localStorage.setItem(BACKUP_KEY, json)
-      // 2. SQLite:debounced,真·持久层(强杀不丢、apiKey 加密)
+      // 2. SQLite:debounced,真·持久层(强杀不丢)
       pushToSqlite(json)
     } catch {
       /* 忽略持久化失败 */

@@ -3,7 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { describe, expect, it } from 'vitest'
-import { navConnectionScope, queryTabConnectionScope } from './connectionScope'
+import { isReactive, reactive } from 'vue'
+import {
+  navConnectionScope,
+  queryTabConnectionScope,
+  snapshotConnectionScope,
+} from './connectionScope'
 
 describe('connection scope helpers', () => {
   it('keeps navigation scope stable within a renderer window', () => {
@@ -21,5 +26,17 @@ describe('connection scope helpers', () => {
     expect(first.id).toMatch(/^tab:/)
     expect(second.id).toMatch(/^tab:/)
     expect(first.id).not.toBe(second.id)
+  })
+
+  it('snapshots a reactive query scope before it crosses the context bridge', () => {
+    const reactiveScope = reactive(queryTabConnectionScope(3))
+
+    expect(isReactive(reactiveScope)).toBe(true)
+    expect(() => structuredClone(reactiveScope)).toThrow()
+
+    const snapshot = snapshotConnectionScope(reactiveScope)
+
+    expect(isReactive(snapshot)).toBe(false)
+    expect(structuredClone(snapshot)).toEqual(reactiveScope)
   })
 })

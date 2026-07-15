@@ -15,3 +15,11 @@ export function navConnectionScope(): ConnectionScope {
 export function queryTabConnectionScope(tabId: number): ConnectionScope {
   return { id: `tab:${windowScopeId}:${tabId}`, kind: 'query-tab' }
 }
+
+/**
+ * Vue stores tab records in a deep reactive array, so their nested scope becomes a Proxy.
+ * Snapshot it before calling the contextBridge API; the bridge cannot clone Vue proxies.
+ */
+export function snapshotConnectionScope(scope: ConnectionScope): ConnectionScope {
+  return { id: scope.id, kind: scope.kind }
+}

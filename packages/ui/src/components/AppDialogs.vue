@@ -303,6 +303,7 @@ function onKey(e: KeyboardEvent): void {
     :default-name="saveFileState.req?.defaultName ?? ''"
     :filters="saveFileState.req?.filters"
     :default-dir="saveFileState.req?.defaultDir"
+    :show-hidden="saveFileState.req?.showHidden"
     :mode="saveFileState.req?.mode ?? 'save'"
     @close="onSaveFileCancel"
     @save="onSaveFileSubmit"

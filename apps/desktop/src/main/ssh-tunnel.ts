@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { type Server, createServer } from 'node:net'
-import type { ConnectionConfig } from '@db-tool/core-driver'
+import type { ConnectionConfig, SshConfig } from '@db-tool/core-driver'
 import { Client } from 'ssh2'
 
 interface Tunnel {
@@ -11,6 +11,14 @@ interface Tunnel {
   client: Client
   localPort: number
 }
+
+type SshClientLike = {
+  on(event: 'ready' | 'error' | 'close', listener: (...args: unknown[]) => void): SshClientLike
+  connect(options: unknown): void
+  end(): void
+}
+
+type SshClientFactory = () => SshClientLike
 
 /** 每连接一条隧道，按 connId 复用；连接断开/更新时关闭。 */
 const tunnels = new Map<string, Tunnel>()
@@ -32,6 +40,37 @@ function notifyTunnelClosed(connId: string): void {
   }
 }
 
+async function connectSshClient(
+  ssh: SshConfig,
+  createClient: SshClientFactory = () => new Client(),
+): Promise<SshClientLike> {
+  const client = createClient()
+  await new Promise<void>((resolve, reject) => {
+    client.on('ready', () => resolve())
+    client.on('error', (e) => reject(new Error(`SSH 连接失败：${(e as Error).message}`)))
+    client.connect({
+      host: ssh.host,
+      port: ssh.port || 22,
+      username: ssh.user,
+      password: ssh.password || undefined,
+      privateKey: ssh.privateKey || undefined,
+      passphrase: ssh.passphrase || undefined,
+      readyTimeout: 15000,
+    })
+  })
+  return client
+}
+
+export async function testSshConnection(
+  cfg: ConnectionConfig,
+  createClient?: SshClientFactory,
+): Promise<void> {
+  const ssh = cfg.ssh
+  if (!ssh) throw new Error('缺少 SSH 配置')
+  const client = await connectSshClient(ssh, createClient)
+  client.end()
+}
+
 /**
  * 确保该连接的 SSH 隧道已建立，返回本地转发端点（127.0.0.1:port）。
  * 驱动改为连此本地端口，流量经跳板机转发到目标库。
@@ -46,20 +85,7 @@ export async function ensureTunnel(
   const ssh = cfg.ssh
   if (!ssh) throw new Error('缺少 SSH 配置')
 
-  const client = new Client()
-  await new Promise<void>((resolve, reject) => {
-    client.on('ready', resolve)
-    client.on('error', (e) => reject(new Error(`SSH 连接失败：${e.message}`)))
-    client.connect({
-      host: ssh.host,
-      port: ssh.port || 22,
-      username: ssh.user,
-      password: ssh.password || undefined,
-      privateKey: ssh.privateKey || undefined,
-      passphrase: ssh.passphrase || undefined,
-      readyTimeout: 15000,
-    })
-  })
+  const client = (await connectSshClient(ssh)) as Client
 
   const dstHost = cfg.host
   const dstPort = cfg.port

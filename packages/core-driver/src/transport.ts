@@ -74,8 +74,8 @@ export interface SqlTransport {
 }
 
 /**
- * 配置仓：执行层按连接 id 解析出完整配置（含解密后的密码）。
- * 桌面端实现 = 读本地 SQLite + safeStorage 解密；
+ * 配置仓：执行层按连接 id 解析出完整配置（含密码）。
+ * 桌面端实现 = 读本地 SQLite；
  * Web 端实现 = 读服务端元数据库 + KMS 解密。
  */
 export interface ConnectionConfigStore {

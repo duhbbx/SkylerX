@@ -25,7 +25,7 @@ import {
   searchHistory,
   updateHistoryMeta,
 } from '../db/historyStore.js'
-import { closeTunnel, ensureTunnel } from '../ssh-tunnel.js'
+import { closeTunnel, ensureTunnel, testSshConnection } from '../ssh-tunnel.js'
 import { getTransport } from '../transport.js'
 
 /** IPC 通道名集中定义，preload 侧需保持一致。 */
@@ -36,6 +36,7 @@ export const IPC = {
   update: 'connections:update',
   remove: 'connections:remove',
   test: 'connections:test',
+  testSsh: 'connections:testSsh',
   execute: 'connections:execute',
   metadata: 'connections:metadata',
   executeBatch: 'connections:executeBatch',
@@ -84,6 +85,12 @@ export function registerConnectionIpc(): void {
       return getTransport().testConnection({ ...config, host: ep.host, port: ep.port })
     }
     return getTransport().testConnection(config)
+  })
+
+  ipcMain.handle(IPC.testSsh, async (_e, config: ConnectionConfig) => {
+    const start = Date.now()
+    await testSshConnection(config)
+    return { ok: true, latencyMs: Date.now() - start }
   })
 
   ipcMain.handle(

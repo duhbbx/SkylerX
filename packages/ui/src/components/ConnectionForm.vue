@@ -11,6 +11,10 @@ import {
 } from '@db-tool/shared-types'
 import { computed, reactive, ref, watch } from 'vue'
 import { emitChatErrorAsk } from '../chat-bus'
+import {
+  readConnectionSecretFile,
+  type ConnectionSecretFileKind,
+} from '../connectionSecretFile'
 import { ENV_OPTIONS, connEnv, connReadOnly } from '../connEnv'
 import { categorizeConnectionError, extractDbErrorCode } from '../connError'
 import { useDataClient } from '../data-client'
@@ -82,6 +86,17 @@ const section = ref<'general' | 'ssl' | 'ssh'>('general')
 const showSmartFill = ref(false)
 const groups = ref<string[]>([])
 const showRawError = ref(false) // 错误 banner 中「查看原始错误」折叠
+const secretImportBusy = ref<ConnectionSecretTarget | null>(null)
+
+type ConnectionSecretTarget = 'dbPassword' | 'sslCa' | 'sslCert' | 'sslKey' | 'sshPrivateKey'
+
+const secretFileKinds: Record<ConnectionSecretTarget, ConnectionSecretFileKind> = {
+  dbPassword: 'dbPassword',
+  sslCa: 'sslCertificate',
+  sslCert: 'sslCertificate',
+  sslKey: 'sslPrivateKey',
+  sshPrivateKey: 'sshPrivateKey',
+}
 
 /**
  * Names of all existing connections (cached on mount + after save). Used by
@@ -317,6 +332,25 @@ async function browseDbFile(): Promise<void> {
   if (path) form.database = path
 }
 
+async function importSecretFile(target: ConnectionSecretTarget): Promise<void> {
+  secretImportBusy.value = target
+  try {
+    const content = await readConnectionSecretFile(client.files, secretFileKinds[target])
+    if (content == null) return
+    normalize()
+    if (target === 'dbPassword') form.password = content
+    else if (target === 'sslCa' && form.ssl) form.ssl.ca = content
+    else if (target === 'sslCert' && form.ssl) form.ssl.cert = content
+    else if (target === 'sslKey' && form.ssl) form.ssl.key = content
+    else if (target === 'sshPrivateKey' && form.ssh) form.ssh.privateKey = content
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    testResult.value = { ok: false, message: stripIpcWrapper(message) }
+  } finally {
+    secretImportBusy.value = null
+  }
+}
+
 // 过 IPC 前转成纯对象，避免 Vue 响应式 Proxy 触发结构化克隆错误；
 // 未启用的 SSL/SSH 不持久化，空分组归一为 undefined。
 function buildConfig(): ConnectionConfig {
@@ -393,6 +427,20 @@ async function testConnection(): Promise<void> {
     // 主进程 IPC 抛错（如方言驱动未注册、SSH 失败、超时）必须 catch，
     // 否则 promise 逃逸成 Vue Unhandled rejection，用户什么都看不到。
     // 把它包成 TestResult 走现有 banner 渲染，跟 testResult.ok=false 一样的 UI。
+    const message = e instanceof Error ? e.message : String(e)
+    testResult.value = { ok: false, message: stripIpcWrapper(message) }
+  } finally {
+    busy.value = false
+  }
+}
+
+async function testSshOnly(): Promise<void> {
+  busy.value = true
+  testResult.value = null
+  showRawError.value = false
+  try {
+    testResult.value = await client.connections.testSsh(buildConfig())
+  } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     testResult.value = { ok: false, message: stripIpcWrapper(message) }
   } finally {
@@ -524,7 +572,17 @@ async function remove(): Promise<void> {
         <input v-model="form.user" :disabled="mongoUriActive" />
 
         <label>{{ t('conn.password') }}</label>
-        <input v-model="form.password" type="password" placeholder="" :disabled="mongoUriActive" />
+        <span class="secret-row">
+          <input v-model="form.password" type="password" placeholder="" :disabled="mongoUriActive" />
+          <button
+            type="button"
+            class="ghost"
+            :disabled="mongoUriActive || secretImportBusy !== null"
+            @click="importSecretFile('dbPassword')"
+          >
+            {{ t('conn.importFile') }}
+          </button>
+        </span>
       </template>
 
       <!-- Snowflake 专属:Warehouse / Role / Schema / Authenticator -->
@@ -597,15 +655,54 @@ async function remove(): Promise<void> {
       <template v-if="form.ssl">
         <label>{{ t('conn.ssl.enable') }}</label>
         <input v-model="form.ssl.enabled" type="checkbox" class="chk" />
+        <span />
+        <button
+          type="button"
+          class="ghost section-test-btn"
+          :disabled="busy || !form.ssl.enabled"
+          @click="testConnection"
+        >
+          {{ t('conn.ssl.test') }}
+        </button>
         <template v-if="form.ssl.enabled">
           <label>{{ t('conn.ssl.verify') }}</label>
           <input v-model="form.ssl.rejectUnauthorized" type="checkbox" class="chk" />
           <label>{{ t('conn.ssl.ca') }}</label>
-          <textarea v-model="form.ssl.ca" rows="3" :placeholder="t('conn.ssl.caPh')" />
+          <span class="secret-row">
+            <textarea v-model="form.ssl.ca" rows="3" :placeholder="t('conn.ssl.caPh')" />
+            <button
+              type="button"
+              class="ghost"
+              :disabled="secretImportBusy !== null"
+              @click="importSecretFile('sslCa')"
+            >
+              {{ t('conn.importFile') }}
+            </button>
+          </span>
           <label>{{ t('conn.ssl.cert') }}</label>
-          <textarea v-model="form.ssl.cert" rows="3" :placeholder="t('conn.ssl.certPh')" />
+          <span class="secret-row">
+            <textarea v-model="form.ssl.cert" rows="3" :placeholder="t('conn.ssl.certPh')" />
+            <button
+              type="button"
+              class="ghost"
+              :disabled="secretImportBusy !== null"
+              @click="importSecretFile('sslCert')"
+            >
+              {{ t('conn.importFile') }}
+            </button>
+          </span>
           <label>{{ t('conn.ssl.key') }}</label>
-          <textarea v-model="form.ssl.key" rows="3" :placeholder="t('conn.ssl.keyPh')" />
+          <span class="secret-row">
+            <textarea v-model="form.ssl.key" rows="3" :placeholder="t('conn.ssl.keyPh')" />
+            <button
+              type="button"
+              class="ghost"
+              :disabled="secretImportBusy !== null"
+              @click="importSecretFile('sslKey')"
+            >
+              {{ t('conn.importFile') }}
+            </button>
+          </span>
         </template>
       </template>
     </div>
@@ -614,6 +711,15 @@ async function remove(): Promise<void> {
       <template v-if="form.ssh">
         <label>{{ t('conn.ssh.enable') }}</label>
         <input v-model="form.ssh.enabled" type="checkbox" class="chk" />
+        <span />
+        <button
+          type="button"
+          class="ghost section-test-btn"
+          :disabled="busy || !form.ssh.enabled"
+          @click="testSshOnly"
+        >
+          {{ t('conn.ssh.test') }}
+        </button>
         <template v-if="form.ssh.enabled">
           <label>{{ t('conn.ssh.host') }}</label>
           <input v-model="form.ssh.host" placeholder="jump.example.com" />
@@ -624,7 +730,17 @@ async function remove(): Promise<void> {
           <label>{{ t('conn.ssh.password') }}</label>
           <input v-model="form.ssh.password" type="password" :placeholder="t('conn.ssh.passwordPh')" />
           <label>{{ t('conn.ssh.key') }}</label>
-          <textarea v-model="form.ssh.privateKey" rows="3" :placeholder="t('conn.ssh.keyPh')" />
+          <span class="secret-row">
+            <textarea v-model="form.ssh.privateKey" rows="3" :placeholder="t('conn.ssh.keyPh')" />
+            <button
+              type="button"
+              class="ghost"
+              :disabled="secretImportBusy !== null"
+              @click="importSecretFile('sshPrivateKey')"
+            >
+              {{ t('conn.importFile') }}
+            </button>
+          </span>
           <label>{{ t('conn.ssh.passphrase') }}</label>
           <input v-model="form.ssh.passphrase" type="password" :placeholder="t('conn.optional')" />
         </template>
@@ -816,6 +932,26 @@ async function remove(): Promise<void> {
 .form-grid .path-row > button {
   flex: none;
   padding: 0 10px;
+  font-size: 12px;
+}
+.form-grid .secret-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+  min-width: 0;
+}
+.form-grid .secret-row > textarea {
+  min-width: 0;
+}
+.form-grid .secret-row > button {
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.form-grid .section-test-btn {
+  justify-self: start;
+  padding: 5px 12px;
   font-size: 12px;
 }
 .form-grid input:disabled,

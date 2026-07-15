@@ -145,7 +145,7 @@ export interface ConnectionConfig {
   host: string
   port: number
   user: string
-  /** 明文仅存在于内存/解密后；持久化与展示请使用密文或脱敏 */
+  /** 仅用于运行时传输；列表展示请脱敏 */
   password?: string
   /** 默认库 / schema */
   database?: string
@@ -458,6 +458,7 @@ export interface DataClient {
     update(config: ConnectionConfig): Promise<ConnectionConfig>
     remove(id: string): Promise<void>
     test(config: ConnectionConfig): Promise<TestResult>
+    testSsh(config: ConnectionConfig): Promise<TestResult>
     execute(
       connId: string,
       sql: string,
@@ -529,6 +530,8 @@ export interface DataClient {
       defaultPath?: string
       /** true = 选目录(openDirectory),供代码库关联用 */
       directory?: boolean
+      /** true = 默认显示隐藏文件/目录。 */
+      showHidden?: boolean
     }): Promise<string | null>
     /** 自定义 SaveFileDialog 用的低级原语(桌面专属;Web 端按需用 File System Access API 实现) */
     listDir?(

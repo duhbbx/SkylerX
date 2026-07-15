@@ -11,7 +11,7 @@ import {
   type QueryResult,
   dialectKind,
 } from '@db-tool/shared-types'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { queryTabConnectionScope } from '../connectionScope'
 import { useDataClient } from '../data-client'
 import { OBJECT_LABEL, type ObjectKind, type TableContext } from '../ddl'
@@ -89,6 +89,8 @@ let tabSeq = 0
 let pendSeq = 0
 
 const barEl = ref<HTMLElement>()
+const tabActionsEl = ref<HTMLElement>()
+const tabMenuOpen = ref(false)
 // 切换 / 新建 tab 后,把激活的 tab 滚动进可视区。新建的 tab 追加在末尾,tab 条
 // 横向溢出(overflow-x:auto)时它会落在右侧视口外——滚动让它露出来,而不是停在原位。
 watch(activeId, () => {
@@ -106,6 +108,26 @@ const orderedTabs = computed(() => [
   ...tabs.value.filter((t) => t.pinned),
   ...tabs.value.filter((t) => !t.pinned),
 ])
+
+function toggleTabMenu(): void {
+  tabMenuOpen.value = !tabMenuOpen.value
+}
+
+function activateFromMenu(id: number): void {
+  activeId.value = id
+  tabMenuOpen.value = false
+}
+
+function onTabMenuOutside(e: MouseEvent): void {
+  if (!tabMenuOpen.value) return
+  const target = e.target as Node | null
+  if (target && tabActionsEl.value?.contains(target)) return
+  tabMenuOpen.value = false
+}
+
+function onTabMenuKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') tabMenuOpen.value = false
+}
 
 function togglePin(id: number): void {
   const tab = tabs.value.find((t) => t.id === id)
@@ -592,7 +614,15 @@ async function restoreLayout(): Promise<void> {
   }
 }
 
-onMounted(restoreLayout)
+onMounted(() => {
+  void restoreLayout()
+  document.addEventListener('mousedown', onTabMenuOutside)
+  document.addEventListener('keydown', onTabMenuKeydown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onTabMenuOutside)
+  document.removeEventListener('keydown', onTabMenuKeydown)
+})
 watch(tabs, saveLayout, { deep: true })
 </script>
 
@@ -602,29 +632,68 @@ watch(tabs, saveLayout, { deep: true })
       {{ tr('tabs.empty') }}
     </div>
     <template v-else>
-      <div ref="barEl" class="qtab-bar">
-        <div
-          v-for="t in orderedTabs"
-          :key="t.id"
-          class="qtab"
-          :class="{ active: t.id === activeId, pinned: t.pinned }"
-          :title="tr('tabs.pinHint')"
-          @click="activeId = t.id"
-          @dblclick="togglePin(t.id)"
-        >
-          <span v-if="t.pinned" class="t-pin">📌</span>
-          <!-- 数据库品牌 logo：用户切换 tab 时一眼分清是哪个 dialect；Notebook 无连接，用本子图标 -->
-          <span v-if="t.kind === 'notebook'" class="t-dialect" style="font-size: 13px">📓</span>
-          <DialectIcon v-else-if="t.conn" :dialect="t.conn.dialect" :size="13" class="t-dialect" />
-          <span class="t-title">{{ t.title }}</span>
-          <button
-            class="t-act"
-            :title="t.pinned ? tr('tabs.unpin') : tr('tabs.pin')"
-            @click.stop="togglePin(t.id)"
-          >{{ t.pinned ? '⇲' : '⇱' }}</button>
-          <button v-if="!t.pinned" class="t-close" :title="tr('common.close')" @click.stop="close(t.id)">×</button>
+      <div class="qtab-header">
+        <div ref="barEl" class="qtab-bar">
+          <div
+            v-for="t in orderedTabs"
+            :key="t.id"
+            class="qtab"
+            :class="{ active: t.id === activeId, pinned: t.pinned }"
+            :title="tr('tabs.pinHint')"
+            @click="activeId = t.id"
+            @dblclick="togglePin(t.id)"
+          >
+            <span v-if="t.pinned" class="t-pin">📌</span>
+            <!-- 数据库品牌 logo：用户切换 tab 时一眼分清是哪个 dialect；Notebook 无连接，用本子图标 -->
+            <span v-if="t.kind === 'notebook'" class="t-dialect notebook-icon">📓</span>
+            <DialectIcon v-else-if="t.conn" :dialect="t.conn.dialect" :size="20" class="t-dialect" />
+            <span class="t-title">{{ t.title }}</span>
+            <button
+              class="t-act"
+              :title="t.pinned ? tr('tabs.unpin') : tr('tabs.pin')"
+              @click.stop="togglePin(t.id)"
+            >{{ t.pinned ? '⇲' : '⇱' }}</button>
+            <button v-if="!t.pinned" class="t-close" :title="tr('common.close')" @click.stop="close(t.id)">×</button>
+          </div>
         </div>
-        <button class="qtab-add" :title="tr('tabs.newQuery')" @click="newForCurrent">＋</button>
+        <div ref="tabActionsEl" class="qtab-actions">
+          <button class="qtab-add" :title="tr('tabs.newQuery')" @click="newForCurrent">＋</button>
+          <button
+            class="qtab-menu-btn"
+            :class="{ active: tabMenuOpen }"
+            :title="tr('tabs.allTabs')"
+            :aria-label="tr('tabs.allTabs')"
+            aria-haspopup="menu"
+            :aria-expanded="tabMenuOpen"
+            @click="toggleTabMenu"
+          >≡</button>
+          <div v-if="tabMenuOpen" class="qtab-menu" role="menu">
+            <div
+              v-for="t in orderedTabs"
+              :key="t.id"
+              class="qtab-menu-row"
+              :class="{ active: t.id === activeId }"
+            >
+              <button class="qtab-menu-main" role="menuitem" @click="activateFromMenu(t.id)">
+                <span v-if="t.kind === 'notebook'" class="qtab-menu-notebook">📓</span>
+                <DialectIcon v-else-if="t.conn" :dialect="t.conn.dialect" :size="20" />
+                <span class="qtab-menu-title">{{ t.title }}</span>
+                <span v-if="t.id === activeId" class="qtab-menu-current">✓</span>
+              </button>
+              <button
+                class="qtab-menu-action"
+                :title="t.pinned ? tr('tabs.unpin') : tr('tabs.pin')"
+                @click.stop="togglePin(t.id)"
+              >{{ t.pinned ? '⇲' : '⇱' }}</button>
+              <button
+                v-if="!t.pinned"
+                class="qtab-menu-action close"
+                :title="tr('common.close')"
+                @click.stop="close(t.id)"
+              >×</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="qtab-body">
         <div v-for="t in tabs" v-show="t.id === activeId" :key="t.id" class="pane-wrap">
@@ -731,14 +800,27 @@ watch(tabs, saveLayout, { deep: true })
   color: var(--muted);
   font-size: 15px;
 }
-.qtab-bar {
+.qtab-header {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items: stretch;
+  flex: none;
   padding: 6px 8px 0;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 20;
+}
+.qtab-bar {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
   overflow-x: auto;
+  scrollbar-width: none;
+}
+.qtab-bar::-webkit-scrollbar {
+  display: none;
 }
 .qtab {
   display: flex;
@@ -765,6 +847,15 @@ watch(tabs, saveLayout, { deep: true })
 .t-dialect {
   flex: none;
   margin-right: 2px;
+}
+.notebook-icon,
+.qtab-menu-notebook {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+  line-height: 20px;
+  text-align: center;
+  flex: none;
 }
 .t-act {
   background: transparent;
@@ -794,16 +885,98 @@ watch(tabs, saveLayout, { deep: true })
 .t-close:hover {
   color: var(--err);
 }
-.qtab-add {
+.qtab-actions {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  position: relative;
+  padding-left: 4px;
+  background: var(--bg);
+}
+.qtab-add,
+.qtab-menu-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 100%;
   background: transparent;
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: 16px;
-  padding: 0 8px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
 }
-.qtab-add:hover {
+.qtab-add:hover,
+.qtab-menu-btn:hover,
+.qtab-menu-btn.active {
   color: var(--text);
+  background: rgba(124, 108, 255, 0.12);
+}
+.qtab-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 84px));
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+.qtab-menu-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 4px;
+}
+.qtab-menu-row:hover,
+.qtab-menu-row.active {
+  background: rgba(124, 108, 255, 0.12);
+}
+.qtab-menu-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.qtab-menu-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.qtab-menu-current {
+  flex: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+.qtab-menu-action {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.qtab-menu-action:hover {
+  color: var(--accent);
+}
+.qtab-menu-action.close:hover {
+  color: var(--err);
 }
 .qtab-body {
   flex: 1;

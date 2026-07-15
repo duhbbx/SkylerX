@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { BrowserWindow, app, ipcMain, shell } from 'electron'
 import { logCryptoProbe } from './crypto-probe.js'
@@ -16,11 +17,8 @@ import { setupMenu } from './menu.js'
 import { disposeTransport } from './transport.js'
 import { setupAutoUpdate } from './updater.js'
 
-// safeStorage / 系统钥匙串的服务名 = app.getName()。不显式设的话默认取 package.json 的
-// "@db-tool/desktop"(scoped 包名),钥匙串授权弹窗就显示成"@db-tool/desktop 想要访问…",
-// 用户看着像不明软件。这里定名 SkylerX,让弹窗显示 "SkylerX…SkylerX Safe Storage"。
-// 注意:改名会切到新的钥匙串条目,旧版本加密的连接密码 / apiKey 解不出,用户需重输一次
-// (decryptPassword / settingsStore.decryptValue 均已容错,不会崩)。必须在 app ready 前调用。
+// 显式设置应用名,让窗口标题、Dock、系统菜单和后续打包产物的显示名保持一致。
+// 必须在 app ready 前调用。
 app.setName('SkylerX')
 
 // Boot-time crypto runtime check — logs OpenSSL/BoringSSL identity + missing legacy
@@ -29,6 +27,14 @@ app.setName('SkylerX')
 logCryptoProbe()
 
 const isDev = !app.isPackaged
+
+function appIconPath(): string | undefined {
+  const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  const path = join(__dirname, '../../build', file)
+  return existsSync(path) ? path : undefined
+}
+
+const runtimeIcon = appIconPath()
 
 /** #15 多开窗口：复用同一 renderer，开一个全新的 BrowserWindow，独立工作区。 */
 let extraWindowSeq = 0
@@ -40,6 +46,7 @@ function spawnExtraWindow(): void {
     minWidth: 940,
     minHeight: 600,
     show: false,
+    icon: runtimeIcon,
     // 编号让多开窗口在系统窗口切换器里能区分
     title: `${isDev ? '[DEV] SkylerX' : 'SkylerX'} · 窗口 ${n + 1}`,
     webPreferences: {
@@ -63,6 +70,7 @@ function createWindow(): BrowserWindow {
     minWidth: 940,
     minHeight: 600,
     show: false,
+    icon: runtimeIcon,
     autoHideMenuBar: false,
     title: isDev ? '[DEV] SkylerX' : 'SkylerX',
     webPreferences: {
@@ -98,6 +106,7 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin' && runtimeIcon) app.dock.setIcon(runtimeIcon)
   registerConnectionIpc()
   registerFileIpc()
   registerAiIpc()

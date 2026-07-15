@@ -7,45 +7,32 @@
  *
  * 为什么不放 renderer localStorage?
  *  - Chromium LevelDB 异步落盘,SIGKILL 强杀(开发期 pkill -9 Electron 常见)会丢最后写入
- *  - apiKey 等敏感字段在 localStorage 是磁盘明文,任何能读 user data dir 的进程都能取
+ *  - 这里至少走主进程 SQLite 原子写；secret 按产品决策裸存,不再触发系统钥匙串
  *
  * 这里:
  *  - SQLite 同步事务写,强杀也不丢
- *  - safeStorage 加密整份 blob(含 apiKey);跨 OS keychain(macOS Keychain / Win DPAPI / Linux libsecret)
- *  - safeStorage 不可用时 fallback 到明文 base64(plain: 前缀,带警告),与 connectionStore 同模式
+ *  - 不使用系统钥匙串;统一以 plain:base64 保存,避免开发态反复弹授权
  *
  * 不分行存(key=aiProvider/aiApiKey/...)的原因:
  *  - Settings 接口是单一对象,整份原子 read/write 最简单
  *  - 单 IPC 调用 ↔ 单 DB 写,延迟更低
- *  - 加密粒度=整份,丢就一起丢,不会出现"theme 在但 apiKey 没了"的撕裂态
+ *  - 存储粒度=整份,丢就一起丢,不会出现"theme 在但 apiKey 没了"的撕裂态
  */
-import { safeStorage } from 'electron'
 import { getDb } from './sqlite.js'
 
 const SETTINGS_KEY = 'settings'
 
-/** 加密一段 JSON 文本;safeStorage 不可用时 fallback 到 plain: base64 */
-function encryptValue(plain: string): string {
-  if (safeStorage.isEncryptionAvailable()) {
-    return `enc:${safeStorage.encryptString(plain).toString('base64')}`
-  }
-  // 警告级别 fallback:OS 钥匙串不可用时(罕见,通常 Linux 上 libsecret 缺失),
-  // 仍然落盘但明文。renderer 侧可在 UI 上提示用户。
+/** 裸存一段 JSON 文本。base64 只是避免特殊字符影响存储,不是加密。 */
+function encodeValue(plain: string): string {
   return `plain:${Buffer.from(plain, 'utf8').toString('base64')}`
 }
 
-/** 反向:enc/plain 前缀分别解码;无前缀视为旧明文(向前兼容) */
-function decryptValue(stored: string): string | null {
+/** 反向:plain 前缀解码;旧 enc 不再读取,避免触发系统钥匙串。 */
+function decodeValue(stored: string): string | null {
   if (!stored) return null
   if (stored.startsWith('enc:')) {
-    try {
-      return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'))
-    } catch {
-      // 钥匙串里的 key 失效(用户换机 / 删登录 keychain),整份还原失败
-      // 不抛错,返回 null 让上层走默认设置;丢失内容用户得重输 apiKey,
-      // 但避免一次解密失败永远卡住启动。
-      return null
-    }
+    // 旧版本系统加密密文。按新策略不碰系统钥匙串,返回 null 让上层走默认设置。
+    return null
   }
   if (stored.startsWith('plain:')) {
     return Buffer.from(stored.slice(6), 'base64').toString('utf8')
@@ -59,12 +46,12 @@ export function getSettings(): string | null {
     | { value: string }
     | undefined
   if (!row) return null
-  return decryptValue(row.value)
+  return decodeValue(row.value)
 }
 
 /** 写整份 settings JSON;不校验内容形态,renderer 自己保证是合法 Settings 序列化。 */
 export function setSettings(jsonText: string): void {
-  const enc = encryptValue(jsonText)
+  const enc = encodeValue(jsonText)
   const now = Date.now()
   getDb()
     .prepare(

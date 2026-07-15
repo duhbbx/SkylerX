@@ -25,6 +25,7 @@ import {
   isStructureChangingStatement,
 } from '../connEnv'
 import { isConnectionError } from '../connError'
+import { snapshotConnectionScope } from '../connectionScope'
 import { useDataClient } from '../data-client'
 import {
   type TableContext,
@@ -122,6 +123,10 @@ const props = defineProps<{
   /** 当前查询 tab 独享的连接 scope。 */
   connectionScope: ConnectionScope
 }>()
+
+// QueryTabs stores scopes inside a reactive tab record. Keep a plain snapshot because Vue
+// proxies cannot cross Electron's contextBridge boundary.
+const connectionScope = snapshotConnectionScope(props.connectionScope)
 
 const emit = defineEmits<{
   connError: [string, string]
@@ -236,7 +241,7 @@ async function verifyEditableIsTable(tab: ResultTab): Promise<void> {
         LIMIT 1`,
       [ref.table, ref.schema ?? '', ref.schema ?? ''],
       undefined,
-      props.connectionScope,
+      connectionScope,
     )
     const tt = (r.rows[0] as Record<string, unknown> | undefined)?.table_type
     if (typeof tt === 'string' && /view/i.test(tt)) {
@@ -286,14 +291,14 @@ async function loadFks(editTable: string): Promise<void> {
   try {
     const out = fwdSql
       ? parseFkRows(
-          (await client.connections.execute(props.conn.id, fwdSql, [], ctx, props.connectionScope))
+          (await client.connections.execute(props.conn.id, fwdSql, [], ctx, connectionScope))
             .rows as Record<string, unknown>[],
           'reftab',
         )
       : []
     const rev = revSql
       ? parseFkRows(
-          (await client.connections.execute(props.conn.id, revSql, [], ctx, props.connectionScope))
+          (await client.connections.execute(props.conn.id, revSql, [], ctx, connectionScope))
             .rows as Record<string, unknown>[],
           'srctab',
         )
@@ -362,7 +367,7 @@ async function onExpandFk(payload: {
       `SELECT * FROM ${refTbl} LIMIT 0`,
       [],
       undefined,
-      props.connectionScope,
+      connectionScope,
     )
     refCols = probe.columns
       .slice(0, 4)
@@ -402,7 +407,7 @@ async function onFkLookup(payload: {
       `SELECT DISTINCT ${col} AS v FROM ${tbl} WHERE ${col} IS NOT NULL ORDER BY ${col} LIMIT 50`,
       [],
       undefined,
-      props.connectionScope,
+      connectionScope,
     )
     cb(
       r.rows
@@ -474,7 +479,7 @@ async function ensureSession(): Promise<string | null> {
     const sid = await client.connections.beginSession(
       props.conn.id,
       execOptions(),
-      props.connectionScope,
+      connectionScope,
     )
     sessionId.value = sid
     return sid
@@ -572,7 +577,7 @@ async function loadContext(): Promise<boolean> {
     topNodes = await client.connections.metadata(props.conn.id, {
       parentKind: MetaNodeKind.Connection,
       path: [],
-    }, props.connectionScope)
+    }, connectionScope)
     loadedFromMetadata = true
     const targetDb = props.initialCtx?.database ?? props.conn.database ?? ''
     if (targetDb && topNodes.some((n) => n.kind === MetaNodeKind.Database && n.name === targetDb)) {
@@ -593,7 +598,7 @@ async function loadSchemaNodes(db: string): Promise<Awaited<ReturnType<typeof cl
   return client.connections.metadata(props.conn.id, {
     parentKind: MetaNodeKind.Database,
     path: [db],
-  }, props.connectionScope)
+  }, connectionScope)
 }
 
 function applyContextState(
@@ -820,7 +825,7 @@ async function loadTables(): Promise<string[]> {
       parentKind: MetaNodeKind.Group,
       path,
       group: 'tables',
-    }, props.connectionScope)
+    }, connectionScope)
     tableList = nodes.map((n) => n.name)
   } catch {
     tableList = []
@@ -838,7 +843,7 @@ async function loadColumns(table: string): Promise<string[]> {
       parentKind: MetaNodeKind.Group,
       path: [...path, table],
       group: 'columns',
-    }, props.connectionScope)
+    }, connectionScope)
     const cols = nodes.map((n) => n.name)
     colCache.set(table, cols)
     return cols
@@ -1092,7 +1097,7 @@ async function execSql(text: string): Promise<void> {
         const opts = pageable ? { ...execOptions(), limit: tab.pageSize, offset: 0 } : execOptions()
         tab.result = sid
           ? await client.connections.executeInSession(sid, stmt, [], opts)
-          : await client.connections.execute(props.conn.id, stmt, [], opts, props.connectionScope)
+          : await client.connections.execute(props.conn.id, stmt, [], opts, connectionScope)
         // 非纯读语句执行成功 → 标记 session 有未提交改动
         if (sid && !isReadOnlyStatement(stmt)) dirty.value = true
       } catch (e) {
@@ -1165,7 +1170,7 @@ async function explain(withAnalyze = false): Promise<void> {
         const sid = await client.connections.beginSession(
           props.conn.id,
           execOptions(),
-          props.connectionScope,
+          connectionScope,
         )
         try {
           await client.connections.executeInSession(sid, pq.prep, [], execOptions())
@@ -1180,7 +1185,7 @@ async function explain(withAnalyze = false): Promise<void> {
           pq.sql,
           [],
           execOptions(),
-          props.connectionScope,
+          connectionScope,
         )
         planData.value = buildPlanData(pq.format, r)
       }
@@ -1200,7 +1205,7 @@ async function explain(withAnalyze = false): Promise<void> {
       ex,
       [],
       execOptions(),
-      props.connectionScope,
+      connectionScope,
     )
     const tab: ResultTab = {
       id: ++tabSeq,
@@ -1228,7 +1233,7 @@ async function explain(withAnalyze = false): Promise<void> {
 
 /** 取消：服务端取消正在执行的查询（MySQL KILL QUERY / PG pg_cancel_backend）+ 渲染端放弃在途结果。 */
 function cancel(): void {
-  void client.connections.cancel(props.conn.id, props.connectionScope)
+  void client.connections.cancel(props.conn.id, connectionScope)
   runToken++
   running.value = false
 }
@@ -1272,7 +1277,7 @@ async function gotoPage(tab: ResultTab | undefined, page: number): Promise<void>
         limit: tab.pageSize,
         offset: page * tab.pageSize,
       },
-      props.connectionScope,
+      connectionScope,
     )
     tab.page = page
     tab.error = null
@@ -1322,7 +1327,7 @@ async function doCommit(): Promise<void> {
       props.conn.id,
       [...p.stmts],
       execOptions(),
-      props.connectionScope,
+      connectionScope,
     )
     await gotoPage(tab, tab.page) // 刷新当前页（结果变更会重置网格编辑态）
     await loadHistory()
@@ -1555,7 +1560,7 @@ onBeforeUnmount(() => {
   // 关 tab 时若还有未关闭的 session，按"放弃改动"语义结束（endSession 内部会 ROLLBACK）。
   // 这里不弹确认——确认的责任在 QueryTabs.close（它有机会先弹再卸载组件）。
   void endSessionIfAny()
-  void client.connections.releaseScope(props.conn.id, props.connectionScope)
+  void client.connections.releaseScope(props.conn.id, connectionScope)
 })
 
 /**
@@ -1680,21 +1685,23 @@ defineExpose({
         </Teleport>
       </div>
 
-      <ThemedSelect
-        v-if="topKind === 'database'"
-        :model-value="selectedDb"
-        :options="[{ value: '', label: t('query.defaultDb') }, ...dbOptions.map((d) => ({ value: d, label: d }))]"
-        :placeholder="t('query.defaultDb')"
-        :width="170"
-        @update:model-value="(v) => { selectedDb = v; onDbChange() }"
-      />
-      <ThemedSelect
-        v-if="schemaOptions.length || topKind === 'schema'"
-        v-model="selectedSchema"
-        :options="[{ value: '', label: t('query.defaultSchema') }, ...schemaOptions.map((s) => ({ value: s, label: s }))]"
-        :placeholder="t('query.defaultSchema')"
-        :width="170"
-      />
+      <span v-if="topKind === 'database'" class="ctx-select">
+        <ThemedSelect
+          :model-value="selectedDb"
+          :options="[{ value: '', label: t('query.defaultDb') }, ...dbOptions.map((d) => ({ value: d, label: d }))]"
+          :placeholder="t('query.defaultDb')"
+          :width="170"
+          @update:model-value="(v) => { selectedDb = v; onDbChange() }"
+        />
+      </span>
+      <span v-if="schemaOptions.length || topKind === 'schema'" class="ctx-select">
+        <ThemedSelect
+          v-model="selectedSchema"
+          :options="[{ value: '', label: t('query.defaultSchema') }, ...schemaOptions.map((s) => ({ value: s, label: s }))]"
+          :placeholder="t('query.defaultSchema')"
+          :width="170"
+        />
+      </span>
 
       <span
         v-if="env"
@@ -2069,6 +2076,10 @@ defineExpose({
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(124, 108, 255, 0.18);
+}
+.ctx-select {
+  display: inline-flex;
+  align-items: center;
 }
 .editor {
   flex: none;

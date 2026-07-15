@@ -72,13 +72,19 @@ export function registerFileIpc(): void {
     FILE_IPC.selectFile,
     async (
       _e,
-      req?: { filters?: Filter[]; allowCreate?: boolean; defaultPath?: string; directory?: boolean },
+      req?: {
+        filters?: Filter[]
+        allowCreate?: boolean
+        defaultPath?: string
+        directory?: boolean
+        showHidden?: boolean
+      },
     ): Promise<string | null> => {
       const win = focusedWindow()
       if (req?.directory) {
         // 选目录(代码库关联用):openDirectory 只让选文件夹。
         const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined!, {
-          properties: ['openDirectory'],
+          properties: req?.showHidden ? ['openDirectory', 'showHiddenFiles'] : ['openDirectory'],
           defaultPath: req?.defaultPath,
         })
         return canceled || !filePaths.length ? null : filePaths[0]
@@ -93,7 +99,7 @@ export function registerFileIpc(): void {
         return canceled || !filePath ? null : filePath
       }
       const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined!, {
-        properties: ['openFile'],
+        properties: req?.showHidden ? ['openFile', 'showHiddenFiles'] : ['openFile'],
         defaultPath: req?.defaultPath,
         filters: req?.filters,
       })

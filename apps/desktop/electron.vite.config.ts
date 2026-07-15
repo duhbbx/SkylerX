@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import { resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import type { Plugin } from 'vite'
@@ -50,6 +51,29 @@ function monacoNlsShim(): Plugin {
   }
 }
 
+/**
+ * monaco-editor@0.52.2 ships marked.js with a trailing
+ * `//# sourceMappingURL=marked.umd.js.map`, but the npm package does not
+ * include that map file. Vite dev tries to read it and logs ENOENT.
+ */
+function monacoMarkedSourceMapPatch(): Plugin {
+  return {
+    name: 'skylerx:monaco-marked-sourcemap-patch',
+    enforce: 'pre',
+    async load(id) {
+      const pathOnly = id.split('?')[0]
+      if (!/[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]base[\\/]common[\\/]marked[\\/]marked\.js$/.test(pathOnly)) {
+        return null
+      }
+      const code = await readFile(pathOnly, 'utf8')
+      return {
+        code: code.replace(/\n?\/\/# sourceMappingURL=marked\.umd\.js\.map\s*$/u, ''),
+        map: null,
+      }
+    },
+  }
+}
+
 export default defineConfig({
   main: {
     // pg-opengauss 被打进主进程(经 @db-tool/core-driver),它的 lib/native/client.js
@@ -71,6 +95,6 @@ export default defineConfig({
     // monaco-editor 排除预打包：让所有 import 走 Vite 插件链，monacoNlsShim 才能截到内部相对引用
     // @db-tool/ui 是 TS/Vue 源码工作区包，也排除让 vue 插件按源码编译
     optimizeDeps: { exclude: ['@db-tool/ui', 'monaco-editor'] },
-    plugins: [monacoNlsShim(), vue()],
+    plugins: [monacoMarkedSourceMapPatch(), monacoNlsShim(), vue()],
   },
 })

@@ -154,6 +154,7 @@ import {
   zoomOut,
   zoomReset,
 } from './settings'
+import { renderUpdateNotesHtml } from './updateNotes'
 
 const navRef = useTemplateRef('navRef')
 const tabsRef = useTemplateRef('tabsRef')
@@ -3994,7 +3995,10 @@ onMounted(async () => {
               </span>
               <details v-if="updateStatus.info.releaseNotes?.trim()" class="upd-notes">
                 <summary>查看更新说明</summary>
-                <pre class="upd-notes-body">{{ updateStatus.info.releaseNotes }}</pre>
+                <div
+                  class="upd-notes-body"
+                  v-html="renderUpdateNotesHtml(updateStatus.info.releaseNotes)"
+                />
               </details>
               <a
                 v-else
@@ -4457,13 +4461,53 @@ onMounted(async () => {
   padding: 8px 10px;
   border-top: 1px solid var(--border);
   font-size: 11px;
-  font-family: var(--font-mono);
-  white-space: pre-wrap;
   word-break: break-word;
   max-height: 180px;
   overflow-y: auto;
   color: var(--text);
   line-height: 1.5;
+}
+.upd-notes-body :deep(h1),
+.upd-notes-body :deep(h2),
+.upd-notes-body :deep(h3),
+.upd-notes-body :deep(h4) {
+  margin: 6px 0 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+.upd-notes-body :deep(h1:first-child),
+.upd-notes-body :deep(h2:first-child),
+.upd-notes-body :deep(h3:first-child),
+.upd-notes-body :deep(h4:first-child) {
+  margin-top: 0;
+}
+.upd-notes-body :deep(p),
+.upd-notes-body :deep(ul),
+.upd-notes-body :deep(ol) {
+  margin: 4px 0;
+}
+.upd-notes-body :deep(ul),
+.upd-notes-body :deep(ol) {
+  padding-left: 18px;
+}
+.upd-notes-body :deep(li) {
+  margin: 2px 0;
+}
+.upd-notes-body :deep(code) {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--border) 45%, transparent);
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+.upd-notes-body :deep(pre) {
+  margin: 6px 0;
+  padding: 6px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--border) 28%, transparent);
+  border-radius: 4px;
+}
+.upd-notes-body :deep(a) {
+  color: var(--accent);
 }
 .upd-notes-link {
   font-size: 11px;
@@ -4573,4 +4617,3 @@ onMounted(async () => {
   color: var(--muted);
 }
 </style>
-
